@@ -307,6 +307,7 @@ module rni_awctrl `RNI_PARAM
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_rdy_entry_d3_q;
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_select_vec_d3_q;
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_send_vec_q;
+    reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_send_pending_q;
     reg [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]        aw_txrsp_txnid_r;
     reg [`CHIE_RSP_FLIT_WIDTH-1:0]              aw_txrspflit_info_r;
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txrsp_select_ptr_q;
@@ -1202,7 +1203,14 @@ module rni_awctrl `RNI_PARAM
            ~(txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_select_entry_two_packets_w}});
     //When alloc the entry, if there are two dat packets,awctrl_entry_two_packets_flag_q is assert, and when the entry is dealloc, awctrl_entry_two_packets_flag_q is deassert
     assign awctrl_entry_two_packets_flag_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_two_packets_flag_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | (awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_two_packets_s2_w}})) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txdat_not_busy_d2_i}} & txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];//txdat_select_vec_d3_q prevents a second packet
+    // For two-packet entries, rdy_d3 & sel_d3 may both assert while
+    // not_busy_d2 is still low (wr_buffer assembling the first flit).
+    // By the time not_busy_d2 reasserts, rdy_d3 has already been cleared,
+    // so the send trigger for the second packet is lost.
+    // Fix: latch the trigger in txdat_send_pending_q until not_busy_d2
+    // allows it to propagate into txdat_send_vec.
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_send_trigger_w = txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txdat_not_busy_d2_i}} & (txdat_send_trigger_w | txdat_send_pending_q))) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_txdat_ccid_d2_o = {`CHIE_DAT_FLIT_CCID_WIDTH{1'b0}};
     assign awctrl_txdat_compack_d2_o = 1'b0;
     assign awctrl_txdat_rdy_v_d2_o = txdat_rdy_v_d2_q;
@@ -1368,6 +1376,16 @@ module rni_awctrl `RNI_PARAM
             end
         end
     end
+
+    always @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            txdat_send_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
+        end
+        else begin
+            txdat_send_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= (txdat_send_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | txdat_send_trigger_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+        end
+    end
+
     /////////////////////////////////////////////////////////////
     // txrsp
     /////////////////////////////////////////////////////////////
