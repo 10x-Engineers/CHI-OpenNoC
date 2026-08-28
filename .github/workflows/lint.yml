@@ -1,0 +1,24 @@
+# Structural lint of every CHI node. The repo's own flow needs VCS, which no
+# runner has, so this is Verilator-only -- see tools/lint.sh for what it gates on
+# and why the rest of the warning population is reported rather than enforced.
+name: lint
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verilator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Lint every node
+        run: ./tools/lint.sh
