@@ -167,25 +167,15 @@ module hnf_link_txdat_wrap `HNF_PARAM
             ;
     end
 
-    generate
-        if(CHIE_DAT_RSVDC_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_mshr_s0[`CHIE_DAT_FLIT_RSVDC_RANGE] = {`CHIE_DAT_FLIT_RSVDC_WIDTH{1'b0}};
-            end
-        end
-        if(CHIE_DATACHECK_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_mshr_s0[`CHIE_DAT_FLIT_DATACHECK_RANGE] = {`CHIE_DAT_FLIT_DATACHECK_WIDTH{1'b0}};
-            end
-        end
-        if(CHIE_POISON_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_mshr_s0[`CHIE_DAT_FLIT_POISON_RANGE] = {`CHIE_DAT_FLIT_POISON_WIDTH{1'b0}};
-            end
-        end
-    endgenerate
-
     always @*begin : combinational_logic1
+        // RSVDC, DataCheck and Poison are the fields this node never sources. They
+        // used to be driven from separate `always @*` blocks whose right-hand sides
+        // were constants, so the inferred sensitivity list was empty and the blocks
+        // never executed. Defaulting the whole flit to zero here covers them for any
+        // configured width, and the assignments below then override every field that
+        // does carry a value.
+        txdatflit_mshr_s0 = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TGTID_RANGE]     = mshr_txdat_tgtid_sx2;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_SRCID_RANGE]     = HNF_NID_PARAM;
