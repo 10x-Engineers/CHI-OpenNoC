@@ -155,11 +155,13 @@ The SNF parameters are listed below. They can be specified as needed at instanti
 
 # 4 Changes in this fork
 
-Found by driving the RTL with the 10xEngineers CHI VIP. Not filed upstream, which
-has no active maintainer.
+Found by driving the RTL with the 10xEngineers CHI VIP. Filed as issues on this
+fork rather than upstream, which has had no commit since 2025-06-25; the upstream
+issue and PR backlog is ported here too.
 
 | Change | Rule |
 | :--- | :--- |
 | `snf.v` — `TXLINKACTIVEREQ` was tied to `1'b1`, so it was asserted throughout reset, and the Transmit link could never leave ACTIVATE for DEACTIVATE/STOP | CHI E.b §14.1.3, §14.5 |
 | `snf.v` — `RXLINKACTIVEACK` reset synchronously, so it still drove its old value on the first cycle of reset. Both signals now reset asynchronously | CHI E.b §14.1.3 |
 | `snf_data_buffer.v` — RSVDC, DataCheck and Poison were assigned in `always @*` blocks whose right-hand sides were constants, so the inferred sensitivity list was empty and the blocks never executed | — |
+| `hnf_link_txdat_wrap.v`, `hni_data_buffer.v` — the same never-executing `always @*` construct, still present after the `snf` fix. `tools/lint.sh` now gates the class ([#2](https://github.com/10x-Engineers/CHI-OpenNoC/issues/2)) | — |
