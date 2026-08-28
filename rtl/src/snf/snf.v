@@ -221,18 +221,33 @@ module snf `SNF_PARAM
     wire                                        txdat_lcrdv_o;
     wire                                        run_state;
 
-    // reg txlinkactivereq_q;
+    reg txlinkactivereq_q;
     reg rxlinkactivereq_q;
 
-    always @(posedge CLK) begin
+    // CHI E.b Sec 14.1.3: TXLINKACTIVEREQ and RXLINKACTIVEACK must be deasserted
+    // THROUGHOUT reset, so both reset asynchronously -- a synchronous reset still
+    // drives the old value on the first reset cycle, and cannot deassert at all
+    // while the clock is stopped.
+    always @(posedge CLK or posedge RST) begin
         if (RST) begin
             rxlinkactivereq_q <= 1'b0;
         end else begin
             rxlinkactivereq_q <= RXLINKACTIVEREQ;
         end
     end
+
+    // A constant 1'b1 also left the Transmit link permanently requesting
+    // ACTIVATE, so Sec 14.5's RUN -> DEACTIVATE -> STOP edge was unreachable.
+    always @(posedge CLK or posedge RST) begin
+        if (RST) begin
+            txlinkactivereq_q <= 1'b0;
+        end else begin
+            txlinkactivereq_q <= 1'b1;
+        end
+    end
+
     assign RXLINKACTIVEACK = rxlinkactivereq_q;
-    assign TXLINKACTIVEREQ = 1'b1;
+    assign TXLINKACTIVEREQ = txlinkactivereq_q;
     assign TXSACTIVE = TXLINKACTIVEREQ & TXLINKACTIVEACK & (~RST);
     
     assign run_state = RXLINKACTIVEREQ & RXLINKACTIVEACK;

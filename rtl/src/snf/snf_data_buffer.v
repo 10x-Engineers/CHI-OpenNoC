@@ -384,28 +384,15 @@ module snf_data_buffer `SNF_PARAM
     // output to mshr
     assign mshr_txdat_won_sx = txdat_dbf_won_sx;
 
-    generate
-        if(CHIE_DAT_RSVDC_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdat_flit[`CHIE_DAT_FLIT_RSVDC_RANGE] = {`CHIE_DAT_FLIT_RSVDC_WIDTH{1'b0}};
-            end
-        end
-
-        if(CHIE_DATACHECK_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdat_flit[`CHIE_DAT_FLIT_DATACHECK_RANGE] = {`CHIE_DAT_FLIT_DATACHECK_WIDTH{1'b0}};
-            end
-        end
-
-        if(CHIE_POISON_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdat_flit[`CHIE_DAT_FLIT_POISON_RANGE] = {`CHIE_DAT_FLIT_POISON_WIDTH{1'b0}};
-            end
-        end
-
-    endgenerate
-
     always@(*)begin:txdat_package_comb_logic
+        // RSVDC, DataCheck and Poison are the fields this Subordinate never
+        // sources. They used to be driven from separate `always @*` blocks whose
+        // right-hand sides were constants, so the inferred sensitivity list was
+        // empty and the blocks never executed. Defaulting the whole flit to zero
+        // here covers them for any configured width, and the assignments below
+        // then override every field that does carry a value.
+        txdat_flit = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+
         txdat_flit[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};
         txdat_flit[`CHIE_DAT_FLIT_TGTID_RANGE]     = mshr_txdat_tgtid_sx;
         txdat_flit[`CHIE_DAT_FLIT_SRCID_RANGE]     = mshr_txdat_srcid_sx;
@@ -567,7 +554,7 @@ module snf_data_buffer `SNF_PARAM
     endgenerate
 
     assign wdata_to_slave = wvalid & wready;
-    assign wdata_to_slave_idx = wvalid ? wdata_fifo_entry_idx_sx[wdata_fifo_get_vec] : {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};;
+    assign wdata_to_slave_idx = wvalid ? wdata_fifo_entry_idx_sx[wdata_fifo_get_vec] : {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
     assign wdata_cdmask_next = ((AXI_128) ? ((|(wdata_cdmask_q[wdata_to_slave_idx] <<1) != 0) ? (wdata_cdmask_q[wdata_to_slave_idx] <<1) : 4'b0001)
                                                 : wdata_cdmask_q[wdata_to_slave_idx] ^ {4{1'b1}});
     assign wdata = (AXI_128) ? (({`AXI4_WDATA_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_data_q[wdata_to_slave_idx][0*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH])
