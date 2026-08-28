@@ -28,6 +28,7 @@ module snf_txrsp `SNF_PARAM
         rst,
 
         txrsp_lcrdv,
+        tx_deactivate,
 
         qos_txrsp_retryack_valid_s1,
         qos_txrsp_retryack_fifo_s1,
@@ -62,6 +63,7 @@ module snf_txrsp `SNF_PARAM
 
     //inputs from snf_link
     input wire                                     txrsp_lcrdv;
+    input wire                                     tx_deactivate;
 
     input wire                                     qos_txrsp_retryack_valid_s1;
     input wire [`SNF_RETRY_ACKQ_DATA_RANGE]            qos_txrsp_retryack_fifo_s1;
@@ -113,6 +115,7 @@ module snf_txrsp `SNF_PARAM
     wire                                           txrsp_crd_cnt_inc_sx;
     wire                                           txrsp_crd_cnt_dec_sx;
     wire                                           rsp_crd_cnt_not_zero_sx;
+    wire                                           txrsp_lcrd_rtn_s0;
 
     //arb and lcrd_avail
     assign rsp_crd_cnt_not_zero_sx     = (txrsp_crd_cnt_q != 0);
@@ -197,7 +200,14 @@ module snf_txrsp `SNF_PARAM
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & (~txrsp_busy_sx);
-    assign txrsp_crd_cnt_dec_sx    = txrspflitv_s0 & txrsp_crd_avail_s1; //lcrd - 1
+
+    // CHI E.b Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return
+    // credits using Protocol flits or L-Credit return flits", and Sec 14.6.3
+    // (p.14-458): "A link must remain in the DEACTIVATE state until all L-Credits
+    // are returned." A Protocol flit still wins the cycle.
+    assign txrsp_lcrd_rtn_s0       = tx_deactivate & (~txrsp_req_s0) & txrsp_crd_avail_s1;
+
+    assign txrsp_crd_cnt_dec_sx    = (txrspflitv_s0 & txrsp_crd_avail_s1) | txrsp_lcrd_rtn_s0; //lcrd - 1
 
     assign txrspflitpend = 1'b1;
 
@@ -209,6 +219,11 @@ module snf_txrsp `SNF_PARAM
         end
         else if((txrspflitv_s0 == 1'b1) & (txrsp_crd_avail_s1 == 1'b1))begin
             txrspflit <= txrspflit_s0;
+            txrspflitv <= 1'b1;
+        end
+        else if(txrsp_lcrd_rtn_s0 == 1'b1)begin
+            //RespLCrdReturn: opcode 0 with every other field zero (Table 13-13)
+            txrspflit <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
             txrspflitv <= 1'b1;
         end
         else begin

@@ -78,6 +78,7 @@ module snf_rxreq `SNF_PARAM
     wire                                            snf_rxcrd_enable_sx;
     wire                                            rxreq_crd_cnt_zero_sx;
     wire                                            req_crd_rtn_s0;
+    wire                                            rxreq_link_flit_s0;
     wire                                            retack_tx_s1;
     wire                                            rxreq_crd_cnt_upd_s1;
     wire                                            rxreqcrdv_ns_s0;
@@ -98,8 +99,14 @@ module snf_rxreq `SNF_PARAM
     end
 
     //rxreqflit decode
-    assign rxreq_valid_s0    = (rxreqflitv == 1'b1);
-    assign rxreqflit_s0      = (rxreqflitv == 1'b1) ? rxreqflit : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+    // CHI E.b Sec 13.11: "A link flit is identified by a zero value in the Opcode
+    // field." It carries no request -- only the L-Credit it returns -- so it is
+    // dropped here rather than allocated a tracker entry, and only the credit
+    // accounting below sees it.
+    assign rxreq_link_flit_s0 = (rxreqflitv == 1'b1) &&
+           (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}});
+    assign rxreq_valid_s0    = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;
+    assign rxreqflit_s0      = (rxreq_valid_s0 == 1'b1) ? rxreqflit : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
 
     //rxreq L-credit
     assign req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;
