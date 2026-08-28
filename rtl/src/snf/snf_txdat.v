@@ -28,6 +28,7 @@ module snf_txdat `SNF_PARAM
         rst,
 
         txdat_lcrdv,
+        tx_deactivate,
 
         dbf_txdat_valid_sx,
         txdat_flit,
@@ -46,6 +47,7 @@ module snf_txdat `SNF_PARAM
 
     //inputs from snf_link
     input wire                                    txdat_lcrdv;
+    input wire                                    tx_deactivate;
 
     //inputs from snf_data_buffer
     input wire                                    dbf_txdat_valid_sx;
@@ -66,6 +68,7 @@ module snf_txdat `SNF_PARAM
 
     //internal wire signals
     wire                                          dat_crd_cnt_not_zero_sx;
+    wire                                          txdat_lcrd_rtn_s0;
     wire                                          txdat_crd_avail_s1;
     wire                                          txdatcrdv_s0;
     wire                                          txdat_crd_cnt_inc_sx;
@@ -83,7 +86,13 @@ module snf_txdat `SNF_PARAM
     assign txdat_crd_cnt_inc_sx    = txdatcrdv_s0;
 
     assign dat_crd_cnt_s1          = txdat_crd_cnt_q;
-    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_crd_avail_s1);
+    // CHI E.b Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return
+    // credits using Protocol flits or L-Credit return flits", and Sec 14.6.3
+    // (p.14-458): "A link must remain in the DEACTIVATE state until all L-Credits
+    // are returned." A Protocol flit still wins the cycle.
+    assign txdat_lcrd_rtn_s0       = tx_deactivate & (~dbf_txdat_valid_sx) & txdat_crd_avail_s1;
+
+    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_crd_avail_s1) | txdat_lcrd_rtn_s0;
     assign txdatflitpend = 1'b1;
     assign txdat_dbf_rdy_s1 = txdat_crd_avail_s1;
 
@@ -95,6 +104,11 @@ module snf_txdat `SNF_PARAM
         end
         else if((txdat_crd_avail_s1 == 1'b1) && (dbf_txdat_valid_sx == 1'b1))begin
             txdatflit  <= txdat_flit;
+            txdatflitv <= 1'b1;
+        end
+        else if(txdat_lcrd_rtn_s0 == 1'b1)begin
+            //DataLCrdReturn: opcode 0 with every other field zero (Table 13-21)
+            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
             txdatflitv <= 1'b1;
         end
         else begin

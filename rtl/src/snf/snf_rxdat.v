@@ -71,6 +71,7 @@ module snf_rxdat `SNF_PARAM
     wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_inc1_val_s0;
     wire [`SNF_LL_DAT_CRD_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
     wire                                            rxdatcrdv_ns_s0;
+    wire                                            rxdat_link_flit_s0;
 
     //main function
     always @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t
@@ -83,8 +84,13 @@ module snf_rxdat `SNF_PARAM
     end
 
     // to dbf
-    assign rxdat_valid_s0  = (rxdatflitv == 1'b1);
-    assign rxdatflit_s0    = (rxdatflitv == 1'b1)? rxdatflit : {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+    // CHI E.b Sec 13.11: "A link flit is identified by a zero value in the Opcode
+    // field." It carries no write data -- only the L-Credit it returns -- so it is
+    // dropped here and only the credit accounting below sees it.
+    assign rxdat_link_flit_s0 = (rxdatflitv == 1'b1) &&
+           (rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE] == {`CHIE_DAT_FLIT_OPCODE_WIDTH{1'b0}});
+    assign rxdat_valid_s0  = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
+    assign rxdatflit_s0    = (rxdat_valid_s0 == 1'b1)? rxdatflit : {`CHIE_DAT_FLIT_WIDTH{1'b0}};
 
     //rx lcrd enable
     assign snf_rxcrd_enable_s0 = run_state;
@@ -99,7 +105,7 @@ module snf_rxdat `SNF_PARAM
     //        1                      0            1                0       1    0    0      4'b0100   no_change
     //        1                      1            0                0       0    0    0      4'b0000   no_change
     //        1                      1            1                0       1    0    0      4'b0100   no_change
-    assign rxdat_crd_sm_in = {snf_rxcrd_enable_s0,rxdat_crd_cnt_zero,rxdat_valid_s0};
+    assign rxdat_crd_sm_in = {snf_rxcrd_enable_s0,rxdat_crd_cnt_zero,rxdatflitv};
 
     //sm outputs
     always @(*) begin:rxdatlcrdv_logic_t

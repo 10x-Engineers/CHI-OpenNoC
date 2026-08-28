@@ -222,35 +222,84 @@ module snf `SNF_PARAM
     wire                                        run_state;
 
     reg txlinkactivereq_q;
-    reg rxlinkactivereq_q;
+    reg rxlinkactiveack_q;
+    reg [`SNF_LL_REQ_CRD_CNT_RANGE]             rxreq_out_crd_q;
+    reg [`SNF_LL_DAT_CRD_CNT_RANGE]             rxdat_out_crd_q;
+    wire                                        rxreq_out_crd_upd_sx;
+    wire                                        rxdat_out_crd_upd_sx;
+    wire                                        rx_all_crd_returned_sx;
+    wire                                        rx_deact_done_sx;
+    wire                                        tx_deactivate_sx;
+
+    // L-Credits this Receiver has granted and not yet seen consumed. CHI E.b
+    // Sec 14.2 (MUST): every flit transfer consumes exactly one L-Credit, an
+    // L-Credit return flit included, so the count is grants minus flits.
+    always @(posedge CLK or posedge RST) begin
+        if (RST)
+            rxreq_out_crd_q <= {`SNF_LL_REQ_CRD_CNT_WIDTH{1'b0}};
+        else if (rxreq_out_crd_upd_sx)
+            rxreq_out_crd_q <= RXREQLCRDV ? (rxreq_out_crd_q + `SNF_LL_CRD_INCDEC_ONE)
+                                          : (rxreq_out_crd_q - `SNF_LL_CRD_INCDEC_ONE);
+    end
+
+    always @(posedge CLK or posedge RST) begin
+        if (RST)
+            rxdat_out_crd_q <= {`SNF_LL_DAT_CRD_CNT_WIDTH{1'b0}};
+        else if (rxdat_out_crd_upd_sx)
+            rxdat_out_crd_q <= RXDATLCRDV ? (rxdat_out_crd_q + `SNF_LL_CRD_INCDEC_ONE)
+                                          : (rxdat_out_crd_q - `SNF_LL_CRD_INCDEC_ONE);
+    end
+
+    assign rxreq_out_crd_upd_sx   = RXREQLCRDV ^ RXREQFLITV;
+    assign rxdat_out_crd_upd_sx   = RXDATLCRDV ^ RXDATFLITV;
+    assign rx_all_crd_returned_sx = (rxreq_out_crd_q == {`SNF_LL_REQ_CRD_CNT_WIDTH{1'b0}}) &
+                                    (rxdat_out_crd_q == {`SNF_LL_DAT_CRD_CNT_WIDTH{1'b0}});
+
+    // CHI E.b Table 14-2 DEACTIVATE (p.14-450, MUST): "The Receiver must wait for
+    // all credits to be returned before deasserting LINKACTIVEACK", and Sec 14.6.3
+    // (p.14-458, MUST): "The deassertion of RXACK must not occur before the
+    // deassertion of TXREQ".
+    assign rx_deact_done_sx = ~RXLINKACTIVEREQ & rx_all_crd_returned_sx & ~txlinkactivereq_q;
 
     // CHI E.b Sec 14.1.3: TXLINKACTIVEREQ and RXLINKACTIVEACK must be deasserted
     // THROUGHOUT reset, so both reset asynchronously -- a synchronous reset still
     // drives the old value on the first reset cycle, and cannot deassert at all
     // while the clock is stopped.
     always @(posedge CLK or posedge RST) begin
-        if (RST) begin
-            rxlinkactivereq_q <= 1'b0;
-        end else begin
-            rxlinkactivereq_q <= RXLINKACTIVEREQ;
-        end
+        if (RST)
+            rxlinkactiveack_q <= 1'b0;
+        else if (~rxlinkactiveack_q)
+            rxlinkactiveack_q <= RXLINKACTIVEREQ;   // ACTIVATE -> RUN
+        else if (rx_deact_done_sx)
+            rxlinkactiveack_q <= 1'b0;              // DEACTIVATE -> STOP
     end
 
+    // CHI E.b Sec 14.6.1 (p.14-454, MUST): "If the RXLINK moves to the DEACTIVATE
+    // state ... it is required that the TXLINK also moves to the DEACTIVATE state,
+    // in a timely manner", and the converse for ACTIVATE. Sec 14.6.3 (p.14-458,
+    // MUST) then orders this output against the one above: TXREQ may only assert
+    // once RXACK is deasserted, and may only deassert once RXACK is asserted.
     // A constant 1'b1 also left the Transmit link permanently requesting
     // ACTIVATE, so Sec 14.5's RUN -> DEACTIVATE -> STOP edge was unreachable.
     always @(posedge CLK or posedge RST) begin
-        if (RST) begin
+        if (RST)
             txlinkactivereq_q <= 1'b0;
-        end else begin
-            txlinkactivereq_q <= 1'b1;
-        end
+        else if (txlinkactivereq_q)
+            txlinkactivereq_q <= RXLINKACTIVEREQ;
+        else
+            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q;
     end
 
-    assign RXLINKACTIVEACK = rxlinkactivereq_q;
+    assign RXLINKACTIVEACK = rxlinkactiveack_q;
     assign TXLINKACTIVEREQ = txlinkactivereq_q;
     assign TXSACTIVE = TXLINKACTIVEREQ & TXLINKACTIVEACK & (~RST);
-    
+
     assign run_state = RXLINKACTIVEREQ & RXLINKACTIVEACK;
+
+    // CHI E.b Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return
+    // credits using Protocol flits or L-Credit return flits", so the TXRSP/TXDAT
+    // Transmitters are told when their own link is in that state.
+    assign tx_deactivate_sx = ~txlinkactivereq_q & TXLINKACTIVEACK;
 
     //module
     snf_rxreq `SNF_PARAM_INST
@@ -273,6 +322,7 @@ module snf `SNF_PARAM
             .clk(CLK),
             .rst(RST),
             .txrsp_lcrdv(TXRSPLCRDV),
+            .tx_deactivate(tx_deactivate_sx),
             .qos_txrsp_retryack_valid_s1(qos_txrsp_retryack_valid_s1),
             .qos_txrsp_retryack_fifo_s1(qos_txrsp_retryack_fifo_s1),
             .qos_txrsp_pcrdgnt_valid_s2(qos_txrsp_pcrdgnt_valid_s2),
@@ -313,6 +363,7 @@ module snf `SNF_PARAM
             .clk(CLK),
             .rst(RST),
             .txdat_lcrdv(TXDATLCRDV),
+            .tx_deactivate(tx_deactivate_sx),
             .dbf_txdat_valid_sx(dbf_txdat_valid_sx),
             .txdat_flit(txdat_flit),
             .txdatflitv(TXDATFLITV),
