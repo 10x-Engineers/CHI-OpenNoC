@@ -26,6 +26,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
         //inputs from hnf_link
         txsnp_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txsnp_flit_avail,
 
         //inputs from hnf_mshr_ctl
         mshr_txsnp_valid_sx1_q,
@@ -55,6 +58,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     //inputs from hnf_link
     input wire                                      txsnp_lcrdv;
+    input wire                                      lcrd_return_en;
+    input wire                                      txlink_run;
+    output wire                                     txsnp_flit_avail;
 
     //inputs from hnf_mshr_ctl
     input wire                                      mshr_txsnp_valid_sx1_q;
@@ -107,6 +113,8 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]            snp_crd_cnt_inc_s0;
     wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]            snp_crd_cnt_dec_s0;
     wire [((HNF_MSHR_RNF_NUM_PARAM*CHIE_NID_WIDTH_PARAM)-1):0] rnnid_list;
+
+    wire                                              txsnp_lcrd_rtn_sx;
 
     //main function
     genvar i;
@@ -205,7 +213,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     //just received it or not zero
     assign txsnp_crd_avail_s1      = txsnpcrdv_s0 | snp_crd_cnt_not_zero_sx;
-    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1;
+    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run);
     assign txsnpflitv_s0           = (txsnp_req_s0 == 1'b1 | txsnp_cnt_q>0) & (txsnp_busy_sx == 1'b0);
 
 
@@ -245,13 +253,21 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     end
 
     //can send packet,lcrdv-1
-    assign txsnp_crd_cnt_dec_sx = txsnpflitv_s0;
+    assign txsnp_crd_cnt_dec_sx = txsnpflitv_s0 | txsnp_lcrd_rtn_sx;
+    assign txsnp_lcrd_rtn_sx  = lcrd_return_en & snp_crd_cnt_not_zero_sx;
+    // A snoop fans out over several flits, so the link stays needed until the
+    // remaining targets have been sent, not just while a request is pending.
+    assign txsnp_flit_avail   = txsnp_req_s0 | (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}});
     assign txsnpflitpend = 1'b1;
 
     always @(posedge clk or posedge rst) begin: txsnpflit_logic_t
         if(rst == 1'b1)begin
             txsnpflit  <= {`HNF_SNP_FLIT_WIDTH{1'b0}};
             txsnpflitv <= 1'b0;
+        end
+        else if(txsnp_lcrd_rtn_sx == 1'b1)begin
+            txsnpflit  <= {`HNF_SNP_FLIT_WIDTH{1'b0}};
+            txsnpflitv <= 1'b1;
         end
         else if((txsnpflitv_s0 == 1'b1) & (txsnp_crd_avail_s1 == 1'b1))begin
             txsnpflit  <= txsnpflit_s0;

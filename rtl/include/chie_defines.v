@@ -874,10 +874,10 @@
 //`define CHIE_ORDER_RSVD                                2'b01
 //`define CHIE_ORDER_REQ_WR_OBS                          2'b10
 //`define CHIE_ORDER_END_POINT                           2'b11
-//`define CHIE_RESP_ERR_NORM_OK                          2'b00
+`define CHIE_RESP_ERR_NORM_OK                          2'b00
 //`define CHIE_RESP_ERR_EX_OK                            2'b01
 //`define CHIE_RESP_ERR_DATA                             2'b10
-//`define CHIE_RESP_ERR_NON_DATA                         2'b11
+`define CHIE_RESP_ERR_NON_DATA                         2'b11
 
 `define CHIE_SNP_RESP_I                                3'b000
 `define CHIE_SNP_RESP_SC                               3'b001
@@ -1260,6 +1260,8 @@
 `undef CHIE_READCLEAN
 `undef CHIE_READONCE
 `undef CHIE_READNOSNP
+`undef CHIE_RESP_ERR_NORM_OK
+`undef CHIE_RESP_ERR_NON_DATA
 `undef CHIE_PCRDRETURN
 `undef CHIE_READUNIQUE
 `undef CHIE_CLEANSHARED

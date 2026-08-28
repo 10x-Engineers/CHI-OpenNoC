@@ -62,7 +62,7 @@
 ./src/rni/rni_datbuf_bank.v
 ./src/rni/rni_rd_buffer.v
 ./src/rni/rni_lcrd_hdlr.v
-./src/rni/rni_link_handshake.v
+./misc/chi_link_handshake.v
 ./src/snf/snf_rxdat.v
 ./src/snf/snf_txrsp.v
 ./src/snf/snf_data_buffer.v

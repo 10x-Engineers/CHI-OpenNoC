@@ -15,6 +15,9 @@
 `ifndef CHI_XP_NODE_H
 `define CHI_XP_NODE_H
 module chi_xp_node #(
+    parameter CHIE_NID_WIDTH_PARAM = 7,
+    parameter XP_XID_WIDTH = 3,
+    parameter XP_YID_WIDTH = 3,
     parameter REQ_FLIT_WIDTH,
     parameter RSP_FLIT_WIDTH,
     parameter DAT_FLIT_WIDTH,
@@ -27,8 +30,8 @@ module chi_xp_node #(
 ) (
     input clk,
     input rst,
-    input [2:0] my_xid,
-    input [2:0] my_yid,
+    input [XP_XID_WIDTH-1:0] my_xid,
+    input [XP_YID_WIDTH-1:0] my_yid,
 
     //REQ
     input RXREQFLITV_E,
@@ -229,6 +232,9 @@ module chi_xp_node #(
   reg  reset_done;
 
   chi_xp_channel #(
+      .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
+      .XP_XID_WIDTH(XP_XID_WIDTH),
+      .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(REQ_FLIT_WIDTH)
   ) m_req (
       .clk(clk),
@@ -284,6 +290,9 @@ module chi_xp_node #(
       .TXLCRDV_P1(TXREQLCRDV_P1)
   );
   chi_xp_channel #(
+      .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
+      .XP_XID_WIDTH(XP_XID_WIDTH),
+      .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(RSP_FLIT_WIDTH)
   ) m_rsp (
       .clk(clk),
@@ -339,6 +348,9 @@ module chi_xp_node #(
       .TXLCRDV_P1(TXRSPLCRDV_P1)
   );
   chi_xp_channel #(
+      .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
+      .XP_XID_WIDTH(XP_XID_WIDTH),
+      .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(DAT_FLIT_WIDTH)
   ) m_dat (
       .clk(clk),
@@ -394,6 +406,9 @@ module chi_xp_node #(
       .TXLCRDV_P1(TXDATLCRDV_P1)
   );
   chi_xp_channel #(
+      .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
+      .XP_XID_WIDTH(XP_XID_WIDTH),
+      .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(SNP_FLIT_WIDTH),
       .FLIT_TGT_OFFSET(SNP_TGTID_OFFSET)
   ) m_snp (

@@ -27,6 +27,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
         //inputs from link
         txdat_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txdat_flit_avail,
 
         //inputs from hnf_mshr
         mshr_txdat_tgtid_sx2,
@@ -61,6 +64,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     //inputs from hnf_link
     input wire                                    txdat_lcrdv;
+    input wire                                    lcrd_return_en;
+    input wire                                    txlink_run;
+    output wire                                   txdat_flit_avail;
 
     //inputs from hnf_mshr
     input wire [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]   mshr_txdat_tgtid_sx2;
@@ -124,10 +130,12 @@ module hnf_link_txdat_wrap `HNF_PARAM
     wire                                          dbf_txdat_entry1_dealloc_sx;
     wire                                          dbf_txdat_entry2_dealloc_sx;
 
+    wire                                              txdat_lcrd_rtn_sx;
+
     //main function
     assign dat_crd_cnt_not_zero_sx = (txdat_crd_cnt_q != 'd0);
     assign txdat_crd_avail_s1      = (txdat_lcrdv | dat_crd_cnt_not_zero_sx);
-    assign txdat_busy_sx           = ~txdat_crd_avail_s1;
+    assign txdat_busy_sx           = ~txdat_crd_avail_s1 | (~txlink_run);
 
     assign txdatcrdv_s0            = txdat_lcrdv;
     assign txdat_crd_cnt_inc_sx    = txdatcrdv_s0;
@@ -200,7 +208,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
     assign txdatflit_s0            = txdatflit_mshr_s0;
     assign dat_crd_cnt_s1          = txdat_crd_cnt_q;
     assign txdatflitv_s0           = (txdat_req_s0 & ~txdat_busy_sx);
-    assign txdat_crd_cnt_dec_sx    = (txdatflitv_s0 & txdat_crd_avail_s1); //lcrd - 1
+    assign txdat_crd_cnt_dec_sx    = (txdatflitv_s0 & txdat_crd_avail_s1) | txdat_lcrd_rtn_sx;
+    assign txdat_lcrd_rtn_sx  = lcrd_return_en & dat_crd_cnt_not_zero_sx;
+    assign txdat_flit_avail   = txdat_req_s0;
 
     assign txdatflitpend = 1'b1;
 
@@ -209,6 +219,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
         if(rst == 1'b1)begin
             txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
             txdatflitv <= 1'b0;
+        end
+        else if(txdat_lcrd_rtn_sx == 1'b1)begin
+            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflitv <= 1'b1;
         end
         else if((txdatflitv_s0 == 1'b1) & (txdat_crd_avail_s1 == 1'b1))begin
             txdatflit  <= txdatflit_s0;

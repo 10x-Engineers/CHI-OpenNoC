@@ -14,8 +14,11 @@
 *    Wenhao Li <liwenhao@bosc.ac.cn>
 */
 
-`include "rni_defines.v"
-module rni_link_handshake
+// Chapter 14 link-activation handshake, shared by every CHI node in this repo.
+// Self-contained on purpose: a node includes only its own defines header, so the
+// LINKACTIVE state encoding of Table 14-1 (p.14-449) lives here rather than in
+// any one node's macro set.
+module chi_link_handshake
     (
         // global input
         clk,
@@ -35,8 +38,15 @@ module rni_link_handshake
         rxcrd_cnt_full,
 
         lcrd_return_en,
-        rxcrd_en
+        rxcrd_en,
+        txlink_run
     );
+
+    localparam LL_STATE_WIDTH = 2;
+    localparam LL_STOP        = 2'b00;
+    localparam LL_ACTIVATE    = 2'b10;
+    localparam LL_RUN         = 2'b11;
+    localparam LL_DEACTIVATE  = 2'b01;
 
     // global input
     input  wire                       clk;
@@ -49,14 +59,15 @@ module rni_link_handshake
     input  wire                       RXLINKACTIVEREQ;
     output wire                       RXLINKACTIVEACK;
 
-    output wire [`LL_STATE_WIDTH-1:0] txlink_state;
-    output wire [`LL_STATE_WIDTH-1:0] rxlink_state;
+    output wire [LL_STATE_WIDTH-1:0] txlink_state;
+    output wire [LL_STATE_WIDTH-1:0] rxlink_state;
 
     input  wire                       txflit_avail;
     input  wire                       rxcrd_cnt_full;
 
     output wire                       lcrd_return_en;
     output wire                       rxcrd_en;
+    output wire                       txlink_run;
 
     // wire
 
@@ -82,12 +93,12 @@ module rni_link_handshake
             // Transition from STOP to ACTIVATE when:
             // 1. Need to send txflit and RXLINK state is NOT DEACTIVATE or RUN.
             // 2. Received RXLINKACTIVEREQ
-            `LL_STOP :
-                txlinkactivereq_s0 = (txflit_avail & (rxlink_state == `LL_STOP)) | (rxlink_state == `LL_ACTIVATE);
+            LL_STOP :
+                txlinkactivereq_s0 = (txflit_avail & (rxlink_state == LL_STOP)) | (rxlink_state == LL_ACTIVATE);
             // Transition from RUN to DEACTIVATE when:
             // 1. Received RXLINKACTIVEREQ = 0
-            `LL_RUN  :
-                txlinkactivereq_s0 = ~(rxlink_state == `LL_DEACTIVATE);
+            LL_RUN  :
+                txlinkactivereq_s0 = ~(rxlink_state == LL_DEACTIVATE);
             default  :
                 txlinkactivereq_s0 = txlinkactivereq_s1_q;
         endcase
@@ -116,12 +127,12 @@ module rni_link_handshake
         case(rxlink_state)
             // Transition from ACTIVATE to RUN when:
             // 1. TXLINK state is NOT DEACTIVATE
-            `LL_ACTIVATE   :
-                rxlinkactiveack_s0 = (txlink_state != `LL_DEACTIVATE);
+            LL_ACTIVATE   :
+                rxlinkactiveack_s0 = (txlink_state != LL_DEACTIVATE);
             // Transition from DEACTIVATE to STOP when:
             // 1. All credits are received and TXLINK state is NOT ACTIVATE
-            `LL_DEACTIVATE :
-                rxlinkactiveack_s0 = ~(rxcrd_cnt_full & (txlink_state != `LL_ACTIVATE));
+            LL_DEACTIVATE :
+                rxlinkactiveack_s0 = ~(rxcrd_cnt_full & (txlink_state != LL_ACTIVATE));
             default        :
                 rxlinkactiveack_s0 = rxlinkactiveack_s1_q;
         endcase
@@ -139,6 +150,7 @@ module rni_link_handshake
     assign rxlink_state    = {rxlinkactivereq_s1_q, rxlinkactiveack_s1_q};
 
     assign lcrd_return_en  = ~txlinkactivereq_s1_q;
-    assign rxcrd_en        = (rxlink_state == `LL_RUN);
+    assign rxcrd_en        = (rxlink_state == LL_RUN);
+    assign txlink_run      = (txlink_state == LL_RUN);
 
 endmodule

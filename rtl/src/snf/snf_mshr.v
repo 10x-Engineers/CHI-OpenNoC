@@ -255,6 +255,29 @@ module snf_mshr `SNF_PARAM
     wire                                                rxreq_ewa_s0;
     wire                                                rxreq_rd_s0;
     wire                                                rxreq_wr_s0;
+    wire                                                rxreq_rdsep_s0;
+    wire                                                rxreq_cmo_s0;
+    wire                                                rxreq_cmopersist_s0;
+    wire                                                rxreq_cw_s0;
+    wire                                                rxreq_cwpersist_s0;
+    wire                                                rxreq_atomic_s0;
+    wire                                                rxreq_atomicdat_s0;
+    wire                                                rxreq_wrzero_s0;
+    wire                                                rxreq_drop_s0;
+    wire                                                rxreq_errwr_s0;
+    wire                                                rxreq_errdat_s0;
+    wire                                                rxreq_errrsp_s0;
+    wire                                                rxreq_err_s0;
+    wire                                                rxreq_rsponly_s0;
+    wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]              rxreq_rsponly_opcode_s0;
+    wire                                                rxreq_errgrant_s0;
+    wire                                                txrsp_rsponly_en_s1;
+    wire                                                txrsp_errgrant_en_s1;
+    wire                                                txrsp_rsponly_en_sx;
+    wire                                                txrsp_errgrant_en_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat_errdat_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    all_rsp_sent_sx;
+    wire                                                txrsp_sent_sx;
     wire                                                txrsp_en_s1;
     wire                                                txrsp_en_sx;
     wire                                                txrsp_readreceipt_en_s1;
@@ -286,6 +309,20 @@ module snf_mshr `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    hazard_sx;
     wire                                                sel_idx_valid;
 
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_rdsep_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errwr_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errdat_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_err_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_rsponly_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errgrant_s1_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    errwr_data_done_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_drop_s1_q;
+    reg  [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]              rxreq_rsponly_opcode_s1_q [`SNF_MSHR_ENTRIES_NUM-1:0];
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_q2_valid_q;
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_cmo_owed_q;
+    reg  [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]              txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
+    reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_any_sent_q;
+
     genvar entry;
 
     //************************************************************************//
@@ -308,8 +345,47 @@ module snf_mshr `SNF_PARAM
     assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_RETURNTXNID_RANGE]  :{`CHIE_REQ_FLIT_RETURNTXNID_WIDTH{1'b0}};
     assign rxreq_dodmt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_rd_s0 == 1'b1) && (rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_SRCID_RANGE] != rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_RETURNNID_RANGE]) :1'b0;
     assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_DODWT_RANGE])      :1'b0;
-    assign rxreq_rd_s0          = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 == `CHIE_READNOSNP)                   :1'b0;
+    // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
+    // transactions except PCrdReturn and PrefetchTgt." Every inbound request is
+    // therefore classified here, and every class below owns a response programme.
+    assign rxreq_rdsep_s0       = (rxreq_opcode_s0 == `CHIE_READNOSNPSEP);
+    assign rxreq_rd_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_READNOSNP) | rxreq_rdsep_s0) :1'b0;
     assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_WRITENOSNPFULL)|(rxreq_opcode_s0 == `CHIE_WRITENOSNPPTL)):1'b0;
+    assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == `CHIE_CLEANSHAREDPERSISTSEP);
+    // A CMO at a Subordinate holding no cached copy is a no-op that owes only its
+    // completion (Sec 2.3.9 p.2-81); Sec 2.3.5 (p.2-74) lets the *PersistSep one
+    // fold its Persist into CompPersist.
+    assign rxreq_cmo_s0         = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_CLEANSHARED)
+                                                              | (rxreq_opcode_s0 == `CHIE_CLEANINVALID)
+                                                              | (rxreq_opcode_s0 == `CHIE_MAKEINVALID)
+                                                              | (rxreq_opcode_s0 == `CHIE_CLEANSHAREDPERSIST)
+                                                              | rxreq_cmopersist_s0) :1'b0;
+    assign rxreq_cwpersist_s0   = (rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSHPERSEP);
+    assign rxreq_cw_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSH)
+                                                              | (rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANINV)
+                                                              | (rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSH)
+                                                              | (rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANINV)
+                                                              | rxreq_cwpersist_s0) :1'b0;
+    assign rxreq_atomic_s0      = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 >= `CHIE_ATOMICSTORE_ADD)
+                                                             && (rxreq_opcode_s0 <= `CHIE_ATOMICCOMPARE)) :1'b0;
+    assign rxreq_atomicdat_s0   = rxreq_atomic_s0 && (rxreq_opcode_s0 >= `CHIE_ATOMICLOAD_ADD);
+    assign rxreq_wrzero_s0      = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 == `CHIE_WRITENOSNPZERO) :1'b0;
+    // Sec 2.3.6 (p.2-74), Sec 4.5.4 (p.4-207): given no response, so no entry.
+    assign rxreq_drop_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_PREFETCHTGT)
+                                                              | (rxreq_opcode_s0 == `CHIE_PCRDRETURN)) :1'b0;
+    // Sec 9.1 (p.9-334): NDERR is what a Completer reports for "an attempt to use a
+    // transaction type that is not supported", and Sec 16.3.3 (p.16-479, MUST) makes
+    // it mandatory for an Atomic. Sec 9.4.4 (p.9-342, MUST) then keeps the whole
+    // transaction structure -- grant, write data, read data -- so the class carries
+    // its shape as well as its error.
+    assign rxreq_err_s0         = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wr_s0 | rxreq_cmo_s0 | rxreq_drop_s0);
+    assign rxreq_errwr_s0       = rxreq_err_s0 && (rxreq_cw_s0 | rxreq_atomic_s0);
+    assign rxreq_errdat_s0      = rxreq_err_s0 && rxreq_atomicdat_s0;
+    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errwr_s0 && ~rxreq_wrzero_s0;
+    assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
+    assign rxreq_rsponly_opcode_s0 = rxreq_cmopersist_s0 ? `CHIE_COMPPERSIST : `CHIE_COMP;
+    assign rxreq_errgrant_s0    = rxreq_errwr_s0 | rxreq_wrzero_s0;
     assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE]  :{`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_WIDTH{1'b0}};
 
     generate
@@ -362,6 +438,67 @@ module snf_mshr `SNF_PARAM
                     rxreq_rd_s1_q[entry] <= 1'b0;
                 else if(mshr_entry_alloc_sx[entry] == 1'b1 && rxreq_rd_s0)
                     rxreq_rd_s1_q[entry] <= 1'b1;
+            end
+
+            always @(posedge clk or posedge rst)begin : rxreq_class_s1_q_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
+                    rxreq_rdsep_s1_q[entry]    <= 1'b0;
+                    rxreq_errwr_s1_q[entry]    <= 1'b0;
+                    rxreq_errdat_s1_q[entry]   <= 1'b0;
+                    rxreq_errgrant_s1_q[entry] <= 1'b0;
+                    rxreq_err_s1_q[entry]      <= 1'b0;
+                    rxreq_rsponly_s1_q[entry]  <= 1'b0;
+                    rxreq_drop_s1_q[entry]     <= 1'b0;
+                    rxreq_rsponly_opcode_s1_q[entry] <= {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
+                end
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
+                    rxreq_rdsep_s1_q[entry]    <= rxreq_rd_s0 & rxreq_rdsep_s0;
+                    rxreq_errwr_s1_q[entry]    <= rxreq_errwr_s0;
+                    rxreq_errdat_s1_q[entry]   <= rxreq_errdat_s0;
+                    rxreq_errgrant_s1_q[entry] <= rxreq_errgrant_s0;
+                    rxreq_err_s1_q[entry]      <= rxreq_err_s0;
+                    rxreq_rsponly_s1_q[entry]  <= rxreq_rsponly_s0;
+                    rxreq_drop_s1_q[entry]     <= rxreq_drop_s0;
+                    rxreq_rsponly_opcode_s1_q[entry] <= rxreq_rsponly_opcode_s0;
+                end
+            end
+
+            // The RSP the entry sends after the one currently armed, and the CMO
+            // leg a Combined Write owes on top of its write completion
+            // (Sec 2.3.9 p.2-80, Sec 9.4.3 p.9-341).
+            always @(posedge clk or posedge rst)begin : txrsp_queue_alloc_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
+                    txrsp_q2_valid_q[entry]   <= 1'b0;
+                    txrsp_cmo_owed_q[entry]   <= 1'b0;
+                    txrsp_cmo_opcode_q[entry] <= {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
+                end
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
+                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0 & ~rxreq_ewa_s0;
+                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0;
+                    txrsp_cmo_opcode_q[entry] <= rxreq_cwpersist_s0 ? `CHIE_COMPPERSIST : `CHIE_COMPCMO;
+                end
+                else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
+                    if (txrsp_q2_valid_q[entry])
+                        txrsp_q2_valid_q[entry]   <= 1'b0;
+                    else
+                        txrsp_cmo_owed_q[entry]   <= 1'b0;
+                end
+            end
+
+            always @(posedge clk or posedge rst)begin : txrsp_any_sent_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    txrsp_any_sent_q[entry] <= 1'b0;
+                else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))
+                    txrsp_any_sent_q[entry] <= 1'b1;
+            end
+
+            // Sec 9.4.4 (p.9-342, MUST): an errored request still transfers its
+            // write data, so the entry is only freed once that data has landed.
+            always @(posedge clk or posedge rst)begin : errwr_data_done_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    errwr_data_done_q[entry] <= 1'b0;
+                else if(dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                    errwr_data_done_q[entry] <= 1'b1;
             end
 
             always @(posedge clk or posedge rst)begin : rxreq_dodmt_s1_q_timing_logic
@@ -635,7 +772,7 @@ module snf_mshr `SNF_PARAM
     // to databuffer
     assign rxreq_dbf_en_s1         = rxreq_alloc_en_s1_q;
     assign rxreq_dbf_addr_s1       = rxreq_addr_s1_q[mshr_entry_idx_alloc_s1_q];
-    assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_size_s1       = rxreq_size_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_axlen_s1      = rxreq_axlen_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_entry_idx_s1  = mshr_entry_idx_alloc_s1_q;
@@ -693,16 +830,39 @@ module snf_mshr `SNF_PARAM
     //  3. !ewa && dwt      : return DBIDRESP to RNF;bresp receive ,return comp to HN
     //  4. !ewa && ！dwt    :  bresp receive ,return comp to HN
     //*****************************************************************************************//
-    assign txrsp_en_s1                 = txrsp_dbidresp_en_s1 | txrsp_readreceipt_en_s1 | txrsp_compdbidresp_en_s1;
-    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_order_s1_q[mshr_entry_idx_alloc_s1_q] != 2'b00) && rxreq_dodmt_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign txrsp_en_s1                 = txrsp_dbidresp_en_s1 | txrsp_readreceipt_en_s1 | txrsp_compdbidresp_en_s1
+                                       | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1;
+    // Sec 2.8.5 (p.2-120): the ReadReceipt is owed whenever Order is non-zero,
+    // whether or not the read data goes back direct to the Requester.
+    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_order_s1_q[mshr_entry_idx_alloc_s1_q] != 2'b00);
+    assign txrsp_rsponly_en_s1         = rxreq_alloc_en_s1_q && rxreq_rsponly_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    // Table 9-6 (p.9-340) keeps DBIDResp at OK, so an errored write still grants
+    // normally and carries its NDERR on the completion that follows. Table 9-9
+    // (p.9-342) gives AtomicLoad/Swap/Compare no CompDBIDResp, so those always
+    // take the split grant.
+    assign txrsp_errgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_errgrant_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
     assign txrsp_compdbidresp_en_s1    = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && ((~rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q]) && rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q])) : 1'b0;
     assign txrsp_dbidresp_en_s1        = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q] | (~rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q]))) : 1'b0;
-    assign txrsp_opcode_en_s1          = txrsp_en_s1 ? (txrsp_dbidresp_en_s1 ? `CHIE_DBIDRESP : (txrsp_readreceipt_en_s1 ? `CHIE_READRECEIPT : (txrsp_compdbidresp_en_s1 ? `CHIE_COMPDBIDRESP : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}}))) : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
+    assign txrsp_opcode_en_s1          = txrsp_dbidresp_en_s1 ? `CHIE_DBIDRESP
+                                       : txrsp_readreceipt_en_s1 ? `CHIE_READRECEIPT
+                                       : txrsp_compdbidresp_en_s1 ? `CHIE_COMPDBIDRESP
+                                       : txrsp_rsponly_en_s1 ? rxreq_rsponly_opcode_s1_q[mshr_entry_idx_alloc_s1_q]
+                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdat_s1_q[mshr_entry_idx_alloc_s1_q])) ? `CHIE_COMPDBIDRESP : `CHIE_DBIDRESP)
+                                       : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
 
-    assign txrsp_en_sx                 = txrsp_dbidresp_en_sx | txrsp_compdbidresp_en_sx;
+    // A request that hit a same-address hazard was put to sleep before its RSP was
+    // armed, so the wakeup path has to arm every class the S1 path does.
+    assign txrsp_en_sx                 = txrsp_dbidresp_en_sx | txrsp_compdbidresp_en_sx
+                                       | txrsp_rsponly_en_sx | txrsp_errgrant_en_sx;
     assign txrsp_dbidresp_en_sx        = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx]&& (rxreq_dodwt_s1_q[wakeup_idx_sx] | (~rxreq_ewa_s1_q[wakeup_idx_sx]))) : 1'b0;
     assign txrsp_compdbidresp_en_sx    = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx] && ((~rxreq_dodwt_s1_q[wakeup_idx_sx]) && rxreq_ewa_s1_q[wakeup_idx_sx])) : 1'b0; //ewa&~dwt
-    assign txrsp_opcode_en_sx          = txrsp_en_sx ? (txrsp_dbidresp_en_sx ? `CHIE_DBIDRESP : (txrsp_compdbidresp_en_sx ? `CHIE_COMPDBIDRESP : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}})) : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
+    assign txrsp_rsponly_en_sx         = wakeup_valid ? rxreq_rsponly_s1_q[wakeup_idx_sx]  : 1'b0;
+    assign txrsp_errgrant_en_sx        = wakeup_valid ? rxreq_errgrant_s1_q[wakeup_idx_sx] : 1'b0;
+    assign txrsp_opcode_en_sx          = txrsp_dbidresp_en_sx ? `CHIE_DBIDRESP
+                                       : txrsp_compdbidresp_en_sx ? `CHIE_COMPDBIDRESP
+                                       : txrsp_rsponly_en_sx ? rxreq_rsponly_opcode_s1_q[wakeup_idx_sx]
+                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdat_s1_q[wakeup_idx_sx])) ? `CHIE_COMPDBIDRESP : `CHIE_DBIDRESP)
+                                       : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
 
     assign txrsp_ewa_dwt_rdy_sx         = dbf_mshr_rxdat_ok_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_ewa_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_dodwt_s1_q[dbf_mshr_rxdat_ok_idx_sx];
     assign txrsp_ewa_dwt_rdy_entry_sx   = dbf_mshr_rxdat_ok_idx_sx ;
@@ -718,9 +878,11 @@ module snf_mshr `SNF_PARAM
                     txrsp_rdy_sx_q[entry] <= 1'b0;
                     txrsp_opcode_rdy_sx_q[entry] <= {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
                 end
-                else if (txrsp_valid_sx && txrsp_won_sx && (entry == txrsp_entry_idx_sx))begin
-                    txrsp_rdy_sx_q[entry] <= 1'b0;
-                    txrsp_opcode_rdy_sx_q[entry] <= {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
+                else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
+                    txrsp_rdy_sx_q[entry] <= txrsp_q2_valid_q[entry] | txrsp_cmo_owed_q[entry];
+                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_q2_valid_q[entry] ? `CHIE_COMP
+                                                  : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
+                                                  : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
                 end
                 else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))begin
                     txrsp_rdy_sx_q[entry] <= 1'b1;
@@ -757,13 +919,21 @@ module snf_mshr `SNF_PARAM
                         .sel_index         (txrsp_entry_idx_sx  ) 
                     );
 
+    assign txrsp_sent_sx                = txrsp_valid_sx & txrsp_won_sx;
     assign txrsp_update_sx              = (|txrsp_rdy_sx_q) & (~txrsp_valid_sx);
     assign txrsp_valid_sx               = (|txrsp_valid_idx_sx) & txrsp_rdy_sx_q[txrsp_entry_idx_sx];
     assign txrsp_qos_sx                 = (rxreq_qos_s1_q[txrsp_entry_idx_sx]);
     assign txrsp_tgtid_sx               = ((rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == `CHIE_DBIDRESP)) == 1'b1) ? rxreq_returnnid_s1_q[txrsp_entry_idx_sx] : rxreq_srcid_s1_q[txrsp_entry_idx_sx];
     assign txrsp_txnid_sx               = ((rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == `CHIE_DBIDRESP)) == 1'b1) ? rxreq_returntxnid_s1_q[txrsp_entry_idx_sx] : rxreq_txnid_s1_q[txrsp_entry_idx_sx];
     assign txrsp_opcode_sx              = txrsp_opcode_rdy_sx_q[txrsp_entry_idx_sx];
-    assign txrsp_resperr_sx             = 2'b00;
+    // Sec 9.1 (p.9-334): NDERR reports "an attempt to use a transaction type that
+    // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
+    // (p.4-207) pins the ReadReceipt's Resp/RespErr to zero, so only the
+    // completion carries it.
+    assign txrsp_resperr_sx             = (rxreq_err_s1_q[txrsp_entry_idx_sx]
+                                        && (txrsp_opcode_sx != `CHIE_DBIDRESP)
+                                        && (txrsp_opcode_sx != `CHIE_READRECEIPT)) ? `CHIE_RESP_ERR_NON_DATA
+                                                                                   : `CHIE_RESP_ERR_NORM_OK;
     assign txrsp_resp_sx                = `CHIE_COMP_RESP_I;
     assign txrsp_dbid_sx                = txrsp_entry_idx_sx;
     assign txrsp_tracetag_sx            = rxreq_tracetag_s1_q[txrsp_entry_idx_sx];
@@ -905,6 +1075,8 @@ module snf_mshr `SNF_PARAM
                     txdat_rdy_sx_q[entry]   <= 2'b00;
                 else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
                     txdat_rdy_sx_q[entry]   <= 2'b00;
+                else if (txdat_errdat_rdy_sx[entry])
+                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
                 else if (txdat1_rdy_sx[entry] && (~txdat2_rdy_sx[entry]))
                     txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
                 else if ((~txdat1_rdy_sx[entry]) && txdat2_rdy_sx[entry])
@@ -932,6 +1104,12 @@ module snf_mshr `SNF_PARAM
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // Sec 9.4.4 (p.9-342, MUST): AtomicLoad, AtomicSwap and AtomicCompare
+            // carry their Non-data Error on CompData, so the errored entry still
+            // returns one data packet once it has taken the operand.
+            assign txdat_errdat_rdy_sx[entry] = dbf_mshr_rxdat_ok_sx && rxreq_errdat_s1_q[entry]
+                                             && (entry == dbf_mshr_rxdat_ok_idx_sx)
+                                             && (txdat_rdy_sx_q[entry] == 2'b00);
             assign txdat_valid_sx[entry]  = (txdat_sent_sx_q[entry] != txdat_rdy_sx_q[entry]);
         end
     endgenerate
@@ -956,9 +1134,12 @@ module snf_mshr `SNF_PARAM
                                         | ((rxreq_ccid_s1_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0)) ? 2'b10 // ccid[1]=0,packet2;ccid[1]=1,packet1
                                             : 2'b00));
     assign mshr_txdat_txnid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? rxreq_returntxnid_s1_q[mshr_txdat_entry_idx_sx] : rxreq_txnid_s1_q[mshr_txdat_entry_idx_sx];
-    assign mshr_txdat_opcode_sx     = `CHIE_COMPDATA;
+    // Sec 4.5.1 (p.4-197, MUST): "A Subordinate Node can send DataSepResp only in
+    // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
+    assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? `CHIE_DATASEPRESP : `CHIE_COMPDATA;
     assign mshr_txdat_resp_sx       = `CHIE_COMP_RESP_UC;
-    assign mshr_txdat_resperr_sx    = 2'b00;
+    assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[mshr_txdat_entry_idx_sx] ? `CHIE_RESP_ERR_NON_DATA
+                                                                             : `CHIE_RESP_ERR_NORM_OK;
     assign mshr_txdat_dbid_sx       = rxreq_txnid_s1_q[mshr_txdat_entry_idx_sx];
     assign mshr_txdat_tgtid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? rxreq_returnnid_s1_q[mshr_txdat_entry_idx_sx] : rxreq_srcid_s1_q[mshr_txdat_entry_idx_sx];
     assign mshr_txdat_srcid_sx      = rxreq_tgtid_s1_q[mshr_txdat_entry_idx_sx];
@@ -971,7 +1152,7 @@ module snf_mshr `SNF_PARAM
     always @(posedge clk or posedge rst) begin: awvalid_fifo_in_comb_logic
         if(rst == 1'b1)
             awvalid_fifo_cnt_sx_q   <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
-        else if(dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx)
+        else if(dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx])
             awvalid_fifo_cnt_sx_q   <= ((awvalid_fifo_cnt_sx_q + 1) == `SNF_MSHR_ENTRIES_NUM) ? 1'b0 : (awvalid_fifo_cnt_sx_q + 1);
     end
 
@@ -989,7 +1170,7 @@ module snf_mshr `SNF_PARAM
                     awvalid_fifo_valid_s2_q[entry]      <= 1'b0;
                     awvalid_fifo_idx_s2_q[entry]        <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
                 end
-                else if (dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && (awvalid_fifo_cnt_sx_q == entry)) begin
+                else if (dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx] && (awvalid_fifo_cnt_sx_q == entry)) begin
                     awvalid_fifo_valid_s2_q[entry]      <= 1'b1;
                     awvalid_fifo_idx_s2_q[entry]        <= dbf_mshr_rxdat_ok_idx_sx;
                 end
@@ -1134,9 +1315,22 @@ module snf_mshr `SNF_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign all_rsp_sent_sx[entry] = txrsp_any_sent_q[entry] && (~txrsp_rdy_sx_q[entry])
+                                         && (~txrsp_q2_valid_q[entry]) && (~txrsp_cmo_owed_q[entry]);
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
                                                 && (((rxreq_wr_s1_q[entry]) && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
-                                                    |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((rxreq_size_s1_q[entry] == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((rxreq_size_s1_q[entry] != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10))))));
+                                                    |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((rxreq_size_s1_q[entry] == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((rxreq_size_s1_q[entry] != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
+                                                    // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
+                                                    // entry is freed at once rather than leaked.
+                                                    |(rxreq_drop_s1_q[entry])
+                                                    |((rxreq_rsponly_s1_q[entry] | rxreq_errgrant_s1_q[entry]) && all_rsp_sent_sx[entry]
+                                                        && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry])
+                                                        && ((~rxreq_errdat_s1_q[entry]) | (txdat_sent_sx_q[entry] != 2'b00))));
         end
     endgenerate
 

@@ -122,6 +122,11 @@ module hnf_link `HNF_PARAM
 
         // 62 outputs
         rxreq_lcrdv,
+        rxcrd_en,
+        lcrd_return_en,
+        txlink_run,
+        rxcrd_cnt_full,
+        txflit_avail,
         li_mshr_rxreq_valid_s0,
         li_mshr_rxreq_qos_s0,
         li_mshr_rxreq_srcid_s0,
@@ -286,6 +291,15 @@ module hnf_link `HNF_PARAM
 
     //outputs
     output wire                                       rxreq_lcrdv;
+    input  wire                                       rxcrd_en;
+    // CHI E.b Table 14-3 (p.14-451, MUST): no flit is sent outside RUN, and
+    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Transmitter must return
+    // credits using Protocol flits or L-Credit return flits" -- an all-zero flit,
+    // whose Opcode field is that channel's LCrdReturn.
+    input  wire                                       lcrd_return_en;
+    input  wire                                       txlink_run;
+    output wire                                       rxcrd_cnt_full;
+    output wire                                       txflit_avail;
     output wire                                       li_mshr_rxreq_valid_s0;
     output wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]        li_mshr_rxreq_qos_s0;
     output wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0;
@@ -348,6 +362,21 @@ module hnf_link `HNF_PARAM
     output wire [`MSHR_ENTRIES_WIDTH-1:0]             txdat_mshr_rd_idx_sx2;
     output wire                                       txdat_mshr_busy_sx;
 
+    wire                                              rxreq_crd_cnt_full;
+    wire                                              rxrsp_crd_cnt_full;
+    wire                                              rxdat_crd_cnt_full;
+    wire                                              txreq_flit_avail;
+    wire                                              txrsp_flit_avail;
+    wire                                              txsnp_flit_avail;
+    wire                                              txdat_flit_avail;
+
+    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
+    // credits to be returned before deasserting LINKACTIVEACK".
+    assign rxcrd_cnt_full = rxreq_crd_cnt_full & rxrsp_crd_cnt_full & rxdat_crd_cnt_full;
+    // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
+    // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
+    assign txflit_avail   = txreq_flit_avail | txrsp_flit_avail | txsnp_flit_avail | txdat_flit_avail;
+
     hnf_link_rxreq_parse `HNF_PARAM_INST
                          u_hnf_link_rxreq_parse(
                              .clk                                            (clk                            ),
@@ -361,6 +390,8 @@ module hnf_link `HNF_PARAM
                              .rxreq_retry_enable_s0                          (rxreq_retry_enable_s0          ),
                              .txrsp_mshr_retryack_won_s1                     (txrsp_mshr_retryack_won_s1     ),
                              .rxreq_lcrdv                                    (rxreq_lcrdv                    ),
+                             .rxcrd_en                                       (rxcrd_en                       ),
+                             .rxreq_crd_cnt_full                             (rxreq_crd_cnt_full             ),
                              .li_mshr_rxreq_valid_s0                         (li_mshr_rxreq_valid_s0         ),
                              .li_mshr_rxreq_qos_s0                           (li_mshr_rxreq_qos_s0           ),
                              .li_mshr_rxreq_srcid_s0                         (li_mshr_rxreq_srcid_s0         ),
@@ -387,6 +418,8 @@ module hnf_link `HNF_PARAM
                              .rxrspflit                                      (rxrspflit                      ),
                              .rxrspflitpend                                  (rxrspflitpend                  ),
                              .rxrsp_lcrdv                                    (rxrsp_lcrdv                    ),
+                             .rxcrd_en                                       (rxcrd_en                       ),
+                             .rxrsp_crd_cnt_full                             (rxrsp_crd_cnt_full             ),
                              .li_mshr_rxrsp_valid_s0                         (li_mshr_rxrsp_valid_s0         ),
                              .li_mshr_rxrsp_srcid_s0                         (li_mshr_rxrsp_srcid_s0         ),
                              .li_mshr_rxrsp_txnid_s0                         (li_mshr_rxrsp_txnid_s0         ),
@@ -405,6 +438,8 @@ module hnf_link `HNF_PARAM
                              .rxdatflit                                      (rxdatflit                      ),
                              .rxdatflitpend                                  (rxdatflitpend                  ),
                              .rxdat_lcrdv                                    (rxdat_lcrdv                    ),
+                             .rxcrd_en                                       (rxcrd_en                       ),
+                             .rxdat_crd_cnt_full                             (rxdat_crd_cnt_full             ),
                              .li_mshr_rxdat_valid_s0                         (li_mshr_rxdat_valid_s0         ),
                              .li_mshr_rxdat_txnid_s0                         (li_mshr_rxdat_txnid_s0         ),
                              .li_mshr_rxdat_opcode_s0                        (li_mshr_rxdat_opcode_s0        ),
@@ -424,6 +459,9 @@ module hnf_link `HNF_PARAM
                             .clk                                            (clk                            ),
                             .rst                                            (rst                            ),
                             .txreq_lcrdv                                    (txreq_lcrdv                    ),
+                            .lcrd_return_en                                  (lcrd_return_en                  ),
+                            .txlink_run                                      (txlink_run                      ),
+                            .txreq_flit_avail                                (txreq_flit_avail                ),
                             .mshr_txreq_bypass_valid_s1                         (mshr_txreq_bypass_valid_s1         ),
                             .mshr_txreq_bypass_qos_s1                           (mshr_txreq_bypass_qos_s1           ),
                             .mshr_txreq_bypass_txnid_s1                         (mshr_txreq_bypass_txnid_s1         ),
@@ -466,6 +504,9 @@ module hnf_link `HNF_PARAM
                             .clk                                            (clk                            ),
                             .rst                                            (rst                            ),
                             .txrsp_lcrdv                                    (txrsp_lcrdv                    ),
+                            .lcrd_return_en                                    (lcrd_return_en                 ),
+                            .txlink_run                                        (txlink_run                     ),
+                            .txrsp_flit_avail                                (txrsp_flit_avail                ),
                             .mshr_txrsp_bypass_valid_s1                         (mshr_txrsp_bypass_valid_s1         ),
                             .mshr_txrsp_bypass_qos_s1                           (mshr_txrsp_bypass_qos_s1           ),
                             .mshr_txrsp_bypass_tgtid_s1                         (mshr_txrsp_bypass_tgtid_s1         ),
@@ -507,6 +548,9 @@ module hnf_link `HNF_PARAM
                             .clk                                            (clk                               ),
                             .rst                                            (rst                               ),
                             .txsnp_lcrdv                                    (txsnp_lcrdv                       ),
+                            .lcrd_return_en                                    (lcrd_return_en                    ),
+                            .txlink_run                                        (txlink_run                        ),
+                            .txsnp_flit_avail                                (txsnp_flit_avail                ),
                             .mshr_txsnp_valid_sx1_q                         (mshr_txsnp_valid_sx1_q            ),
                             .mshr_txsnp_qos_sx1                             (mshr_txsnp_qos_sx1                ),
                             .mshr_txsnp_txnid_sx1_q                         (mshr_txsnp_txnid_sx1_q            ),
@@ -529,6 +573,9 @@ module hnf_link `HNF_PARAM
                             .clk                                            (clk                               ),
                             .rst                                            (rst                               ),
                             .txdat_lcrdv                                    (txdat_lcrdv                       ),
+                            .lcrd_return_en                                    (lcrd_return_en                    ),
+                            .txlink_run                                        (txlink_run                        ),
+                            .txdat_flit_avail                                (txdat_flit_avail                ),
                             .mshr_txdat_tgtid_sx2                           (mshr_txdat_tgtid_sx2              ),
                             .mshr_txdat_txnid_sx2                           (mshr_txdat_txnid_sx2              ),
                             .mshr_txdat_opcode_sx2                          (mshr_txdat_opcode_sx2             ),

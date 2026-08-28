@@ -28,6 +28,8 @@ module hnf_link_rxrsp_parse `HNF_PARAM
         rxrspflitv,
         rxrspflit,
         rxrspflitpend,
+        rxcrd_en,
+        rxrsp_crd_cnt_full,
 
         //outputs to hnf_link
         rxrsp_lcrdv,
@@ -51,6 +53,10 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     input wire                                      rxrspflitv;
     input wire [`CHIE_RSP_FLIT_RANGE]               rxrspflit;
     input wire                                      rxrspflitpend;
+    // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
+    // and move to the RUN state before sending credits".
+    input wire                                      rxcrd_en;
+    output wire                                     rxrsp_crd_cnt_full;
 
     //outputs to hnf_link
     output wire                                     rxrsp_lcrdv;
@@ -68,18 +74,12 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     //internal reg signals
     reg                                             rxrspflitv_en_q;
     reg  [`HNF_LCRD_RSP_CNT_WIDTH-1:0]            rxrsp_crd_cnt_s1_q;
-    reg  [3:0]                                      rxrsp_crd_sm_out;
     reg                                             rxrspcrdv_s1_q;
 
     //internal wire signals
-    wire                                            hnf_rxcrd_enable_s0;
     wire                                            rxrsp_crd_cnt_zero;
-    wire [2:0]                                      rxrsp_crd_sm_in;
     wire                                            rxrsp_crd_cnt_upd_s0;
-    wire                                            rxrsp_crd_cnt_inc1_s0;
-    wire                                            rxrsp_crd_cnt_dec1_s0;
-    wire [`HNF_LCRD_RSP_CNT_WIDTH-1:0]            rxrsp_crd_cnt_dec1_val_s0;
-    wire [`HNF_LCRD_RSP_CNT_WIDTH-1:0]            rxrsp_crd_cnt_inc1_val_s0;
+    wire                                            rxrsp_crd_grant_s0;
     wire [`HNF_LCRD_RSP_CNT_RANGE]                rxrsp_crd_cnt_nxt_s0;
     wire                                            rxrspcrdv_ns_s0;
 
@@ -104,58 +104,17 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     assign li_mshr_rxrsp_dbid_s0       = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_DBID_RANGE]      :{`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
     assign li_mshr_rxrsp_pcrdtype_s0   = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_PCRDTYPE_RANGE]  :{`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{1'b0}};
 
-    //rx lcrd enable
-    assign hnf_rxcrd_enable_s0 = 1'b1;
-
-
     //if lcrd is zero
     assign rxrsp_crd_cnt_zero = (rxrsp_crd_cnt_s1_q == {`HNF_LCRD_RSP_CNT_WIDTH{1'b0}});
 
-    //rxrsp_crd state maching input
-    //enable sending crd
-    assign rxrsp_crd_sm_in[2] = hnf_rxcrd_enable_s0;
-
-    //crd count == 0
-    assign rxrsp_crd_sm_in[1] = rxrsp_crd_cnt_zero;
-
-    //receive responses except RespLCrdReturn
-    assign rxrsp_crd_sm_in[0] = li_mshr_rxrsp_valid_s0;
-
-    //rxrsplcrdv logic
-    // ---------------------------- input ---------------------------- // // ---------- output ------------//
-    // hnf_rxcrd_enable_s0 rxrsp_crd_cnt_zero rsp_flitv // // lcrdupdate crdv inc1 dec1//
-    //        1                      0            0                1       1    0    1      4'b1101   dec -1
-    //        1                      0            1                0       1    0    0      4'b0100   no_change
-    //        1                      1            0                0       0    0    0      4'b0000   no_change
-    //        1                      1            1                0       1    0    0      4'b0100   no_change
-
-    //sm outputs
-    always @(*) begin:rxrsplcrdv_logic_t
-        casez (rxrsp_crd_sm_in)
-            3'b100:
-                rxrsp_crd_sm_out[3:0] = 4'hd;
-            3'b101:
-                rxrsp_crd_sm_out[3:0] = 4'h4;
-            3'b110:
-                rxrsp_crd_sm_out[3:0] = 4'h0;
-            3'b111:
-                rxrsp_crd_sm_out[3:0] = 4'h4;
-            default:
-                rxrsp_crd_sm_out[3:0] = 4'h0;
-        endcase
-    end
-
-    assign rxrsp_crd_cnt_upd_s0  = rxrsp_crd_sm_out[3];
-    assign rxrspcrdv_ns_s0       = rxrsp_crd_sm_out[2];
-    assign rxrsp_crd_cnt_inc1_s0 = rxrsp_crd_sm_out[1];
-    assign rxrsp_crd_cnt_dec1_s0 = rxrsp_crd_sm_out[0];
-
-    assign rxrsp_crd_cnt_dec1_val_s0 = rxrsp_crd_cnt_s1_q - `LCRD_INCDEC_ONE;
-    assign rxrsp_crd_cnt_inc1_val_s0 = rxrsp_crd_cnt_s1_q + `LCRD_INCDEC_ONE;
-
-    //update next credit value
-    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_dec1_s0 ? rxrsp_crd_cnt_dec1_val_s0:
-           rxrsp_crd_cnt_inc1_val_s0;
+    // A credit returned in the cycle the pool reads empty is re-granted at once.
+    // Returns are counted even when rxcrd_en is low, or the pool could never
+    // refill for a re-activation after a DEACTIVATE.
+    assign rxrsp_crd_grant_s0   = rxcrd_en & ((~rxrsp_crd_cnt_zero) | li_mshr_rxrsp_valid_s0);
+    assign rxrspcrdv_ns_s0      = rxrsp_crd_grant_s0;
+    assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_s0 | li_mshr_rxrsp_valid_s0;
+    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - rxrsp_crd_grant_s0 + li_mshr_rxrsp_valid_s0;
+    assign rxrsp_crd_cnt_full   = (rxrsp_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_RSP_CNT_WIDTH-1:0]);
 
     always @(posedge clk or posedge rst) begin: rxrsp_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)
