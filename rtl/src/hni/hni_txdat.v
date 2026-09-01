@@ -27,6 +27,9 @@ module hni_txdat `HNI_PARAM
         rst,
 
         txdat_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txdat_flit_avail,
 
         dbf_txdat_valid_sx,
         txdat_flit,
@@ -45,6 +48,15 @@ module hni_txdat `HNI_PARAM
 
     //inputs from hni_link
     input wire                                    txdat_lcrdv;
+    // CHI E.b Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Transmitter must
+    // return credits using Protocol flits or L-Credit return flits" -- an all-zero
+    // flit, whose Opcode field is that channel's LCrdReturn (SS13.11 p.13-442).
+    input wire                                    lcrd_return_en;
+    // Table 14-3 (p.14-451, MUST): no flit is sent outside the RUN state.
+    input wire                                    txlink_run;
+    // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
+    // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
+    output wire                                   txdat_flit_avail;
 
     //inputs from hni_data_buffer
     input wire                                    dbf_txdat_valid_sx;
@@ -69,6 +81,7 @@ module hni_txdat `HNI_PARAM
     wire                                          txdatcrdv_s0;
     wire                                          txdat_crd_cnt_inc_sx;
     wire                                          txdat_crd_cnt_dec_sx;
+    wire                                          txdat_lcrd_rtn_sx;
     wire                                          update_dat_crd_cnt_s0;
     wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_s1;
     wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_inc_s0;
@@ -82,10 +95,13 @@ module hni_txdat `HNI_PARAM
     assign txdat_crd_cnt_inc_sx    = txdatcrdv_s0;
 
     assign dat_crd_cnt_s1          = txdat_crd_cnt_q;
-    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_crd_avail_s1 & ~txdat_dbf_won_q); //lcrd - 1
+    assign txdat_lcrd_rtn_sx       = lcrd_return_en & dat_crd_cnt_not_zero_sx;
+    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_crd_avail_s1 & txlink_run & ~txdat_dbf_won_q)
+                                     | txdat_lcrd_rtn_sx; //lcrd - 1
+    assign txdat_flit_avail        = dbf_txdat_valid_sx & ~txdat_dbf_won_q;
 
     assign txdatflitpend = 1'b1;
-    assign txdat_dbf_rdy_s1 = txdat_crd_avail_s1;
+    assign txdat_dbf_rdy_s1 = txdat_crd_avail_s1 & txlink_run;
 
     //txdatflit sending logic
     always @(posedge clk or posedge rst) begin: txdatflit_logic_t
@@ -94,7 +110,12 @@ module hni_txdat `HNI_PARAM
             txdatflitv <= 1'b0;
             txdat_dbf_won_q <= 1'b0;
         end
-        else if((txdat_crd_avail_s1 == 1'b1) && (dbf_txdat_valid_sx == 1'b1) && (!txdat_dbf_won_q))begin
+        else if(txdat_lcrd_rtn_sx == 1'b1)begin
+            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflitv <= 1'b1;
+            txdat_dbf_won_q <= 1'b0;
+        end
+        else if((txdat_crd_avail_s1 == 1'b1) && (txlink_run == 1'b1) && (dbf_txdat_valid_sx == 1'b1) && (!txdat_dbf_won_q))begin
             txdatflit  <= txdat_flit;
             txdatflitv <= 1'b1;
             txdat_dbf_won_q <= 1'b1;

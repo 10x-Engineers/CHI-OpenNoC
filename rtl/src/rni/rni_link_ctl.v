@@ -206,7 +206,6 @@ module rni_link_ctl `RNI_PARAM
     //*************************************************
     assign txflit_avail   = wb_txdatflitv_d3_i | aw_txrspflitv_d0_i | ar_txreqflitv_s4_i | aw_txreqflitv_s4_i;
 
-    assign txll_st_run    = (txlink_state == `LL_RUN);
     assign rxll_st_run    = (rxlink_state == `LL_RUN);
     assign llst_is_run    = txll_st_run & rxll_st_run;
     assign rxcrd_cnt_full = rxrsp_lcrd_full_d2_w & rxdat_lcrd_full_d2_w & ~llst_is_run;
@@ -224,6 +223,7 @@ module rni_link_ctl `RNI_PARAM
                            ,.rxcrd_cnt_full    ( rxcrd_cnt_full  )
                            ,.lcrd_return_en    ( lcrd_return_en  )
                            ,.rxcrd_en          ( rxcrd_en        )
+                           ,.txlink_run        ( txll_st_run     )
                        );
 
     always @* begin
