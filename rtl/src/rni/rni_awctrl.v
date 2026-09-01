@@ -249,6 +249,14 @@ module rni_awctrl `RNI_PARAM
     reg [`RNI_DMASK_CT_WIDTH-1:0]               awctrl_entry_ctmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     reg [`RNI_DMASK_PD_WIDTH-1:0]               awctrl_entry_pdmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_expcompack_q;
+    // CHI E.b Table 9-6 (SS9.4.3 p.9-340) gives a write's Comp and CompDBIDResp
+    // both DERR and NDERR, and SS9.1 (p.9-334) makes the Home pass that error
+    // back to the Requester. Latched per entry off the completion, so the AXI
+    // BRESP can report it.
+    reg [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      awctrl_entry_resperr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]     awctrl_entry_rxrsp_resperr_w;
+    reg [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      brsp_resperr_d2_ns_r;
+    reg [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      brsp_resperr_d2_q;
     reg                                         awctrl_entry_segburst_last_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_qos_hi_q;
     reg                                         awlink_valid_s2_q;
@@ -533,6 +541,22 @@ module rni_awctrl `RNI_PARAM
                 else begin
                     if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
                         awctrl_entry_expcompack_q[entry] <= aw_txreq_expcompack_w;
+                    end
+                end
+            end
+
+            // The completion carries the status; allocation clears it so a reused
+            // entry does not inherit the previous write's error.
+            always @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1)begin
+                    awctrl_entry_resperr_q[entry][`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+                end
+                else begin
+                    if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
+                        awctrl_entry_resperr_q[entry][`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+                    end
+                    else if(rxrsp_comp_recv_vec_w[entry] == 1'b1)begin
+                        awctrl_entry_resperr_q[entry][`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= awctrl_entry_rxrsp_resperr_w[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0];
                     end
                 end
             end
@@ -979,6 +1003,7 @@ module rni_awctrl `RNI_PARAM
     assign awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] = awctrl_rxrspflit_d1_i[`CHIE_RSP_FLIT_OPCODE_RANGE];
     assign awctrl_entry_rxrsp_dbid_w[`CHIE_RSP_FLIT_DBID_WIDTH-1:0] = awctrl_rxrspflit_d1_i[`CHIE_RSP_FLIT_DBID_RANGE];
     assign awctrl_entry_rxrsp_pcrdtype_w[`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] = awctrl_rxrspflit_d1_i[`CHIE_RSP_FLIT_PCRDTYPE_RANGE];
+    assign awctrl_entry_rxrsp_resperr_w[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] = awctrl_rxrspflit_d1_i[`CHIE_RSP_FLIT_RESPERR_RANGE];
 
     assign aw_rxrsp_correct_w = awctrl_rxrspflitv_d1_i & awctrl_entry_rxrsp_txnid_w[`CHIE_RSP_FLIT_TXNID_WIDTH-1] & (awctrl_entry_rxrsp_tgtid_w[`CHIE_RSP_FLIT_TGTID_WIDTH-1:0] == RNI_NID_PARAM);
     // Table B-3 (p.B-495) lists DBIDRespOrd among the responses an RN-I
@@ -1518,7 +1543,7 @@ module rni_awctrl `RNI_PARAM
     assign awctrl_brsp_rdy_v_d2_o = brsp_rdy_v_d2_q;
     assign awctrl_brsp_last_v_d2_o = brsp_last_v_d2_q;
     assign awctrl_brsp_axid_d2_o[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0];
-    assign awctrl_brsp_resperr_d2_o[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] = {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+    assign awctrl_brsp_resperr_d2_o[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] = brsp_resperr_d2_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0];
     assign bresp_credit_avail_w = !bresp_credit_full_w;
 
     poll_with_start_entry
@@ -1559,6 +1584,12 @@ module rni_awctrl `RNI_PARAM
         brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = {`AXI4_BID_WIDTH{1'b0}};
         for (i=0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
             brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] | ({`AXI4_BID_WIDTH{bresp_select_vec_w[i]}} & awctrl_entry_info_q[i][`AXI4_AWID_RANGE]);
+    end
+
+    always@* begin
+        brsp_resperr_d2_ns_r[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] = {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+        for (i=0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+            brsp_resperr_d2_ns_r[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] = brsp_resperr_d2_ns_r[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] | ({`CHIE_RSP_FLIT_RESPERR_WIDTH{bresp_select_vec_w[i]}} & awctrl_entry_resperr_q[i][`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]);
     end
 
     always @(posedge clk_i or posedge rst_i) begin
@@ -1607,6 +1638,15 @@ module rni_awctrl `RNI_PARAM
         end
         else begin
             brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0] <= brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0];
+        end
+    end
+
+    always @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            brsp_resperr_d2_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+        end
+        else begin
+            brsp_resperr_d2_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= brsp_resperr_d2_ns_r[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0];
         end
     end
 
