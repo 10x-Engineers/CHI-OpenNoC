@@ -225,6 +225,9 @@ module hni `HNI_PARAM
     wire [10:0]                                 rxreq_dbf_axid_s0;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          rxreq_dbf_entry_idx_s0;
     wire                                        rxreq_dbf_wr_s0;  
+    wire                                        rxreq_dbf_wrzero_s0;
+    wire                                        mshr_txdat_be_ovr_en_sx;
+    wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]          mshr_txdat_be_ovr_sx;
     wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        rxreq_dbf_addr_s0;
     wire                                        rxreq_dbf_device_s0;
     wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        rxreq_dbf_size_s0; 
@@ -428,6 +431,7 @@ module hni `HNI_PARAM
             .rxreq_dbf_axid_s0(rxreq_dbf_axid_s0),
             .rxreq_dbf_entry_idx_s0(rxreq_dbf_entry_idx_s0),
             .rxreq_dbf_wr_s0(rxreq_dbf_wr_s0),  
+            .rxreq_dbf_wrzero_s0(rxreq_dbf_wrzero_s0),
             .rxreq_dbf_addr_s0(rxreq_dbf_addr_s0),
             .rxreq_dbf_device_s0(rxreq_dbf_device_s0),
             .rxreq_dbf_size_s0(rxreq_dbf_size_s0), 
@@ -442,6 +446,8 @@ module hni `HNI_PARAM
             .mshr_txdat_opcode_sx(mshr_txdat_opcode_sx),
             .mshr_txdat_resp_sx(mshr_txdat_resp_sx),
             .mshr_txdat_resperr_sx(mshr_txdat_resperr_sx),
+            .mshr_txdat_be_ovr_en_sx(mshr_txdat_be_ovr_en_sx),
+            .mshr_txdat_be_ovr_sx(mshr_txdat_be_ovr_sx),
             .mshr_txdat_dbid_sx(mshr_txdat_dbid_sx),
             .mshr_txdat_dataid_sx(mshr_txdat_dataid_sx),
             .mshr_txdat_tracetag_sx(mshr_txdat_tracetag_sx),
@@ -503,6 +509,7 @@ module hni `HNI_PARAM
             .rxreq_dbf_en_s0(rxreq_dbf_en_s0),
             .rxreq_dbf_axid_s0(rxreq_dbf_axid_s0),
             .rxreq_dbf_wr_s0(rxreq_dbf_wr_s0),
+            .rxreq_dbf_wrzero_s0(rxreq_dbf_wrzero_s0),
             .rxreq_dbf_entry_idx_s0(rxreq_dbf_entry_idx_s0),
             .rxreq_dbf_addr_s0(rxreq_dbf_addr_s0),
             .rxreq_dbf_device_s0(rxreq_dbf_device_s0),
@@ -519,6 +526,8 @@ module hni `HNI_PARAM
             .mshr_txdat_opcode_sx(mshr_txdat_opcode_sx),
             .mshr_txdat_resp_sx(mshr_txdat_resp_sx),
             .mshr_txdat_resperr_sx(mshr_txdat_resperr_sx),
+            .mshr_txdat_be_ovr_en_sx(mshr_txdat_be_ovr_en_sx),
+            .mshr_txdat_be_ovr_sx(mshr_txdat_be_ovr_sx),
             .mshr_txdat_dbid_sx(mshr_txdat_dbid_sx),
             .mshr_txdat_dataid_sx(mshr_txdat_dataid_sx),
             .mshr_txdat_tracetag_sx(mshr_txdat_tracetag_sx),
