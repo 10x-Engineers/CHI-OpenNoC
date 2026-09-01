@@ -252,20 +252,43 @@ module hni `HNI_PARAM
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          dbf_rvalid_entry_idx_sx;
     wire [3:0]                                  dbf_cdmask_sx;
 
-    reg txlinkactivereq_q;
-    reg rxlinkactivereq_q;
-    always @(posedge CLK) begin
-        if (RST) begin
-            txlinkactivereq_q <= 1'b0;
-            rxlinkactivereq_q <= 1'b0;
-        end else begin
-            txlinkactivereq_q <= 1'b1;
-            rxlinkactivereq_q <= RXLINKACTIVEREQ;
-        end
-    end
-    assign TXLINKACTIVEREQ = txlinkactivereq_q;
-    assign RXLINKACTIVEACK = rxlinkactivereq_q;
-    assign TXSACTIVE       = TXLINKACTIVEREQ & TXLINKACTIVEACK & (!RST);
+    wire                                        hni_rxcrd_en;
+    wire                                        hni_lcrd_return_en;
+    wire                                        hni_txlink_run;
+    wire                                        rxreq_crd_cnt_full;
+    wire                                        rxrsp_crd_cnt_full;
+    wire                                        rxdat_crd_cnt_full;
+    wire                                        txrsp_flit_avail;
+    wire                                        txdat_flit_avail;
+
+    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
+    // credits to be returned before deasserting LINKACTIVEACK".
+    wire hni_rxcrd_cnt_full = rxreq_crd_cnt_full & rxrsp_crd_cnt_full & rxdat_crd_cnt_full;
+    // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
+    // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
+    wire hni_txflit_avail   = txrsp_flit_avail | txdat_flit_avail;
+
+    chi_link_handshake u_chi_link_handshake(
+        .clk                (CLK                ),
+        .rst                (RST                ),
+        .TXLINKACTIVEREQ    (TXLINKACTIVEREQ    ),
+        .TXLINKACTIVEACK    (TXLINKACTIVEACK    ),
+        .RXLINKACTIVEREQ    (RXLINKACTIVEREQ    ),
+        .RXLINKACTIVEACK    (RXLINKACTIVEACK    ),
+        .txlink_state       (                   ),
+        .rxlink_state       (                   ),
+        .txflit_avail       (hni_txflit_avail   ),
+        .rxcrd_cnt_full     (hni_rxcrd_cnt_full ),
+        .lcrd_return_en     (hni_lcrd_return_en ),
+        .rxcrd_en           (hni_rxcrd_en       ),
+        .txlink_run         (hni_txlink_run     )
+        );
+
+    // CHI E.b Sec 14.7.4 (p.14-463): "SACTIVE signaling is orthogonal to the
+    // LINKACTIVE states", so it cannot be derived from them. Sec 14.7.2 (p.14-460,
+    // MUST) fixes what it does track: asserted while this node has Protocol-layer
+    // work outstanding, which here is a flit to send or an inbound credit spent.
+    assign TXSACTIVE = (hni_txflit_avail | (~hni_rxcrd_cnt_full)) & (~RST);
 
     //module
     hni_rxreq `HNI_PARAM_INST
@@ -278,6 +301,8 @@ module hni `HNI_PARAM
             .rxreq_retry_enable_s0(rxreq_retry_enable_s0),
             .txrsp_retryack_won_s1(txrsp_retryack_won_s1),
             .rxreq_lcrdv(RXREQLCRDV),
+            .rxcrd_en(hni_rxcrd_en),
+            .rxreq_crd_cnt_full(rxreq_crd_cnt_full),
             .rxreq_valid_s0(rxreq_valid_s0),
             .rxreqflit_s0(rxreqflit_s0)
             );
@@ -290,6 +315,8 @@ module hni `HNI_PARAM
             .rxrspflit(RXRSPFLIT),
             .rxrspflitpend(RXRSPFLITPEND),
             .rxrsp_lcrdv(RXRSPLCRDV),
+            .rxcrd_en(hni_rxcrd_en),
+            .rxrsp_crd_cnt_full(rxrsp_crd_cnt_full),
             .rxrsp_valid_s0(rxrsp_valid_s0), //TO MSHR
             .rxrspflit_s0(rxrspflit_s0) //TO MSHR
         );
@@ -300,6 +327,9 @@ module hni `HNI_PARAM
             .clk(CLK),
             .rst(RST),
             .txrsp_lcrdv(TXRSPLCRDV),
+            .lcrd_return_en(hni_lcrd_return_en),
+            .txlink_run(hni_txlink_run),
+            .txrsp_flit_avail(txrsp_flit_avail),
             .rxreq_alloc_en_s0(rxreq_alloc_en_s0),
             .rxreq_alloc_flit_s0(rxreq_alloc_flit_s0),
             .mshr_entry_idx_alloc_s0(mshr_entry_idx_alloc_s0),
@@ -335,6 +365,8 @@ module hni `HNI_PARAM
             .rxdatflit(RXDATFLIT),
             .rxdatflitpend(RXDATFLITPEND),
             .rxdat_lcrdv(RXDATLCRDV),
+            .rxcrd_en(hni_rxcrd_en),
+            .rxdat_crd_cnt_full(rxdat_crd_cnt_full),
             .rxdat_valid_s0(rxdat_valid_s0),
             .rxdatflit_s0(rxdatflit_s0)
         );
@@ -344,6 +376,9 @@ module hni `HNI_PARAM
             .clk(CLK),
             .rst(RST),
             .txdat_lcrdv(TXDATLCRDV),
+            .lcrd_return_en(hni_lcrd_return_en),
+            .txlink_run(hni_txlink_run),
+            .txdat_flit_avail(txdat_flit_avail),
             .dbf_txdat_valid_sx(dbf_txdat_valid_sx),
             .txdat_flit(txdat_flit),
             .txdatflitv(TXDATFLITV),

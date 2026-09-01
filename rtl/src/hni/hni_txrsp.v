@@ -27,6 +27,9 @@ module hni_txrsp `HNI_PARAM
         rst,
 
         txrsp_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txrsp_flit_avail,
 
         rxreq_alloc_en_s0,
         rxreq_alloc_flit_s0,
@@ -68,6 +71,15 @@ module hni_txrsp `HNI_PARAM
 
     //inputs from hni_link
     input wire                                     txrsp_lcrdv;
+    // CHI E.b Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Transmitter must
+    // return credits using Protocol flits or L-Credit return flits" -- an all-zero
+    // flit, whose Opcode field is that channel's LCrdReturn (SS13.11 p.13-442).
+    input wire                                     lcrd_return_en;
+    // Table 14-3 (p.14-451, MUST): no flit is sent outside the RUN state.
+    input wire                                     txlink_run;
+    // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
+    // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
+    output wire                                    txrsp_flit_avail;
 
     //inputs from hni_qos
     input wire                                     rxreq_alloc_en_s0;
@@ -159,6 +171,7 @@ module hni_txrsp `HNI_PARAM
     wire                                           update_rsp_crd_cnt_s0;
     wire                                           txrsp_crd_cnt_inc_sx;
     wire                                           txrsp_crd_cnt_dec_sx;
+    wire                                           txrsp_lcrd_rtn_sx;
     wire                                           rsp_crd_cnt_not_zero_sx;
 
     //main function
@@ -170,7 +183,7 @@ module hni_txrsp `HNI_PARAM
     // just received it or not zero
 
     assign txrsp_crd_avail_s1          = (txrsp_lcrdv | rsp_crd_cnt_not_zero_sx);
-    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1;
+    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | (~txlink_run);
 
     //req decode
     assign rxreq_qos_s0        = (rxreq_alloc_en_s0 == 1'b1) ? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_QOS_RANGE]        : {`CHIE_REQ_FLIT_QOS_WIDTH{1'b0}};     
@@ -359,7 +372,9 @@ module hni_txrsp `HNI_PARAM
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & (~txrsp_busy_sx);
-    assign txrsp_crd_cnt_dec_sx    = txrspflitv_s0 & txrsp_crd_avail_s1; //lcrd - 1
+    assign txrsp_lcrd_rtn_sx       = lcrd_return_en & rsp_crd_cnt_not_zero_sx;
+    assign txrsp_crd_cnt_dec_sx    = (txrspflitv_s0 & txrsp_crd_avail_s1) | txrsp_lcrd_rtn_sx; //lcrd - 1
+    assign txrsp_flit_avail        = txrsp_req_s0;
 
     assign txrspflitpend = 1'b1;
 
@@ -368,6 +383,10 @@ module hni_txrsp `HNI_PARAM
         if(rst == 1'b1)begin
             txrspflit <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
             txrspflitv <= 1'b0;
+        end
+        else if(txrsp_lcrd_rtn_sx == 1'b1)begin
+            txrspflit  <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflitv <= 1'b1;
         end
         else if((txrspflitv_s0 == 1'b1) & (txrsp_crd_avail_s1 == 1'b1))begin
             txrspflit <= txrspflit_s0;

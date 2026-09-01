@@ -35,6 +35,8 @@ module hni_rxreq `HNI_PARAM
         txrsp_retryack_won_s1,
 
         rxreq_lcrdv,
+        rxcrd_en,
+        rxreq_crd_cnt_full,
 
         rxreq_valid_s0,
         rxreqflit_s0
@@ -57,6 +59,12 @@ module hni_rxreq `HNI_PARAM
 
     //outputs to link
     output wire                        rxreq_lcrdv;
+    // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
+    // and move to the RUN state before sending credits".
+    input  wire                        rxcrd_en;
+    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
+    // credits to be returned before deasserting LINKACTIVEACK".
+    output wire                        rxreq_crd_cnt_full;
 
     //outputs to hni_qos
     output wire                        rxreq_valid_s0;
@@ -65,22 +73,16 @@ module hni_rxreq `HNI_PARAM
     //internal reg signals
     reg                                             rxreqflitv_en_q;
     reg [`HNI_LL_REQ_CRD_CNT_RANGE]                 rxreq_crd_cnt_s1_q;
-    reg [3:0]                                       rxreq_crdcntsm_out;
     reg                                             rxreqcrdv_s1_q;
 
     //internal wire signals
-    wire [`HNI_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_inc1_val_s1;
-    wire [`HNI_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_dec_val_s1;
-    wire [`HNI_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_inc_s1;
-    wire [3:0]                                      rxreq_crdcntsm_in_sx;
-    wire                                            hni_rxcrd_enable_sx;
+    wire                                            rxreq_crd_grant_sx;
+    wire [1:0]                                      rxreq_crd_rtn_sx;
     wire                                            rxreq_crd_cnt_zero_sx;
     wire                                            req_crd_rtn_s0;
     wire                                            retack_tx_s1;
     wire                                            rxreq_crd_cnt_upd_s1;
     wire                                            rxreqcrdv_ns_s0;
-    wire                                            rxreq_crd_cnt_inc1_s1;
-    wire                                            rxreq_crd_cnt_dec_s1;
     wire [`HNI_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_nxt_s1;
 
     //main function
@@ -105,61 +107,17 @@ module hni_rxreq `HNI_PARAM
     //retry transaction sent
     assign retack_tx_s1 = txrsp_retryack_won_s1;
 
-    // ---------- input ------------- //
-    // hni_rxcrd_enable_sx rxreq_crd_cnt_zero_sx req_crd_rtn_s0 retack_tx_s1
-    // ---------- output -------------//
-    // upd lcrdv inc1 dec1
-    // 1 0 0 0 //  8 //  1 1 0 1  //  dec - 1
-    // 1 0 0 1 //  9 //  0 1 0 0  //  no change
-    // 1 0 1 0 // 10 //  0 1 0 0  //  no change
-    // 1 0 1 1 // 11 //  1 1 1 0  //  inc + 1
-
-    // 1 1 0 0 // 12 //  0 0 0 0  //  no change
-    // 1 1 0 1 // 13 //  0 1 0 0  //  no change
-    // 1 1 1 0 // 14 //  0 1 0 0  //  no change
-    // 1 1 1 1 // 15 //  1 1 1 0  //  inc + 1
-
-    assign rxreq_crd_cnt_inc1_val_s1 = rxreq_crd_cnt_s1_q + `HNI_LL_CRD_INCDEC_ONE;
-    assign rxreq_crd_cnt_dec_val_s1  = rxreq_crd_cnt_s1_q - `HNI_LL_CRD_INCDEC_ONE;
-
-    assign hni_rxcrd_enable_sx   = 1'b1;
     assign rxreq_crd_cnt_zero_sx = (rxreq_crd_cnt_s1_q == {`HNI_LL_REQ_CRD_CNT_WIDTH{1'b0}});
-    assign rxreq_crdcntsm_in_sx  = {hni_rxcrd_enable_sx, rxreq_crd_cnt_zero_sx, req_crd_rtn_s0, retack_tx_s1};
-
-    always @*begin
-        casez (rxreq_crdcntsm_in_sx)
-            4'b1000  :
-                rxreq_crdcntsm_out = 4'hd;
-            4'b1001  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1010  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1011  :
-                rxreq_crdcntsm_out = 4'he;
-
-            4'b1100  :
-                rxreq_crdcntsm_out = 4'h0;
-            4'b1101  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1110  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1111  :
-                rxreq_crdcntsm_out = 4'he;
-            default   :
-                rxreq_crdcntsm_out = 4'h0;
-        endcase
-    end
-
-    assign rxreq_crd_cnt_upd_s1  = rxreq_crdcntsm_out[3];
-    assign rxreqcrdv_ns_s0       = rxreq_crdcntsm_out[2];
-    assign rxreq_crd_cnt_inc1_s1 = rxreq_crdcntsm_out[1];
-    assign rxreq_crd_cnt_dec_s1  = rxreq_crdcntsm_out[0];
-
-    assign rxreq_crd_cnt_nxt_s1 = rxreq_crd_cnt_dec_s1? rxreq_crd_cnt_dec_val_s1:
-           rxreq_crd_cnt_inc_s1;
-
-    assign rxreq_crd_cnt_inc_s1 = rxreq_crd_cnt_inc1_val_s1;
-
+    assign rxreq_crd_rtn_sx      = {1'b0, req_crd_rtn_s0} + {1'b0, retack_tx_s1};
+    // A credit returned in the cycle the pool reads empty is re-granted at once.
+    // Returns are counted even when rxcrd_en is low, or the pool could never
+    // refill for a re-activation after a DEACTIVATE.
+    assign rxreq_crd_grant_sx    = rxcrd_en & ((~rxreq_crd_cnt_zero_sx) | (|rxreq_crd_rtn_sx));
+    assign rxreqcrdv_ns_s0       = rxreq_crd_grant_sx;
+    assign rxreq_crd_cnt_upd_s1  = rxreq_crd_grant_sx | (|rxreq_crd_rtn_sx);
+    assign rxreq_crd_cnt_nxt_s1  = rxreq_crd_cnt_s1_q - {{(`HNI_LL_REQ_CRD_CNT_WIDTH-1){1'b0}}, rxreq_crd_grant_sx}
+                                                     + {{(`HNI_LL_REQ_CRD_CNT_WIDTH-2){1'b0}}, rxreq_crd_rtn_sx};
+    assign rxreq_crd_cnt_full    = (rxreq_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNI_LL_REQ_CRD_CNT_WIDTH-1:0]);
 
     always @(posedge clk or posedge rst) begin: rxreq_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)

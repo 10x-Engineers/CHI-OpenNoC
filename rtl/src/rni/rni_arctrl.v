@@ -101,6 +101,9 @@ module rni_arctrl
     wire [`RNI_BCVEC_WIDTH-1:0] arlink_bc_vec_s2_w;
     wire [`RNI_DMASK_WIDTH-1:0] arlink_dmask_s2_w;
     wire [`AXI4_ARSIZE_WIDTH-1:0] arlink_size_s2_w;
+    reg  [`AXI4_ARCACHE_WIDTH-1:0] ar_axcache_r;
+    wire                           ar_device_w;
+    wire                           ar_cacheable_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_alloc_ptr_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_rdy_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_v_ns_w;
@@ -670,18 +673,37 @@ module rni_arctrl
         end
     endgenerate
 
+    // AMBA AXI4 (IHI 0022) Table A4-5 names the memory type from AxCACHE:
+    // ARCACHE[1] (Modifiable) low is Device, and with it high ARCACHE[3:2] split
+    // Normal into Non-cacheable (both low) and cacheable. CHI E.b Table 2-11
+    // (SS2.9.4 p.2-129) then gives each of those types exactly one legal
+    // MemAttr/SnpAttr/Order row, and SS2.9.6's Table 2-13 (p.2-132) admits
+    // ReadOnce only on the Snoopable one -- so opcode and attributes are derived
+    // from the access rather than fixed (CHI-OpenNoC#21).
+    always@* begin: ar_axcache_sel_t
+        ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] = {`AXI4_ARCACHE_WIDTH{1'b0}};
+        for (i=0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
+            ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] = ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] |
+                ({`AXI4_ARCACHE_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARCACHE_RANGE]);
+    end
+
+    assign ar_device_w    = ~ar_axcache_r[1];
+    assign ar_cacheable_w = ar_axcache_r[1] & (|ar_axcache_r[3:2]);
+
     always@* begin
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_WIDTH-1:0] = {`CHIE_REQ_FLIT_WIDTH{1'b0}};
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_TGTID_RANGE] = ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_SRCID_RANGE] = RNI_NID_PARAM;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_TXNID_RANGE] = ar_txreq_txnid_r[`CHIE_REQ_FLIT_TXNID_WIDTH-1:0];
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_OPCODE_RANGE] = `CHIE_READONCE;
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_OPCODE_RANGE] = ar_cacheable_w ? `CHIE_READONCE : `CHIE_READNOSNP;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE] = ~arctrl_entry_req_select_retry_flag_q;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = 2'b00;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = 1'b1;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = 1'b0;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = 1'b1;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = 1'b1;
+        // Table 2-11's Device rows carry Order=EndpointOrder; every Normal row
+        // carries Order[0]=0, and this Requester elects no ordering of its own.
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = ar_device_w ? 2'b11 : 2'b00;
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = ar_axcache_r[0];
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = ar_device_w;
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = ar_cacheable_w;
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = ar_cacheable_w;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_LPID_RANGE] = {`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_SIZE_RANGE] = 3'b110;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_EXPCOMPACK_RANGE] = 1'b0;
@@ -690,7 +712,8 @@ module rni_arctrl
             ar_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
             ar_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] = ~arctrl_entry_req_select_retry_flag_q ? {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}} :
                                ar_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] | ({`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]);
-            ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] | (arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i][`AXI4_ARCACHE_MSB-1]);
+            // Table 2-11 gives no non-cacheable row an Allocate value.
+            ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i][`AXI4_ARCACHE_MSB-1]);
         end
     end
 

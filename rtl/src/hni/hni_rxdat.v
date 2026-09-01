@@ -31,6 +31,8 @@ module hni_rxdat `HNI_PARAM
         rxdatflitpend,
 
         rxdat_lcrdv,
+        rxcrd_en,
+        rxdat_crd_cnt_full,
 
         rxdat_valid_s0,
         rxdatflit_s0
@@ -47,6 +49,12 @@ module hni_rxdat `HNI_PARAM
 
     //outputs to hni_link
     output wire                       rxdat_lcrdv;
+    // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
+    // and move to the RUN state before sending credits".
+    input  wire                       rxcrd_en;
+    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
+    // credits to be returned before deasserting LINKACTIVEACK".
+    output wire                       rxdat_crd_cnt_full;
 
     //outputs to hni_data_buffer
     output wire                        rxdat_valid_s0;
@@ -55,18 +63,12 @@ module hni_rxdat `HNI_PARAM
     //internal reg signals
     reg                                             rxdatflitv_en_q;
     reg  [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_s1_q;
-    reg  [3:0]                                      rxdat_crd_sm_out;
     reg                                             rxdatcrdv_s1_q;
 
     //internal wire signals
-    wire                                            hni_rxcrd_enable_s0;
+    wire                                            rxdat_crd_grant_sx;
     wire                                            rxdat_crd_cnt_zero;
-    wire [2:0]                                      rxdat_crd_sm_in;
     wire                                            rxdat_crd_cnt_upd_s0;
-    wire                                            rxdat_crd_cnt_inc1_s0;
-    wire                                            rxdat_crd_cnt_dec1_s0;
-    wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_dec1_val_s0;
-    wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_inc1_val_s0;
     wire [`HNI_LL_DAT_CRD_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
     wire                                            rxdatcrdv_ns_s0;
 
@@ -84,57 +86,16 @@ module hni_rxdat `HNI_PARAM
     assign rxdat_valid_s0  = (rxdatflitv == 1'b1);
     assign rxdatflit_s0    = (rxdatflitv == 1'b1)? rxdatflit : {`CHIE_DAT_FLIT_WIDTH{1'b0}};
     
-    //rx lcrd enable
-    assign hni_rxcrd_enable_s0 = 1'b1;
-
-    //if lcrd is zero
-    assign rxdat_crd_cnt_zero = (rxdat_crd_cnt_s1_q == {`HNI_LL_DAT_CRD_CNT_WIDTH{1'b0}});
-
-    //rxdat_crd state maching input
-    //enable sending crd
-    assign rxdat_crd_sm_in[2] = hni_rxcrd_enable_s0;
-
-    //crd count == 0
-    assign rxdat_crd_sm_in[1] = rxdat_crd_cnt_zero;
-
-    //receive responses except DataLCrdReturn
-    assign rxdat_crd_sm_in[0] = rxdat_valid_s0;
-
-    //rxdatlcrdv logic
-    // ---------------------------- input ---------------------------- // // ---------- output ------------//
-    // hni_rxcrd_enable_s0 rxdat_crd_cnt_zero dat_flitv // // lcrdupdate crdv inc1 dec1//
-    //        1                      0            0                1       1    0    1      4'b1101   dec -1
-    //        1                      0            1                0       1    0    0      4'b0100   no_change
-    //        1                      1            0                0       0    0    0      4'b0000   no_change
-    //        1                      1            1                0       1    0    0      4'b0100   no_change
-
-    //sm outputs
-    always @(*) begin:rxdatlcrdv_logic_t
-        casez (rxdat_crd_sm_in)
-            3'b100:
-                rxdat_crd_sm_out[3:0] = 4'hd;
-            3'b101:
-                rxdat_crd_sm_out[3:0] = 4'h4;
-            3'b110:
-                rxdat_crd_sm_out[3:0] = 4'h0;
-            3'b111:
-                rxdat_crd_sm_out[3:0] = 4'h4;
-            default:
-                rxdat_crd_sm_out[3:0] = 4'h0;
-        endcase
-    end
-
-    assign rxdat_crd_cnt_upd_s0  = rxdat_crd_sm_out[3];
-    assign rxdatcrdv_ns_s0       = rxdat_crd_sm_out[2];
-    assign rxdat_crd_cnt_inc1_s0 = rxdat_crd_sm_out[1];
-    assign rxdat_crd_cnt_dec1_s0 = rxdat_crd_sm_out[0];
-
-    assign rxdat_crd_cnt_dec1_val_s0 = rxdat_crd_cnt_s1_q - `HNI_LL_CRD_INCDEC_ONE;
-    assign rxdat_crd_cnt_inc1_val_s0 = rxdat_crd_cnt_s1_q + `HNI_LL_CRD_INCDEC_ONE;
-
-    //update next credit value
-    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_dec1_s0 ? rxdat_crd_cnt_dec1_val_s0:
-           rxdat_crd_cnt_inc1_val_s0;
+    assign rxdat_crd_cnt_zero  = (rxdat_crd_cnt_s1_q == {`HNI_LL_DAT_CRD_CNT_WIDTH{1'b0}});
+    // A credit returned in the cycle the pool reads empty is re-granted at once.
+    // Returns are counted even when rxcrd_en is low, or the pool could never
+    // refill for a re-activation after a DEACTIVATE.
+    assign rxdat_crd_grant_sx  = rxcrd_en & ((~rxdat_crd_cnt_zero) | rxdat_valid_s0);
+    assign rxdatcrdv_ns_s0     = rxdat_crd_grant_sx;
+    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_sx | rxdat_valid_s0;
+    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_sx}
+                                                  + {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdat_valid_s0};
+    assign rxdat_crd_cnt_full  = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]);
 
     always @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)

@@ -155,6 +155,9 @@ module rni_awctrl `RNI_PARAM
     wire                                        txdat_packet_1_s2_w;
     wire                                        txdat_two_packets_s2_w;
     wire                                        aw_txreq_expcompack_w;
+    reg  [`AXI4_AWCACHE_WIDTH-1:0]              aw_axcache_r;
+    wire                                        aw_device_w;
+    wire                                        aw_cacheable_w;
     wire                                        awctrl_new_entry_req_dep_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_is_req_dep_v_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_dep_v_ns_w;
@@ -892,18 +895,38 @@ module rni_awctrl `RNI_PARAM
         end
     endgenerate
 
+    // AMBA AXI4 (IHI 0022) Table A4-5 -> CHI E.b Table 2-11 (SS2.9.4 p.2-129);
+    // see rni_arctrl.v for the derivation. Table 2-13 (p.2-132) admits
+    // WriteUnique* only on the Snoopable row, so a Device or Non-cacheable write
+    // is a WriteNoSnp (CHI-OpenNoC#20).
+    always@* begin: aw_axcache_sel_t
+        aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = {`AXI4_AWCACHE_WIDTH{1'b0}};
+        for (i=0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+            aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] |
+                ({`AXI4_AWCACHE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWCACHE_RANGE]);
+    end
+
+    assign aw_device_w    = ~aw_axcache_r[1];
+    assign aw_cacheable_w = aw_axcache_r[1] & (|aw_axcache_r[3:2]);
+
     always@* begin
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_WIDTH-1:0] = {`CHIE_REQ_FLIT_WIDTH{1'b0}};
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_TGTID_RANGE] = aw_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_SRCID_RANGE] = RNI_NID_PARAM;
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_TXNID_RANGE] = aw_txreq_txnid_r[`CHIE_REQ_FLIT_TXNID_WIDTH-1:0];
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_OPCODE_RANGE] = `CHIE_WRITEUNIQUEPTL;
+        // Table 4-13 (p.4-178) gives the Non-snoopable write both a Full and a
+        // Partial form; this Requester's write path is byte-enabled throughout,
+        // so the partial one is what it can always honour.
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_OPCODE_RANGE] = aw_cacheable_w ? `CHIE_WRITEUNIQUEPTL : `CHIE_WRITENOSNPPTL;
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE] = ~awctrl_entry_req_select_retry_flag_q;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = 2'b10;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = 1'b1;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = 1'b0;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = 1'b1;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = 1'b1;
+        // Table 2-11's Device rows carry Order=EndpointOrder; on a Normal row
+        // this Requester keeps its Ordered-Write-Observation stream, which
+        // Table 2-11 footnote (a) permits for both WriteUnique and WriteNoSnp.
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = aw_device_w ? 2'b11 : 2'b10;
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = aw_axcache_r[0];
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = aw_device_w;
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = aw_cacheable_w;
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = aw_cacheable_w;
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_LPID_RANGE] = {`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
         for (i=0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r[`CHIE_REQ_FLIT_QOS_RANGE] = aw_txreqflit_info_r[`CHIE_REQ_FLIT_QOS_RANGE] | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWQOS_RANGE]);
@@ -911,7 +934,8 @@ module rni_awctrl `RNI_PARAM
             aw_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] = aw_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] | ({`AXI4_AWADDR_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_addr_q[i][`AXI4_AWADDR_WIDTH-1:0]);
             aw_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] = ~awctrl_entry_req_select_retry_flag_q ? {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}} :
                                aw_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] | ({`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{awctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]);
-            aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] = aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] | (awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i][`AXI4_AWCACHE_MSB]);
+            // Table 2-11 gives no non-cacheable row an Allocate value.
+            aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] = aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] | (aw_cacheable_w & awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i][`AXI4_AWCACHE_MSB]);
             aw_txreqflit_info_r[`CHIE_REQ_FLIT_EXPCOMPACK_RANGE] = aw_txreqflit_info_r[`CHIE_REQ_FLIT_EXPCOMPACK_RANGE] | (awctrl_entry_req_ptr_q[i] & awctrl_entry_expcompack_q[i]);
         end
     end
@@ -957,7 +981,11 @@ module rni_awctrl `RNI_PARAM
     assign awctrl_entry_rxrsp_pcrdtype_w[`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] = awctrl_rxrspflit_d1_i[`CHIE_RSP_FLIT_PCRDTYPE_RANGE];
 
     assign aw_rxrsp_correct_w = awctrl_rxrspflitv_d1_i & awctrl_entry_rxrsp_txnid_w[`CHIE_RSP_FLIT_TXNID_WIDTH-1] & (awctrl_entry_rxrsp_tgtid_w[`CHIE_RSP_FLIT_TGTID_WIDTH-1:0] == RNI_NID_PARAM);
-    assign rxrsp_dbid_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_DBIDRESP));
+    // Table B-3 (p.B-495) lists DBIDRespOrd among the responses an RN-I
+    // receives, and SS2.8.5 (p.2-120) lets the Completer send it in place of
+    // DBIDResp for an ordered write; without this the buffer grant is missed and
+    // the write never sends its data.
+    assign rxrsp_dbid_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_DBIDRESP) | (awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_DBIDRESPORD));
     assign rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_dbid_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_COMP));
     assign rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_comp_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
