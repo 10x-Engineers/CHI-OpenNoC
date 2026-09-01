@@ -139,9 +139,10 @@ module hnf_biq #(
             assign biq_empty = (wr_ptr_q[BIQ_PTR_WIDTH-1:0] == rd_ptr_q[BIQ_PTR_WIDTH-1:0]);
 
             always @* begin
+                biq_find_flag = 1'b0;
+                biq_find_loc[BIQ_PTR_WIDTH-1:0] = {BIQ_PTR_WIDTH{1'b0}};
                 if (find & ~biq_empty) begin
                     match_vec = {BIQ_DEPTH{1'b0}};
-                    biq_find_flag = 1'b0;
                     for (ii = 0; ii < BIQ_DEPTH; ii = ii + 1) begin
                         biq_find_loc[BIQ_PTR_WIDTH-1:0] = rd_ptr_q[BIQ_PTR_WIDTH-1:0] + ii;
                         if(biq_find_loc[BIQ_PTR_WIDTH-1:0] == wr_ptr_q[BIQ_PTR_WIDTH-1:0])begin

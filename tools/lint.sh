@@ -16,9 +16,17 @@
 #     simulation, and it has already been found three times in this repo
 #     (snf_data_buffer.v, hnf_link_txdat_wrap.v, hni_data_buffer.v).
 #
-# Every other warning is tallied and printed but does not fail the run -- the
-# existing WIDTH*/LATCH/CASEINCOMPLETE population is large and predates this
-# script, so gating on it would only make the gate ignorable.
+#   - %Warning-COMBDLY -- a non-blocking assignment inside a combinational
+#     process. Verilator executes it as blocking and VCS schedules an NBA
+#     update, so the two tools disagree on the value inside the time step.
+#   - %Warning-LATCH -- an incomplete `always @*`, which synthesises a latch
+#     where combinational logic was intended.
+#   - %Warning-CASEINCOMPLETE -- an uncovered case arm. Where the value really is
+#     unreachable a `default` says so; where it is not, the output is wrong.
+#
+# The WIDTH* population is tallied and printed but does not fail the run: those
+# need per-site judgement, and bulk-adding casts would turn signal into silence.
+# WIDTHTRUNC in particular is where a truncated address or NodeID would hide.
 #
 # The behavioural counterpart is tools/link_check.sh, which needs a simulator this
 # script deliberately does not.
@@ -38,7 +46,7 @@ if [ -z "$MAJOR" ] || [ "$MAJOR" -lt 5 ]; then
   exit 2
 fi
 
-FATAL="ALWNEVER"
+FATAL="ALWNEVER|COMBDLY|LATCH|CASEINCOMPLETE"
 rc=0
 
 for n in "${NODES[@]}"; do
@@ -52,9 +60,11 @@ for n in "${NODES[@]}"; do
     echo "$out" | grep -A4 "^%Error" | head -40
     rc=1
   fi
-  if echo "$out" | grep -q "%Warning-$FATAL"; then
-    echo "  FAIL: $n has $FATAL -- a never-executing always block leaves its target X"
-    echo "$out" | grep -A2 "%Warning-$FATAL"
+  # -E, not plain grep: FATAL is an alternation, and BRE would read the `|` as a
+  # literal and pass vacuously on every node.
+  if echo "$out" | grep -qE "%Warning-($FATAL)"; then
+    echo "  FAIL: $n has a gated warning ($FATAL)"
+    echo "$out" | grep -EA2 "%Warning-($FATAL)"
     rc=1
   fi
 done

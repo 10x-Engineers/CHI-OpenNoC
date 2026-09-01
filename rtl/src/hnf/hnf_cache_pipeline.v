@@ -1454,12 +1454,12 @@ module hnf_cache_pipeline `HNF_PARAM
     always @*begin
         for (ii = 0; ii < `LOC_WAY_NUM; ii = ii + 1)begin
             if (pipe_tag_alloc_free_way_vec_sx4[ii])begin
-                pipe_lru_free_entry_mask_sx4[ii*2+:2] <= 2'b00;
-                pipe_lru_free_entry_rrpv_sx4[ii*2+:2] <= 2'b10;
+                pipe_lru_free_entry_mask_sx4[ii*2+:2] = 2'b00;
+                pipe_lru_free_entry_rrpv_sx4[ii*2+:2] = 2'b10;
             end
             else begin
-                pipe_lru_free_entry_mask_sx4[ii*2+:2] <= 2'b11;
-                pipe_lru_free_entry_rrpv_sx4[ii*2+:2] <= 2'b00;
+                pipe_lru_free_entry_mask_sx4[ii*2+:2] = 2'b11;
+                pipe_lru_free_entry_rrpv_sx4[ii*2+:2] = 2'b00;
             end
         end
     end

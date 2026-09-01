@@ -131,13 +131,8 @@ generate if(FIFO_ENTRIES_DEPTH == 1)begin
             end
 
             // read fifo memory
-            integer j;
             always@*begin
-                for(j=0;j<FIFO_ENTRIES_DEPTH;j=j+1)begin
-                    if(rd_ptr == j)begin
-                        rd_mem_data = fifo_mem[j];
-                    end
-                end
+                rd_mem_data = fifo_mem[rd_ptr];
             end
 
             // fifo count logic
