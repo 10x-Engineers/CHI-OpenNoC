@@ -211,7 +211,7 @@ module rni_link_ctl `RNI_PARAM
     assign llst_is_run    = txll_st_run & rxll_st_run;
     assign rxcrd_cnt_full = rxrsp_lcrd_full_d2_w & rxdat_lcrd_full_d2_w & ~llst_is_run;
 
-    rni_link_handshake inst_rni_link_handshake(
+    chi_link_handshake inst_chi_link_handshake(
                            .clk               ( clk_i           )
                            ,.rst               ( rst_i           )
                            ,.TXLINKACTIVEREQ   ( TXLINKACTIVEREQ )

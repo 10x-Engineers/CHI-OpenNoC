@@ -23,6 +23,12 @@ module hnf `HNF_PARAM
         //inputs
         CLK,
         RST,
+        TXLINKACTIVEREQ,
+        TXLINKACTIVEACK,
+        RXLINKACTIVEREQ,
+        RXLINKACTIVEACK,
+        TXSACTIVE,
+        RXSACTIVE,
         RXREQFLITV,
         RXREQFLIT,
         RXREQFLITPEND,
@@ -90,6 +96,14 @@ module hnf `HNF_PARAM
     //inputs
     input wire                                  CLK;
     input wire                                  RST;
+
+    //CHIE link activation
+    output wire                                 TXLINKACTIVEREQ;
+    input  wire                                 TXLINKACTIVEACK;
+    input  wire                                 RXLINKACTIVEREQ;
+    output wire                                 RXLINKACTIVEACK;
+    output wire                                 TXSACTIVE;
+    input  wire                                 RXSACTIVE;
     input wire                                  RXREQFLITV;
     input wire [`CHIE_REQ_FLIT_RANGE]           RXREQFLIT;
     input wire                                  RXREQFLITPEND;
@@ -355,11 +369,44 @@ module hnf `HNF_PARAM
     wire                                        pipe_dbf_rd_idx_sx2_valid_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              pipe_dbf_rd_idx_sx2_q;
 
+    wire                                        hnf_rxcrd_en;
+    wire                                        hnf_lcrd_return_en;
+    wire                                        hnf_rxcrd_cnt_full;
+    wire                                        hnf_txflit_avail;
+    wire                                        hnf_txlink_run;
+
+    chi_link_handshake u_chi_link_handshake(
+        .clk                (CLK                ),
+        .rst                (RST                ),
+        .TXLINKACTIVEREQ    (TXLINKACTIVEREQ    ),
+        .TXLINKACTIVEACK    (TXLINKACTIVEACK    ),
+        .RXLINKACTIVEREQ    (RXLINKACTIVEREQ    ),
+        .RXLINKACTIVEACK    (RXLINKACTIVEACK    ),
+        .txlink_state       (                   ),
+        .rxlink_state       (                   ),
+        .txflit_avail       (hnf_txflit_avail   ),
+        .rxcrd_cnt_full     (hnf_rxcrd_cnt_full ),
+        .lcrd_return_en     (hnf_lcrd_return_en ),
+        .rxcrd_en           (hnf_rxcrd_en       ),
+        .txlink_run         (hnf_txlink_run     )
+        );
+
+    // CHI E.b Sec 14.7.2 (p.14-460, MUST): TXSACTIVE "must be asserted when the
+    // transmitter has flits to send", and a component that asserts it "must also
+    // ... initiate the link activation sequence" -- so it tracks the Transmit
+    // link being anything other than STOP.
+    assign TXSACTIVE = (TXLINKACTIVEREQ | TXLINKACTIVEACK) & (~RST);
+
     hnf_link `HNF_PARAM_INST
              u_hnf_link(
                  //inputs
                  .clk                                          (CLK                               ),
                  .rst                                          (RST                               ),
+                 .rxcrd_en                                     (hnf_rxcrd_en                      ),
+                 .lcrd_return_en                               (hnf_lcrd_return_en                ),
+                 .txlink_run                                   (hnf_txlink_run                    ),
+                 .rxcrd_cnt_full                               (hnf_rxcrd_cnt_full                ),
+                 .txflit_avail                                 (hnf_txflit_avail                  ),
                  .rxreqflitv                                   (RXREQFLITV                        ),
                  .rxreqflit                                    (RXREQFLIT                         ),
                  .rxreqflitpend                                (RXREQFLITPEND                     ),

@@ -17,6 +17,7 @@
 `ifndef CHI_RING_NODE_H
 `define CHI_RING_NODE_H
 module chi_ring_node #(
+    parameter CHIE_NID_WIDTH_PARAM = 7,
     parameter REQ_FLIT_WIDTH,
     parameter RSP_FLIT_WIDTH,
     parameter DAT_FLIT_WIDTH,
@@ -30,7 +31,7 @@ module chi_ring_node #(
 ) (
     input clk,
     input rst,
-    input [6:1] my_xid,
+    input [CHIE_NID_WIDTH_PARAM-1:1] my_xid,
 
     //REQ
     input RXREQFLITV_E,
@@ -183,6 +184,7 @@ module chi_ring_node #(
   reg  reset_done;
 
   chi_ring_channel #(
+    .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
     .FLIT_WIDTH(REQ_FLIT_WIDTH),
     .ROUTER_NODE_NUM(ROUTER_NODE_NUM)
   ) m_req (
@@ -226,6 +228,7 @@ module chi_ring_node #(
       .TXLCRDV_P1(TXREQLCRDV_P1)
   );
   chi_ring_channel #(
+    .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
     .FLIT_WIDTH(RSP_FLIT_WIDTH),
     .ROUTER_NODE_NUM(ROUTER_NODE_NUM)
   ) m_rsp (
@@ -269,6 +272,7 @@ module chi_ring_node #(
       .TXLCRDV_P1(TXRSPLCRDV_P1)
   );
   chi_ring_channel #(
+    .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
     .FLIT_WIDTH(DAT_FLIT_WIDTH),
     .ROUTER_NODE_NUM(ROUTER_NODE_NUM)
   ) m_dat (
@@ -312,6 +316,7 @@ module chi_ring_node #(
       .TXLCRDV_P1(TXDATLCRDV_P1)
   );
   chi_ring_channel #(
+    .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
     .FLIT_WIDTH(SNP_FLIT_WIDTH),
     .FLIT_TGT_OFFSET(SNP_TGTID_OFFSET),
     .ROUTER_NODE_NUM(ROUTER_NODE_NUM)

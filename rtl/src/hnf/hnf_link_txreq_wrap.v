@@ -27,6 +27,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
 
         //inputs from hnf_link
         txreq_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txreq_flit_avail,
 
         //inputs from hnf_mshr_bypass
         mshr_txreq_bypass_valid_s1,
@@ -80,6 +83,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
 
     //inputs from hnf_link
     input wire                                        txreq_lcrdv;
+    input wire                                        lcrd_return_en;
+    input wire                                        txlink_run;
+    output wire                                       txreq_flit_avail;
 
     //inputs from hnf_mshr_bypass
     input wire                                        mshr_txreq_bypass_valid_s1;
@@ -148,10 +154,12 @@ module hnf_link_txreq_wrap `HNF_PARAM
     wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]              req_crd_cnt_dec_s0;
 
 
+    wire                                              txreq_lcrd_rtn_sx;
+
     //main function
     assign req_crd_cnt_not_zero_sx = (txreq_crd_cnt_q != 'd0);
     assign txreq_crd_avail_s1      = (txreq_lcrdv | req_crd_cnt_not_zero_sx);
-    assign txreq_busy_sx           = ~txreq_crd_avail_s1;
+    assign txreq_busy_sx           = ~txreq_crd_avail_s1 | (~txlink_run);
 
     assign txreq_mshr_bypass_won_s1    = (mshr_txreq_bypass_valid_s1 == 1'b1) && (~txreq_busy_sx);
     assign txreq_mshr_won_sx1      = (mshr_txreq_valid_sx1_q == 1'b1) && (mshr_txreq_bypass_valid_s1 == 1'b0) & ~txreq_busy_sx;
@@ -223,7 +231,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
 
     assign req_crd_cnt_s1          = txreq_crd_cnt_q;
     assign txreqflitv_s0           = (txreq_req_s0 & ~txreq_busy_sx);
-    assign txreq_crd_cnt_dec_sx    = (txreqflitv_s0 & txreq_crd_avail_s1); //lcrd - 1
+    assign txreq_crd_cnt_dec_sx    = (txreqflitv_s0 & txreq_crd_avail_s1) | txreq_lcrd_rtn_sx;
+    assign txreq_lcrd_rtn_sx  = lcrd_return_en & req_crd_cnt_not_zero_sx;
+    assign txreq_flit_avail   = txreq_req_s0;
 
     assign txreqflitpend = 1'b1;
 
@@ -232,6 +242,10 @@ module hnf_link_txreq_wrap `HNF_PARAM
         if(rst == 1'b1)begin
             txreqflit <= {`CHIE_REQ_FLIT_WIDTH{1'b0}};
             txreqflitv <= 1'b0;
+        end
+        else if(txreq_lcrd_rtn_sx == 1'b1)begin
+            txreqflit  <= {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+            txreqflitv <= 1'b1;
         end
         else if((txreqflitv_s0 == 1'b1) & (txreq_crd_avail_s1 == 1'b1))begin
             txreqflit <= txreqflit_s0;

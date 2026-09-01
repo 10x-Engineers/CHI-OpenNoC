@@ -27,6 +27,9 @@ module hnf_link_txrsp_wrap `HNF_PARAM
 
         //inputs from hnf_link
         txrsp_lcrdv,
+        lcrd_return_en,
+        txlink_run,
+        txrsp_flit_avail,
 
         //inputs from hnf_mshr_bypass
         mshr_txrsp_bypass_valid_s1,
@@ -82,6 +85,9 @@ module hnf_link_txrsp_wrap `HNF_PARAM
 
     //inputs from hnf_link
     input wire                                     txrsp_lcrdv;
+    input wire                                     lcrd_return_en;
+    input wire                                     txlink_run;
+    output wire                                    txrsp_flit_avail;
 
     //inputs from hnf_mshr_bypass
     input wire                                     mshr_txrsp_bypass_valid_s1;
@@ -152,6 +158,8 @@ module hnf_link_txrsp_wrap `HNF_PARAM
     wire                                           txrsp_crd_cnt_dec_sx;
     wire                                           rsp_crd_cnt_not_zero_sx;
 
+    wire                                              txrsp_lcrd_rtn_sx;
+
     //main function
 
     //arb and lcrd_avail
@@ -161,7 +169,7 @@ module hnf_link_txrsp_wrap `HNF_PARAM
     // just received it or not zero
 
     assign txrsp_crd_avail_s1          = (txrsp_lcrdv | rsp_crd_cnt_not_zero_sx);
-    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1;
+    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | (~txlink_run);
 
     //outputs to mshr
 
@@ -266,7 +274,9 @@ module hnf_link_txrsp_wrap `HNF_PARAM
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & ~txrsp_busy_sx;
-    assign txrsp_crd_cnt_dec_sx    = txrspflitv_s0 & txrsp_crd_avail_s1; //lcrd - 1
+    assign txrsp_crd_cnt_dec_sx    = txrspflitv_s0 & txrsp_crd_avail_s1 | txrsp_lcrd_rtn_sx;
+    assign txrsp_lcrd_rtn_sx  = lcrd_return_en & rsp_crd_cnt_not_zero_sx;
+    assign txrsp_flit_avail   = txrsp_req_s0;
 
     assign txrspflitpend = 1'b1;
 
@@ -275,6 +285,10 @@ module hnf_link_txrsp_wrap `HNF_PARAM
         if(rst == 1'b1)begin
             txrspflit <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
             txrspflitv <= 1'b0;
+        end
+        else if(txrsp_lcrd_rtn_sx == 1'b1)begin
+            txrspflit  <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflitv <= 1'b1;
         end
         else if((txrspflitv_s0 == 1'b1) & (txrsp_crd_avail_s1 == 1'b1))begin
             txrspflit <= txrspflit_s0;

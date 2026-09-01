@@ -19,6 +19,7 @@ module chi_ring_channel #(
         parameter FLIT_TGT_OFFSET = 4,
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN = {4{1'b1}},
+        parameter CHIE_NID_WIDTH_PARAM = 7,
         parameter ROUTER_NODE_NUM
     ) (
         clk,
@@ -62,7 +63,7 @@ module chi_ring_channel #(
     );
 
     localparam LCRD_MAX_NUM = ($pow(2, LCRD_NUM_WIDTH) - 1);
-    localparam CHIE_NID_WIDTH = 7;
+    localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM;
     localparam RX_MAX_ENTRY = 2'h2;
     localparam XP_INTF_E = 0;
     localparam XP_INTF_W = 1;
@@ -71,9 +72,16 @@ module chi_ring_channel #(
     localparam XP_INTF_MAX = 4;
 	localparam XP_VALID_NID_WIDTH = $clog2(ROUTER_NODE_NUM);
 
+    // CHI E.b Sec 16.1: NodeID_Width is 7-11.
+    initial begin
+        if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
+            $fatal(1, "chi_ring_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
+                   CHIE_NID_WIDTH_PARAM);
+    end
+
     input wire clk;
     input wire rst;
-    input wire [6:1] my_xid;
+    input wire [CHIE_NID_WIDTH-1:1] my_xid;
 
     input wire TXLINKACTIVEREQ_P0;
     input wire TXLINKACTIVEACK_P0;

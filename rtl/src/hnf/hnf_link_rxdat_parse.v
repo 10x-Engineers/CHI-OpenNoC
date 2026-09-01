@@ -28,6 +28,8 @@ module hnf_link_rxdat_parse `HNF_PARAM
         rxdatflitv,
         rxdatflit,
         rxdatflitpend,
+        rxcrd_en,
+        rxdat_crd_cnt_full,
 
         //outputs to hnf_link
         rxdat_lcrdv,
@@ -57,6 +59,10 @@ module hnf_link_rxdat_parse `HNF_PARAM
     input wire                                      rxdatflitv;
     input wire [`CHIE_DAT_FLIT_RANGE]               rxdatflit;
     input wire                                      rxdatflitpend;
+    // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
+    // and move to the RUN state before sending credits".
+    input wire                                      rxcrd_en;
+    output wire                                     rxdat_crd_cnt_full;
 
     //outputs to hnf_link
     output wire                                     rxdat_lcrdv;
@@ -80,19 +86,13 @@ module hnf_link_rxdat_parse `HNF_PARAM
     //internal reg signals
     reg                                             rxdatflitv_en_q;
     reg  [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            rxdat_crd_cnt_s1_q;
-    reg  [3:0]                                      rxdat_crd_sm_out;
     reg                                             rxdatcrdv_s1_q;
 
     //internal wire signals
     wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]           li_dbf_rxdat_txnid_s0_raw;
-    wire                                            hnf_rxcrd_enable_s0;
     wire                                            rxdat_crd_cnt_zero;
-    wire [2:0]                                      rxdat_crd_sm_in;
     wire                                            rxdat_crd_cnt_upd_s0;
-    wire                                            rxdat_crd_cnt_inc1_s0;
-    wire                                            rxdat_crd_cnt_dec1_s0;
-    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            rxdat_crd_cnt_dec1_val_s0;
-    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            rxdat_crd_cnt_inc1_val_s0;
+    wire                                            rxdat_crd_grant_s0;
     wire [`HNF_LCRD_DAT_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
     wire                                            rxdatcrdv_ns_s0;
 
@@ -122,57 +122,17 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_dbf_rxdat_be_s0        = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_BE_RANGE]       : {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
     assign li_dbf_rxdat_data_s0      = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_DATA_RANGE]     : {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
 
-    //rx lcrd enable
-    assign hnf_rxcrd_enable_s0 = 1'b1;
-
     //if lcrd is zero
     assign rxdat_crd_cnt_zero = (rxdat_crd_cnt_s1_q == {`HNF_LCRD_DAT_CNT_WIDTH{1'b0}});
 
-    //rxdat_crd state maching input
-    //enable sending crd
-    assign rxdat_crd_sm_in[2] = hnf_rxcrd_enable_s0;
-
-    //crd count == 0
-    assign rxdat_crd_sm_in[1] = rxdat_crd_cnt_zero;
-
-    //receive responses except DataLCrdReturn
-    assign rxdat_crd_sm_in[0] = li_mshr_rxdat_valid_s0;
-
-    //rxdatlcrdv logic
-    // ---------------------------- input ---------------------------- // // ---------- output ------------//
-    // hnf_rxcrd_enable_s0 rxdat_crd_cnt_zero dat_flitv // // lcrdupdate crdv inc1 dec1//
-    //        1                      0            0                1       1    0    1      4'b1101   dec -1
-    //        1                      0            1                0       1    0    0      4'b0100   no_change
-    //        1                      1            0                0       0    0    0      4'b0000   no_change
-    //        1                      1            1                0       1    0    0      4'b0100   no_change
-
-    //sm outputs
-    always @(*) begin:rxdatlcrdv_logic_t
-        casez (rxdat_crd_sm_in)
-            3'b100:
-                rxdat_crd_sm_out[3:0] = 4'hd;
-            3'b101:
-                rxdat_crd_sm_out[3:0] = 4'h4;
-            3'b110:
-                rxdat_crd_sm_out[3:0] = 4'h0;
-            3'b111:
-                rxdat_crd_sm_out[3:0] = 4'h4;
-            default:
-                rxdat_crd_sm_out[3:0] = 4'h0;
-        endcase
-    end
-
-    assign rxdat_crd_cnt_upd_s0  = rxdat_crd_sm_out[3];
-    assign rxdatcrdv_ns_s0       = rxdat_crd_sm_out[2];
-    assign rxdat_crd_cnt_inc1_s0 = rxdat_crd_sm_out[1];
-    assign rxdat_crd_cnt_dec1_s0 = rxdat_crd_sm_out[0];
-
-    assign rxdat_crd_cnt_dec1_val_s0 = rxdat_crd_cnt_s1_q - `LCRD_INCDEC_ONE;
-    assign rxdat_crd_cnt_inc1_val_s0 = rxdat_crd_cnt_s1_q + `LCRD_INCDEC_ONE;
-
-    //update next credit value
-    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_dec1_s0 ? rxdat_crd_cnt_dec1_val_s0:
-           rxdat_crd_cnt_inc1_val_s0;
+    // A credit returned in the cycle the pool reads empty is re-granted at once.
+    // Returns are counted even when rxcrd_en is low, or the pool could never
+    // refill for a re-activation after a DEACTIVATE.
+    assign rxdat_crd_grant_s0   = rxcrd_en & ((~rxdat_crd_cnt_zero) | li_mshr_rxdat_valid_s0);
+    assign rxdatcrdv_ns_s0      = rxdat_crd_grant_s0;
+    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_s0 | li_mshr_rxdat_valid_s0;
+    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - rxdat_crd_grant_s0 + li_mshr_rxdat_valid_s0;
+    assign rxdat_crd_cnt_full   = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_DAT_CNT_WIDTH-1:0]);
 
     always @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)

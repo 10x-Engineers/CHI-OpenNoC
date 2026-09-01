@@ -19,7 +19,10 @@ module chi_xp_channel #(
         parameter FLIT_WIDTH = 131,
         parameter FLIT_TGT_OFFSET = 4,
         parameter LCRD_NUM_WIDTH = 4,
-        parameter XP_PORT_EN    = {6{1'b1}}
+        parameter XP_PORT_EN    = {6{1'b1}},
+        parameter CHIE_NID_WIDTH_PARAM = 7,
+        parameter XP_XID_WIDTH  = 3,
+        parameter XP_YID_WIDTH  = 3
     ) (
         clk,
         rst,
@@ -75,7 +78,7 @@ module chi_xp_channel #(
     );
 
     localparam LCRD_MAX_NUM = ($pow(2, LCRD_NUM_WIDTH) - 1);
-    localparam CHIE_NID_WIDTH = 7;
+    localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM;
     localparam RX_MAX_ENTRY = 2'h2;
     localparam XP_INTF_E = 0;
     localparam XP_INTF_W = 1;
@@ -85,10 +88,21 @@ module chi_xp_channel #(
     localparam XP_INTF_P1 = 5;
     localparam XP_INTF_MAX = 6;
 
+    // CHI E.b Sec 16.1: NodeID_Width is 7-11, and the three routing fields have to
+    // fit inside it.
+    initial begin
+        if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
+            $fatal(1, "chi_xp_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
+                   CHIE_NID_WIDTH_PARAM);
+        if ((1 + XP_XID_WIDTH + XP_YID_WIDTH) > CHIE_NID_WIDTH_PARAM)
+            $fatal(1, "chi_xp_channel: port(1)+Y(%0d)+X(%0d) exceeds CHIE_NID_WIDTH_PARAM=%0d",
+                   XP_YID_WIDTH, XP_XID_WIDTH, CHIE_NID_WIDTH_PARAM);
+    end
+
     input wire clk;
     input wire rst;
-    input wire [2:0] my_xid;
-    input wire [2:0] my_yid;
+    input wire [XP_XID_WIDTH-1:0] my_xid;
+    input wire [XP_YID_WIDTH-1:0] my_yid;
 
     input wire TXLINKACTIVEREQ_P0;
     input wire TXLINKACTIVEACK_P0;
@@ -396,9 +410,7 @@ module chi_xp_channel #(
                 assign rxflit_qos_l_r1[g_src] = !rxflit_r1[g_src][3] & !rxflit_r1[g_src][2] & !rxflit_r1[g_src][1];
 
                 assign rxflit_tgtid_r1[g_src][CHIE_NID_WIDTH-1:0] = rxflit_r1[g_src][FLIT_TGT_OFFSET+CHIE_NID_WIDTH-1:FLIT_TGT_OFFSET];
-                assign rxflit_buffer_entry_tgt_r1[g_src][XP_INTF_MAX-1:0] = route_xy(
-                           rxflit_tgtid_r1[g_src][6:4], rxflit_tgtid_r1[g_src][3:1], rxflit_tgtid_r1[g_src][0]
-                       );
+                assign rxflit_buffer_entry_tgt_r1[g_src][XP_INTF_MAX-1:0] = route_xy(rxflit_tgtid_r1[g_src]);
             end
         end
     endgenerate
@@ -651,17 +663,27 @@ module chi_xp_channel #(
         end
     endgenerate
 
-    function [XP_INTF_MAX-1:
-                  0] route_xy(input [2:0] tgt_xid, input [2:0] tgt_yid, input tgt_portid);
+    // NodeID routing fields are LSB-anchored: bit 0 is the local port, then Y,
+    // then X. Taking them as indexed part-selects keeps the decode identical at
+    // the 7-bit default and correct at every width CHI E.b Sec 16.1 allows (7-11).
+    function [XP_INTF_MAX-1:0] route_xy(input [CHIE_NID_WIDTH-1:0] tgtid);
+        reg [XP_XID_WIDTH-1:0] tgt_xid;
+        reg [XP_YID_WIDTH-1:0] tgt_yid;
+        reg                    tgt_portid;
+        begin
+            tgt_portid = tgtid[0];
+            tgt_yid    = tgtid[1 +: XP_YID_WIDTH];
+            tgt_xid    = tgtid[1+XP_YID_WIDTH +: XP_XID_WIDTH];
 
-        route_xy[XP_INTF_E]  = (tgt_xid > my_xid);
-        route_xy[XP_INTF_W]  = (tgt_xid < my_xid);
+            route_xy[XP_INTF_E]  = (tgt_xid > my_xid);
+            route_xy[XP_INTF_W]  = (tgt_xid < my_xid);
 
-        route_xy[XP_INTF_N]  = (tgt_xid == my_xid) & (tgt_yid > my_yid);
-        route_xy[XP_INTF_S]  = (tgt_xid == my_xid) & (tgt_yid < my_yid);
+            route_xy[XP_INTF_N]  = (tgt_xid == my_xid) & (tgt_yid > my_yid);
+            route_xy[XP_INTF_S]  = (tgt_xid == my_xid) & (tgt_yid < my_yid);
 
-        route_xy[XP_INTF_P0] = (tgt_xid == my_xid) & (tgt_yid == my_yid) & (tgt_portid == 1'b0);
-        route_xy[XP_INTF_P1] = (tgt_xid == my_xid) & (tgt_yid == my_yid) & (tgt_portid == 1'b1);
+            route_xy[XP_INTF_P0] = (tgt_xid == my_xid) & (tgt_yid == my_yid) & (tgt_portid == 1'b0);
+            route_xy[XP_INTF_P1] = (tgt_xid == my_xid) & (tgt_yid == my_yid) & (tgt_portid == 1'b1);
+        end
     endfunction
 
     assign rxflitv_r1[XP_INTF_E]                 = RXFLITV_E;

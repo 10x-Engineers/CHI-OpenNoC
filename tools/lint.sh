@@ -19,6 +19,9 @@
 # Every other warning is tallied and printed but does not fail the run -- the
 # existing WIDTH*/LATCH/CASEINCOMPLETE population is large and predates this
 # script, so gating on it would only make the gate ignorable.
+#
+# The behavioural counterpart is tools/link_check.sh, which needs a simulator this
+# script deliberately does not.
 # =============================================================================
 set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
