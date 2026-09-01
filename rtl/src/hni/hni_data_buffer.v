@@ -33,6 +33,7 @@ module hni_data_buffer `HNI_PARAM
         rxreq_dbf_axid_s0,
         rxreq_dbf_entry_idx_s0,
         rxreq_dbf_wr_s0,   //write txn
+        rxreq_dbf_wrzero_s0,
         rxreq_dbf_addr_s0,
         rxreq_dbf_device_s0,
         rxreq_dbf_size_s0,
@@ -53,6 +54,8 @@ module hni_data_buffer `HNI_PARAM
         mshr_txdat_opcode_sx,
         mshr_txdat_resp_sx,
         mshr_txdat_resperr_sx,
+        mshr_txdat_be_ovr_en_sx,
+        mshr_txdat_be_ovr_sx,
         mshr_txdat_dbid_sx,
         mshr_txdat_dataid_sx,
         mshr_txdat_tracetag_sx,
@@ -101,6 +104,7 @@ module hni_data_buffer `HNI_PARAM
     input wire [`HNI_AXI4_AXID_WIDTH-1:0]           rxreq_dbf_axid_s0; //slave id
     input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]        rxreq_dbf_entry_idx_s0; //allocate entry idx
     input wire                                      rxreq_dbf_wr_s0;   //write txn or read txn
+    input wire                                      rxreq_dbf_wrzero_s0;
     input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]      rxreq_dbf_addr_s0;
     input wire                                      rxreq_dbf_device_s0;
     input wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]      rxreq_dbf_size_s0;//rxdata/txdata size
@@ -121,6 +125,8 @@ module hni_data_buffer `HNI_PARAM
     input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]    mshr_txdat_opcode_sx;
     input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]      mshr_txdat_resp_sx; 
     input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]   mshr_txdat_resperr_sx;
+    input wire                                      mshr_txdat_be_ovr_en_sx;
+    input wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]        mshr_txdat_be_ovr_sx;
     input wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]      mshr_txdat_dbid_sx; 
     input wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]    mshr_txdat_dataid_sx;
     input wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]  mshr_txdat_tracetag_sx;
@@ -553,6 +559,12 @@ module hni_data_buffer `HNI_PARAM
                         dbf_data_q[i] <= {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
                         dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}};
                     end
+                    // Table 4-39 (p.4-219): a Write Zero has no WriteData response, so
+                    // its payload is sourced here -- zeros with every byte enable set.
+                    else if (rxreq_dbf_en_s0 && rxreq_dbf_wrzero_s0 && (i == rxreq_dbf_entry_idx_s0)) begin
+                        dbf_data_q[i] <= {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
+                        dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b1}};
+                    end
                     else if (rxdat_valid_s0 && rxreq_dbf_wr_q[i] && (i == rxdat_entry_idx_s0))begin
                         if(rxdat_dataid_s0 == 2'b00)begin
                             dbf_data_q[i][`CHIE_DAT_FLIT_DATA_WIDTH-1:0] <= rxdat_data_s0[`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
@@ -606,11 +618,11 @@ module hni_data_buffer `HNI_PARAM
                     mshr_txdat_ccid_sx = rxreq_alloc_ccid_q[entry];
                     if(mshr_txdat_dataid_sx == 2'b00)begin
                         mshr_txdat_data_sx   = dbf_data_q[entry][`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
-                        mshr_txdat_be_sx     = {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
+                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
                     end
                     else if(mshr_txdat_dataid_sx == 2'b10)begin
                         mshr_txdat_data_sx   = dbf_data_q[entry][`CHIE_DAT_FLIT_DATA_WIDTH*2-1:`CHIE_DAT_FLIT_DATA_WIDTH];
-                        mshr_txdat_be_sx     = {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
+                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
                     end
                 end
             end

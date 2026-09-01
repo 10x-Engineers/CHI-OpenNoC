@@ -215,6 +215,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b0010;
                         2'b11:
                             dbf_wlmask_s1_q = 4'b1000;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 2'b01:begin
@@ -225,6 +230,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b0010;
                         2'b11:
                             dbf_wlmask_s1_q = 4'b1000;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 2'b10:begin
@@ -235,6 +245,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b1000;
                         2'b11:
                             dbf_wlmask_s1_q = 4'b1000;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 2'b11:begin
@@ -245,6 +260,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b1000;
                         2'b11:
                             dbf_wlmask_s1_q = 4'b1000;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 default:begin
@@ -262,6 +282,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b0011;
                         2'b01:
                             dbf_wlmask_s1_q = 4'b1100;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 1'b1:begin
@@ -270,6 +295,11 @@ module snf_data_buffer `SNF_PARAM
                             dbf_wlmask_s1_q = 4'b1100;
                         2'b01:
                             dbf_wlmask_s1_q = 4'b1100;
+                        // CHI E.b Table 2-14 (SS2.10.1 p.2-134) caps Size at 64B and
+                        // Table 4-2 (SS4.2 p.4-166) caps an HN-F to SN-F read at the same,
+                        // so snf_mshr.v's Size decode emits only the arms above.
+                        default:
+                            dbf_wlmask_s1_q = 4'b0000;
                     endcase
                 end
                 default:begin

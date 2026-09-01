@@ -161,6 +161,8 @@ module rni_wr_buffer `RNI_PARAM
     wire [`BRSP_FIFO_ENTRIES_WIDTH-1:0]                             brsp_fifo_in_d2_w;
     wire [`BRSP_FIFO_ENTRIES_WIDTH-1:0]                             brsp_fifo_out_d3_w;
     wire                                                            brsp_fifo_empty_w;
+    wire                                        brsp_seg_pop_w;
+    reg [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      brsp_seg_resperr_q;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                             wr_entry_d1_w;
     wire [`WR_BUFFER_DATA_BANK_NUM-1:0]                             wr_bank_d1_w;
     wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]           wr_wstrb_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
@@ -512,8 +514,26 @@ module rni_wr_buffer `RNI_PARAM
 
     assign wb_brsp_fifo_pop_d3_o = (~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]) | (BVALID0 & BREADY0);
 
+    // An AXI burst that rni_segburst split into several CHI writes pops one FIFO
+    // entry per segment and drives BRESP from the last alone, so an error on an
+    // earlier segment has to be carried forward -- AMBA AXI4 gives a burst one
+    // response, and the CHI error on any of its writes is an error for it.
+    assign brsp_seg_pop_w = ~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE];
+
+    always @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+        end
+        else if (BVALID0 & BREADY0)begin
+            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+        end
+        else if (brsp_seg_pop_w)begin
+            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] | brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE];
+        end
+    end
+
     assign B_CH_S0[`AXI4_BID_RANGE]   = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? brsp_fifo_out_d3_w[`BRSP_FIFO_AXID_RANGE] : 0;
-    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE] : 0;
+    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? (brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE] | brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]) : 0;
 
     assign BVALID0 = ~brsp_fifo_empty_w & brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE];
 

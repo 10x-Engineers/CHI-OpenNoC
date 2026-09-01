@@ -96,6 +96,9 @@ module hni_qos `HNI_PARAM
     wire                                             req_dyn_alloc_s0;
     wire                                             req_static_alloc_s0;
     wire                                             req_dyn_alloc_fail_s0;
+    wire                                             mshr_dyn_avail_s0;
+    wire                                             mshr_static_avail_s0;
+    wire                                             use_static_pool_s0;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_dyn_entry_idx_avail_s0;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_static_entry_idx_avail_s0;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_entry_s0;
@@ -234,11 +237,20 @@ module hni_qos `HNI_PARAM
 
     assign req_qos_can_alloc_s0 = (qpc_high_s0 & qos_h_can_alloc_s0 ) | (qpc_low_s0 & qos_l_can_alloc_s0 ) ;
 
-    //qos allocate logic
-    assign req_dyn_alloc_s0      = req_dyn_s0 & req_qos_can_alloc_s0;
-    assign req_dyn_alloc_fail_s0 = req_dyn_s0 & ~req_qos_can_alloc_s0;
+    //an allocation is only legal onto an entry the corresponding pool actually offers
+    assign mshr_dyn_avail_s0    = |mshr_dyn_entry_idx_avail_s0;
+    assign mshr_static_avail_s0 = |mshr_static_entry_idx_avail_s0;
 
-    assign req_static_alloc_s0   = req_static_s0;
+    //qos allocate logic
+    assign req_dyn_alloc_s0      = req_dyn_s0 &  req_qos_can_alloc_s0 &  mshr_dyn_avail_s0;
+    assign req_dyn_alloc_fail_s0 = req_dyn_s0 & (~req_qos_can_alloc_s0 | ~mshr_dyn_avail_s0);
+
+    // Sec 2.11 (p.2-145): "except for PrefetchTgt, the AllowRetry field must be
+    // asserted the first time a transaction is sent", so an AllowRetry=0 request is
+    // either a retried one -- which holds a reserved static entry -- or a PrefetchTgt,
+    // which holds none and must fall back to a free dynamic entry.
+    assign use_static_pool_s0    = req_static_s0 & mshr_static_avail_s0;
+    assign req_static_alloc_s0   = req_static_s0 & (mshr_static_avail_s0 | mshr_dyn_avail_s0);
 
     //qos allocate enable
     assign rxreq_alloc_en_s0         = req_dyn_alloc_s0 | req_static_alloc_s0;
@@ -314,10 +326,10 @@ module hni_qos `HNI_PARAM
     end
 
     //qos allocate index logic
-    assign mshr_entry_idx_alloc_s0 = req_static_s0? mshr_static_idx_alloc_s0 : mshr_dyn_idx_alloc_s0;
+    assign mshr_entry_idx_alloc_s0 = use_static_pool_s0? mshr_static_idx_alloc_s0 : mshr_dyn_idx_alloc_s0;
 
     //qos alloccate location
-    assign mshr_alloc_entry_s0 = req_static_s0? mshr_static_entry_idx_ptr_s0 : mshr_dyn_entry_idx_ptr_s0;
+    assign mshr_alloc_entry_s0 = use_static_pool_s0? mshr_static_entry_idx_ptr_s0 : mshr_dyn_entry_idx_ptr_s0;
 
     always @(posedge clk or posedge rst) begin: mshr_entry_location_timing_logic
         if (rst == 1'b1)

@@ -479,7 +479,11 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    rxdatflit_op_check (
                        .clk   (clk_i),
                        .rst   (rst_i),
-                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_OPCODE_RANGE] !== `CHIE_COMPDATA))
+                       // SS2.3.1 Fig 2-2 gives a read two completion shapes and the
+                       // Home elects which, so DataSepResp is as legal on RXDAT as
+                       // CompData -- Table B-4 (p.B-496) lists both to an RN-I.
+                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_OPCODE_RANGE] != `CHIE_COMPDATA)
+                                               & (rxdatflit_d1_i[`CHIE_DAT_FLIT_OPCODE_RANGE] != `CHIE_DATASEPRESP))
                    );
 
     assert_checker #(
