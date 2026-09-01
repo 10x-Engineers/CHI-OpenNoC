@@ -67,23 +67,16 @@ module snf_rxreq `SNF_PARAM
     //internal reg signals
     reg                                             rxreqflitv_en_q;
     reg [`SNF_LL_REQ_CRD_CNT_RANGE]                 rxreq_crd_cnt_s1_q;
-    reg [3:0]                                       rxreq_crdcntsm_out;
     reg                                             rxreqcrdv_s1_q;
 
     //internal wire signals
-    wire [`SNF_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_inc1_val_s1;
-    wire [`SNF_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_dec_val_s1;
-    wire [`SNF_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_inc_s1;
-    wire [3:0]                                      rxreq_crdcntsm_in_sx;
     wire                                            snf_rxcrd_enable_sx;
     wire                                            rxreq_crd_cnt_zero_sx;
+    wire [1:0]                                      rxreq_crd_rtn_cnt_s1;
     wire                                            req_crd_rtn_s0;
     wire                                            rxreq_link_flit_s0;
     wire                                            retack_tx_s1;
-    wire                                            rxreq_crd_cnt_upd_s1;
     wire                                            rxreqcrdv_ns_s0;
-    wire                                            rxreq_crd_cnt_inc1_s1;
-    wire                                            rxreq_crd_cnt_dec_s1;
     wire [`SNF_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_nxt_s1;
 
     //main function
@@ -114,66 +107,32 @@ module snf_rxreq `SNF_PARAM
     //retry transaction sent
     assign retack_tx_s1 = txrsp_retryack_won_s1;
 
-    // ---------- input ------------- //
-    // snf_rxcrd_enable_sx rxreq_crd_cnt_zero_sx req_crd_rtn_s0 retack_tx_s1
-    // ---------- output -------------//
-    // upd lcrdv inc1 dec1
-    // 1 0 0 0 //  8 //  1 1 0 1  //  dec - 1
-    // 1 0 0 1 //  9 //  0 1 0 0  //  no change
-    // 1 0 1 0 // 10 //  0 1 0 0  //  no change
-    // 1 0 1 1 // 11 //  1 1 1 0  //  inc + 1
-
-    // 1 1 0 0 // 12 //  0 0 0 0  //  no change
-    // 1 1 0 1 // 13 //  0 1 0 0  //  no change
-    // 1 1 1 0 // 14 //  0 1 0 0  //  no change
-    // 1 1 1 1 // 15 //  1 1 1 0  //  inc + 1
-
-    assign rxreq_crd_cnt_inc1_val_s1 = rxreq_crd_cnt_s1_q + `SNF_LL_CRD_INCDEC_ONE;
-    assign rxreq_crd_cnt_dec_val_s1  = rxreq_crd_cnt_s1_q - `SNF_LL_CRD_INCDEC_ONE;
-
+    // The Receiver's pool of L-Credits not yet granted to the peer.
+    //   into the pool  : an arriving flit hands back the credit it was sent under,
+    //     and a RetryAck'd request's credit is replaced by a P-Credit
+    //     (Sec 2.11 p.2-145) rather than re-granted, so it returns too;
+    //   out of the pool: only in RUN -- CHI E.b Table 14-2 (p.14-450, MUST) has the
+    //     Receiver send no credits in STOP/ACTIVATE and stop sending them in
+    //     DEACTIVATE, which is precisely when the peer returns its own.
+    // The returns are counted in every state: Table 14-2 has the Transmitter return
+    // every held L-Credit while the link sits in DEACTIVATE, so a pool that ignored
+    // them would come back from STOP empty and never grant again.
     assign snf_rxcrd_enable_sx   = run_state;
     assign rxreq_crd_cnt_zero_sx = (rxreq_crd_cnt_s1_q == {`SNF_LL_REQ_CRD_CNT_WIDTH{1'b0}});
-    assign rxreq_crdcntsm_in_sx  = {snf_rxcrd_enable_sx, rxreq_crd_cnt_zero_sx, req_crd_rtn_s0, retack_tx_s1};
 
-    always @*begin
-        casez (rxreq_crdcntsm_in_sx)
-            4'b1000  :
-                rxreq_crdcntsm_out = 4'hd;
-            4'b1001  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1010  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1011  :
-                rxreq_crdcntsm_out = 4'he;
+    assign rxreq_crd_rtn_cnt_s1  = {1'b0, req_crd_rtn_s0} + {1'b0, retack_tx_s1};
+    assign rxreqcrdv_ns_s0       = snf_rxcrd_enable_sx &
+           (~rxreq_crd_cnt_zero_sx | req_crd_rtn_s0 | retack_tx_s1);
 
-            4'b1100  :
-                rxreq_crdcntsm_out = 4'h0;
-            4'b1101  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1110  :
-                rxreq_crdcntsm_out = 4'h4;
-            4'b1111  :
-                rxreq_crdcntsm_out = 4'he;
-            default   :
-                rxreq_crdcntsm_out = 4'h0;
-        endcase
-    end
-
-    assign rxreq_crd_cnt_upd_s1  = rxreq_crdcntsm_out[3];
-    assign rxreqcrdv_ns_s0       = rxreq_crdcntsm_out[2];
-    assign rxreq_crd_cnt_inc1_s1 = rxreq_crdcntsm_out[1];
-    assign rxreq_crd_cnt_dec_s1  = rxreq_crdcntsm_out[0];
-
-    assign rxreq_crd_cnt_nxt_s1 = rxreq_crd_cnt_dec_s1? rxreq_crd_cnt_dec_val_s1:
-           rxreq_crd_cnt_inc_s1;
-
-    assign rxreq_crd_cnt_inc_s1 = rxreq_crd_cnt_inc1_val_s1;
+    assign rxreq_crd_cnt_nxt_s1  = rxreq_crd_cnt_s1_q
+                                 + {{(`SNF_LL_REQ_CRD_CNT_WIDTH-2){1'b0}}, rxreq_crd_rtn_cnt_s1}
+                                 - {{(`SNF_LL_REQ_CRD_CNT_WIDTH-1){1'b0}}, rxreqcrdv_ns_s0};
 
 
     always @(posedge clk or posedge rst) begin: rxreq_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)
             rxreq_crd_cnt_s1_q <= XP_LCRD_NUM_PARAM;
-        else if (rxreq_crd_cnt_upd_s1 == 1'b1)
+        else
             rxreq_crd_cnt_s1_q <= rxreq_crd_cnt_nxt_s1;
     end
 

@@ -46,7 +46,9 @@ module snf_qos `SNF_PARAM
 
         rxreq_alloc_en_s0,
         rxreq_alloc_flit_s0,
-        mshr_entry_idx_alloc_s0
+        mshr_entry_idx_alloc_s0,
+
+        qos_active_sx
     );
     //inputs
     input wire                                       clk;
@@ -79,6 +81,9 @@ module snf_qos `SNF_PARAM
     output wire [`CHIE_REQ_FLIT_RANGE]               rxreq_alloc_flit_s0;
     output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]        mshr_entry_idx_alloc_s0;
 
+    //outputs to the link handshake
+    output wire                                      qos_active_sx;
+
     //internal wire signals
     wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]            rxreq_txnid_s0;
     wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]              rxreq_qos_s0;
@@ -96,6 +101,9 @@ module snf_qos `SNF_PARAM
     wire                                             req_dyn_alloc_s0;
     wire                                             req_static_alloc_s0;
     wire                                             req_dyn_alloc_fail_s0;
+    wire                                             mshr_dyn_avail_s0;
+    wire                                             mshr_static_avail_s0;
+    wire                                             use_static_pool_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_dyn_entry_idx_avail_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_static_entry_idx_avail_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_entry_s0;
@@ -238,11 +246,20 @@ module snf_qos `SNF_PARAM
 
     assign req_qos_can_alloc_s0 = (qpc_high_s0 & qos_h_can_alloc_s0 ) | (qpc_low_s0 & qos_l_can_alloc_s0 ) ;
 
-    //qos allocate logic
-    assign req_dyn_alloc_s0      = req_dyn_s0 & req_qos_can_alloc_s0;
-    assign req_dyn_alloc_fail_s0 = req_dyn_s0 & ~req_qos_can_alloc_s0;
+    //an allocation is only legal onto an entry the corresponding pool actually offers
+    assign mshr_dyn_avail_s0    = |mshr_dyn_entry_idx_avail_s0;
+    assign mshr_static_avail_s0 = |mshr_static_entry_idx_avail_s0;
 
-    assign req_static_alloc_s0   = req_static_s0;
+    //qos allocate logic
+    assign req_dyn_alloc_s0      = req_dyn_s0 &  req_qos_can_alloc_s0 &  mshr_dyn_avail_s0;
+    assign req_dyn_alloc_fail_s0 = req_dyn_s0 & (~req_qos_can_alloc_s0 | ~mshr_dyn_avail_s0);
+
+    // Sec 2.11 (p.2-145): "except for PrefetchTgt, the AllowRetry field must be
+    // asserted the first time a transaction is sent", so an AllowRetry=0 request is
+    // either a retried one -- which holds a reserved static entry -- or a PrefetchTgt,
+    // which holds none and must fall back to a free dynamic entry.
+    assign use_static_pool_s0    = req_static_s0 & mshr_static_avail_s0;
+    assign req_static_alloc_s0   = req_static_s0 & (mshr_static_avail_s0 | mshr_dyn_avail_s0);
 
     //qos allocate enable
     assign rxreq_alloc_en_s0         = req_dyn_alloc_s0 | req_static_alloc_s0;
@@ -318,10 +335,10 @@ module snf_qos `SNF_PARAM
     end
 
     //qos allocate index logic
-    assign mshr_entry_idx_alloc_s0 = req_static_s0? mshr_static_idx_alloc_s0 : mshr_dyn_idx_alloc_s0;
+    assign mshr_entry_idx_alloc_s0 = use_static_pool_s0? mshr_static_idx_alloc_s0 : mshr_dyn_idx_alloc_s0;
 
     //qos alloccate location
-    assign mshr_alloc_entry_s0 = req_static_s0? mshr_static_entry_idx_ptr_s0 : mshr_dyn_entry_idx_ptr_s0;
+    assign mshr_alloc_entry_s0 = use_static_pool_s0? mshr_static_entry_idx_ptr_s0 : mshr_dyn_entry_idx_ptr_s0;
 
     always @(posedge clk or posedge rst) begin: mshr_entry_location_timing_logic
         if (rst == 1'b1)
@@ -484,6 +501,17 @@ module snf_qos `SNF_PARAM
 
     //rxreq retry enable logic
     assign rxreq_retry_enable_s0 = req_dyn_alloc_fail_s0;
+
+    // Sec 14.7.2 (p.14-463, MUST): a Subordinate asserts TXSACTIVE "while it is
+    // processing a transaction that is in progress", and Sec 14.7.1 (p.14-460)
+    // counts a RetryAck'd one as in progress "until the associated credit has been
+    // supplied and used or returned" -- the retry bank and the reserved static
+    // entries are that credit's lifetime.
+    assign qos_active_sx = (|mshr_entry_valid_s1_q)
+                         | (|mshr_static_entry_valid_s1_q)
+                         | (|ret_bank_entry_v_s1_q)
+                         | (~retry_ack_fifo_empty)
+                         | (~pcrdgrant_fifo_empty);
 
     //retry pcrdtype field encode logic
 

@@ -176,6 +176,8 @@ module snf `SNF_PARAM
     wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]        txrsp_resp_sx;
     wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]        txrsp_dbid_sx;
     wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]       txrsp_srcid_sx;
+    wire                                        qos_active_sx;
+    wire                                        rxreq_dbf_wrzero_s1;
     wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]    txrsp_tracetag_sx;
     wire                                        txrsp_pcrdgnt_won_s2;
     wire                                        txrsp_won_sx;
@@ -292,7 +294,12 @@ module snf `SNF_PARAM
 
     assign RXLINKACTIVEACK = rxlinkactiveack_q;
     assign TXLINKACTIVEREQ = txlinkactivereq_q;
-    assign TXSACTIVE = TXLINKACTIVEREQ & TXLINKACTIVEACK & (~RST);
+    // CHI E.b Sec 14.7.2 (p.14-463, MUST): a Subordinate "must assert TXSACTIVE
+    // after receiving a transaction initiating flit and it must be asserted before
+    // or in the same cycle in which its first Response flit is sent", and Sec 14.7.4
+    // (p.14-463) makes it "orthogonal to the LINKACTIVE states" -- so it tracks the
+    // Protocol layer's outstanding work, not the link handshake.
+    assign TXSACTIVE = qos_active_sx & (~RST);
 
     assign run_state = RXLINKACTIVEREQ & RXLINKACTIVEACK;
 
@@ -390,7 +397,8 @@ module snf `SNF_PARAM
             .rxreq_retry_enable_s0(rxreq_retry_enable_s0),
             .rxreq_alloc_en_s0(rxreq_alloc_en_s0),
             .rxreq_alloc_flit_s0(rxreq_alloc_flit_s0),
-            .mshr_entry_idx_alloc_s0(mshr_entry_idx_alloc_s0)
+            .mshr_entry_idx_alloc_s0(mshr_entry_idx_alloc_s0),
+            .qos_active_sx(qos_active_sx)
         );
 
     snf_data_buffer `SNF_PARAM_INST
@@ -402,6 +410,7 @@ module snf `SNF_PARAM
             .rxreq_dbf_en_s1(rxreq_dbf_en_s1),
             .rxreq_dbf_entry_idx_s1(rxreq_dbf_entry_idx_s1),
             .rxreq_dbf_wr_s1(rxreq_dbf_wr_s1),
+            .rxreq_dbf_wrzero_s1(rxreq_dbf_wrzero_s1),
             .rxreq_dbf_addr_s1(rxreq_dbf_addr_s1),
             .rxreq_dbf_size_s1(rxreq_dbf_size_s1),
             .rxreq_dbf_axlen_s1(rxreq_dbf_axlen_s1),
@@ -466,6 +475,7 @@ module snf `SNF_PARAM
             .txrsp_won_sx(txrsp_won_sx),
             .rxreq_dbf_en_s1(rxreq_dbf_en_s1),
             .rxreq_dbf_wr_s1(rxreq_dbf_wr_s1),
+            .rxreq_dbf_wrzero_s1(rxreq_dbf_wrzero_s1),
             .rxreq_dbf_entry_idx_s1(rxreq_dbf_entry_idx_s1),
             .rxreq_dbf_addr_s1(rxreq_dbf_addr_s1),
             .rxreq_dbf_size_s1(rxreq_dbf_size_s1),
