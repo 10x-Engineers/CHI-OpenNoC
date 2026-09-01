@@ -43,6 +43,7 @@ module snf_mshr `SNF_PARAM
         rxreq_dbf_en_s1,
         rxreq_dbf_addr_s1,
         rxreq_dbf_wr_s1,
+        rxreq_dbf_wrzero_s1,
         rxreq_dbf_size_s1,
         rxreq_dbf_axlen_s1,
         rxreq_dbf_entry_idx_s1,
@@ -121,6 +122,7 @@ module snf_mshr `SNF_PARAM
     output wire                                         rxreq_dbf_en_s1;
     output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]         rxreq_dbf_addr_s1;
     output wire                                         rxreq_dbf_wr_s1;
+    output wire                                         rxreq_dbf_wrzero_s1;
     output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]         rxreq_dbf_size_s1;
     output wire [`AXI4_ARLEN_WIDTH-1:0]                 rxreq_dbf_axlen_s1;
     output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           rxreq_dbf_entry_idx_s1;
@@ -187,7 +189,6 @@ module snf_mshr `SNF_PARAM
     reg [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]                  rxreq_qos_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]              rxreq_memattr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]                rxreq_srcid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    reg [`CHIE_REQ_FLIT_TGTID_WIDTH-1:0]                rxreq_tgtid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]                rxreq_txnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]                 rxreq_size_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]                 rxreq_addr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
@@ -202,6 +203,7 @@ module snf_mshr `SNF_PARAM
     reg [`AXI4_ARSIZE_WIDTH-1:0]                        rxreq_axsize_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`AXI4_AXADDR_WIDTH-1:0]                        rxreq_axaddr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_wr_s1_q;
+    reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_wrzero_s1_q;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_rd_s1_q;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_dodmt_s1_q;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_dodwt_s1_q;
@@ -238,7 +240,6 @@ module snf_mshr `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    mshr_entry_alloc_sx;
     wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]                 rxreq_qos_s0;
     wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]               rxreq_srcid_s0;
-    wire [`CHIE_REQ_FLIT_TGTID_WIDTH-1:0]               rxreq_tgtid_s0;
     wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]               rxreq_txnid_s0;
     wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]              rxreq_opcode_s0;
     wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]                rxreq_size_s0;
@@ -339,18 +340,22 @@ module snf_mshr `SNF_PARAM
     assign rxreq_order_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_ORDER_RANGE]        :{`CHIE_REQ_FLIT_ORDER_WIDTH{1'b0}};
     assign rxreq_pcrdtype_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_PCRDTYPE_RANGE]     :{`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
     assign rxreq_memattr_s0     = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_MEMATTR_RANGE]      :{`CHIE_REQ_FLIT_MEMATTR_WIDTH{1'b0}};
-    assign rxreq_tgtid_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_TGTID_RANGE]        :{`CHIE_REQ_FLIT_TGTID_WIDTH{1'b0}};
     assign rxreq_tracetag_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_TRACETAG_RANGE]     :{`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
     assign rxreq_returnnid_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_RETURNNID_RANGE]    :{`CHIE_REQ_FLIT_RETURNNID_WIDTH{1'b0}};
     assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_RETURNTXNID_RANGE]  :{`CHIE_REQ_FLIT_RETURNTXNID_WIDTH{1'b0}};
     assign rxreq_dodmt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_rd_s0 == 1'b1) && (rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_SRCID_RANGE] != rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_RETURNNID_RANGE]) :1'b0;
-    assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_DODWT_RANGE])      :1'b0;
+    // Sec 4.2.1 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
+    // in WriteNoSnpZero and WriteUniqueZero is never permitted."
+    assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_DODWT_RANGE])      :1'b0;
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt." Every inbound request is
     // therefore classified here, and every class below owns a response programme.
     assign rxreq_rdsep_s0       = (rxreq_opcode_s0 == `CHIE_READNOSNPSEP);
     assign rxreq_rd_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_READNOSNP) | rxreq_rdsep_s0) :1'b0;
-    assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_WRITENOSNPFULL)|(rxreq_opcode_s0 == `CHIE_WRITENOSNPPTL)):1'b0;
+    // A Combined Write carries a real write leg: Sec 2.3.9 (p.2-80) has the
+    // Subordinate grant a DBID, take NCBWrData and complete it exactly as a plain
+    // WriteNoSnp*, with the CMO leg's CompCMO/CompPersist owed on top.
+    assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == `CHIE_WRITENOSNPFULL)|(rxreq_opcode_s0 == `CHIE_WRITENOSNPPTL)|rxreq_cw_s0|rxreq_wrzero_s0):1'b0;
     assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == `CHIE_CLEANSHAREDPERSISTSEP);
     // A CMO at a Subordinate holding no cached copy is a no-op that owes only its
     // completion (Sec 2.3.9 p.2-81); Sec 2.3.5 (p.2-74) lets the *PersistSep one
@@ -385,7 +390,7 @@ module snf_mshr `SNF_PARAM
     assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errwr_s0 && ~rxreq_wrzero_s0;
     assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
     assign rxreq_rsponly_opcode_s0 = rxreq_cmopersist_s0 ? `CHIE_COMPPERSIST : `CHIE_COMP;
-    assign rxreq_errgrant_s0    = rxreq_errwr_s0 | rxreq_wrzero_s0;
+    assign rxreq_errgrant_s0    = rxreq_errwr_s0;
     assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE]  :{`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_WIDTH{1'b0}};
 
     generate
@@ -429,6 +434,15 @@ module snf_mshr `SNF_PARAM
                     rxreq_wr_s1_q[entry] <= 1'b0;
                 else if(mshr_entry_alloc_sx[entry] == 1'b1 && rxreq_wr_s0)
                     rxreq_wr_s1_q[entry] <= 1'b1;
+            end
+
+            always @(posedge clk or posedge rst)begin : rxreq_wrzero_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= rxreq_wrzero_s0;
             end
 
             always @(posedge clk or posedge rst)begin : rxreq_rd_s1_q_timing_logic
@@ -546,17 +560,6 @@ module snf_mshr `SNF_PARAM
                     rxreq_srcid_s1_q[entry] <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)
                     rxreq_srcid_s1_q[entry] <= rxreq_srcid_s0;
-                else
-                    ;
-            end
-
-            always @(posedge clk or posedge rst)begin : mshr_tgtid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_tgtid_s1_q[entry] <= {`CHIE_REQ_FLIT_TGTID_WIDTH{1'b0}};
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_tgtid_s1_q[entry] <= {`CHIE_REQ_FLIT_TGTID_WIDTH{1'b0}};
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_tgtid_s1_q[entry] <= rxreq_tgtid_s0;
                 else
                     ;
             end
@@ -773,6 +776,7 @@ module snf_mshr `SNF_PARAM
     assign rxreq_dbf_en_s1         = rxreq_alloc_en_s1_q;
     assign rxreq_dbf_addr_s1       = rxreq_addr_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_wrzero_s1     = rxreq_wrzero_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_size_s1       = rxreq_size_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_axlen_s1      = rxreq_axlen_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_entry_idx_s1  = mshr_entry_idx_alloc_s1_q;
@@ -937,7 +941,10 @@ module snf_mshr `SNF_PARAM
     assign txrsp_resp_sx                = `CHIE_COMP_RESP_I;
     assign txrsp_dbid_sx                = txrsp_entry_idx_sx;
     assign txrsp_tracetag_sx            = rxreq_tracetag_s1_q[txrsp_entry_idx_sx];
-    assign txrsp_srcid_sx               = rxreq_tgtid_s1_q[txrsp_entry_idx_sx];
+    // Sec 2.6.1 (p.2-94, MUST): "the SrcID is a fixed value for the Subordinate.
+    // This also matches the TgtID received." Echoing the request's TgtID instead
+    // leaves the Subordinate answering under whatever identity it was addressed by.
+    assign txrsp_srcid_sx               = SNF_NID_PARAM;
 
     //************************************************************************//
     //                       mshr AR channel logic                            //
@@ -1142,7 +1149,7 @@ module snf_mshr `SNF_PARAM
                                                                              : `CHIE_RESP_ERR_NORM_OK;
     assign mshr_txdat_dbid_sx       = rxreq_txnid_s1_q[mshr_txdat_entry_idx_sx];
     assign mshr_txdat_tgtid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? rxreq_returnnid_s1_q[mshr_txdat_entry_idx_sx] : rxreq_srcid_s1_q[mshr_txdat_entry_idx_sx];
-    assign mshr_txdat_srcid_sx      = rxreq_tgtid_s1_q[mshr_txdat_entry_idx_sx];
+    assign mshr_txdat_srcid_sx      = SNF_NID_PARAM; // Sec 2.6.1 (p.2-94, MUST), as txrsp_srcid_sx
     assign mshr_txdat_homenid_sx    = rxreq_srcid_s1_q[mshr_txdat_entry_idx_sx];
     assign mshr_txdat_tracetag_sx   = rxreq_tracetag_s1_q[mshr_txdat_entry_idx_sx];
 
@@ -1323,7 +1330,7 @@ module snf_mshr `SNF_PARAM
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
-                                                && (((rxreq_wr_s1_q[entry]) && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
+                                                && (((rxreq_wr_s1_q[entry]) && all_rsp_sent_sx[entry] && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
                                                     |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((rxreq_size_s1_q[entry] == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((rxreq_size_s1_q[entry] != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
                                                     // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
                                                     // entry is freed at once rather than leaked.

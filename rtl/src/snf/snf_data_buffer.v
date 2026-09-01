@@ -31,6 +31,7 @@ module snf_data_buffer `SNF_PARAM
         rxreq_dbf_en_s1,
         rxreq_dbf_entry_idx_s1,
         rxreq_dbf_wr_s1,
+        rxreq_dbf_wrzero_s1,
         rxreq_dbf_addr_s1,
         rxreq_dbf_size_s1,
         rxreq_dbf_axlen_s1,
@@ -82,6 +83,7 @@ module snf_data_buffer `SNF_PARAM
     input wire                                      rxreq_dbf_en_s1;
     input wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]        rxreq_dbf_entry_idx_s1;
     input wire                                      rxreq_dbf_wr_s1;
+    input wire                                      rxreq_dbf_wrzero_s1;
     input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]      rxreq_dbf_addr_s1;
     input wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]      rxreq_dbf_size_s1;
     input wire [`AXI4_ARLEN_WIDTH-1:0]              rxreq_dbf_axlen_s1;
@@ -141,6 +143,8 @@ module snf_data_buffer `SNF_PARAM
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wdata_fifo_entry_idx_sx[0:`SNF_MSHR_ENTRIES_NUM-1];
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wdata_cancel_idx_sx_q;
     reg [1:0]                                       wdata_recv_cnt_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    reg [`SNF_MSHR_ENTRIES_NUM-1:0]                 wrzero_pending_q;
+    reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wrzero_inject_idx_sx;
 
     wire                                            AXI_128;
     wire                                            wdata_to_slave;
@@ -153,6 +157,7 @@ module snf_data_buffer `SNF_PARAM
     wire [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]          wdata_recv_data_sx;
     wire [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]            wdata_recv_be_sx;
     wire                                            wdata_cancel_recv_s0;
+    wire                                            wrzero_inject_sx;
     wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]            dbf_txdat_data_sx;
     wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]              dbf_txdat_be_sx;
     wire                                            dbf_txdat_en_sx;
@@ -179,7 +184,6 @@ module snf_data_buffer `SNF_PARAM
     assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_BE_RANGE]     : {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
     assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_DATAID_RANGE] : {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
     assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_DATA_RANGE]   : {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
-    assign wdata_cancel_recv_s0 = (rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL);
 
     assign AXI_128 = (`AXI4_AXDATA_WIDTH == 128) ? 1'b1 : 1'b0;
 
@@ -454,14 +458,45 @@ module snf_data_buffer `SNF_PARAM
         end
     end
 
-    assign wdata_recv_update = rxdat_valid_s0 ;
-    assign wdata_recv_idx  = rxdat_txnid_s0[`SNF_MSHR_ENTRIES_WIDTH-1:0];
+    // Table 4-39 (p.4-219): WriteNoSnpZero's WriteData response is "None", so its
+    // payload is sourced here -- a full line of zeros with every byte enable set --
+    // and injected on the same completion path a real beat takes, on a cycle no
+    // real beat is using.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin:wrzero_pending_gen
+            always @(posedge clk or posedge rst)begin:wrzero_pending_timing_logic
+                if (rst)
+                    wrzero_pending_q[entry] <= 1'b0;
+                else if (rxreq_dbf_en_s1 && rxreq_dbf_wrzero_s1 && (entry == rxreq_dbf_entry_idx_s1))
+                    wrzero_pending_q[entry] <= 1'b1;
+                else if (wrzero_inject_sx && (entry == wrzero_inject_idx_sx))
+                    wrzero_pending_q[entry] <= 1'b0;
+            end
+        end
+    endgenerate
+
+    always @* begin:wrzero_inject_idx_comb_logic
+        integer i;
+        wrzero_inject_idx_sx = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
+        for(i=`SNF_MSHR_ENTRIES_NUM-1; i>=0; i=i-1)begin
+            if (wrzero_pending_q[i])
+                wrzero_inject_idx_sx = i[`SNF_MSHR_ENTRIES_WIDTH-1:0];
+        end
+    end
+
+    assign wrzero_inject_sx = (|wrzero_pending_q) & (~rxdat_valid_s0);
+
+    assign wdata_recv_update = rxdat_valid_s0 | wrzero_inject_sx;
+    assign wdata_recv_idx  = rxdat_valid_s0 ? rxdat_txnid_s0[`SNF_MSHR_ENTRIES_WIDTH-1:0] : wrzero_inject_idx_sx;
     assign wdata_recv_cnt_next = wdata_recv_cnt_q[wdata_recv_idx] | wdata_recv_sx;
-    assign wdata_cancel_recv_s0 = (rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL);
-    assign wdata_recv_sx = (wdata_recv_update == 1'b1) ? ((rxdat_dataid_s0 == 2'b00) ? 2'b01 : 2'b10) : 2'b00;
-    assign wdata_recv_data_sx = (wdata_cancel_recv_s0 == 1'b0) ? ((rxdat_dataid_s0 == 2'b00) ? {{`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}},rxdat_data_s0} : ((rxdat_dataid_s0 == 2'b10)? {rxdat_data_s0,{`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}}} : {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}}))
+    assign wdata_cancel_recv_s0 = rxdat_valid_s0 && (rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL);
+    assign wdata_recv_sx = wrzero_inject_sx ? 2'b11
+                         : (wdata_recv_update == 1'b1) ? ((rxdat_dataid_s0 == 2'b00) ? 2'b01 : 2'b10) : 2'b00;
+    assign wdata_recv_data_sx = wrzero_inject_sx ? {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}}
+                              : (wdata_cancel_recv_s0 == 1'b0) ? ((rxdat_dataid_s0 == 2'b00) ? {{`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}},rxdat_data_s0} : ((rxdat_dataid_s0 == 2'b10)? {rxdat_data_s0,{`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}}} : {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}}))
                                                             : {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
-    assign wdata_recv_be_sx = (wdata_cancel_recv_s0 == 1'b0) ? ((rxdat_dataid_s0 == 2'b00) ? {{`CHIE_DAT_FLIT_BE_WIDTH{1'b0}},rxdat_be_s0} : ((rxdat_dataid_s0 == 2'b10)? {rxdat_be_s0,{`CHIE_DAT_FLIT_BE_WIDTH{1'b0}}} : {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}}))
+    assign wdata_recv_be_sx = wrzero_inject_sx ? {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b1}}
+                            : (wdata_cancel_recv_s0 == 1'b0) ? ((rxdat_dataid_s0 == 2'b00) ? {{`CHIE_DAT_FLIT_BE_WIDTH{1'b0}},rxdat_be_s0} : ((rxdat_dataid_s0 == 2'b10)? {rxdat_be_s0,{`CHIE_DAT_FLIT_BE_WIDTH{1'b0}}} : {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}}))
                                                             : {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}};
 
 
