@@ -168,7 +168,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     assign snp_crd_cnt_not_zero_sx = (txsnp_crd_cnt_q != 0);
 
     //outputs to mshr
-    assign txsnp_mshr_busy_sx1 = ((mshr_txsnp_valid_sx1_q == 1'b1) && ((txsnp_cnt_q > 0) | (txsnp_crd_avail_s1 == 1'b0)));
+    // Sec 14.2.1 / Table 14-2 (p.14-450, MUST): a credit held in ACTIVATE or
+    // DEACTIVATE must not be used until the link is in RUN, so retiring the snoop
+    // from the MSHR takes the same gate the flit does -- otherwise the fan-out is
+    // consumed with nothing sent and Sec 4.4.1 (p.4-194, MUST) is broken.
+    assign txsnp_mshr_busy_sx1 = ((mshr_txsnp_valid_sx1_q == 1'b1) && ((txsnp_cnt_q > 0) | (txsnp_busy_sx == 1'b1)));
 
     //read lcrd
     assign txsnpcrdv_s0            = txsnp_lcrdv;
@@ -223,7 +227,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         tgt_vec = mshr_txsnp_rn_vec_sx1;
         clr_1st = 1'b0;
         for(i = 0; i < `RNF_NUM ; i = i + 1)begin
-            if(mshr_txsnp_rn_vec_sx1[i] == 1'b1 & txsnp_crd_avail_s1 == 1'b1 & clr_1st == 1'b0)begin
+            if(mshr_txsnp_rn_vec_sx1[i] == 1'b1 & txsnp_busy_sx == 1'b0 & clr_1st == 1'b0)begin
                 tgt_vec[i] = 1'b0;
                 clr_1st    = 1'b1;
             end
@@ -241,7 +245,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             tgt_vec_q        <= {`RNF_NUM{1'b0}};
             txsnp_cnt_q      <= {`MSHR_SNPCNT_WIDTH{1'b0}};
         end
-        else if((txsnp_crd_avail_s1 == 1'b1) & (mshr_txsnp_valid_sx1_q == 1'b1) & (txsnp_cnt_q == 0))begin
+        else if((txsnp_busy_sx == 1'b0) & (mshr_txsnp_valid_sx1_q == 1'b1) & (txsnp_cnt_q == 0))begin
             tgt_vec_q        <= tgt_vec;
             txsnp_cnt_q      <= txsnp_cnt_tmp-1;
         end

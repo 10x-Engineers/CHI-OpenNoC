@@ -149,7 +149,10 @@ module chi_link_handshake
 
     assign rxlink_state    = {rxlinkactivereq_s1_q, rxlinkactiveack_s1_q};
 
-    assign lcrd_return_en  = ~txlinkactivereq_s1_q;
+    // Table 14-3 (p.14-451, MUST): the Transmitter "must not send flits" in STOP.
+    // ~TXLINKACTIVEREQ alone is STOP as well as DEACTIVATE, so the ack qualifies it
+    // down to DEACTIVATE, where Table 14-2 (p.14-450) expects the returns.
+    assign lcrd_return_en  = ~txlinkactivereq_s1_q & txlinkactiveack_s1_q;
     assign rxcrd_en        = (rxlink_state == LL_RUN);
     assign txlink_run      = (txlink_state == LL_RUN);
 
