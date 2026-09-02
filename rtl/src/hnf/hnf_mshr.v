@@ -120,12 +120,15 @@ module hnf_mshr `HNF_PARAM
         qos_txrsp_pcrdgnt_pcrdtype_s2,
         rxreq_retry_enable_s0,
         qos_seq_pool_full_s0_q,
+        qos_active_sx,
         mshr_txsnp_addr_sx1,
         mshr_txreq_addr_sx1,
         mshr_l3_hazard_valid_sx3_q,
         mshr_l3_addr_sx1,
         mshr_dbf_rd_idx_sx1_q,
         mshr_dbf_rd_valid_sx1_q,
+        mshr_dbf_err_fill_idx_sx1_q,
+        mshr_dbf_err_fill_valid_sx1_q,
         mshr_dbf_retired_idx_sx1_q,
         mshr_dbf_retired_valid_sx1_q,
         mshr_txreq_valid_sx1_q,
@@ -274,12 +277,15 @@ module hnf_mshr `HNF_PARAM
     output wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    qos_txrsp_pcrdgnt_pcrdtype_s2;
     output wire                                        rxreq_retry_enable_s0;
     output wire                                        qos_seq_pool_full_s0_q;
+    output wire                                        qos_active_sx;
     output wire [`CHIE_SNP_FLIT_ADDR_WIDTH-1:0]        mshr_txsnp_addr_sx1;
     output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_txreq_addr_sx1;
     output wire                                        mshr_l3_hazard_valid_sx3_q;
     output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
     output wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_rd_idx_sx1_q;
     output wire                                        mshr_dbf_rd_valid_sx1_q;
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_err_fill_idx_sx1_q;
+    output wire                                        mshr_dbf_err_fill_valid_sx1_q;
     output wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_retired_idx_sx1_q;
     output wire                                        mshr_dbf_retired_valid_sx1_q;
     output wire                                        mshr_txreq_valid_sx1_q;
@@ -438,6 +444,7 @@ module hnf_mshr `HNF_PARAM
                      .qos_txrsp_pcrdgnt_tgtid_s2                      (qos_txrsp_pcrdgnt_tgtid_s2        ),
                      .qos_txrsp_pcrdgnt_pcrdtype_s2                   (qos_txrsp_pcrdgnt_pcrdtype_s2     ),
                      .rxreq_retry_enable_s0                           (rxreq_retry_enable_s0             ),
+                     .qos_active_sx                                   (qos_active_sx                     ),
                      .qos_seq_pool_full_s0_q                          (qos_seq_pool_full_s0_q            ),
                      .mshr_alloc_en_s0                                (mshr_alloc_en_s0                  ),
                      .mshr_alloc_en_s1_q                              (mshr_alloc_en_s1_q                ),
@@ -545,6 +552,8 @@ module hnf_mshr `HNF_PARAM
                      .l3_evict_sx7_q                                  (l3_evict_sx7_q                    ),
                      .mshr_dbf_rd_idx_sx1_q                           (mshr_dbf_rd_idx_sx1_q             ),
                      .mshr_dbf_rd_valid_sx1_q                         (mshr_dbf_rd_valid_sx1_q           ),
+                     .mshr_dbf_err_fill_idx_sx1_q                     (mshr_dbf_err_fill_idx_sx1_q       ),
+                     .mshr_dbf_err_fill_valid_sx1_q                   (mshr_dbf_err_fill_valid_sx1_q     ),
                      .mshr_dbf_retired_idx_sx1_q                      (mshr_dbf_retired_idx_sx1_q        ),
                      .mshr_dbf_retired_valid_sx1_q                    (mshr_dbf_retired_valid_sx1_q      ),
                      .mshr_txreq_valid_sx1_q                          (mshr_txreq_valid_sx1_q            ),

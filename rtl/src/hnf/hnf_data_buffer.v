@@ -30,6 +30,8 @@ module hnf_data_buffer `HNF_PARAM (clk,
                                        mshr_dbf_rd_valid_sx1_q,
                                        mshr_dbf_retired_idx_sx1_q,
                                        mshr_dbf_retired_valid_sx1_q,
+                                       mshr_dbf_err_fill_idx_sx1_q,
+                                       mshr_dbf_err_fill_valid_sx1_q,
                                        pipe_dbf_wr_valid_sx9_q,
                                        pipe_dbf_wr_idx_sx9_q,
                                        pipe_dbf_wr_data_sx9_q,
@@ -59,6 +61,12 @@ module hnf_data_buffer `HNF_PARAM (clk,
     input wire                                       mshr_dbf_rd_valid_sx1_q;
     input wire [`MSHR_ENTRIES_WIDTH-1:0]             mshr_dbf_retired_idx_sx1_q;
     input wire                                       mshr_dbf_retired_valid_sx1_q;
+    // CHI E.b Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data
+    // packets. This stamps an entry present with no fill behind it, so the TXDAT
+    // wrapper -- which derives DataID and the beat count from the presence bits
+    // alone -- emits them.
+    input wire [`MSHR_ENTRIES_WIDTH-1:0]             mshr_dbf_err_fill_idx_sx1_q;
+    input wire                                       mshr_dbf_err_fill_valid_sx1_q;
 
     //inputs from hnf_cache_pipeline
     input wire                                       pipe_dbf_wr_valid_sx9_q;
@@ -193,6 +201,11 @@ module hnf_data_buffer `HNF_PARAM (clk,
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i] <= temp_pipe_data;
                         dbf_be_q[i]   <= temp_pipe_be;
+                        dbf_pe_q[i]   <= 2'b11;
+                    end
+                    else if (mshr_dbf_err_fill_valid_sx1_q && i == mshr_dbf_err_fill_idx_sx1_q)begin
+                        dbf_data_q[i] <= 'd0;
+                        dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
                         dbf_pe_q[i]   <= 2'b11;
                     end
                     else begin

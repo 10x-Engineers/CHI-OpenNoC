@@ -112,6 +112,9 @@ module snf_qos `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_static_set_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_entry_s1;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 mshr_static_en_s0;
+    wire                                             pool_free_sx;
+    wire                                             grant_window_sx;
+    wire                                             pool_free_grant_sx;
     wire                                             qos_high_pool_avail_s0;
     wire                                             qos_low_pool_avail_s0;
     wire                                             qos_pool_high_full_s0;
@@ -264,6 +267,19 @@ module snf_qos `SNF_PARAM
     //qos allocate enable
     assign rxreq_alloc_en_s0         = req_dyn_alloc_s0 | req_static_alloc_s0;
 
+    // Sec 2.11 (p.2-145, MUST): "When required resources become available, at a
+    // later point in time, the Completer must then send a P-Credit to the
+    // Requester, using a PCrdGrant response." A retirement is the moment a
+    // resource is RELEASED, not the only moment one is AVAILABLE: once the tracker
+    // drains, entries stay free and no further retirement occurs, so a retry
+    // banked at or after the last one would never be granted -- and Sec 2.11
+    // (p.2-146) makes the Requester's wait unconditional, so that is a permanent
+    // stall, not a slow path. Held off a cycle in which an entry is retiring or
+    // allocating, so the two grant paths never reserve at once and the free-entry
+    // pointer is stable.
+    assign pool_free_sx    = mshr_dyn_avail_s0 & ~rxreq_alloc_en_s0 & ~mshr_retired_valid_sx;
+    assign grant_window_sx = mshr_retired_valid_sx | pool_free_sx;
+
     assign rxreq_alloc_flit_s0       = (rxreq_alloc_en_s0 == 1'b1) ? rxreqflit_s0 : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
 
     always @(posedge clk or posedge rst) begin: update_mshr_alloc_en_timing_logic
@@ -387,7 +403,14 @@ module snf_qos `SNF_PARAM
 
     assign mshr_alloc_entry_s1  = {`SNF_MSHR_ENTRIES_NUM{rxreq_alloc_en_s1_q}} & mshr_alloc_entry_s1_q;
 
-    assign mshr_static_set_s0   = ({`SNF_MSHR_ENTRIES_NUM{mark_mshr_static_sx}} & mshr_retire_entry_s0);
+    // A grant off the free-entry path reserves one of those free entries, so the
+    // AllowRetry=0 reissue Sec 2.11 (p.2-145) guarantees acceptance for still finds
+    // a static entry -- the same reservation the retirement path makes of the entry
+    // it frees. Taken off the win decision itself, so the two cannot diverge.
+    assign pool_free_grant_sx   = pool_free_sx & (h_present_win_sx | l_present_win_sx);
+
+    assign mshr_static_set_s0   = ({`SNF_MSHR_ENTRIES_NUM{mark_mshr_static_sx}} & mshr_retire_entry_s0)
+                                | ({`SNF_MSHR_ENTRIES_NUM{pool_free_grant_sx}}  & mshr_dyn_entry_idx_ptr_s0);
 
     //static entry is set on mshr retired.
     //  static entry is cleared on mshr allocate (previously retried).
@@ -688,7 +711,14 @@ module snf_qos `SNF_PARAM
     assign l_to_h_disbale  = (l_wait_cnt_q  >= `SNF_LOW2HIGH_MAX_CNT);
 
     //high present win logic
-    assign h_present_win_sx = high_present & mshr_retired_valid_sx & ((qos_pool_retire_class_sx == `SNF_QOS_CLASS_HIGH) ? 1'b1 : (~l_to_h_disbale));
+    //  High takes the resource outright only when a HIGH-class entry retired into
+    //  it; on a LOW-class retirement, and on the free-entry path where the
+    //  resource belongs to no class, the starvation guard still applies -- without
+    //  it a non-empty high bank would win every idle cycle and low would never be
+    //  granted at all.
+    assign h_present_win_sx = high_present & grant_window_sx
+           & ((mshr_retired_valid_sx & (qos_pool_retire_class_sx == `SNF_QOS_CLASS_HIGH)) ? 1'b1
+                                                                                         : (~l_to_h_disbale));
 
     always @(posedge clk or posedge rst) begin: update_h_present_win_timing_logic
         if (rst == 1'b1)
@@ -698,7 +728,8 @@ module snf_qos `SNF_PARAM
     end
 
     //low present win logic
-    assign l_present_win = low_present & mshr_retired_valid_sx & (qos_pool_retire_class_sx == `SNF_QOS_CLASS_LOW);
+    assign l_present_win = low_present & grant_window_sx
+           & (pool_free_sx | (qos_pool_retire_class_sx == `SNF_QOS_CLASS_LOW));
     assign l_present_win_sx = ~h_present_win_sx & l_present_win;
 
     always @(posedge clk or posedge rst) begin: update_l_present_win_timing_logic

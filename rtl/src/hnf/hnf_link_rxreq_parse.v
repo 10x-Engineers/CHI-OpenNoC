@@ -208,8 +208,13 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
+    // hnf_mshr_ctl classifies every admitted opcode and answers an unserviced one
+    // with Sec 9.1's (p.9-334) NDERR, which is what Sec 4.5.1 (p.4-197, MUST)
+    // requires of every transaction but PCrdReturn and PrefetchTgt -- so the only
+    // opcode this rejects is the link flit, which FLITV must never carry
+    // (Sec 13.11 p.13-442).
     always @(*)begin
-        `display_fatal( (!((rxreqflitv == 1'b1))) || (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_READNOSNP)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITENOSNPFULL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITENOSNPPTL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_CLEANUNIQUE)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_READCLEAN)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_READNOTSHAREDDIRTY)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_READONCE)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] ==  `CHIE_READUNIQUE)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITEUNIQUEFULL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITEUNIQUEPTL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITEBACKFULL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITECLEANFULL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_WRITEEVICTFULL)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_MAKEUNIQUE)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_EVICT)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_CLEANSHARED)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_CLEANINVALID)||(rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `SF_EVICT),$sformatf("Fatal info: RXREQ received a unsupported flit with opcode: %h",rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE]));
+        `display_fatal( (!((rxreqflitv == 1'b1))) || (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] != `CHIE_REQLCRDRETURN),$sformatf("Fatal info: RXREQ received a link flit with FLITV asserted, opcode: %h",rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE]));
     end
 `endif
 endmodule

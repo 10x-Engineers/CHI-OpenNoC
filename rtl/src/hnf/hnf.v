@@ -319,6 +319,8 @@ module hnf `HNF_PARAM
     wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_rd_idx_sx1_q;
     wire                                        mshr_dbf_rd_valid_sx1_q;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_err_fill_idx_sx1_q;
+    wire                                        mshr_dbf_err_fill_valid_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_retired_idx_sx1_q;
     wire                                        mshr_dbf_retired_valid_sx1_q;
     wire                                        mshr_l3_req_en_sx1_q;
@@ -374,6 +376,7 @@ module hnf `HNF_PARAM
     wire                                        hnf_rxcrd_cnt_full;
     wire                                        hnf_txflit_avail;
     wire                                        hnf_txlink_run;
+    wire                                        hnf_qos_active_sx;
 
     chi_link_handshake u_chi_link_handshake(
         .clk                (CLK                ),
@@ -392,10 +395,14 @@ module hnf `HNF_PARAM
         );
 
     // CHI E.b Sec 14.7.2 (p.14-460, MUST): TXSACTIVE "must be asserted when the
-    // transmitter has flits to send", and a component that asserts it "must also
-    // ... initiate the link activation sequence" -- so it tracks the Transmit
-    // link being anything other than STOP.
-    assign TXSACTIVE = (TXLINKACTIVEREQ | TXLINKACTIVEACK) & (~RST);
+    // transmitter has flits to send" and "must remain asserted until after the
+    // last flit relating to all transactions is sent or received", and Sec 14.7.4
+    // (p.14-463) makes it "orthogonal to the LINKACTIVE states" -- so it tracks
+    // the Protocol layer's outstanding work, not the link handshake. The tracker
+    // occupancy covers a transaction still in progress; the outbound flit
+    // availability covers one whose entry has retired with its last flit still
+    // queued.
+    assign TXSACTIVE = (hnf_qos_active_sx | hnf_txflit_avail) & (~RST);
 
     hnf_link `HNF_PARAM_INST
              u_hnf_link(
@@ -669,12 +676,15 @@ module hnf `HNF_PARAM
                  .qos_txrsp_pcrdgnt_pcrdtype_s2                (qos_txrsp_pcrdgnt_pcrdtype_s2     ),
                  .rxreq_retry_enable_s0                        (rxreq_retry_enable_s0             ),
                  .qos_seq_pool_full_s0_q                       (qos_seq_pool_full_s0_q            ),
+                 .qos_active_sx                                (hnf_qos_active_sx                 ),
                  .mshr_txsnp_addr_sx1                          (mshr_txsnp_addr_sx1               ),
                  .mshr_txreq_addr_sx1                          (mshr_txreq_addr_sx1               ),
                  .mshr_l3_hazard_valid_sx3_q                   (mshr_l3_hazard_valid_sx3_q        ),
                  .mshr_l3_addr_sx1                             (mshr_l3_addr_sx1                  ),
                  .mshr_dbf_rd_idx_sx1_q                        (mshr_dbf_rd_idx_sx1_q             ),
                  .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
+                 .mshr_dbf_err_fill_idx_sx1_q                  (mshr_dbf_err_fill_idx_sx1_q       ),
+                 .mshr_dbf_err_fill_valid_sx1_q                (mshr_dbf_err_fill_valid_sx1_q     ),
                  .mshr_dbf_retired_idx_sx1_q                   (mshr_dbf_retired_idx_sx1_q        ),
                  .mshr_dbf_retired_valid_sx1_q                 (mshr_dbf_retired_valid_sx1_q      ),
                  .mshr_txreq_valid_sx1_q                       (mshr_txreq_valid_sx1_q            ),
@@ -799,6 +809,8 @@ module hnf `HNF_PARAM
                         .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
                         .mshr_dbf_retired_idx_sx1_q                   (mshr_dbf_retired_idx_sx1_q        ),
                         .mshr_dbf_retired_valid_sx1_q                 (mshr_dbf_retired_valid_sx1_q      ),
+                        .mshr_dbf_err_fill_idx_sx1_q                  (mshr_dbf_err_fill_idx_sx1_q       ),
+                        .mshr_dbf_err_fill_valid_sx1_q                (mshr_dbf_err_fill_valid_sx1_q     ),
                         .pipe_dbf_wr_valid_sx9_q                      (pipe_dbf_wr_valid_sx9_q           ),
                         .pipe_dbf_wr_idx_sx9_q                        (pipe_dbf_wr_idx_sx9_q             ),
                         .pipe_dbf_wr_data_sx9_q                       (l3_rd_data_q                      ),

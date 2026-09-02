@@ -39,6 +39,7 @@ module hni_qos `HNI_PARAM
         qos_txrsp_retryack_fifo_s1,
 
         qos_txrsp_pcrdgnt_valid_s2,
+        qos_active_sx,
         qos_txrsp_pcrdgnt_fifo_s2,
 
         rxreq_retry_enable_s0,
@@ -73,6 +74,9 @@ module hni_qos `HNI_PARAM
 
     //outputs to RXREQ
     output wire                                      rxreq_retry_enable_s0;
+
+    //outputs to hni: Protocol layer activity (Sec 14.7)
+    output wire                                      qos_active_sx;
 
     //outputs to global_monitor,mshr and TXRSP(fastpath)
     output wire                                      rxreq_alloc_en_s0;
@@ -819,5 +823,16 @@ module hni_qos `HNI_PARAM
     //decode pcrdgrant part fields from fifo
     assign qos_txrsp_pcrdgnt_valid_s2    = ~pcrdgrant_fifo_empty;
     assign qos_txrsp_pcrdgnt_fifo_s2     = pcrdgrant_fifo_dataout_s2;
+
+
+    // Sec 14.7.1 (p.14-460)'s Protocol layer activity, as snf_qos.v computes it:
+    // the tracker's occupancy plus the retry state, which that section counts as
+    // in progress "until the associated credit has been supplied and used or
+    // returned".
+    assign qos_active_sx = (|mshr_entry_valid_s1_q)
+                         | (|mshr_static_entry_valid_s1_q)
+                         | (|ret_bank_entry_v_s1_q)
+                         | qos_txrsp_retryack_valid_s1
+                         | qos_txrsp_pcrdgnt_valid_s2;
 
 endmodule
