@@ -117,10 +117,10 @@ snoop and neither has a SNP port.
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero |
 | MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_defines.v`'s flit widths — the field is not in the layout |
 | RSVDC / DataCheck / Poison | 🔴 | 🔴 | 🔴 | 🔴 | the data-path wrappers name these as the fields the node never sources; the field is still in the flit layout, and no node parses an inbound one — [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) |
-| Error propagation (`RespErr`) | 🔴⁵ | 🟡⁴ | 🟢 | 🔴 | the HN-F parses `RespErr` on neither RX channel ([#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61)); the HN-I never reads `BRESP` and decodes only `RRESP=0b10` ([#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63)); the SN-F reads neither ([#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70)). The RN-I direction is CHI completion -> AXI `BRESP`/`RRESP`, fixed in [#44](https://github.com/10x-Engineers/CHI-OpenNoC/issues/44) |
-| `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🔴 | `snf_data_buffer.v:441,446`, `hni_data_buffer.v:653,658`, `rni_wr_buffer.v:482` drive both; `hnf_link_txdat_wrap.v:196,198` ties both to zero — [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) |
+| Error propagation (`RespErr`) | 🟢 | 🟢⁴ | 🟢 | 🟢 | the SN-F and HN-I latch `RRESP`/`BRESP` per entry and report them; the HN-F parses inbound `RespErr` on both RX channels and passes it back, keeping `DERR` and `NDERR` distinct (§9.1 p.9-334, §9.2 p.9-335). The RN-I direction is CHI completion -> AXI `BRESP`/`RRESP`, fixed in [#44](https://github.com/10x-Engineers/CHI-OpenNoC/issues/44) |
+| `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🟢 | all four nodes drive both from the request they answer; the HN-F's per-entry `mshr_tracetag_s1_q` feeds `TXREQ`/`TXRSP`/`TXSNP`/`TXDAT`, which all hardcoded zero on the full-MSHR path |
 | Snoop/completion serialization | — | — | — | 🔴 | `CompData` is sent before the snoop response arrives — [#17](https://github.com/10x-Engineers/CHI-OpenNoC/issues/17) |
-| `RetToSrc` fan-out (§4.9) | — | — | — | 🔴 | one bit per MSHR entry, replayed onto every snoopee — [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) |
+| `RetToSrc` fan-out (§4.9) | — | — | — | 🟢 | the snoop flit is built once per fan-out; every re-drive clears `RetToSrc`, so only the first snoopee carries it |
 
 ¹ `rtl/src/snf/` has no monitor, which §6.2.4 permits — a System monitor "can be
 placed at a PoS or at endpoint devices", and here it sits at the Home.
@@ -160,18 +160,9 @@ authoritative. The ones that bound what the table above claims:
 
 | Issue | Node | What |
 | :--- | :--- | :--- |
-| [#52](https://github.com/10x-Engineers/CHI-OpenNoC/issues/52) | HN-F | requests outside the decoded set are accepted and never answered (§4.5.1) |
 | [#53](https://github.com/10x-Engineers/CHI-OpenNoC/issues/53) | HN-F | `ReqLCrdReturn` is admitted as a request and takes the unconditional static MSHR allocation path |
-| [#48](https://github.com/10x-Engineers/CHI-OpenNoC/issues/48) | HN-F | a separate `Comp` carries the MSHR index, not the DBID the Requester was granted (§2.5.9) |
-| [#49](https://github.com/10x-Engineers/CHI-OpenNoC/issues/49) | HN-F | `TXSACTIVE` derived from `LINKACTIVE` (§14.7.4) |
-| [#51](https://github.com/10x-Engineers/CHI-OpenNoC/issues/51) | SN-F | a `RetryAck` is never followed by a `PCrdGrant` |
 | [#47](https://github.com/10x-Engineers/CHI-OpenNoC/issues/47) | RN-I | Device reads assert EndpointOrder with no `ReadReceipt` issue gate |
 | [#17](https://github.com/10x-Engineers/CHI-OpenNoC/issues/17) | HN-F | a coherent read is completed before its snoops have responded (§4.11.2) |
-| [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) | HN-F | `CompData` ties `CCID` and `TraceTag` to zero (§2.10.6, §11.5.1) |
-| [#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61) | HN-F | inbound `RespErr` is never parsed, so a Subordinate error completes as OK (§9.1) |
-| [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) | HN-F | `RetToSrc` is broadcast to every snoopee of a fan-out (§4.9) |
-| [#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63) | HN-I | the AXI response status never reaches the CHI completion (§9.1) |
-| [#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70) | SN-F | the same, one node over: `RRESP` unread, `BRESP` a completion gate only (§9.2) |
 | [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) | — | the opcode and feature gaps the 🔴/⚪ cells above stand for, grouped by family |
 
 # 3 Directory layout
