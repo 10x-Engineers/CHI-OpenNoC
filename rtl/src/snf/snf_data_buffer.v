@@ -141,7 +141,7 @@ module snf_data_buffer `SNF_PARAM
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wdata_fifo_get_vec;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                 wdata_fifo_valid_sx;
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wdata_fifo_entry_idx_sx[0:`SNF_MSHR_ENTRIES_NUM-1];
-    reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wdata_cancel_idx_sx_q;
+    reg [`SNF_MSHR_ENTRIES_NUM-1:0]                 wdata_cancel_q;
     reg [1:0]                                       wdata_recv_cnt_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                 wrzero_pending_q;
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]               wrzero_inject_idx_sx;
@@ -500,14 +500,22 @@ module snf_data_buffer `SNF_PARAM
         end
     end
 
-    always @(posedge clk or posedge rst) begin : wrdata_cancel_idx_timing_logic
-        if (rst)begin
-            wdata_cancel_idx_sx_q <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
+    // Sec 4.5.2 (p.4-200, MUST): "All data packets originally intended to be
+    // transferred must be sent", so a write is known cancelled only once its
+    // whole data phase has arrived -- the moment dbf_mshr_rxdat_ok_sx reports.
+    // Held per entry so the two are read in the same clock phase.
+    generate
+        for(entry = 0;entry<`SNF_MSHR_ENTRIES_NUM;entry = entry+1) begin:wdata_cancel_gen
+            always @(posedge clk or posedge rst) begin : wdata_cancel_timing_logic
+                if (rst)
+                    wdata_cancel_q[entry] <= 1'b0;
+                else if (wdata_cancel_recv_s0 && (entry == wdata_recv_idx))
+                    wdata_cancel_q[entry] <= 1'b1;
+                else if (dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                    wdata_cancel_q[entry] <= 1'b0;
+            end
         end
-        else begin
-            wdata_cancel_idx_sx_q <= wdata_rec_idx_sx_q;
-        end
-    end
+    endgenerate
 
     // Table 4-39 (p.4-219): WriteNoSnpZero's WriteData response is "None", so its
     // payload is sourced here -- a full line of zeros with every byte enable set --
@@ -553,8 +561,8 @@ module snf_data_buffer `SNF_PARAM
 
     assign dbf_mshr_rxdat_ok_sx = (((rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q] == 3'b110) && (wdata_recv_cnt_q[wdata_rec_idx_sx_q] == 2'b11)) | ((rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q] != 3'b110) && (|wdata_recv_cnt_q[wdata_rec_idx_sx_q])));
     assign dbf_mshr_rxdat_ok_idx_sx = wdata_rec_idx_sx_q;
-    assign dbf_mshr_rxdat_cancel_sx = wdata_cancel_recv_s0 && dbf_mshr_rxdat_ok_sx;
-    assign dbf_mshr_rxdat_cancel_idx_sx = wdata_cancel_idx_sx_q;
+    assign dbf_mshr_rxdat_cancel_sx = dbf_mshr_rxdat_ok_sx && wdata_cancel_q[dbf_mshr_rxdat_ok_idx_sx];
+    assign dbf_mshr_rxdat_cancel_idx_sx = dbf_mshr_rxdat_ok_idx_sx;
 
     //************************************************************************//
     //                      write data to AXI slave                           //
