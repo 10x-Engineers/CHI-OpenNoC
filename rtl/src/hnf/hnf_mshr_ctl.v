@@ -353,8 +353,11 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //internal signals
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_entry_valid_sx_q;
-    reg [`MSHR_ENTRIES_WIDTH-1:0]               need_to_wakeup_entry_idx_sx_q[0:`MSHR_ENTRIES_NUM-1];
-    reg [`MSHR_ENTRIES_NUM-1:0]                 need_to_wakeup_sx_q;
+    // One bit per sleeper, not one successor index: an entry that owes a victim
+    // writeback blocks every request to that line, and a single slot would lose
+    // every sleeper but the last -- unrecoverably, since sleep_sx_q is cleared
+    // only through this structure.
+    reg [`MSHR_ENTRIES_NUM-1:0]                 need_to_wakeup_vec_sx_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`MSHR_ENTRIES_NUM-1:0]                 sleep_sx_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_can_alloc_entry_s1_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_rdnosnp_s1_q;
@@ -2271,8 +2274,17 @@ module hnf_mshr_ctl `HNF_PARAM
                    (~mshr_rn_data_busy_sx_q[entry] & txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]) ||
                    (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
                    (mshr_errwrdat_s1_q[entry] & mshr_dat_new_get_s1_q[entry]);
+            // Sec 4.11.2 (p.4-243, MUST): "While a Snoop transaction response is
+            // pending, the only transaction responses that are permitted to be
+            // sent to the same address are ... RetryAck and, if applicable, a
+            // ReadReceipt for a Read request type." So the L3-hit release takes
+            // the same (neednosnp | snp_getall) gate mshr_comp_rdy_set_s2 gives
+            // a Dataless request. The deferred arm is a pulse, not a level: the
+            // ready flop gives set priority over clear.
             assign mshr_txdat_rn_rdy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) ||
-                   (mshr_l3dat_rn_sx7[entry]) ||
+                   (mshr_l3dat_rn_sx7[entry] & mshr_neednosnp_sx7[entry]) ||
+                   (mshr_l3hit_sx8_q[entry] & mshr_ru_s1_q[entry] & mshr_snp_getall_s1[entry] &
+                    (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry])) ||
                    (mshr_errrd_s1_q[entry] & mshr_dbf_err_fill_entry_sx1[entry]);
             assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
             assign mshr_txdat_sn_rdy_set_sx[entry]   = (mshr_wu_s1_q[entry] & ~mshr_memattr_s1_q[entry][3] & mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry] & (mshr_snp_getall_s1[entry] | ((mshr_snpcnt_sx_q[entry]==0) & (l3_rd_busy_s2_q[entry] == 0))) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry])) ||
@@ -2883,43 +2895,45 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
-    always @(posedge clk or posedge rst)begin : mshr_sleep_wakeup_timing_logic
-        if(rst == 1'b1)begin
-            sleep_sx_q          <= {`MSHR_ENTRIES_NUM{1'b0}};
-            need_to_wakeup_sx_q <= {`MSHR_ENTRIES_NUM{1'b0}};
+    wire rxreq_hz_sx = rxreq_cam_hazard_s1_q
+         & ~((rxreq_cam_hazard_entry_s1_q == mshr_can_retire_entry_sx1) & mshr_dbf_retired_valid_sx1_q);
+    wire pipe_hz_sx  = mshr_l3_hazard_valid_sx3_q
+         & ~((pipe_cam_hazard_entry_sx3_q == mshr_can_retire_entry_sx1) & mshr_dbf_retired_valid_sx1_q);
+
+    generate
+        for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_sleep_wakeup_gen
+            wire wake_fire_sx = (mshr_dbf_retired_valid_sx1_q & (mshr_dbf_retired_idx_sx1_q == entry))
+                              | (l3_evict_sx7_q               & (l3_mshr_entry_sx7_q        == entry));
+
+            wire sleep_set_sx = (rxreq_hz_sx & (mshr_entry_idx_alloc_s1_q == entry))
+                              | (pipe_hz_sx  & (pipe_sleep_idx_sx3        == entry));
+
+            wire sleep_clr_sx = (mshr_dbf_retired_valid_sx1_q & need_to_wakeup_vec_sx_q[mshr_dbf_retired_idx_sx1_q][entry])
+                              | (l3_evict_sx7_q               & need_to_wakeup_vec_sx_q[l3_mshr_entry_sx7_q       ][entry]);
+
+            // Set beats clear: the coincidence means released from an old blocker
+            // and slept for a fresh hazard in one cycle, and the fresh hazard's
+            // own bit is recorded below in the same cycle.
+            always @(posedge clk or posedge rst) begin : mshr_sleep_timing_logic
+                if(rst)               sleep_sx_q[entry] <= 1'b0;
+                else if(sleep_set_sx) sleep_sx_q[entry] <= 1'b1;
+                else if(sleep_clr_sx) sleep_sx_q[entry] <= 1'b0;
+            end
+
+            always @(posedge clk or posedge rst) begin : need_to_wakeup_vec_timing_logic
+                integer s;
+                if(rst)
+                    need_to_wakeup_vec_sx_q[entry] <= {`MSHR_ENTRIES_NUM{1'b0}};
+                else
+                    for(s=0; s<`MSHR_ENTRIES_NUM; s=s+1)
+                        if((rxreq_hz_sx & (rxreq_cam_hazard_idx_s1 == entry) & (mshr_entry_idx_alloc_s1_q == s))
+                         | (pipe_hz_sx  & (pipe_cam_hazard_idx_sx3 == entry) & (pipe_sleep_idx_sx3        == s)))
+                            need_to_wakeup_vec_sx_q[entry][s] <= 1'b1;
+                        else if(wake_fire_sx)
+                            need_to_wakeup_vec_sx_q[entry][s] <= 1'b0;
+            end
         end
-        else begin
-            if(rxreq_cam_hazard_s1_q & ~((rxreq_cam_hazard_entry_s1_q == mshr_can_retire_entry_sx1) && mshr_dbf_retired_valid_sx1_q))begin
-                sleep_sx_q[mshr_entry_idx_alloc_s1_q]                  <= 1'b1;
-                need_to_wakeup_sx_q[rxreq_cam_hazard_idx_s1]           <= 1'b1;
-                need_to_wakeup_entry_idx_sx_q[rxreq_cam_hazard_idx_s1] <= mshr_entry_idx_alloc_s1_q;
-            end
-            else
-                ;
-
-            if(mshr_l3_hazard_valid_sx3_q & ~((pipe_cam_hazard_entry_sx3_q == mshr_can_retire_entry_sx1) && mshr_dbf_retired_valid_sx1_q))begin
-                sleep_sx_q[pipe_sleep_idx_sx3]                         <= 1'b1;
-                need_to_wakeup_sx_q[pipe_cam_hazard_idx_sx3]           <= 1'b1;
-                need_to_wakeup_entry_idx_sx_q[pipe_cam_hazard_idx_sx3] <= pipe_sleep_idx_sx3;
-            end
-            else
-                ;
-
-            if(mshr_dbf_retired_valid_sx1_q && need_to_wakeup_sx_q[mshr_dbf_retired_idx_sx1_q])begin
-                need_to_wakeup_sx_q[mshr_dbf_retired_idx_sx1_q]                       <= 1'b0;
-                sleep_sx_q[need_to_wakeup_entry_idx_sx_q[mshr_dbf_retired_idx_sx1_q]] <= 1'b0;
-            end
-            else
-                ;
-
-            if(l3_evict_sx7_q && need_to_wakeup_sx_q[l3_mshr_entry_sx7_q])begin
-                need_to_wakeup_sx_q[l3_mshr_entry_sx7_q]                       <= 1'b0;
-                sleep_sx_q[need_to_wakeup_entry_idx_sx_q[l3_mshr_entry_sx7_q]] <= 1'b0;
-            end
-            else
-                ;
-        end
-    end
+    endgenerate
 
     //************************************************************************//
 
@@ -3382,7 +3396,7 @@ module hnf_mshr_ctl `HNF_PARAM
         integer i;
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(mshr_entry_valid_sx_q[i])begin
-                `display_info($sformatf("MSHR ENTRY %0h :\n sleep: %h\n need_to_wakeup: %h\n need_to_wakeup_entry_idx: %h\n l3_rd_busy: %h\n l3_rd_rdy: %h\n l3_fill_busy: %h\n l3_fill_rdy: %h\n mshr_snp_busy: %h\n mshr_txsnp_rdy: %h\n mshr_mem_rd_busy: %h\n mshr_mem_rd_rdy: %h\n mshr_mem_wr_busy: %h\n mshr_mem_wr_rdy: %h\n mshr_rn_data_busy: %h\n mshr_txdat_rn_rdy: %h\n mshr_sn_data_busy: %h\n mshr_txdat_sn_rdy: %h\n mshr_dbid_rdy: %h\n mshr_rd_receipt_rdy: %h\n mshr_comp_rdy: %h\n mshr_comp_busy: %h\n mshr_compack_busy: %h\n time:%0h\n",i,sleep_sx_q[i],need_to_wakeup_sx_q[i],need_to_wakeup_entry_idx_sx_q[i],l3_rd_busy_s2_q[i],l3_rd_rdy_s2_q[i],l3_fill_busy_sx_q[i],l3_fill_rdy_s2_q[i],mshr_snp_busy_sx_q[i],mshr_txsnp_rdy_sx_q[i],mshr_mem_rd_busy_sx_q[i],mshr_mem_rd_rdy_sx_q[i],mshr_mem_wr_busy_sx_q[i],mshr_mem_wr_rdy_sx_q[i],mshr_rn_data_busy_sx_q[i],mshr_txdat_rn_rdy_sx_q[i],mshr_sn_data_busy_sx_q[i],mshr_txdat_sn_rdy_sx_q[i],mshr_dbid_rdy_s2_q[i],mshr_rd_receipt_rdy_s2_q[i],mshr_comp_rdy_s2_q[i],mshr_comp_busy_s2_q[i],mshr_compack_busy_sx_q[i],$time()));
+                `display_info($sformatf("MSHR ENTRY %0h :\n sleep: %h\n need_to_wakeup_vec: %h\n l3_rd_busy: %h\n l3_rd_rdy: %h\n l3_fill_busy: %h\n l3_fill_rdy: %h\n mshr_snp_busy: %h\n mshr_txsnp_rdy: %h\n mshr_mem_rd_busy: %h\n mshr_mem_rd_rdy: %h\n mshr_mem_wr_busy: %h\n mshr_mem_wr_rdy: %h\n mshr_rn_data_busy: %h\n mshr_txdat_rn_rdy: %h\n mshr_sn_data_busy: %h\n mshr_txdat_sn_rdy: %h\n mshr_dbid_rdy: %h\n mshr_rd_receipt_rdy: %h\n mshr_comp_rdy: %h\n mshr_comp_busy: %h\n mshr_compack_busy: %h\n time:%0h\n",i,sleep_sx_q[i],need_to_wakeup_vec_sx_q[i],l3_rd_busy_s2_q[i],l3_rd_rdy_s2_q[i],l3_fill_busy_sx_q[i],l3_fill_rdy_s2_q[i],mshr_snp_busy_sx_q[i],mshr_txsnp_rdy_sx_q[i],mshr_mem_rd_busy_sx_q[i],mshr_mem_rd_rdy_sx_q[i],mshr_mem_wr_busy_sx_q[i],mshr_mem_wr_rdy_sx_q[i],mshr_rn_data_busy_sx_q[i],mshr_txdat_rn_rdy_sx_q[i],mshr_sn_data_busy_sx_q[i],mshr_txdat_sn_rdy_sx_q[i],mshr_dbid_rdy_s2_q[i],mshr_rd_receipt_rdy_s2_q[i],mshr_comp_rdy_s2_q[i],mshr_comp_busy_s2_q[i],mshr_compack_busy_sx_q[i],$time()));
             end
         end
     end

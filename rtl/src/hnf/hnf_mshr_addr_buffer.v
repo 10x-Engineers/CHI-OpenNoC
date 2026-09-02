@@ -169,10 +169,13 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
                             abf_can_compare_sx_q[i]                 <= 1'b1;
                             abf_internal_evict_addr_valid_sx_q[i]   <= 1'b0;
                         end
-                        else if(li_mshr_rxreq_valid_s1_q && abf_can_compare_sx_q[i] == 1'b1 && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET])begin
+                        else if(li_mshr_rxreq_valid_s1_q && (abf_can_compare_sx_q[i] | abf_internal_evict_addr_valid_sx_q[i]) == 1'b1 && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET])begin
+                            // The matched entry leaves both CAMs and the entry
+                            // allocating this cycle becomes the next link, which
+                            // is what keeps the sleeper chain single-linked.
                             if(mshr_alloc_en_s1_q)begin
                                 abf_can_compare_sx_q[i]               <= 1'b0;
-                                abf_internal_evict_addr_valid_sx_q[i] <= abf_internal_evict_addr_valid_sx_q[i];
+                                abf_internal_evict_addr_valid_sx_q[i] <= 1'b0;
                             end
                             else begin
                                 abf_can_compare_sx_q[i]               <= abf_can_compare_sx_q[i]              ;
@@ -194,7 +197,13 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
         rxreq_cam_hazard_s1_q = 1'b0;
         rxreq_cam_hazard_entry_s1_q = 'd0;
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
-            if(mshr_alloc_en_s1_q && abf_can_compare_sx_q[i] == 1'b1 && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
+            // Sec 2.8.1 (p.2-114, MUST): "All writes to the same location are
+            // serialized", and Sec 4.11 (p.4-242, MUST) places that on the
+            // interconnect. An entry that turned into an internal evict still owns
+            // a downstream write of that line, so a request arriving for it must
+            // sleep behind that write -- Table 4-14 (p.4-179) pins every HN-F to
+            // SN-F write to Order=0b00, so nothing else can express the order.
+            if(mshr_alloc_en_s1_q && (abf_can_compare_sx_q[i] | abf_internal_evict_addr_valid_sx_q[i]) == 1'b1 && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
                     && ~(mshr_dbf_retired_valid_sx1_q == 1'b1 && mshr_dbf_retired_idx_sx1_q == i) && ~(l3_evict_sx7_q == 1'b1 && l3_mshr_entry_sx7_q == i))begin
                 rxreq_cam_hazard_s1_q = 1'b1;
                 rxreq_cam_hazard_entry_s1_q = trans_id2num(i);
