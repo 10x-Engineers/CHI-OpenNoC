@@ -471,7 +471,7 @@ module hni_data_buffer `HNI_PARAM
                 if(rst)begin
                     rresp_q[i] <= 2'b0;
                 end
-                else if(rvalid && rready && rready_q[i] && (rid == rxreq_alloc_axid_q[i]))begin
+                else if(rvalid && rready && rready_q[i] && (rid == rxreq_alloc_axid_q[i]) && rresp[1])begin
                     rresp_q[i] <= rresp;
                 end
                 else if(mshr_retired_valid_sx && i == mshr_retired_idx_sx)begin
@@ -645,7 +645,8 @@ module hni_data_buffer `HNI_PARAM
         txdat_flit[`CHIE_DAT_FLIT_TXNID_RANGE]     = mshr_txdat_txnid_sx;
         txdat_flit[`CHIE_DAT_FLIT_HOMENID_RANGE]   = (mshr_txdat_opcode_sx == `CHIE_COMPDATA)?`HNI0_ID : {`CHIE_DAT_FLIT_HOMENID_WIDTH{1'b0}};
         txdat_flit[`CHIE_DAT_FLIT_OPCODE_RANGE]    = mshr_txdat_opcode_sx;
-        txdat_flit[`CHIE_DAT_FLIT_RESPERR_RANGE]   = (rresp_q[txdat_entry_idx_sx] == 2'b10) ? 2'b10 : mshr_txdat_resperr_sx;
+        txdat_flit[`CHIE_DAT_FLIT_RESPERR_RANGE]   = rresp_q[txdat_entry_idx_sx][1] ? `CHIE_RESP_ERR_NON_DATA
+                                                                                    : mshr_txdat_resperr_sx;
         txdat_flit[`CHIE_DAT_FLIT_RESP_RANGE]      = mshr_txdat_resp_sx;
         txdat_flit[`CHIE_DAT_FLIT_FWDSTATE_RANGE]  = {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
         txdat_flit[`CHIE_DAT_FLIT_CBUSY_RANGE]     = {`CHIE_DAT_FLIT_CBUSY_WIDTH{1'b0}};

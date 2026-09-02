@@ -232,6 +232,7 @@ module snf_mshr `SNF_PARAM
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_fifo_vec_sx;
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_entry_idx_s2_q;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     bresp_ok_q;
+    reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     bresp_err_q;
     reg [`SNF_MSHR_ENTRIES_NUM-1:0]                     retired_entry_sx1_q;
     reg [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   retired_entry_idx_sx1_q;
     reg                                                 mshr_wdat_en_rst;
@@ -934,7 +935,7 @@ module snf_mshr `SNF_PARAM
     // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
     // (p.4-207) pins the ReadReceipt's Resp/RespErr to zero, so only the
     // completion carries it.
-    assign txrsp_resperr_sx             = (rxreq_err_s1_q[txrsp_entry_idx_sx]
+    assign txrsp_resperr_sx             = ((rxreq_err_s1_q[txrsp_entry_idx_sx] | bresp_err_q[txrsp_entry_idx_sx])
                                         && (txrsp_opcode_sx != `CHIE_DBIDRESP)
                                         && (txrsp_opcode_sx != `CHIE_READRECEIPT)) ? `CHIE_RESP_ERR_NON_DATA
                                                                                    : `CHIE_RESP_ERR_NORM_OK;
@@ -1250,6 +1251,24 @@ module snf_mshr `SNF_PARAM
                     bresp_ok_q[entry] <= 1'b0;
                 else if (bresp_ok_sx[entry])
                     bresp_ok_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    // AMBA AXI4 (IHI 0022) Table A3-4 gives BRESP two error encodings, SLVERR and
+    // DECERR, which share bit 1. Sec 9.1 (p.9-334) names the access that failed a
+    // Non-data Error, and Sec 9.2 (p.9-335) requires the Completer report it.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always @(posedge clk or posedge rst)begin : mshr_bresp_err_flag_timing_logic
+                if (rst)
+                    bresp_err_q[entry] <= 1'b0;
+                else if (retired_entry_sx[entry])
+                    bresp_err_q[entry] <= 1'b0;
+                else if (bresp_ok_sx[entry] && bresp_sx[1])
+                    bresp_err_q[entry] <= 1'b1;
                 else
                     ;
             end

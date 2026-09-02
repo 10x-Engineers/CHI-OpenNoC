@@ -39,6 +39,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
         li_mshr_rxdat_txnid_s0,
         li_mshr_rxdat_opcode_s0,
         li_mshr_rxdat_resp_s0,
+        li_mshr_rxdat_resperr_s0,
         li_mshr_rxdat_fwdstate_s0,
         li_mshr_rxdat_dataid_s0,
 
@@ -72,6 +73,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     output wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]    li_mshr_rxdat_txnid_s0;
     output wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]   li_mshr_rxdat_opcode_s0;
     output wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]     li_mshr_rxdat_resp_s0;
+    output wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]  li_mshr_rxdat_resperr_s0;
     output wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0] li_mshr_rxdat_fwdstate_s0;
     output wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   li_mshr_rxdat_dataid_s0;
 
@@ -111,6 +113,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_mshr_rxdat_txnid_s0    = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_TXNID_RANGE]    : {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
     assign li_mshr_rxdat_opcode_s0   = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE]   : {`CHIE_DAT_FLIT_OPCODE_WIDTH{1'b0}};
     assign li_mshr_rxdat_resp_s0     = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_RESP_RANGE]     : {`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
+    assign li_mshr_rxdat_resperr_s0  = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_RESPERR_RANGE]  : {`CHIE_DAT_FLIT_RESPERR_WIDTH{1'b0}};
     assign li_mshr_rxdat_fwdstate_s0 = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_FWDSTATE_RANGE] : {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
     assign li_mshr_rxdat_dataid_s0   = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_DATAID_RANGE]   : {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
 

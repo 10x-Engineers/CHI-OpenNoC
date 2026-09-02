@@ -38,6 +38,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
         mshr_txdat_resp_sx2,
         mshr_txdat_resperr_sx2,
         mshr_txdat_dbid_sx2,
+        mshr_txdat_ccid_sx2,
+        mshr_txdat_tracetag_sx2,
 
         //inputs from hnf_data_buffer
         dbf_txdat_data_sx1,
@@ -75,6 +77,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]    mshr_txdat_resp_sx2;
     input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0] mshr_txdat_resperr_sx2;
     input wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]    mshr_txdat_dbid_sx2;
+    input wire [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]    mshr_txdat_ccid_sx2;
+    input wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0] mshr_txdat_tracetag_sx2;
 
     //inputs from hnf_data_buffer
     input wire                                    dbf_txdat_valid_sx1;
@@ -195,12 +199,12 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_FWDSTATE_RANGE]  = {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_CBUSY_RANGE]     = {`CHIE_DAT_FLIT_CBUSY_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_DBID_RANGE]      = mshr_txdat_dbid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_CCID_RANGE]      = {`CHIE_DAT_FLIT_CCID_WIDTH{1'b0}};
+        txdatflit_mshr_s0[`CHIE_DAT_FLIT_CCID_RANGE]      = mshr_txdat_ccid_sx2;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_DATAID_RANGE]    = mshr_txdat_dataid_sx_ns;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TAGOP_RANGE]     = {`CHIE_DAT_FLIT_TAGOP_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TAG_RANGE]       = {`CHIE_DAT_FLIT_TAG_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TU_RANGE]        = {`CHIE_DAT_FLIT_TU_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TRACETAG_RANGE]  = {`CHIE_DAT_FLIT_TRACETAG_WIDTH{1'b0}};
+        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TRACETAG_RANGE]  = mshr_txdat_tracetag_sx2;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_BE_RANGE]        = mshr_txdat_be_sx_ns;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_DATA_RANGE]      = mshr_txdat_data_sx_ns;
     end

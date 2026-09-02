@@ -184,6 +184,10 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         txsnpflit_s0 = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? txsnpflit_s0_q : {`HNF_SNP_FLIT_WIDTH{1'b0}};
         if(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})begin
             txsnpflit_s0[`CHIE_SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:`CHIE_SNP_FLIT_WIDTH] = rnid_list_array[found_tgt_vec_num];
+            // Sec 4.9 (p.4-240, MUST): "Home must only set RetToSrc on the Snoop
+            // request to a single Request Node." Only the first snoopee of the
+            // fan-out is built below; every re-drive here clears the bit.
+            txsnpflit_s0[`CHIE_SNP_FLIT_RETTOSRC_RANGE] = 1'b0;
         end
         else if(mshr_txsnp_valid_sx1_q == 1'b1 & txsnp_mshr_busy_sx1 == 1'b0)begin
             //MSHR txsnpflit wrap

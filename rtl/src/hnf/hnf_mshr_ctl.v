@@ -57,6 +57,7 @@ module hnf_mshr_ctl `HNF_PARAM
         li_mshr_rxdat_txnid_s0,
         li_mshr_rxdat_opcode_s0,
         li_mshr_rxdat_resp_s0,
+        li_mshr_rxdat_resperr_s0,
         li_mshr_rxdat_fwdstate_s0,
         li_mshr_rxdat_dataid_s0,
 
@@ -66,6 +67,7 @@ module hnf_mshr_ctl `HNF_PARAM
         li_mshr_rxrsp_txnid_s0,
         li_mshr_rxrsp_opcode_s0,
         li_mshr_rxrsp_resp_s0,
+        li_mshr_rxrsp_resperr_s0,
         li_mshr_rxrsp_fwdstate_s0,
         li_mshr_rxrsp_dbid_s0,
         li_mshr_rxrsp_pcrdtype_s0,
@@ -175,6 +177,8 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_resp_sx2,
         mshr_txdat_resperr_sx2,
         mshr_txdat_dbid_sx2,
+        mshr_txdat_ccid_sx2,
+        mshr_txdat_tracetag_sx2,
 
         //outputs to hnf_cache_pipeline
         mshr_l3_fill_sx1_q,
@@ -213,6 +217,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                      li_mshr_rxdat_txnid_s0;
     input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]                     li_mshr_rxdat_opcode_s0;
     input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]                       li_mshr_rxdat_resp_s0;
+    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]                    li_mshr_rxdat_resperr_s0;
     input wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0]                   li_mshr_rxdat_fwdstate_s0;
     input wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]                     li_mshr_rxdat_dataid_s0;
 
@@ -222,6 +227,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]                      li_mshr_rxrsp_txnid_s0;
     input wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]                     li_mshr_rxrsp_opcode_s0;
     input wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]                       li_mshr_rxrsp_resp_s0;
+    input wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]                    li_mshr_rxrsp_resperr_s0;
     input wire [`CHIE_RSP_FLIT_FWDSTATE_WIDTH-1:0]                   li_mshr_rxrsp_fwdstate_s0;
     input wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]                       li_mshr_rxrsp_dbid_s0;
     input wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]                   li_mshr_rxrsp_pcrdtype_s0;
@@ -333,6 +339,8 @@ module hnf_mshr_ctl `HNF_PARAM
     output reg  [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]                      mshr_txdat_resp_sx2;
     output reg  [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]                   mshr_txdat_resperr_sx2;
     output reg  [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]                      mshr_txdat_dbid_sx2;
+    output reg  [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]                      mshr_txdat_ccid_sx2;
+    output reg  [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]                  mshr_txdat_tracetag_sx2;
 
     //outputs to hnf_cache_pipeline
     output reg                                                       mshr_l3_fill_sx1_q;
@@ -382,6 +390,8 @@ module hnf_mshr_ctl `HNF_PARAM
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_s1_q;
     reg [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]         mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]         mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    reg [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]     mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    reg [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]      mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`CHIE_REQ_FLIT_NS_WIDTH-1:0]           mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]        mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_compack_s1_q;
@@ -1313,6 +1323,34 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            // Sec 11.5.1 (p.11-368, MUST): a component that receives a packet with
+            // TraceTag set "must preserve and reflect the value back in any response
+            // packet or spawned packet generated in response to the received packet".
+            always @(posedge clk)begin : mshr_tracetag_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_tracetag_s1_q[entry] <= {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_tracetag_s1_q[entry] <= li_mshr_rxreq_tracetag_s0;
+                else
+                    ;
+            end
+
+            // Sec 9.1 (p.9-334, MUST): "The Home is required to pass-back the NDERR
+            // in the response to the Requester." The bit is sticky from whichever
+            // inbound flit reported it until the entry retires.
+            always @(posedge clk or posedge rst)begin : mshr_dn_resperr_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_dn_resperr_s1_q[entry] <= `CHIE_RESP_ERR_NORM_OK;
+                else if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_dn_resperr_s1_q[entry] <= `CHIE_RESP_ERR_NORM_OK;
+                else if(mshr_rsp_entry_vec_s0[entry] && li_mshr_rxrsp_resperr_s0[1])
+                    mshr_dn_resperr_s1_q[entry] <= li_mshr_rxrsp_resperr_s0;
+                else if(mshr_dat_entry_vec_s0[entry] && li_mshr_rxdat_resperr_s0[1])
+                    mshr_dn_resperr_s1_q[entry] <= li_mshr_rxdat_resperr_s0;
+                else
+                    ;
+            end
+
             always @(posedge clk)begin : mshr_ns_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
                     mshr_ns_s1_q[entry] <= 1'b0;
@@ -2087,8 +2125,13 @@ module hnf_mshr_ctl `HNF_PARAM
         case(l3_opcode_sx7_q)
             `CHIE_READONCE           :
                 mshr_snpcode_sx7 = `CHIE_SNPONCE;
+            // Table 4-24 (Sec 4.4.2 p.4-194) gives ReadUnique the snoop SnpUnique, and
+            // Sec 4.4.2 (p.4-196) permits replacing an Invalidating snoop only by
+            // SnpUnique or SnpCleanInvalid. SnpMakeInvalid is not reachable from a
+            // read: Sec 2.3.9 (p.2-84) allows it only SnpResp, so a Snoopee holding
+            // the line Dirty would discard it and the L3 copy would be served stale.
             `CHIE_READUNIQUE         :
-                mshr_snpcode_sx7 = l3_hit_sx7_q? `CHIE_SNPMAKEINVALID:`CHIE_SNPUNIQUE;
+                mshr_snpcode_sx7 = `CHIE_SNPUNIQUE;
             `CHIE_READNOTSHAREDDIRTY :
                 mshr_snpcode_sx7 = `CHIE_SNPNOTSHAREDDIRTY;
             `CHIE_READCLEAN          :
@@ -2987,7 +3030,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_txnid_sx1_q]?mshr_pcrdtype_s1_q[mshr_txreq_txnid_sx1_q]:0);
     assign mshr_txreq_memattr_sx1     = (mshr_memattr_s1_q[mshr_txreq_txnid_sx1_q]);
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_tracetag_sx1    = {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
+    assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_txnid_sx1_q];
 
     //************************************************************************//
 
@@ -3057,7 +3100,8 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
-    assign mshr_txrsp_resperr_sx1  = mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? 2'b11 :
+    assign mshr_txrsp_resperr_sx1  = mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? `CHIE_RESP_ERR_NON_DATA :
+                                     mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
                                      (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? 2'b01:2'b00);
     assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
@@ -3068,7 +3112,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_dbid_sx1     = mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
                                    ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]
                                    : mshr_txrsp_idx_sx1_q;
-    assign mshr_txrsp_tracetag_sx1 = {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
+    assign mshr_txrsp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txrsp_idx_sx1_q];
 
     //************************************************************************//
 
@@ -3134,7 +3178,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_txnid_sx1_q]?mshr_snpcode_sx8_q[mshr_txsnp_txnid_sx1_q]+16:mshr_snpcode_sx8_q[mshr_txsnp_txnid_sx1_q]);
     assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_txnid_sx1_q]);
     assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_txnid_sx1_q]);
-    assign mshr_txsnp_tracetag_sx1 = {`CHIE_SNP_FLIT_TRACETAG_WIDTH{1'b0}};
+    assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_txnid_sx1_q];
     assign mshr_txsnp_rn_vec_sx1   = (mshr_snp_bit_sx8_q[mshr_txsnp_txnid_sx1_q]);
 
     //************************************************************************//
@@ -3238,9 +3282,14 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_txnid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
         mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?`CHIE_COMPDATA:`CHIE_NONCOPYBACKWRDATA);
         mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?`CHIE_COMP_RESP_UD_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):{`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}});
-        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? 2'b11 :
+        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? `CHIE_RESP_ERR_NON_DATA :
+                                 mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :
                                  ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? 2'b01:2'b00);
         mshr_txdat_dbid_sx2    = (txdat_mshr_rd_idx_sx2);
+        // Sec 2.10.6 (p.2-139, MUST): "The CCID field must match the value of
+        // Addr[5:4] of the original request."
+        mshr_txdat_ccid_sx2    = mshr_addr_s1_q[txdat_mshr_rd_idx_sx2][5:4];
+        mshr_txdat_tracetag_sx2 = mshr_tracetag_s1_q[txdat_mshr_rd_idx_sx2];
     end
 
     always @* begin: txdat_wrap_other_ptr_comb_logic
