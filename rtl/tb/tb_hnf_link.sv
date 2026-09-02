@@ -12,6 +12,10 @@
 //   R3 Table 14-2 DEACTIVATE (p.14-450, MUST): "The Receiver must wait for all
 //      credits to be returned before deasserting LINKACTIVEACK", and the pool
 //      must refill on re-activation.
+//   R4 Table 14-3 (p.14-451, MUST): the Transmitter "must not send flits" in the
+//      STOP or ACTIVATE state -- L-Credit return flits included.
+//   R5 Table 14-2 DEACTIVATE (p.14-450, MUST): a deactivating Transmitter returns
+//      every L-Credit it holds, so the peer Receiver can reach STOP.
 // =============================================================================
 `include "chie_defines.v"
 `include "hnf_defines.v"
@@ -61,12 +65,20 @@ module tb_hnf_link;
     reg  RXSACTIVE       = 1'b0;
     wire TXLINKACTIVEREQ, RXLINKACTIVEACK, TXSACTIVE;
 
-    // The peer Receiver: Table 14-1 (p.14-449) lets LINKACTIVEACK follow
-    // LINKACTIVEREQ, which is all this bench needs -- what it judges is the HN-F's
-    // own half, not the peer's.
+    // TX-side L-Credit accounting, read by the peer Receiver below.
+    localparam TX_CRD = 4;
+    integer tx_granted = 0, tx_returned = 0;
+
+    // The peer Receiver. Table 14-1 (p.14-449) lets LINKACTIVEACK follow
+    // LINKACTIVEREQ, except on the way down: Table 14-2's DEACTIVATE row
+    // (p.14-450, MUST) has the Receiver "wait for all credits to be returned
+    // before deasserting LINKACTIVEACK". A peer that drops it at once leaves the
+    // DUT in STOP with credits still held, and then judges it for the returns it
+    // is no longer allowed to send.
     always @(posedge CLK) begin
-        if (RST) TXLINKACTIVEACK <= 1'b0;
-        else     TXLINKACTIVEACK <= TXLINKACTIVEREQ;
+        if (RST)                                              TXLINKACTIVEACK <= 1'b0;
+        else if (!TXLINKACTIVEREQ && (tx_returned < tx_granted)) TXLINKACTIVEACK <= 1'b1;
+        else                                                  TXLINKACTIVEACK <= TXLINKACTIVEREQ;
     end
 
     reg  RXREQFLITV = 1'b0, RXRSPFLITV = 1'b0, RXDATFLITV = 1'b0;
@@ -82,6 +94,11 @@ module tb_hnf_link;
     wire [`HNF_SNP_FLIT_RANGE]  TXSNPFLIT;
     wire [`CHIE_DAT_FLIT_RANGE] TXDATFLIT;
     wire [2:0] notify_reg;
+
+    // The TX half. Tying these to zero leaves the DUT holding no TX L-Credit
+    // ever, so neither Table 14-3's send prohibition nor Table 14-2's return
+    // obligation has an antecedent -- which is how CHI-OpenNoC#79 survived.
+    reg TXREQLCRDV = 1'b0, TXRSPLCRDV = 1'b0, TXSNPLCRDV = 1'b0, TXDATLCRDV = 1'b0;
 
     hnf #(
         .CHIE_REQ_ADDR_WIDTH_PARAM   (CHIE_REQ_ADDR_WIDTH_PARAM),
@@ -116,7 +133,8 @@ module tb_hnf_link;
         .RXREQFLITV(RXREQFLITV), .RXREQFLIT(RXREQFLIT), .RXREQFLITPEND(RXREQFLITPEND),
         .RXRSPFLITV(RXRSPFLITV), .RXRSPFLIT(RXRSPFLIT), .RXRSPFLITPEND(RXRSPFLITPEND),
         .RXDATFLITV(RXDATFLITV), .RXDATFLIT(RXDATFLIT), .RXDATFLITPEND(RXDATFLITPEND),
-        .TXREQLCRDV(1'b0), .TXRSPLCRDV(1'b0), .TXSNPLCRDV(1'b0), .TXDATLCRDV(1'b0),
+        .TXREQLCRDV(TXREQLCRDV), .TXRSPLCRDV(TXRSPLCRDV),
+        .TXSNPLCRDV(TXSNPLCRDV), .TXDATLCRDV(TXDATLCRDV),
         .RXREQLCRDV(RXREQLCRDV), .RXRSPLCRDV(RXRSPLCRDV), .RXDATLCRDV(RXDATLCRDV),
         .TXREQFLITV(TXREQFLITV), .TXREQFLIT(TXREQFLIT), .TXREQFLITPEND(TXREQFLITPEND),
         .TXRSPFLITV(TXRSPFLITV), .TXRSPFLIT(TXRSPFLIT), .TXRSPFLITPEND(TXRSPFLITPEND),
@@ -152,6 +170,30 @@ module tb_hnf_link;
                            XP_LCRD_NUM_PARAM));
     end
 
+    // R4/R5: the DUT's own Transmit half. tx_state is Table 14-1's (p.14-449)
+    // {LINKACTIVEREQ, LINKACTIVEACK} pair for the TXLINK.
+    wire [1:0] tx_state = {TXLINKACTIVEREQ, TXLINKACTIVEACK};
+    wire       tx_any_flit = TXREQFLITV | TXRSPFLITV | TXSNPFLITV | TXDATFLITV;
+
+    always @(posedge CLK) begin
+        if (!RST && tx_any_flit && (tx_state == 2'b00 || tx_state == 2'b10))
+            fail($sformatf("TX flit sent with the TXLINK in %s (Table 14-3 p.14-451)",
+                           (tx_state == 2'b00) ? "STOP" : "ACTIVATE"));
+        if (!RST && tx_any_flit && tx_state == 2'b01)
+            tx_returned = tx_returned + (TXREQFLITV + TXRSPFLITV + TXSNPFLITV + TXDATFLITV);
+    end
+
+    // Grant one L-Credit on every TX channel.
+    task grant_tx_credit;
+        begin
+            @(negedge CLK);
+            TXREQLCRDV = 1'b1; TXRSPLCRDV = 1'b1; TXSNPLCRDV = 1'b1; TXDATLCRDV = 1'b1;
+            @(negedge CLK);
+            TXREQLCRDV = 1'b0; TXRSPLCRDV = 1'b0; TXSNPLCRDV = 1'b0; TXDATLCRDV = 1'b0;
+            tx_granted = tx_granted + 4;
+        end
+    endtask
+
     // Return one credit on the named channel as an all-zero L-Credit return flit.
     task return_credit(input integer ch);
         begin
@@ -183,6 +225,11 @@ module tb_hnf_link;
         if (crd[CH_REQ] == 0 || crd[CH_RSP] == 0 || crd[CH_DAT] == 0)
             fail("no L-Credit granted after reaching RUN");
 
+        // R4/R5: hand the DUT TX L-Credits it has no protocol flit to spend, so
+        // the only TX flits that may follow are the returns DEACTIVATE owes.
+        for (i = 0; i < TX_CRD; i = i + 1) grant_tx_credit;
+        repeat (SETTLE_CYCLES) @(posedge CLK);
+
         // DEACTIVATE: ACK must hold until every credit is back.
         RXLINKACTIVEREQ = 1'b0;
         repeat (SETTLE_CYCLES) @(posedge CLK);
@@ -198,6 +245,10 @@ module tb_hnf_link;
         repeat (SETTLE_CYCLES) @(posedge CLK);
         if (crd[CH_REQ] == 0 || crd[CH_RSP] == 0 || crd[CH_DAT] == 0)
             fail("the RX L-Credit pool did not refill for a re-activation");
+
+        if (tx_returned != tx_granted)
+            fail($sformatf("the DUT returned %0d of the %0d TX L-Credits it held (Table 14-2 p.14-450)",
+                           tx_returned, tx_granted));
 
         if (errors == 0) $display("tb_hnf_link: PASSED");
         else             $display("tb_hnf_link: FAILED (%0d error(s))", errors);

@@ -364,7 +364,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
             dbf_txdat_pe_entry1_sx <= {`CACHE_BE_WIDTH{1'b0}};
         else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_sx1;
-        else if(dbf_txdat_valid_entry1_sx & (~dbf_txdat_valid_entry2_sx_ns) & txdat_crd_avail_s1)
+        // Table 14-2 ACTIVATE (p.14-450, MUST): a credit must not be used until the
+        // link is in RUN. Advancing the packet-enable pointer outside it drops the
+        // beat it selects and leaves the entry undeallocatable.
+        else if(dbf_txdat_valid_entry1_sx & (~dbf_txdat_valid_entry2_sx_ns) & (~txdat_busy_sx))
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_entry1_sx[0]?{dbf_txdat_pe_entry1_sx[1],1'b0}:2'b00;
         else
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_entry1_sx;
@@ -375,7 +378,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
             dbf_txdat_pe_entry2_sx <= {`CACHE_BE_WIDTH{1'b0}};
         else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_sx1;
-        else if( dbf_txdat_valid_entry2_sx_ns & txdat_crd_avail_s1)
+        else if( dbf_txdat_valid_entry2_sx_ns & (~txdat_busy_sx))
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_entry2_sx[0]?{dbf_txdat_pe_entry2_sx[1],1'b0}:2'b00;
         else
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_entry2_sx;
