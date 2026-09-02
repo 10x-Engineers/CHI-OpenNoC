@@ -232,6 +232,7 @@ module snf `SNF_PARAM
     wire                                        rx_all_crd_returned_sx;
     wire                                        rx_deact_done_sx;
     wire                                        tx_deactivate_sx;
+    wire                                        txlink_run_sx;
 
     // L-Credits this Receiver has granted and not yet seen consumed. CHI E.b
     // Sec 14.2 (MUST): every flit transfer consumes exactly one L-Credit, an
@@ -267,13 +268,22 @@ module snf `SNF_PARAM
     // THROUGHOUT reset, so both reset asynchronously -- a synchronous reset still
     // drives the old value on the first reset cycle, and cannot deassert at all
     // while the clock is stopped.
+    //
+    // The assertion is gated on this node's own TXLINKACTIVEREQ, which is both of
+    // Sec 14.6.3's obligations on it at once: (p.14-458, MUST) "The assertion of
+    // RXACK must not occur before the assertion of TXREQ" bars it in TxStop, and
+    // (p.14-459, MUST) "a component that observes the input race is required to
+    // wait for both signals before changing any output signals" bars it in
+    // TxDeact -- Figure 14-5's (p.14-455) TxDeact/RxAct, reached when the peer
+    // takes Sec 14.6.2's (p.14-456) permitted diagonal out of TxStop/RxDeact and
+    // its two outputs are observed in different cycles.
     always @(posedge CLK or posedge RST) begin
         if (RST)
             rxlinkactiveack_q <= 1'b0;
         else if (~rxlinkactiveack_q)
-            rxlinkactiveack_q <= RXLINKACTIVEREQ;   // ACTIVATE -> RUN
+            rxlinkactiveack_q <= RXLINKACTIVEREQ & txlinkactivereq_q;  // ACTIVATE -> RUN
         else if (rx_deact_done_sx)
-            rxlinkactiveack_q <= 1'b0;              // DEACTIVATE -> STOP
+            rxlinkactiveack_q <= 1'b0;                                 // DEACTIVATE -> STOP
     end
 
     // CHI E.b Sec 14.6.1 (p.14-454, MUST): "If the RXLINK moves to the DEACTIVATE
@@ -286,10 +296,16 @@ module snf `SNF_PARAM
     always @(posedge CLK or posedge RST) begin
         if (RST)
             txlinkactivereq_q <= 1'b0;
+        // Sec 14.6.3 (p.14-459, MUST): "a component that observes the input race is
+        // required to wait for both signals before changing any output signals",
+        // and Table 14-1 (p.14-449) gives ACTIVATE only RUN as a successor -- so
+        // TXLINKACTIVEREQ is held until TXLINKACTIVEACK arrives, however early the
+        // peer lowers its own request. The same ack holds it low through
+        // DEACTIVATE, whose only successor is STOP.
         else if (txlinkactivereq_q)
-            txlinkactivereq_q <= RXLINKACTIVEREQ;
+            txlinkactivereq_q <= RXLINKACTIVEREQ | ~TXLINKACTIVEACK;
         else
-            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q;
+            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q & ~TXLINKACTIVEACK;
     end
 
     assign RXLINKACTIVEACK = rxlinkactiveack_q;
@@ -307,6 +323,12 @@ module snf `SNF_PARAM
     // credits using Protocol flits or L-Credit return flits", so the TXRSP/TXDAT
     // Transmitters are told when their own link is in that state.
     assign tx_deactivate_sx = ~txlinkactivereq_q & TXLINKACTIVEACK;
+
+    // Table 14-1 (p.14-449): the TXLINK state as THIS node observes it -- its own
+    // request and the ack it has received. Table 14-3 (p.14-451, MUST) gates every
+    // Protocol flit on it; Sec 14.6.3 (p.14-459, MUST) is why the peer's own view
+    // cannot stand in for it.
+    assign txlink_run_sx = txlinkactivereq_q & TXLINKACTIVEACK;
 
     //module
     snf_rxreq `SNF_PARAM_INST
@@ -330,6 +352,7 @@ module snf `SNF_PARAM
             .rst(RST),
             .txrsp_lcrdv(TXRSPLCRDV),
             .tx_deactivate(tx_deactivate_sx),
+            .txlink_run(txlink_run_sx),
             .qos_txrsp_retryack_valid_s1(qos_txrsp_retryack_valid_s1),
             .qos_txrsp_retryack_fifo_s1(qos_txrsp_retryack_fifo_s1),
             .qos_txrsp_pcrdgnt_valid_s2(qos_txrsp_pcrdgnt_valid_s2),
@@ -371,6 +394,7 @@ module snf `SNF_PARAM
             .rst(RST),
             .txdat_lcrdv(TXDATLCRDV),
             .tx_deactivate(tx_deactivate_sx),
+            .txlink_run(txlink_run_sx),
             .dbf_txdat_valid_sx(dbf_txdat_valid_sx),
             .txdat_flit(txdat_flit),
             .txdatflitv(TXDATFLITV),
