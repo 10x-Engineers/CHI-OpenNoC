@@ -170,6 +170,7 @@ module snf_data_buffer `SNF_PARAM
     wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]              rxdat_be_s0;
     wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]          rxdat_dataid_s0;
     wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]            rxdat_data_s0;
+    reg  [`AXI4_RRESP_WIDTH-1:0]                    rresp_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     wire                                            rdata_recv_update_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]              rdata_recv_entry_idx_sx;
     wire [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]          rdata_recv_data_sx;
@@ -392,6 +393,25 @@ module snf_data_buffer `SNF_PARAM
     endgenerate
 
     assign rready = 1'b1;
+    // AMBA AXI4 (IHI 0022) Table A3-4 gives RRESP two error encodings, SLVERR and
+    // DECERR, which share bit 1. Sec 9.2 (p.9-335, MUST) requires a transaction's
+    // Data response carry the error in none or all of its packets, so the bit is
+    // sticky across the burst rather than per beat.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always @(posedge clk or posedge rst)begin : rresp_timing_logic
+                if(rst)
+                    rresp_q[entry] <= {`AXI4_RRESP_WIDTH{1'b0}};
+                else if(rdata_recv_update_sx && (entry == rdata_recv_entry_idx_sx) && rresp[1])
+                    rresp_q[entry] <= rresp;
+                else if(mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
+                    rresp_q[entry] <= {`AXI4_RRESP_WIDTH{1'b0}};
+                else
+                    ;
+            end
+        end
+    endgenerate
+
     assign rdata_recv_update_sx = rready && rvalid;
     assign dbf_rd_cdmask_next_sel = rdata_cdmask_q[rdata_recv_entry_idx_sx] << 1;
     assign dbf_rd_cdmask_next = ((|dbf_rd_cdmask_next_sel) == 1'b0) ? 4'b0001 : dbf_rd_cdmask_next_sel;
@@ -433,7 +453,8 @@ module snf_data_buffer `SNF_PARAM
         txdat_flit[`CHIE_DAT_FLIT_TXNID_RANGE]     = mshr_txdat_txnid_sx;
         txdat_flit[`CHIE_DAT_FLIT_HOMENID_RANGE]   = mshr_txdat_homenid_sx;
         txdat_flit[`CHIE_DAT_FLIT_OPCODE_RANGE]    = mshr_txdat_opcode_sx;
-        txdat_flit[`CHIE_DAT_FLIT_RESPERR_RANGE]   = mshr_txdat_resperr_sx;
+        txdat_flit[`CHIE_DAT_FLIT_RESPERR_RANGE]   = rresp_q[dbf_txdat_entry_idx_sx][1] ? `CHIE_RESP_ERR_NON_DATA
+                                                                                        : mshr_txdat_resperr_sx;
         txdat_flit[`CHIE_DAT_FLIT_RESP_RANGE]      = mshr_txdat_resp_sx;
         txdat_flit[`CHIE_DAT_FLIT_FWDSTATE_RANGE]  = {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
         txdat_flit[`CHIE_DAT_FLIT_CBUSY_RANGE]     = {`CHIE_DAT_FLIT_CBUSY_WIDTH{1'b0}};
