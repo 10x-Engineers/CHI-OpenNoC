@@ -120,6 +120,7 @@ snoop and neither has a SNP port.
 | Error propagation (`RespErr`) | 🔴⁵ | 🟡⁴ | 🟢 | 🔴 | the HN-F parses `RespErr` on neither RX channel ([#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61)); the HN-I never reads `BRESP` and decodes only `RRESP=0b10` ([#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63)); the SN-F reads neither ([#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70)). The RN-I direction is CHI completion -> AXI `BRESP`/`RRESP`, fixed in [#44](https://github.com/10x-Engineers/CHI-OpenNoC/issues/44) |
 | `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🔴 | `snf_data_buffer.v:441,446`, `hni_data_buffer.v:653,658`, `rni_wr_buffer.v:482` drive both; `hnf_link_txdat_wrap.v:196,198` ties both to zero — [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) |
 | Snoop/completion serialization | — | — | — | 🔴 | `CompData` is sent before the snoop response arrives — [#17](https://github.com/10x-Engineers/CHI-OpenNoC/issues/17) |
+| Snoop-opcode selection (Table 4-24) | — | — | — | 🔴 | `ReadUnique` is answered with `SnpMakeInvalid` on an L3 hit (`hnf_mshr_ctl.v:1966`), which §2.3.9 (p.2-84) permits no data on — [#75](https://github.com/10x-Engineers/CHI-OpenNoC/issues/75) |
 | `RetToSrc` fan-out (§4.9) | — | — | — | 🔴 | one bit per MSHR entry, replayed onto every snoopee — [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) |
 
 ¹ `rtl/src/snf/` has no monitor, which §6.2.4 permits — a System monitor "can be
@@ -170,6 +171,7 @@ authoritative. The ones that bound what the table above claims:
 | [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) | HN-F | `CompData` ties `CCID` and `TraceTag` to zero (§2.10.6, §11.5.1) |
 | [#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61) | HN-F | inbound `RespErr` is never parsed, so a Subordinate error completes as OK (§9.1) |
 | [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) | HN-F | `RetToSrc` is broadcast to every snoopee of a fan-out (§4.9) |
+| [#75](https://github.com/10x-Engineers/CHI-OpenNoC/issues/75) | HN-F | `ReadUnique` answered with `SnpMakeInvalid`, destroying a Dirty Snoopee copy (§4.4.2, §2.3.9) |
 | [#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63) | HN-I | the AXI response status never reaches the CHI completion (§9.1) |
 | [#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70) | SN-F | the same, one node over: `RRESP` unread, `BRESP` a completion gate only (§9.2) |
 | [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) | — | the opcode and feature gaps the 🔴/⚪ cells above stand for, grouped by family |
