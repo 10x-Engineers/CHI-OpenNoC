@@ -57,6 +57,7 @@ module hnf_mshr_qos `HNF_PARAM
 
         //outputs to hnf_link_rxreq_parse
         rxreq_retry_enable_s0,
+        qos_active_sx,
         qos_seq_pool_full_s0_q,
 
         //outputs to hnf_mshr_global_monitor,ctl and bypass
@@ -103,6 +104,9 @@ module hnf_mshr_qos `HNF_PARAM
     //outputs to hnf_link_rxreq_parse
     output wire                                      rxreq_retry_enable_s0;
     output reg                                       qos_seq_pool_full_s0_q;
+
+    //outputs to hnf: Protocol layer activity (Sec 14.7)
+    output wire                                      qos_active_sx;
 
     //outputs to hnf_mshr_global_monitor,ctl and bypass
     output wire                                      mshr_alloc_en_s0;
@@ -1378,6 +1382,17 @@ module hnf_mshr_qos `HNF_PARAM
     assign qos_txrsp_pcrdgnt_qos_s2      = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_QOS_RANGE];
     assign qos_txrsp_pcrdgnt_tgtid_s2    = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_SRCID_RANGE];
     assign qos_txrsp_pcrdgnt_pcrdtype_s2 = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_PCRDTYPE_RANGE];
+
+    // Sec 14.7.1 (p.14-460)'s Protocol layer activity, as snf_qos.v computes it:
+    // the tracker's occupancy plus the retry state, which that section counts as
+    // in progress "until the associated credit has been supplied and used or
+    // returned". Sec 14.7.4 (p.14-463) makes it orthogonal to the LINKACTIVE
+    // states, so it is never the link handshake.
+    assign qos_active_sx = (|mshr_entry_valid_s1_q)
+                         | (|mshr_static_entry_valid_s1_q)
+                         | (|ret_bank_entry_v_s1_q)
+                         | qos_txrsp_retryack_valid_s1
+                         | qos_txrsp_pcrdgnt_valid_s2;
     //-----------------------------------------------------------------------------
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------

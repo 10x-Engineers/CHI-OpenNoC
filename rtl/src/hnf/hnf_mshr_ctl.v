@@ -124,6 +124,8 @@ module hnf_mshr_ctl `HNF_PARAM
         //outputs to hnf_data_buffer
         mshr_dbf_rd_idx_sx1_q,
         mshr_dbf_rd_valid_sx1_q,
+        mshr_dbf_err_fill_idx_sx1_q,
+        mshr_dbf_err_fill_valid_sx1_q,
         mshr_dbf_retired_idx_sx1_q,
         mshr_dbf_retired_valid_sx1_q,
 
@@ -278,6 +280,10 @@ module hnf_mshr_ctl `HNF_PARAM
     //outputs to hnf_data_buffer
     output reg  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_rd_idx_sx1_q;
     output reg                                                       mshr_dbf_rd_valid_sx1_q;
+    // Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data packets, so
+    // the buffer is stamped present for an entry no fill will ever reach.
+    output reg  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_err_fill_idx_sx1_q;
+    output reg                                                       mshr_dbf_err_fill_valid_sx1_q;
     output reg  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_retired_idx_sx1_q;
     output reg                                                       mshr_dbf_retired_valid_sx1_q;
 
@@ -362,6 +368,10 @@ module hnf_mshr_ctl `HNF_PARAM
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_cs_s1_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_ci_s1_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_seq_s1_q;
+    reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_err_s1_q;
+    reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_errrd_s1_q;
+    reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_errwrdat_s1_q;
+    reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_errgrant_s1_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_fail_s2_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_sn_order_s1_q;
     reg [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]       mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
@@ -453,6 +463,7 @@ module hnf_mshr_ctl `HNF_PARAM
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_sx8_q;
     reg [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_d_sx8_q;
     reg [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    reg [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     reg [`MSHR_ENTRIES_WIDTH-1:0]               mshr_txrsp_idx_sx1_q;
     reg                                         mshr_retire_busy_sx1_q;
     reg [`MSHR_ENTRIES_WIDTH-1:0]               mshr_retire_min_idx_sx;
@@ -583,6 +594,20 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_upd_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_s0_w;
+    wire                                        op_drop;
+    wire                                        op_serviced;
+    wire                                        op_err;
+    wire                                        op_errrd;
+    wire                                        op_errwrdat;
+    wire                                        op_cw;
+    wire                                        op_errgrant;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errrd_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errwrdat_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errgrant_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dbf_err_fill_entry_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_req_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_req_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_set_sx8;
@@ -1138,6 +1163,89 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
+    // transactions except PCrdReturn and PrefetchTgt." Every request the link admits
+    // is therefore classified here; anything outside the serviced set above owes the
+    // structural error answer Sec 9.1 (p.9-334) names for "an attempt to use a
+    // transaction type that is not supported", with Sec 9.4.4's (p.9-342, MUST)
+    // transaction structure intact -- so the class carries its shape (grant, write
+    // data, read data) as well as its NDERR.
+    assign op_drop      = (li_mshr_rxreq_opcode_s0 == `CHIE_PREFETCHTGT)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_PCRDRETURN)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_REQLCRDRETURN);
+    assign op_serviced  = op_rdnosnp | op_ro | op_rdnosd | op_ru | op_rc
+                        | op_wrnosnp | op_wu | op_wb | op_wc | op_we
+                        | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq;
+    assign op_err       = li_mshr_rxreq_valid_s0 & ~(op_serviced | op_drop);
+    // Table 4-6 (p.4-168) / Table 4-8 (p.4-171): a read is completed by CompData, so
+    // the error rides on the data response (Table 9-2 p.9-337).
+    assign op_errrd     = op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_READSHARED)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READNOSNPSEP)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READONCECLEANINVALID)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READONCEMAKEINVALID)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READPREFERUNIQUE)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_MAKEREADUNIQUE));
+    // Table 4-17 (p.4-182)'s Combined Writes, enumerated rather than taken as an
+    // opcode range: the gaps inside that range are RESERVED, and a reserved opcode
+    // answered write-shaped would wait for data no Requester owes it.
+    assign op_cw     = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITECLEANFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITECLEANFULLCLEANSHPERSEP);
+    // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
+    // a DBID and consume their write data before completing.
+    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKPTL)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEEVICTOREVICT)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLSTASH)
+                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLSTASH)
+                                  | ((li_mshr_rxreq_opcode_s0 >= `CHIE_ATOMICSTORE_ADD)
+                                   & (li_mshr_rxreq_opcode_s0 <= `CHIE_ATOMICCOMPARE))
+                                  | op_cw);
+    // Table 4-39 (p.4-219) gives a Write Zero no WriteData response but still a DBID,
+    // so it joins the errored writes in owing a CompDBIDResp without owing data.
+    assign op_errgrant  = op_errwrdat
+                        | (op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEZERO)
+                                   | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPZERO)));
+
+    assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
+    assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
+    assign mshr_errwrdat_set_s0 = {`MSHR_ENTRIES_NUM{op_errwrdat}} & mshr_can_alloc_entry_s0;
+    assign mshr_errgrant_set_s0 = {`MSHR_ENTRIES_NUM{op_errgrant}} & mshr_can_alloc_entry_s0;
+    assign mshr_err_clr_sx1     = mshr_can_retire_entry_sx1;
+    assign mshr_err_upd_sx      = mshr_err_set_s0 | mshr_err_clr_sx1;
+
+    generate
+        for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always @(posedge clk or posedge rst)begin : mshr_err_s1_q_timing_logic
+                if(rst == 1'b1)begin
+                    mshr_err_s1_q[entry]       <= 1'b0;
+                    mshr_errrd_s1_q[entry]     <= 1'b0;
+                    mshr_errwrdat_s1_q[entry]  <= 1'b0;
+                    mshr_errgrant_s1_q[entry]  <= 1'b0;
+                end
+                else if(mshr_err_upd_sx[entry] == 1'b1)begin
+                    mshr_err_s1_q[entry]       <= mshr_err_set_s0[entry];
+                    mshr_errrd_s1_q[entry]     <= mshr_errrd_set_s0[entry];
+                    mshr_errwrdat_s1_q[entry]  <= mshr_errwrdat_set_s0[entry];
+                    mshr_errgrant_s1_q[entry]  <= mshr_errgrant_set_s0[entry];
+                end
+                else
+                    ;
+            end
+        end
+    endgenerate
+
     //************************************************************************//
 
     //          mshr allocate s0 stage request fields decode logic
@@ -1283,8 +1391,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & (({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & {`MSHR_ENTRIES_NUM{mshr_order_owo}}));
-    assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q);
-    assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q);
+    assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
+    assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errgrant_s1_q);
     assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_rdnosnp_s1_q));
     assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_excl_or_reqord}}));
     assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1)) & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
@@ -1744,6 +1852,21 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dbid_s1_q[entry] <= 1'b0;
             end
 
+            // Under DWT the Subordinate grants the buffer, and Table 13-21
+            // (p.13-430) addresses its DBIDResp to ReturnNID/ReturnTxnID -- the
+            // Requester -- so this Home never sees it. The Subordinate's Comp
+            // does come here (Table 3-1 p.3-153) and carries the same DBID that
+            // Sec 2.5.9 (p.2-90, MUST) obliges it to repeat, which is the only
+            // place the Home can learn the value its own Comp must echo.
+            always @(posedge clk or posedge rst)begin : mshr_dwt_dbid_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_dwt_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+                else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_comp_s0 && mshr_dwt_s2_q[entry])
+                    mshr_dwt_dbid_s1_q[entry] <= li_mshr_rxrsp_dbid_s0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_dwt_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+            end
+
             always @(posedge clk or posedge rst)begin : mshr_get_rd_receipt_s1_q_timing_logic
                 if(rst == 1'b1)
                     mshr_get_rd_receipt_s1_q[entry] <= 1'b0;
@@ -2092,25 +2215,32 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_l3_evict_sx7[entry]) ||
                    (mshr_mem_wr_busy_sx_q[entry] & mshr_resent_s1_q[entry]);
             assign mshr_mem_wr_rdy_clr_sx[entry]     = (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry]);
-            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]);
+            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]) ||
+                   (mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_rn_data_busy_clr_sx[entry]   = (txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]);
             assign mshr_sn_data_busy_set_sx[entry]   = (mshr_alloc_datbuf_sn_s1[entry]) ||
                    (mshr_l3_memwr_sx7[entry]) ||
                    (mshr_snp_memwr_s1[entry] & mshr_snpdat_entry_vec_s1_q[entry]) ||
                    (mshr_wup_memwr_s1[entry]) ||
-                   (mshr_l3_evict_sx7[entry]);
+                   (mshr_l3_evict_sx7[entry]) ||
+                   (mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_sn_data_busy_clr_sx[entry]   = (mshr_excl_fail_s2_q[entry] & mshr_dat_new_get_s1_q[entry]) ||
                    (~mshr_rn_data_busy_sx_q[entry] & txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]) ||
-                   (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
+                   (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
+                   (mshr_errwrdat_s1_q[entry] & mshr_dat_new_get_s1_q[entry]);
             assign mshr_txdat_rn_rdy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) ||
-                   (mshr_l3dat_rn_sx7[entry]);
+                   (mshr_l3dat_rn_sx7[entry]) ||
+                   (mshr_errrd_s1_q[entry] & mshr_dbf_err_fill_entry_sx1[entry]);
             assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
             assign mshr_txdat_sn_rdy_set_sx[entry]   = (mshr_wu_s1_q[entry] & ~mshr_memattr_s1_q[entry][3] & mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry] & (mshr_snp_getall_s1[entry] | ((mshr_snpcnt_sx_q[entry]==0) & (l3_rd_busy_s2_q[entry] == 0))) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry])) ||
                    ((mshr_wrnosnp_s1_q[entry])&(mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry]) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry])) ||
                    ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry]) & (mshr_dat_new_get_s1_q[entry] & mshr_rn_dat_get_d_s1_q[entry] & mshr_get_dbid_s1_q[entry]) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry])) ||
                    ((mshr_l3dat_sn_sx8_q[entry] | mshr_snp_memwr_s1[entry]) & mshr_get_dbid_s1_q[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry] | mshr_dbid_entry_vec_s1_q[entry]));
             assign mshr_txdat_sn_rdy_clr_sx[entry]   = (~mshr_txdat_rn_rdy_sx_q[entry] & mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
-            assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]);
+            // The err class is invisible to hnf_mshr_bypass, so txrsp_mshr_bypass_lost_s1
+            // is never asserted for it; its arms hang off the allocation instead.
+            assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]) ||
+                   (mshr_errgrant_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_dbid_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
@@ -2119,11 +2249,13 @@ module hnf_mshr_ctl `HNF_PARAM
                    ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry] | mshr_we_s1_q[entry] | mshr_wrnosnp_s1_q[entry]) & mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1 & (~mshr_dwt_s2_q[entry])) ||
                    ((mshr_wrnosnp_s1_q[entry]) & (mshr_get_comp_s1_q[entry]) & mshr_comp_entry_vec_s1_q[entry] & mshr_dwt_s2_q[entry]) ||
                    ((mshr_cu_s1_q[entry] | mshr_cs_s1_q[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry]) & (mshr_neednosnp_sx7[entry] | mshr_snp_getall_s1[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx7[entry])) ||
-                   (mshr_cu_s1_q[entry] & excl_fail_s1 & mshr_can_alloc_entry_s1_q[entry]);
+                   (mshr_cu_s1_q[entry] & excl_fail_s1 & mshr_can_alloc_entry_s1_q[entry]) ||
+                   (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_comp_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_comp_busy_set_s2[entry]      = (mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1) ||
                    (mshr_can_alloc_entry_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_s1_q[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry] | mshr_wu_s1_q[entry])) ||
-                   (mshr_alloc_dwt_s1[entry]);
+                   (mshr_alloc_dwt_s1[entry]) ||
+                   (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_comp_busy_clr_s2[entry]      = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_comp_rdy_s2_q[entry]);
             assign mshr_compack_busy_set_sx[entry]   = (mshr_can_alloc_entry_s0[entry] & li_mshr_rxreq_expcompack_s0);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
@@ -2922,9 +3054,20 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_qos_sx1      = (mshr_qos_s1_q[mshr_txrsp_idx_sx1_q]);
     assign mshr_txrsp_tgtid_sx1    = (mshr_srcid_s1_q[mshr_txrsp_idx_sx1_q]);
     assign mshr_txrsp_opcode_sx1   = (mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?`CHIE_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?`CHIE_COMP:`CHIE_DBIDRESP);
-    assign mshr_txrsp_resperr_sx1  = (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? 2'b01:2'b00);
+    // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
+    // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
+    // transaction structure is intact, only its status says it was not serviced.
+    assign mshr_txrsp_resperr_sx1  = mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? 2'b11 :
+                                     (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? 2'b01:2'b00);
     assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_I);
-    assign mshr_txrsp_dbid_sx1     = mshr_txrsp_idx_sx1_q;
+    // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
+    // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
+    // same DBID field value in the Comp and DBIDResp or DBIDRespOrd message." The
+    // MSHR index IS that value where this Home granted the buffer itself; under DWT
+    // it never did, so the Comp echoes the DBID the Subordinate granted.
+    assign mshr_txrsp_dbid_sx1     = mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
+                                   ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]
+                                   : mshr_txrsp_idx_sx1_q;
     assign mshr_txrsp_tracetag_sx1 = {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
 
     //************************************************************************//
@@ -3095,7 +3238,8 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_txnid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
         mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?`CHIE_COMPDATA:`CHIE_NONCOPYBACKWRDATA);
         mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?`CHIE_COMP_RESP_UD_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):{`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}});
-        mshr_txdat_resperr_sx2 = ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? 2'b01:2'b00);
+        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? 2'b11 :
+                                 ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? 2'b01:2'b00);
         mshr_txdat_dbid_sx2    = (txdat_mshr_rd_idx_sx2);
     end
 
@@ -3120,6 +3264,25 @@ module hnf_mshr_ctl `HNF_PARAM
                 txdat_wrap_other_idx = txdat_wrap_other_idx;
                 found_txdat_wrap_other_ptr = found_txdat_wrap_other_ptr;
             end
+        end
+    end
+
+    // The error fill: one pulse per errored read at its allocation, carrying no data
+    // -- Sec 9.5's (p.9-347) rule that unusable data must not be consumed applies to
+    // a Non-data Error the same way, and Sec 9.4.4 (p.9-342, MUST) asks only that the
+    // packets be sent. Registered so it lands the cycle mshr_txdat_rn_rdy is set.
+    always@(posedge clk or posedge rst)begin : mshr_dbf_err_fill_timing_logic
+        if(rst == 1'b1) begin
+            mshr_dbf_err_fill_valid_sx1_q <= 1'b0;
+            mshr_dbf_err_fill_idx_sx1_q   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else if(|(mshr_errrd_s1_q & mshr_can_alloc_entry_s1_q))begin
+            mshr_dbf_err_fill_valid_sx1_q <= 1'b1;
+            mshr_dbf_err_fill_idx_sx1_q   <= mshr_entry_idx_alloc_s1_q;
+        end
+        else begin
+            mshr_dbf_err_fill_valid_sx1_q <= 1'b0;
+            mshr_dbf_err_fill_idx_sx1_q   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
         end
     end
 
@@ -3148,6 +3311,7 @@ module hnf_mshr_ctl `HNF_PARAM
                 entry=entry+1) begin : mshr_dbf_rd_entry_sx1_comb_logic
             assign mshr_dbf_rd_entry_sx1[entry]
                    = (mshr_dbf_rd_idx_sx1_q == entry) & mshr_dbf_rd_valid_sx1_q;
+            assign mshr_dbf_err_fill_entry_sx1[entry] = (mshr_dbf_err_fill_idx_sx1_q == entry) & mshr_dbf_err_fill_valid_sx1_q;
         end
     endgenerate
 

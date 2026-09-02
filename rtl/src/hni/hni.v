@@ -270,6 +270,7 @@ module hni `HNI_PARAM
     // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
     // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
     wire hni_txflit_avail   = txrsp_flit_avail | txdat_flit_avail;
+    wire hni_qos_active_sx;
 
     chi_link_handshake u_chi_link_handshake(
         .clk                (CLK                ),
@@ -288,10 +289,11 @@ module hni `HNI_PARAM
         );
 
     // CHI E.b Sec 14.7.4 (p.14-463): "SACTIVE signaling is orthogonal to the
-    // LINKACTIVE states", so it cannot be derived from them. Sec 14.7.2 (p.14-460,
-    // MUST) fixes what it does track: asserted while this node has Protocol-layer
-    // work outstanding, which here is a flit to send or an inbound credit spent.
-    assign TXSACTIVE = (hni_txflit_avail | (~hni_rxcrd_cnt_full)) & (~RST);
+    // LINKACTIVE states". Sec 14.7.2 (p.14-460, MUST) fixes what it does track:
+    // the tracker's occupancy plus the retry state, with the outbound flit
+    // availability covering a transaction whose entry has retired with its last
+    // flit still queued.
+    assign TXSACTIVE = (hni_qos_active_sx | hni_txflit_avail) & (~RST);
 
     //module
     hni_rxreq `HNI_PARAM_INST
@@ -405,6 +407,7 @@ module hni `HNI_PARAM
             .qos_txrsp_retryack_fifo_s1(qos_txrsp_retryack_fifo_s1),
             .qos_txrsp_pcrdgnt_valid_s2(qos_txrsp_pcrdgnt_valid_s2),
             .qos_txrsp_pcrdgnt_fifo_s2(qos_txrsp_pcrdgnt_fifo_s2),
+            .qos_active_sx(hni_qos_active_sx),
             .rxreq_retry_enable_s0(rxreq_retry_enable_s0),
             .rxreq_alloc_en_s0(rxreq_alloc_en_s0),
             .rxreq_alloc_flit_s0(rxreq_alloc_flit_s0),
