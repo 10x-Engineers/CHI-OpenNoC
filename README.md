@@ -36,41 +36,42 @@ too.
 | :--- | ---: | :--- |
 | **SN-F** `rtl/src/snf/` | 16 | ⚪ NDERR catch-all — `snf_mshr.v:387` |
 | **HN-I** `rtl/src/hni/` | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.v:514` |
-| **HN-F** `rtl/src/hnf/` | 17, plus 7 snoops and their 4 DCT forms | 🔴 no catch-all — [#52](https://github.com/10x-Engineers/CHI-OpenNoC/issues/52) |
+| **HN-F** `rtl/src/hnf/` | 18, plus 7 snoops and their 4 DCT forms | 🔴 no catch-all — [#52](https://github.com/10x-Engineers/CHI-OpenNoC/issues/52) |
 | **RN-I** `rtl/src/rni/` | generates 4 | it is a Requester — see §2.5 |
 
 The SN-F and HN-I both answer everything they do not implement. The HN-F does not:
 `hnf_link_rxreq_parse.v:140` admits every REQ flit with no opcode filter, and the
 only opcode enumeration in that file is a `DISPLAY_FATAL` whitelist at `:212` that a
-normal build compiles out.
+normal build compiles out. The 18 counts `SnoopFilterEvict`, whose encoding the
+internal back-invalidate shares (`hnf_defines.v:184`).
 
 ## 2.2 Request opcodes
 
 | Request | SN-F | HN-I | HN-F |
 | :--- | :---: | :---: | :---: |
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 |
-| `ReadNoSnpSep` | 🟢 | ⚪ | 🔴 |
+| `ReadNoSnpSep` | 🟢 | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `ReadOnce` | — | 🟢 | 🟢 |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🔴 |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 |
-| `ReadShared`, `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🔴 |
+| `ReadShared`, `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `WriteNoSnpFull`, `WriteNoSnpPtl` | 🟢 | 🟢 | 🟢 |
-| `WriteNoSnpZero` | 🟢 | 🟢 | 🔴 |
+| `WriteNoSnpZero` | 🟢 | 🟢 | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 |
-| `WriteUniqueZero` | ⚪ | ⚪ | 🔴 |
+| `WriteUniqueZero` | ⚪ | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
-| `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🔴 |
-| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🔴 |
-| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🔴 |
-| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🔴 |
-| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🔴 |
+| `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
+| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
+| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
-| `MakeInvalid` | 🟢 | 🟢 | 🔴 |
-| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🔴 |
+| `MakeInvalid` | 🟢 | 🟢 | 🔴 [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
+| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🔴 [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
-| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | 🔴 |
+| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `SnoopFilterEvict` | ⚪ | ⚪ | 🟢 |
-| `DVMOp` | ⚪ | ⚪ | 🔴 |
+| `DVMOp` | ⚪ | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `PrefetchTgt`, `PCrdReturn` | ⬛ | ⬛ | 🔴 |
 | `ReqLCrdReturn` | ⬛ | ⬛ | 🔴 [#53](https://github.com/10x-Engineers/CHI-OpenNoC/issues/53) |
 
@@ -90,9 +91,9 @@ snoop and neither has a SNP port.
 | `SnpOnce`, `SnpClean`, `SnpNotSharedDirty`, `SnpUnique` | 🟢 | `hnf_mshr_ctl.v:1963-1986` |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | the CMO- and back-invalidate-driven snoops |
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16` (`hnf_mshr_ctl.v:2991`), elected on a snoop-direct L3 miss for a non-Excl allocating read (`:1149`) |
-| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated |
+| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.v:1299-1300`, `:1319-1320` |
-| `SnpRespDataPtl` | 🔴 | neither whitelisted (`hnf_link_rxdat_parse.v:167`) nor decoded |
+| `SnpRespDataPtl` | 🔴 | neither whitelisted (`hnf_link_rxdat_parse.v:167`) nor decoded — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 
 ## 2.4 Features
 
@@ -115,7 +116,11 @@ snoop and neither has a SNP port.
 | Stash | ⚪ | ⚪ | — | 🔴 | |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero |
 | MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_defines.v`'s flit widths — the field is not in the layout |
-| RSVDC / DataCheck / Poison | 🔴 | 🔴 | 🔴 | 🔴 | the data-path wrappers name these as the fields the node never sources |
+| RSVDC / DataCheck / Poison | 🔴 | 🔴 | 🔴 | 🔴 | the data-path wrappers name these as the fields the node never sources; the field is still in the flit layout, and no node parses an inbound one — [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) |
+| Error propagation (`RespErr`) | 🔴⁵ | 🟡⁴ | 🟢 | 🔴 | the HN-F parses `RespErr` on neither RX channel ([#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61)); the HN-I never reads `BRESP` and decodes only `RRESP=0b10` ([#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63)); the SN-F reads neither ([#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70)). The RN-I direction is CHI completion -> AXI `BRESP`/`RRESP`, fixed in [#44](https://github.com/10x-Engineers/CHI-OpenNoC/issues/44) |
+| `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🔴 | `snf_data_buffer.v:441,446`, `hni_data_buffer.v:653,658`, `rni_wr_buffer.v:482` drive both; `hnf_link_txdat_wrap.v:196,198` ties both to zero — [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) |
+| Snoop/completion serialization | — | — | — | 🔴 | `CompData` is sent before the snoop response arrives — [#17](https://github.com/10x-Engineers/CHI-OpenNoC/issues/17) |
+| `RetToSrc` fan-out (§4.9) | — | — | — | 🔴 | one bit per MSHR entry, replayed onto every snoopee — [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) |
 
 ¹ `rtl/src/snf/` has no monitor, which §6.2.4 permits — a System monitor "can be
 placed at a PoS or at endpoint devices", and here it sits at the Home.
@@ -123,6 +128,9 @@ placed at a PoS or at endpoint devices", and here it sits at the Home.
 serviced as a plain read and registers nothing.
 ³ `rni_awlink.v:110` decodes `AxLOCK` into a signal with no readers; `Excl` is never
 set on a request.
+⁴ Reads map AXI `SLVERR` to CHI `DERR`; `DECERR` and every write error are dropped.
+⁵ `rresp` is a port on `snf_data_buffer.v` with no reader, and `snf_mshr.v` uses
+`BVALID` only as a completion gate — neither AXI status reaches a CHI response.
 
 ## 2.5 What the RN-I generates
 
@@ -158,6 +166,13 @@ authoritative. The ones that bound what the table above claims:
 | [#49](https://github.com/10x-Engineers/CHI-OpenNoC/issues/49) | HN-F | `TXSACTIVE` derived from `LINKACTIVE` (§14.7.4) |
 | [#51](https://github.com/10x-Engineers/CHI-OpenNoC/issues/51) | SN-F | a `RetryAck` is never followed by a `PCrdGrant` |
 | [#47](https://github.com/10x-Engineers/CHI-OpenNoC/issues/47) | RN-I | Device reads assert EndpointOrder with no `ReadReceipt` issue gate |
+| [#17](https://github.com/10x-Engineers/CHI-OpenNoC/issues/17) | HN-F | a coherent read is completed before its snoops have responded (§4.11.2) |
+| [#60](https://github.com/10x-Engineers/CHI-OpenNoC/issues/60) | HN-F | `CompData` ties `CCID` and `TraceTag` to zero (§2.10.6, §11.5.1) |
+| [#61](https://github.com/10x-Engineers/CHI-OpenNoC/issues/61) | HN-F | inbound `RespErr` is never parsed, so a Subordinate error completes as OK (§9.1) |
+| [#64](https://github.com/10x-Engineers/CHI-OpenNoC/issues/64) | HN-F | `RetToSrc` is broadcast to every snoopee of a fan-out (§4.9) |
+| [#63](https://github.com/10x-Engineers/CHI-OpenNoC/issues/63) | HN-I | the AXI response status never reaches the CHI completion (§9.1) |
+| [#70](https://github.com/10x-Engineers/CHI-OpenNoC/issues/70) | SN-F | the same, one node over: `RRESP` unread, `BRESP` a completion gate only (§9.2) |
+| [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) | — | the opcode and feature gaps the 🔴/⚪ cells above stand for, grouped by family |
 
 # 3 Directory layout
 ```
