@@ -3100,7 +3100,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
-    assign mshr_txrsp_resperr_sx1  = mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? `CHIE_RESP_ERR_NON_DATA :
+    // Table A-8 (p.A-488) gives ReadReceipt and DBIDResp a RespErr of 0, so a
+    // status -- a Subordinate's included -- rides out on the Comp that follows,
+    // never on the buffer grant or the request-accepted acknowledgement.
+    assign mshr_txrsp_resperr_sx1  = ((mshr_txrsp_opcode_sx1 == `CHIE_READRECEIPT) ||
+                                      (mshr_txrsp_opcode_sx1 == `CHIE_DBIDRESP)) ? `CHIE_RESP_ERR_NORM_OK :
+                                     mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? `CHIE_RESP_ERR_NON_DATA :
                                      mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
                                      (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? 2'b01:2'b00);
     assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_I);
