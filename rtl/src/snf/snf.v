@@ -268,13 +268,22 @@ module snf `SNF_PARAM
     // THROUGHOUT reset, so both reset asynchronously -- a synchronous reset still
     // drives the old value on the first reset cycle, and cannot deassert at all
     // while the clock is stopped.
+    //
+    // The assertion is gated on this node's own TXLINKACTIVEREQ, which is both of
+    // Sec 14.6.3's obligations on it at once: (p.14-458, MUST) "The assertion of
+    // RXACK must not occur before the assertion of TXREQ" bars it in TxStop, and
+    // (p.14-459, MUST) "a component that observes the input race is required to
+    // wait for both signals before changing any output signals" bars it in
+    // TxDeact -- Figure 14-5's (p.14-455) TxDeact/RxAct, reached when the peer
+    // takes Sec 14.6.2's (p.14-456) permitted diagonal out of TxStop/RxDeact and
+    // its two outputs are observed in different cycles.
     always @(posedge CLK or posedge RST) begin
         if (RST)
             rxlinkactiveack_q <= 1'b0;
         else if (~rxlinkactiveack_q)
-            rxlinkactiveack_q <= RXLINKACTIVEREQ;   // ACTIVATE -> RUN
+            rxlinkactiveack_q <= RXLINKACTIVEREQ & txlinkactivereq_q;  // ACTIVATE -> RUN
         else if (rx_deact_done_sx)
-            rxlinkactiveack_q <= 1'b0;              // DEACTIVATE -> STOP
+            rxlinkactiveack_q <= 1'b0;                                 // DEACTIVATE -> STOP
     end
 
     // CHI E.b Sec 14.6.1 (p.14-454, MUST): "If the RXLINK moves to the DEACTIVATE
