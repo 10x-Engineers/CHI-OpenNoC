@@ -29,6 +29,7 @@ module snf_txrsp `SNF_PARAM
 
         txrsp_lcrdv,
         tx_deactivate,
+        txlink_run,
 
         qos_txrsp_retryack_valid_s1,
         qos_txrsp_retryack_fifo_s1,
@@ -64,6 +65,7 @@ module snf_txrsp `SNF_PARAM
     //inputs from snf_link
     input wire                                     txrsp_lcrdv;
     input wire                                     tx_deactivate;
+    input wire                                     txlink_run;
 
     input wire                                     qos_txrsp_retryack_valid_s1;
     input wire [`SNF_RETRY_ACKQ_DATA_RANGE]            qos_txrsp_retryack_fifo_s1;
@@ -120,9 +122,19 @@ module snf_txrsp `SNF_PARAM
     //arb and lcrd_avail
     assign rsp_crd_cnt_not_zero_sx     = (txrsp_crd_cnt_q != 0);
 
-    // just received it or not zero
-    assign txrsp_crd_avail_s1          = (txrsp_lcrdv | rsp_crd_cnt_not_zero_sx);
-    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1;
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." txrsp_crd_cnt_q already folds this cycle's grant in for the next
+    // one, so the counted credits are the whole of what is spendable.
+    assign txrsp_crd_avail_s1          = rsp_crd_cnt_not_zero_sx;
+    // Table 14-3 (p.14-451, MUST): the Transmitter "must not send flits" in STOP
+    // or ACTIVATE. Holding a credit is not that gate -- Sec 14.6.3 (p.14-459) has
+    // the peer's ack legally in flight while it is already granting, so the link
+    // state this node has itself observed is what a Protocol flit waits on. Busy
+    // rather than the flitv term alone, so the arbitration feedback to QoS and
+    // the MSHR cannot retire a response the link is not entitled to carry. The
+    // L-Credit return below is deliberately outside it: Table 14-2 DEACTIVATE
+    // requires those flits in a state that is not RUN.
+    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | ~txlink_run;
 
     //output to qos
     assign txrsp_retryack_won_s1 = (qos_txrsp_retryack_valid_s1) &

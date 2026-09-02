@@ -99,7 +99,7 @@ snoop and neither has a SNP port.
 
 | Feature | SN-F | HN-I | RN-I | HN-F | Where |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| Chapter 14 link activation | 🟢 | 🟢 | 🟢 | 🟢 | the shared `chi_link_handshake` on every node |
+| Chapter 14 link activation | 🟢 | 🟢 | 🟢 | 🟢 | the shared `chi_link_handshake` on the HN-F, HN-I and RN-I; the SN-F drives its own FSM, which waits out §14.6.3's input race and gates every Protocol flit on its own TXLINK state |
 | `TXSACTIVE` per §14.7.4 | 🟢 | 🟢 | 🟢 | 🔴 | still derived from `LINKACTIVE` on the HN-F — [#49](https://github.com/10x-Engineers/CHI-OpenNoC/issues/49) |
 | Retry (`RetryAck` / `PCrdGrant`) | 🟡 | 🟢 | 🟢 | 🟢 | each node's `*_qos.v`; the RN-I stores `PCrdType` and re-sends with `AllowRetry=0` but never sends `PCrdReturn`. SN-F: [#51](https://github.com/10x-Engineers/CHI-OpenNoC/issues/51) |
 | QoS | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes at the SN-F/HN-I (`snf_qos.v:232`, `hni_qos.v:220`), 4 at the HN-F (`hnf_mshr_qos.v:327-336`); the RN-I passes `AxQOS` through |
@@ -363,6 +363,8 @@ issue and PR backlog is ported here too.
 | `hnf.v` — the HN-F had no `LINKACTIVE`/`SACTIVE` ports at all and granted RX L-Credits out of reset. It now carries the same six-signal interface as its siblings, drives `chi_link_handshake`, gates every RX credit grant on RUN, blocks TX flits outside RUN and returns its TX L-Credits while deactivating. `rtl/tb/tb_hnf_link.sv` + `tools/link_check.sh` are the check ([#3](https://github.com/10x-Engineers/CHI-OpenNoC/issues/3)) | CHI E.b Tables 14-2/14-3, §14.7.2 |
 | `rni_link_handshake.v` → `rtl/misc/chi_link_handshake.v` — the link-activation FSM was RN-I-local and is now the shared module every node uses | — |
 | `chi_xp_channel.v`, `chi_ring_channel.v` — the NodeID width was a hard-coded `localparam 7` and the XY decode sliced literal `[6:4]`/`[3:1]`, so a system elaborated at width 11 mis-routed every TgtID. Both take `CHIE_NID_WIDTH_PARAM`, and the mesh/ring generators pass it through ([#4](https://github.com/10x-Engineers/CHI-OpenNoC/issues/4)) | CHI E.b §16.1 |
+| `snf.v`, `snf_txrsp.v`, `snf_txdat.v` — a Protocol flit was gated on L-Credit availability alone, with no reference to the TXLINK, so a legally granted credit let one out while this node had itself observed only ACTIVATE. Both transmit modules now take the node's own `txlink_run`, applied at the busy/ready term so QoS and the MSHR cannot retire a response the link cannot carry; the L-Credit return stays outside it, since Table 14-2 DEACTIVATE requires those flits outside RUN ([#58](https://github.com/10x-Engineers/CHI-OpenNoC/issues/58)) | CHI E.b Table 14-3, §14.6.3 |
+| `snf_txrsp.v`, `snf_txdat.v` — the arriving `*_lcrdv` was OR'd into the credit-availability term, so a credit was spent in the cycle it was received. Availability is now the counted credits alone ([#59](https://github.com/10x-Engineers/CHI-OpenNoC/issues/59)) | CHI E.b §14.2.1 |
 | `snf.v` — `TXLINKACTIVEREQ` was tied to `1'b1`, so it was asserted throughout reset, and the Transmit link could never leave ACTIVATE for DEACTIVATE/STOP | CHI E.b §14.1.3, §14.5 |
 | `snf.v` — `RXLINKACTIVEACK` reset synchronously, so it still drove its old value on the first cycle of reset. Both signals now reset asynchronously | CHI E.b §14.1.3 |
 | `snf_data_buffer.v` — RSVDC, DataCheck and Poison were assigned in `always @*` blocks whose right-hand sides were constants, so the inferred sensitivity list was empty and the blocks never executed | — |
