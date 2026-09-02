@@ -286,10 +286,16 @@ module snf `SNF_PARAM
     always @(posedge CLK or posedge RST) begin
         if (RST)
             txlinkactivereq_q <= 1'b0;
+        // Sec 14.6.3 (p.14-459, MUST): "a component that observes the input race is
+        // required to wait for both signals before changing any output signals",
+        // and Table 14-1 (p.14-449) gives ACTIVATE only RUN as a successor -- so
+        // TXLINKACTIVEREQ is held until TXLINKACTIVEACK arrives, however early the
+        // peer lowers its own request. The same ack holds it low through
+        // DEACTIVATE, whose only successor is STOP.
         else if (txlinkactivereq_q)
-            txlinkactivereq_q <= RXLINKACTIVEREQ;
+            txlinkactivereq_q <= RXLINKACTIVEREQ | ~TXLINKACTIVEACK;
         else
-            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q;
+            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q & ~TXLINKACTIVEACK;
     end
 
     assign RXLINKACTIVEACK = rxlinkactiveack_q;
