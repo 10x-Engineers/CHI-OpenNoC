@@ -29,6 +29,7 @@ module snf_txdat `SNF_PARAM
 
         txdat_lcrdv,
         tx_deactivate,
+        txlink_run,
 
         dbf_txdat_valid_sx,
         txdat_flit,
@@ -48,6 +49,7 @@ module snf_txdat `SNF_PARAM
     //inputs from snf_link
     input wire                                    txdat_lcrdv;
     input wire                                    tx_deactivate;
+    input wire                                    txlink_run;
 
     //inputs from snf_data_buffer
     input wire                                    dbf_txdat_valid_sx;
@@ -75,12 +77,23 @@ module snf_txdat `SNF_PARAM
     wire                                          txdat_crd_cnt_dec_sx;
     wire                                          update_dat_crd_cnt_s0;
     wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_s1;
+    wire                                          txdat_send_ok_sx;
     wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_inc_s0;
     wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_dec_s0;
 
     //main function
     assign dat_crd_cnt_not_zero_sx = (txdat_crd_cnt_q != {`SNF_LL_DAT_CRD_CNT_WIDTH{1'b0}});
-    assign txdat_crd_avail_s1      = (txdat_lcrdv | dat_crd_cnt_not_zero_sx);
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." txdat_crd_cnt_q already folds this cycle's grant in for the next
+    // one, so the counted credits are the whole of what is spendable.
+    assign txdat_crd_avail_s1      = dat_crd_cnt_not_zero_sx;
+    // Table 14-3 (p.14-451, MUST): the Transmitter "must not send flits" in STOP
+    // or ACTIVATE. Holding a credit is not that gate -- Sec 14.6.3 (p.14-459) has
+    // the peer's ack legally in flight while it is already granting, so the link
+    // state this node has itself observed is what a Protocol flit waits on. The
+    // L-Credit return below is deliberately outside it: Table 14-2 DEACTIVATE
+    // requires those flits in a state that is not RUN.
+    assign txdat_send_ok_sx        = txdat_crd_avail_s1 & txlink_run;
 
     assign txdatcrdv_s0            = txdat_lcrdv;
     assign txdat_crd_cnt_inc_sx    = txdatcrdv_s0;
@@ -92,9 +105,9 @@ module snf_txdat `SNF_PARAM
     // are returned." A Protocol flit still wins the cycle.
     assign txdat_lcrd_rtn_s0       = tx_deactivate & (~dbf_txdat_valid_sx) & txdat_crd_avail_s1;
 
-    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_crd_avail_s1) | txdat_lcrd_rtn_s0;
+    assign txdat_crd_cnt_dec_sx    = (dbf_txdat_valid_sx & txdat_send_ok_sx) | txdat_lcrd_rtn_s0;
     assign txdatflitpend = 1'b1;
-    assign txdat_dbf_rdy_s1 = txdat_crd_avail_s1;
+    assign txdat_dbf_rdy_s1 = txdat_send_ok_sx;
 
     //txdatflit sending logic
     always @(posedge clk or posedge rst) begin: txdatflit_logic_t
@@ -102,7 +115,7 @@ module snf_txdat `SNF_PARAM
             txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
             txdatflitv <= 1'b0;
         end
-        else if((txdat_crd_avail_s1 == 1'b1) && (dbf_txdat_valid_sx == 1'b1))begin
+        else if((txdat_send_ok_sx == 1'b1) && (dbf_txdat_valid_sx == 1'b1))begin
             txdatflit  <= txdat_flit;
             txdatflitv <= 1'b1;
         end
@@ -117,7 +130,7 @@ module snf_txdat `SNF_PARAM
         end
     end
 
-    assign txdat_dbf_won_sx        = dbf_txdat_valid_sx & txdat_crd_avail_s1;
+    assign txdat_dbf_won_sx        = dbf_txdat_valid_sx & txdat_send_ok_sx;
 
     //L-credit logic
     assign update_dat_crd_cnt_s0   = txdat_crd_cnt_inc_sx | txdat_crd_cnt_dec_sx;

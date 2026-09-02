@@ -232,6 +232,7 @@ module snf `SNF_PARAM
     wire                                        rx_all_crd_returned_sx;
     wire                                        rx_deact_done_sx;
     wire                                        tx_deactivate_sx;
+    wire                                        txlink_run_sx;
 
     // L-Credits this Receiver has granted and not yet seen consumed. CHI E.b
     // Sec 14.2 (MUST): every flit transfer consumes exactly one L-Credit, an
@@ -314,6 +315,12 @@ module snf `SNF_PARAM
     // Transmitters are told when their own link is in that state.
     assign tx_deactivate_sx = ~txlinkactivereq_q & TXLINKACTIVEACK;
 
+    // Table 14-1 (p.14-449): the TXLINK state as THIS node observes it -- its own
+    // request and the ack it has received. Table 14-3 (p.14-451, MUST) gates every
+    // Protocol flit on it; Sec 14.6.3 (p.14-459, MUST) is why the peer's own view
+    // cannot stand in for it.
+    assign txlink_run_sx = txlinkactivereq_q & TXLINKACTIVEACK;
+
     //module
     snf_rxreq `SNF_PARAM_INST
         u_snf_rxreq(
@@ -336,6 +343,7 @@ module snf `SNF_PARAM
             .rst(RST),
             .txrsp_lcrdv(TXRSPLCRDV),
             .tx_deactivate(tx_deactivate_sx),
+            .txlink_run(txlink_run_sx),
             .qos_txrsp_retryack_valid_s1(qos_txrsp_retryack_valid_s1),
             .qos_txrsp_retryack_fifo_s1(qos_txrsp_retryack_fifo_s1),
             .qos_txrsp_pcrdgnt_valid_s2(qos_txrsp_pcrdgnt_valid_s2),
@@ -377,6 +385,7 @@ module snf `SNF_PARAM
             .rst(RST),
             .txdat_lcrdv(TXDATLCRDV),
             .tx_deactivate(tx_deactivate_sx),
+            .txlink_run(txlink_run_sx),
             .dbf_txdat_valid_sx(dbf_txdat_valid_sx),
             .txdat_flit(txdat_flit),
             .txdatflitv(TXDATFLITV),
