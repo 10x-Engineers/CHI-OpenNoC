@@ -155,8 +155,24 @@ module hnf_link_txreq_wrap `HNF_PARAM
 
 
     wire                                              txreq_lcrd_rtn_sx;
+    wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]           txreq_bypass_memattr_snf_s1;
+    wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]           txreq_memattr_snf_sx1;
 
     //main function
+    // CHI E.b Sec 2.9.3 (p.2-128): MemAttr is preserved on a Home to Subordinate
+    // request, the one exception being Device, which "can be set to 0b0" when the
+    // downstream memory is known to be Normal. Every request this channel sends is
+    // addressed to SNF_NID_PARAM, and Sec 1.6 (p.1-29) makes an SN-F "a Subordinate
+    // Node type used for Normal memory" -- so the exception's antecedent always
+    // holds here, and Tables 4-2 (p.4-166) and 4-14 (p.4-179) then make taking it
+    // mandatory: an ICN(HN-F) to SN-F request has no Device MemAttr row at all
+    // (the Device rows are Tables 4-3/4-15, ICN(HN-I) to SN-I).
+    // MemAttr[1] is Device (Table 13-19 p.13-429).
+    assign txreq_bypass_memattr_snf_s1 = {mshr_txreq_bypass_memattr_s1[3:2], 1'b0,
+                                          mshr_txreq_bypass_memattr_s1[0]};
+    assign txreq_memattr_snf_sx1       = {mshr_txreq_memattr_sx1[3:2], 1'b0,
+                                          mshr_txreq_memattr_sx1[0]};
+
     assign req_crd_cnt_not_zero_sx = (txreq_crd_cnt_q != 'd0);
     assign txreq_crd_avail_s1      = (txreq_lcrdv | req_crd_cnt_not_zero_sx);
     assign txreq_busy_sx           = ~txreq_crd_avail_s1 | (~txlink_run);
@@ -192,7 +208,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE]   =  mshr_txreq_bypass_allowretry_s1;
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_ORDER_RANGE]        =  mshr_txreq_bypass_order_s1;
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_PCRDTYPE_RANGE]     =  mshr_txreq_bypass_pcrdtype_s1;
-        txreqflit_bypass_s1[`CHIE_REQ_FLIT_MEMATTR_RANGE]      =  mshr_txreq_bypass_memattr_s1;
+        txreqflit_bypass_s1[`CHIE_REQ_FLIT_MEMATTR_RANGE]      =  txreq_bypass_memattr_snf_s1;
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_DODWT_RANGE]        =  mshr_txreq_bypass_dodwt_s1;
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_LPID_RANGE]         = {`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
         txreqflit_bypass_s1[`CHIE_REQ_FLIT_EXCL_RANGE]         = {`CHIE_REQ_FLIT_EXCL_WIDTH{1'b0}};
@@ -217,7 +233,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE]     = mshr_txreq_allowretry_sx1;
         txreqflit_sx1[`CHIE_REQ_FLIT_ORDER_RANGE]          = mshr_txreq_order_sx1;
         txreqflit_sx1[`CHIE_REQ_FLIT_PCRDTYPE_RANGE]       = mshr_txreq_pcrdtype_sx1;
-        txreqflit_sx1[`CHIE_REQ_FLIT_MEMATTR_RANGE]        = mshr_txreq_memattr_sx1;
+        txreqflit_sx1[`CHIE_REQ_FLIT_MEMATTR_RANGE]        = txreq_memattr_snf_sx1;
         txreqflit_sx1[`CHIE_REQ_FLIT_DODWT_RANGE]          = mshr_txreq_dodwt_sx1;
         txreqflit_sx1[`CHIE_REQ_FLIT_LPID_RANGE]           = {`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
         txreqflit_sx1[`CHIE_REQ_FLIT_EXCL_RANGE]           = {`CHIE_REQ_FLIT_EXCL_WIDTH{1'b0}};
