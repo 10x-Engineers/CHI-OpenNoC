@@ -216,7 +216,7 @@ module hnf_mshr `HNF_PARAM
     input wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]        li_mshr_rxdat_txnid_s0;
     input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]       li_mshr_rxdat_opcode_s0;
     input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]         li_mshr_rxdat_resp_s0;
-    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]         li_mshr_rxdat_resperr_s0;
+    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]      li_mshr_rxdat_resperr_s0;
     input wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0]     li_mshr_rxdat_fwdstate_s0;
     input wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]       li_mshr_rxdat_dataid_s0;
     input wire                                         li_mshr_rxrsp_valid_s0;
@@ -224,7 +224,7 @@ module hnf_mshr `HNF_PARAM
     input wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]        li_mshr_rxrsp_txnid_s0;
     input wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]       li_mshr_rxrsp_opcode_s0;
     input wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]         li_mshr_rxrsp_resp_s0;
-    input wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]         li_mshr_rxrsp_resperr_s0;
+    input wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      li_mshr_rxrsp_resperr_s0;
     input wire [`CHIE_RSP_FLIT_FWDSTATE_WIDTH-1:0]     li_mshr_rxrsp_fwdstate_s0;
     input wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]         li_mshr_rxrsp_dbid_s0;
     input wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]     li_mshr_rxrsp_pcrdtype_s0;
@@ -334,7 +334,7 @@ module hnf_mshr `HNF_PARAM
     output wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]     mshr_txdat_resperr_sx2;
     output wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]        mshr_txdat_dbid_sx2;
     output wire [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]        mshr_txdat_ccid_sx2;
-    output wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]        mshr_txdat_tracetag_sx2;
+    output wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]    mshr_txdat_tracetag_sx2;
     output wire                                        mshr_l3_fill_sx1_q;
     output wire [CHIE_NID_WIDTH_PARAM-1:0]             mshr_l3_rnf_sx1_q;
     output wire                                        mshr_l3_seq_retire_sx1_q;
@@ -515,7 +515,7 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxdat_txnid_s0                          (li_mshr_rxdat_txnid_s0            ),
                      .li_mshr_rxdat_opcode_s0                         (li_mshr_rxdat_opcode_s0           ),
                      .li_mshr_rxdat_resp_s0                           (li_mshr_rxdat_resp_s0             ),
-                     .li_mshr_rxdat_resperr_s0                           (li_mshr_rxdat_resperr_s0             ),
+                     .li_mshr_rxdat_resperr_s0                        (li_mshr_rxdat_resperr_s0          ),
                      .li_mshr_rxdat_fwdstate_s0                       (li_mshr_rxdat_fwdstate_s0         ),
                      .li_mshr_rxdat_dataid_s0                         (li_mshr_rxdat_dataid_s0           ),
                      .li_mshr_rxrsp_valid_s0                          (li_mshr_rxrsp_valid_s0            ),
@@ -523,7 +523,7 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxrsp_txnid_s0                          (li_mshr_rxrsp_txnid_s0            ),
                      .li_mshr_rxrsp_opcode_s0                         (li_mshr_rxrsp_opcode_s0           ),
                      .li_mshr_rxrsp_resp_s0                           (li_mshr_rxrsp_resp_s0             ),
-                     .li_mshr_rxrsp_resperr_s0                           (li_mshr_rxrsp_resperr_s0             ),
+                     .li_mshr_rxrsp_resperr_s0                        (li_mshr_rxrsp_resperr_s0          ),
                      .li_mshr_rxrsp_fwdstate_s0                       (li_mshr_rxrsp_fwdstate_s0         ),
                      .li_mshr_rxrsp_dbid_s0                           (li_mshr_rxrsp_dbid_s0             ),
                      .li_mshr_rxrsp_pcrdtype_s0                       (li_mshr_rxrsp_pcrdtype_s0         ),
@@ -606,7 +606,7 @@ module hnf_mshr `HNF_PARAM
                      .mshr_txdat_resperr_sx2                          (mshr_txdat_resperr_sx2            ),
                      .mshr_txdat_dbid_sx2                             (mshr_txdat_dbid_sx2               ),
                      .mshr_txdat_ccid_sx2                             (mshr_txdat_ccid_sx2               ),
-                     .mshr_txdat_tracetag_sx2                             (mshr_txdat_tracetag_sx2               ),
+                     .mshr_txdat_tracetag_sx2                         (mshr_txdat_tracetag_sx2           ),
                      .mshr_l3_fill_sx1_q                              (mshr_l3_fill_sx1_q                ),
                      .mshr_l3_rnf_sx1_q                               (mshr_l3_rnf_sx1_q                 ),
                      .mshr_l3_seq_retire_sx1_q                        (mshr_l3_seq_retire_sx1_q          ),
