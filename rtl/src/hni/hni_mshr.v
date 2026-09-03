@@ -415,6 +415,7 @@ module hni_mshr `HNI_PARAM
     wire                                        txdat_en_sx;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txdat1_en_sx;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txdat2_en_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            rdat_allrcvd_sx;
     wire                                        arvalid_en_s1;
     wire                                        arvalid_en2_s1;
     wire                                        awvalid_en_s1;
@@ -1158,7 +1159,15 @@ module hni_mshr `HNI_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0])) ? 
+            // Sec 9.4.1 (p.9-337, MUST): a Read's data response carries a Non-data
+            // Error "either in none or in all data response packets", and the AXI
+            // error is not final until the last beat is in. A two-packet transfer
+            // therefore holds its first packet until the whole burst has arrived;
+            // a single-packet one has nothing to hold.
+            assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == 3'b110) ?
+                                        (rdat_pdmask_q[entry] == 4'b1111) : 1'b1;
+
+            assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0]) & rdat_allrcvd_sx[entry]) ? 
                                         (rxreq_device_s1_q[entry] ? (rxreq_ccid_s1_q[entry]==2'b11 ? (rdat_pdmask_q[entry][3]==1'b1) : 
                                         (rxreq_ccid_s1_q[entry]==2'b10 ? ((rdat_pdmask_q[entry][3:2]==2'b11) | ((rdat_pdmask_q[entry][2]==1'b1) && (rxreq_size_s1_q[entry]<=3'b100))) : 
                                         (rxreq_ccid_s1_q[entry]==2'b01 ? (rdat_pdmask_q[entry][1]==1'b1) :
@@ -1604,7 +1613,7 @@ module hni_mshr `HNI_PARAM
 
     assign mshr_entry_sleep_s1  = |mshr_entry_sleep_s1_q;
     assign wakeup_valid         = (|retired_entry_sx1_q) ? need_to_wakeup_q[retired_entry_idx_sx1_q] : 1'b0;
-    assign wakeup_idx_sx        = (|retired_entry_sx1_q) ? need_to_wakeup_idx_q[retired_entry_idx_sx1_q] : {`HNI_MSHR_ENTRIES_NUM{1'b0}};
+    assign wakeup_idx_sx        = (|retired_entry_sx1_q) ? need_to_wakeup_idx_q[retired_entry_idx_sx1_q] : {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
 
     //************************************************************************//
 

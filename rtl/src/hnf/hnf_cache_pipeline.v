@@ -844,7 +844,7 @@ module hnf_cache_pipeline `HNF_PARAM
         for (i = 0; i < `RNF_NUM; i = i+1) begin
             pipe_current_nodeid_sx2[NID_WIDTH-1:0] = pipe_nodeid_list_sx2[NID_WIDTH*i +: NID_WIDTH];
             if (pipe_current_nodeid_sx2[NID_WIDTH-1:0] == pipe_rnf_idx_sx_q[SX2][NID_WIDTH-1:0]) begin
-                pipe_physical_nodeid_sx2[NID_WIDTH-1:0] = i;
+                pipe_physical_nodeid_sx2[NID_WIDTH-1:0] = i[NID_WIDTH-1:0];
                 pipe_rnfid_found_sx2                    = 1;
             end
         end

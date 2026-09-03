@@ -144,7 +144,9 @@ module hnf_biq #(
                 if (find & ~biq_empty) begin
                     match_vec = {BIQ_DEPTH{1'b0}};
                     for (ii = 0; ii < BIQ_DEPTH; ii = ii + 1) begin
-                        biq_find_loc[BIQ_PTR_WIDTH-1:0] = rd_ptr_q[BIQ_PTR_WIDTH-1:0] + ii;
+                        // The sum wraps modulo 2**BIQ_PTR_WIDTH, which is the read
+                        // pointer's own wrap, so the truncation is intended.
+                        biq_find_loc[BIQ_PTR_WIDTH-1:0] = rd_ptr_q[BIQ_PTR_WIDTH-1:0] + ii[BIQ_PTR_WIDTH-1:0];
                         if(biq_find_loc[BIQ_PTR_WIDTH-1:0] == wr_ptr_q[BIQ_PTR_WIDTH-1:0])begin
                             biq_find_flag = 1'b1;
                             match_vec[ii] = 1'b0;

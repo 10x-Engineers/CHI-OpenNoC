@@ -101,17 +101,27 @@ module hnf_data_buffer `HNF_PARAM (clk,
     reg [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0] temp_pipe_data;
     reg [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0] temp_pipe_be;
 
-    wire [5:0] offset;
+    localparam DBF_PKT_BYTE_NUM  = `CHIE_DAT_FLIT_DATA_WIDTH/8;
+    localparam DBF_PKT_IDX_WIDTH = $clog2(DBF_PKT_BYTE_NUM);
 
-    assign offset=(li_dbf_rxdat_dataid_s0 == 2'b10)?`CHIE_DAT_FLIT_DATA_WIDTH/8:'d0;
+    wire [DBF_PKT_IDX_WIDTH:0] offset;
+
+    assign offset=(li_dbf_rxdat_dataid_s0 == 2'b10)?DBF_PKT_BYTE_NUM[DBF_PKT_IDX_WIDTH:0]:{(DBF_PKT_IDX_WIDTH+1){1'b0}};
 
     genvar i;
     generate
         for(i = 0;i<(`CHIE_DAT_FLIT_DATA_WIDTH*2)/8;i = i+1) begin:get_wt_temp
+            // i counts bytes across the two-packet line, offset selects which packet
+            // arrived, so the difference is the byte's index inside that packet. The
+            // DataID guards below are what pair the two, and offset is a multiple of
+            // DBF_PKT_BYTE_NUM, so this width carries the difference exactly.
+            wire [DBF_PKT_IDX_WIDTH-1:0] rxdat_byte_idx;
+            assign rxdat_byte_idx = i[DBF_PKT_IDX_WIDTH-1:0] - offset[DBF_PKT_IDX_WIDTH-1:0];
+
             always@(*) begin//linklist temp data
                 if (li_dbf_rxdat_valid_s0&&pipe_dbf_wr_valid_sx9_q&&(li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q)) begin//write conflict
                     if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<`CHIE_DAT_FLIT_DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= `CHIE_DAT_FLIT_DATA_WIDTH/8)) begin//first package
-                        temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[i-offset]?li_dbf_rxdat_data_s0[(i-offset)*8+:8]:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8]);
+                        temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8]);
                         temp_li_be[i]        = 1;
                     end
                     else begin//The rest
@@ -122,8 +132,8 @@ module hnf_data_buffer `HNF_PARAM (clk,
                 else begin
                     if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == `CHIE_COPYBACKWRDATA)||(li_dbf_rxdat_opcode_s0 == `CHIE_NONCOPYBACKWRDATA)||(li_dbf_rxdat_opcode_s0 == `CHIE_NCBWRDATACOMPACK))) begin//over write
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<`CHIE_DAT_FLIT_DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= `CHIE_DAT_FLIT_DATA_WIDTH/8))begin
-                            temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[i-offset]?li_dbf_rxdat_data_s0[(i-offset)*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
-                            temp_li_be[i]        = li_dbf_rxdat_be_s0[i-offset]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
+                            temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
                         end
                         else begin
                             temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
@@ -132,8 +142,8 @@ module hnf_data_buffer `HNF_PARAM (clk,
                     end
                     else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == `CHIE_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == `CHIE_SNPRESPDATAFWDED))) begin//merge
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<`CHIE_DAT_FLIT_DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= `CHIE_DAT_FLIT_DATA_WIDTH/8))begin
-                            temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[i-offset]&&!dbf_be_q[li_dbf_rxdat_txnid_s0][i])?li_dbf_rxdat_data_s0[(i-offset)*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
-                            temp_li_be[i]        = li_dbf_rxdat_be_s0[i-offset]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&!dbf_be_q[li_dbf_rxdat_txnid_s0][i])?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
+                            temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
                         end
                         else begin
                             temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
@@ -142,7 +152,7 @@ module hnf_data_buffer `HNF_PARAM (clk,
                     end
                     else if (li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 == `CHIE_COMPDATA))begin
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<`CHIE_DAT_FLIT_DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= `CHIE_DAT_FLIT_DATA_WIDTH/8))begin
-                            temp_li_data[i*8+:8] = !dbf_be_q[li_dbf_rxdat_txnid_s0][i]?li_dbf_rxdat_data_s0[(i-offset)*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
+                            temp_li_data[i*8+:8] = !dbf_be_q[li_dbf_rxdat_txnid_s0][i]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = 1;
                         end
                         else begin
@@ -205,7 +215,7 @@ module hnf_data_buffer `HNF_PARAM (clk,
                     end
                     else if (mshr_dbf_err_fill_valid_sx1_q && i == mshr_dbf_err_fill_idx_sx1_q)begin
                         dbf_data_q[i] <= 'd0;
-                        dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
+                        dbf_be_q[i]   <= {`CACHE_BE_WIDTH{1'b1}};
                         dbf_pe_q[i]   <= 2'b11;
                     end
                     else begin

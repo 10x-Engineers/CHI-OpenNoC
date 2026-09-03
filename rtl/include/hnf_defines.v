@@ -137,11 +137,11 @@
 
 //hnf_mshr_qos
 `define QOS_CLASS_WIDTH                    3
-`define QOS_CLASS_SEQ                      4
-`define QOS_CLASS_HHIGH                    3
-`define QOS_CLASS_HIGH                     2
-`define QOS_CLASS_MED                      1
-`define QOS_CLASS_LOW                      0
+`define QOS_CLASS_SEQ                      `QOS_CLASS_WIDTH'd4
+`define QOS_CLASS_HHIGH                    `QOS_CLASS_WIDTH'd3
+`define QOS_CLASS_HIGH                     `QOS_CLASS_WIDTH'd2
+`define QOS_CLASS_MED                      `QOS_CLASS_WIDTH'd1
+`define QOS_CLASS_LOW                      `QOS_CLASS_WIDTH'd0
 `define QOS_HHIGH_MAX                      15
 `define QOS_HHIGH_MIN                      15
 `define QOS_HIGH_MAX                       14
@@ -181,7 +181,7 @@
 `define PCRDGRANTQ_PCRDTYPE_RANGE          `CHIE_REQ_FLIT_PCRDTYPE_WIDTH+`CHIE_REQ_FLIT_QOS_WIDTH+`CHIE_REQ_FLIT_SRCID_WIDTH-1:`CHIE_REQ_FLIT_QOS_WIDTH+`CHIE_REQ_FLIT_SRCID_WIDTH
 
 //hnf_mshr_ctl
-`define SF_EVICT                           'h40
+`define SF_EVICT                           `CHIE_REQ_FLIT_OPCODE_WIDTH'h40
 `define MSHR_PCRDTYPE_NUMS                  16
 `define MSHR_SNPCNT_WIDTH                   ((HNF_MSHR_RNF_NUM_PARAM <= 7)? 3 : (HNF_MSHR_RNF_NUM_PARAM <= 15)? 4 : (HNF_MSHR_RNF_NUM_PARAM <= 31)? 5 : (HNF_MSHR_RNF_NUM_PARAM <= 63)? 6 : 7)
 

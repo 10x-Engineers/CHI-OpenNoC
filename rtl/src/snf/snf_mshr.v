@@ -299,6 +299,7 @@ module snf_mshr `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]                  txrsp_comp_wrcancel_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat1_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat2_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    rdat_allrcvd_sx;
     wire                                                arvalid_en_s1;
     wire                                                arvalid_en2_s1;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    bresp_ok_sx;
@@ -1065,7 +1066,15 @@ module snf_mshr `SNF_PARAM
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            assign txdat1_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (~txdat_rdy_sx_q[entry][0])) ?
+            // Sec 9.4.1 (p.9-337, MUST): a Read's data response carries a Non-data
+            // Error "either in none or in all data response packets", and the AXI
+            // error is not final until the last beat is in. A two-packet transfer
+            // therefore holds its first packet until the whole burst has arrived;
+            // a single-packet one has nothing to hold.
+            assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == `CHIE_SIZE64B) ?
+                                (rdat_pdmask_q[entry] == 4'b1111) : 1'b1;
+
+            assign txdat1_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (~txdat_rdy_sx_q[entry][0]) && rdat_allrcvd_sx[entry]) ?
                                 (((rxreq_ccid_s1_q[entry][1] == 1'b0) && (rdat_pdmask_q[entry][1:0] == 2'b11))
                                 | ((rxreq_ccid_s1_q[entry][1] == 1'b1) && (rdat_pdmask_q[entry][3:2] == 2'b11))
                                 | (rxreq_size_s1_q[entry] < `CHIE_SIZE32B) && (|(rdat_pdmask_q[entry])))
@@ -1315,7 +1324,7 @@ module snf_mshr `SNF_PARAM
     endgenerate
 
     assign wakeup_valid         = mshr_retired_valid_sx ? hazard_sx_q[mshr_retired_idx_sx] : 1'b0;
-    assign wakeup_idx_sx        = mshr_retired_valid_sx ? hazard_idx_s2_q[mshr_retired_idx_sx] : {`SNF_MSHR_ENTRIES_NUM{1'b0}};
+    assign wakeup_idx_sx        = mshr_retired_valid_sx ? hazard_idx_s2_q[mshr_retired_idx_sx] : {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
 
     //************************************************************************//
     //                  rxdat logic : rxdat_cancel save                       //

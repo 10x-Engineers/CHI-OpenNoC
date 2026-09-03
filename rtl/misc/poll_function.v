@@ -106,7 +106,7 @@ module poll_function #(
         for(i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
             if(entry_vec[i] == 1'b1 && !found0)begin
                 nxt_entry_mask0[i] = 1'b0;
-                sel0_index = i;
+                sel0_index = i[POLL_ENTRIES_WIDTH-1:0];
                 found0 = 1'b1;
             end
             else if(found0)begin
@@ -124,7 +124,7 @@ module poll_function #(
         for(i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
             if(entry_vecx[i] == 1'b1 && !foundx)begin
                 nxt_entry_maskx[i] = 1'b0;
-                selx_index = i;
+                selx_index = i[POLL_ENTRIES_WIDTH-1:0];
                 foundx = 1'b1;
             end
             else if(foundx)begin

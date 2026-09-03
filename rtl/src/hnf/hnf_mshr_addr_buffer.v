@@ -206,7 +206,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
             if(mshr_alloc_en_s1_q && (abf_can_compare_sx_q[i] | abf_internal_evict_addr_valid_sx_q[i]) == 1'b1 && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
                     && ~(mshr_dbf_retired_valid_sx1_q == 1'b1 && mshr_dbf_retired_idx_sx1_q == i) && ~(l3_evict_sx7_q == 1'b1 && l3_mshr_entry_sx7_q == i))begin
                 rxreq_cam_hazard_s1_q = 1'b1;
-                rxreq_cam_hazard_entry_s1_q = trans_id2num(i);
+                rxreq_cam_hazard_entry_s1_q = trans_id2num(i[`MSHR_ENTRIES_WIDTH-1:0]);
             end
             else begin
                 rxreq_cam_hazard_s1_q = rxreq_cam_hazard_s1_q;
@@ -223,7 +223,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(pipe_mshr_addr_valid_sx3_q && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == pipe_mshr_addr_sx3_q[`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
                     && abf_internal_evict_addr_valid_sx_q[i] == 1'b1 && ~(mshr_dbf_retired_valid_sx1_q == 1'b1 && mshr_dbf_retired_idx_sx1_q == i))begin
-                pipe_cam_hazard_entry_sx3_q = trans_id2num(i);
+                pipe_cam_hazard_entry_sx3_q = trans_id2num(i[`MSHR_ENTRIES_WIDTH-1:0]);
                 pipe_sleep_entry_sx3_q      = trans_id2num(pipe_mshr_addr_idx_sx3_q);
                 mshr_l3_hazard_valid_sx3_q  = 'd1;
             end
