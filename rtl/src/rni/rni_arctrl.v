@@ -142,6 +142,11 @@ module rni_arctrl
     wire rxrsp_retryack_recv_flag_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_ns_w;
+    wire                                rxrsp_ordrsp_recv_flag_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_ordrsp_recv_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_ordered_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_ordered_pending_ns_w;
+    wire                                arctrl_ordered_pending_any_w;
     wire rxrsp_pcrdgrant_recv_flag_w;
     wire rxrsp_pcrdtype_hi_select_w;
     wire rxrsp_pcrdtype_lo_select_w;
@@ -215,6 +220,7 @@ module rni_arctrl
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d3_q;
     reg [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] rxrsp_retryack_pcrdtype_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_q;
+    reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_ordered_pending_q;
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_upd_ptr_q;
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_upd_ptr_q;
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_q;
@@ -555,7 +561,13 @@ module rni_arctrl
     assign arctrl_req_retry_ready_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_req_select_rdy_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & rxrsp_pcrdgrant_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_select_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_req_hi_retry_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_retry_ready_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_req_lo_retry_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_retry_ready_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    assign arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_req_select_rdy_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_dep_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_select_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    // Sec 2.8 (p.2-119, MUST): "The Requester requires a ReadReceipt to determine
+    // when it can send the next ordered request", and a Completer sending
+    // separate responses "can send RespSepData response instead of ReadReceipt".
+    // The dependency chain above is same-ARID and same-cacheline, which is
+    // neither necessary nor sufficient for that: this gate is per Requester.
+    assign arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_req_select_rdy_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_dep_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_select_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]
+             & ~({RNI_AR_ENTRIES_NUM_PARAM{arctrl_ordered_pending_any_w}} & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
     assign arctrl_entry_req_hi_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_req_lo_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     //deassert select_vec when receiving retryack
@@ -690,6 +702,15 @@ module rni_arctrl
     assign ar_device_w    = ~ar_axcache_r[1];
     assign ar_cacheable_w = ar_axcache_r[1] & (|ar_axcache_r[3:2]);
 
+    // The same Device decode, held per entry rather than for the one currently
+    // selected: Table 2-11 (Sec 2.9.4 p.2-129) gives every Device row
+    // Order=EndpointOrder, so this is "this entry's request is ordered".
+    generate
+        for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:entry_ordered
+            assign arctrl_entry_ordered_w[entry] = ~arctrl_entry_info_q[entry][`AXI4_ARCACHE_LSB+1];
+        end
+    endgenerate
+
     always@* begin
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_WIDTH-1:0] = {`CHIE_REQ_FLIT_WIDTH{1'b0}};
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_TGTID_RANGE] = ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
@@ -700,7 +721,11 @@ module rni_arctrl
         // Table 2-11's Device rows carry Order=EndpointOrder; every Normal row
         // carries Order[0]=0, and this Requester elects no ordering of its own.
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = ar_device_w ? 2'b11 : 2'b00;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = ar_axcache_r[0];
+        // Sec 2.9.2 (p.2-126, MUST): EWA "must be asserted in any Read ... that is
+        // not a ReadNoSnp, ReadNoSnpSep, or CMO transaction", which is every
+        // ReadOnce this bridge emits; Table 2-11 (p.2-129) gives every Cacheable
+        // row EWA=1.
+        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = ar_cacheable_w | ar_axcache_r[0];
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = ar_device_w;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = ar_cacheable_w;
         ar_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = ar_cacheable_w;
@@ -761,6 +786,16 @@ module rni_arctrl
     assign rxrsp_retryack_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_retryack_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_retryack_recv_vec_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | rxrsp_retryack_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+
+    // Sec 2.8 (p.2-119) makes ReadReceipt and RespSepData interchangeable as the
+    // ordering response, so either discharges the gate. Pending is set when the
+    // ordered request is actually sent and cleared only by that response or by
+    // dealloc -- so a RetryAck'd ordered request keeps blocking the next one,
+    // which is Figure 2-34 step 5 (p.2-121).
+    assign rxrsp_ordrsp_recv_flag_w = ar_rxrsp_correct_w & ((arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_READRECEIPT) | (arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_RESPSEPDATA));
+    assign rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_ordrsp_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    assign arctrl_ordered_pending_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | ({RNI_AR_ENTRIES_NUM_PARAM{arctrl_entry_req_select_success_flag_w}} & arctrl_entry_req_ptr_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    assign arctrl_ordered_pending_any_w = |arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
     assign arctrl_pcrdgnt_h_present_d3_o = rxrsp_pcrdtype_hi_match_d3_q;
@@ -898,6 +933,15 @@ module rni_arctrl
             if(rxrsp_retryack_recv_flag_w | arctrl_entry_dealloc_v_w)begin
                 rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] <= rxrsp_retryack_recv_vec_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
             end
+        end
+    end
+
+    always @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] <= {RNI_AR_ENTRIES_NUM_PARAM{1'b0}};
+        end
+        else begin
+            arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] <= arctrl_ordered_pending_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
         end
     end
 

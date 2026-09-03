@@ -90,6 +90,7 @@ module hnf_mshr_ctl `HNF_PARAM
         rxreq_cam_hazard_s1_q,
         rxreq_cam_hazard_entry_s1_q,
         mshr_l3_hazard_valid_sx3_q,
+        mshr_mem_busy_sx,
         pipe_cam_hazard_entry_sx3_q,
         pipe_sleep_entry_sx3_q,
 
@@ -775,7 +776,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txsnp_rdy_clr_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_rdy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_busy_sx;
+    output wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mem_busy_sx;//outputs to hnf_mshr_addr_buffer
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txreq_rdy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_datbuf_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rdy_sx;

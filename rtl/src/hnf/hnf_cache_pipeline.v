@@ -50,6 +50,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
         //inputs from hnf_mshr_addr_buffer
         mshr_l3_hazard_valid_sx3_q,
+        mshr_evict_hazard_sx5,
 
         //outputs to hnf_tag_sram
         loc_index_q,
@@ -78,6 +79,9 @@ module hnf_cache_pipeline `HNF_PARAM
         pipe_mshr_addr_sx5_q,
         pipe_mshr_addr_valid_sx5_q,
         pipe_mshr_addr_idx_sx5_q,
+        pipe_evict_cam_addr_sx4,
+        pipe_evict_cam_valid_sx4,
+        pipe_evict_cam_idx_sx4,
         l3_evict_addr_sx7_q,
 
         //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
@@ -148,6 +152,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     //inputs from hnf_mshr_addr_buffer
     input wire                                   mshr_l3_hazard_valid_sx3_q;
+    input wire                                   mshr_evict_hazard_sx5;
 
     //outputs to hnf_tag_sram
     output reg [`LOC_INDEX_WIDTH-1:0]            loc_index_q;
@@ -176,6 +181,9 @@ module hnf_cache_pipeline `HNF_PARAM
     output reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]   pipe_mshr_addr_sx5_q;
     output reg                                   pipe_mshr_addr_valid_sx5_q;
     output reg [`MSHR_ENTRIES_WIDTH-1:0]         pipe_mshr_addr_idx_sx5_q;
+    output wire [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;
+    output wire                                  pipe_evict_cam_valid_sx4;
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]        pipe_evict_cam_idx_sx4;
 
     //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
     output reg                                   l3_evict_sx7_q;
@@ -578,6 +586,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire                                    cpl_internal_wr_sx5;
 
     wire                                    l3_replay_sx5;
+    wire                                    pipe_tag_evict_commit_sx4;
     // Stage SX7 signals
     wire [ADDR_WIDTH-1:0]                   pipe_addr_sx6;
 
@@ -1367,6 +1376,14 @@ module hnf_cache_pipeline `HNF_PARAM
                pipe_addr_sx4[`LOC_INDEX_RANGE]
            };
 
+    // The one predicate for "this fill pass will evict a dirty victim", so the
+    // SX5 flop below and the address buffer's evict CAM cannot drift apart.
+    assign pipe_tag_evict_commit_sx4 = pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q;
+
+    assign pipe_evict_cam_addr_sx4  = pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET];
+    assign pipe_evict_cam_valid_sx4 = pipe_tag_evict_commit_sx4 & pipe_req_valid_sx[SX4];
+    assign pipe_evict_cam_idx_sx4   = pipe_mshr_idx_sx_q[SX4][`MSHR_ENTRIES_WIDTH-1:0];
+
     // Tag final State
     assign pipe_tag_state_invalid_sx4 = pipe_invalid_slc_sx4;
     assign pipe_tag_state_clean_sx4 = (pipe_fill_sx4 & ~pipe_fill_dirty_sx_q[SX4]) | op_cmo_cs_sx4_q;
@@ -1680,7 +1697,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_tag_hit_sx5_q                                          <= pipe_tag_match_sx4_q;
             pipe_tag_wr_sx5_q                                           <= pipe_tag_wr_sx4;
             pipe_tag_dirty_sx5_q                                        <= pipe_tag_match_dirty_sx4_q;
-            pipe_tag_evict_sx5_q                                        <= pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q;
+            pipe_tag_evict_sx5_q                                        <= pipe_tag_evict_commit_sx4;
             pipe_tag_evict_addr_sx5_q[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] <= pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET];
             pipe_tag_wr_state_sx5_q[1:0]                                <= pipe_tag_state_sx4[1:0];
             pipe_tag_wr_way_sx5_q[`LOC_WAY_NUM-1:0]                     <= pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0];
@@ -2066,8 +2083,8 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {`RNF_NUM{1'b0}};
-            l3_replay_sx7_q     <= mshr_l3_hazard_valid_sx3_q | pipe_hazard_fail_sx5 | biq_evict_retry_sx5;
-            l3_mshr_wr_op_sx7_q <= ~(pipe_hazard_fail_sx5 | mshr_l3_hazard_valid_sx3_q | biq_evict_retry_sx5) & cpl_internal_wr_sx5;
+            l3_replay_sx7_q     <= l3_replay_sx5;
+            l3_mshr_wr_op_sx7_q <= ~l3_replay_sx5 & cpl_internal_wr_sx5;
             l3_evict_sx7_q      <= pipe_tag_evict_sx5_q && !l3_replay_sx5;
             l3_evict_addr_sx7_q <= {pipe_tag_evict_addr_sx5_q[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET], {`CACHE_BLOCK_OFFSET{1'b0}}};
         end
@@ -2082,15 +2099,21 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] == 1);
             l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
-            l3_replay_sx7_q     <= pipe_hazard_fail_sx5 | mshr_l3_hazard_valid_sx3_q | biq_evict_retry_sx5;
-            l3_mshr_wr_op_sx7_q <= ~(pipe_hazard_fail_sx5 | mshr_l3_hazard_valid_sx3_q | biq_evict_retry_sx5) & cpl_internal_wr_sx5;
+            l3_replay_sx7_q     <= l3_replay_sx5;
+            l3_mshr_wr_op_sx7_q <= ~l3_replay_sx5 & cpl_internal_wr_sx5;
             l3_evict_sx7_q      <= 1'b0;
             l3_evict_addr_sx7_q <= {pipe_tag_evict_addr_sx5_q[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET], {`CACHE_BLOCK_OFFSET{1'b0}}};
         end
     end
 
     // write request to databuffer
-    assign l3_replay_sx5 = pipe_hazard_fail_sx5 | mshr_l3_hazard_valid_sx3_q | biq_evict_retry_sx5;
+    // Sec 4.11 (p.4-242, MUST): "there is a defined order in which transactions to
+    // the same cache line can occur". mshr_evict_hazard_sx5 vetoes a fill whose
+    // victim line already has a memory access armed at another entry -- the fill
+    // re-arbitrates (hnf_mshr_ctl l3_fill_rdy_set_s2) and the eviction is simply
+    // not taken this pass.
+    assign l3_replay_sx5 = pipe_hazard_fail_sx5 | mshr_l3_hazard_valid_sx3_q | biq_evict_retry_sx5
+                         | mshr_evict_hazard_sx5;
 
     always @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin

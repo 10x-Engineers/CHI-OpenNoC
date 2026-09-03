@@ -320,6 +320,10 @@ module hnf `HNF_PARAM
     wire                                        l3_replay_sx7_q;
     wire                                        l3_mshr_wr_op_sx7_q;
     wire                                        mshr_l3_hazard_valid_sx3_q;
+    wire                                        mshr_evict_hazard_sx5;
+    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;
+    wire                                        pipe_evict_cam_valid_sx4;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              pipe_evict_cam_idx_sx4;
     wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_rd_idx_sx1_q;
     wire                                        mshr_dbf_rd_valid_sx1_q;
@@ -690,6 +694,10 @@ module hnf `HNF_PARAM
                  .mshr_txsnp_addr_sx1                          (mshr_txsnp_addr_sx1               ),
                  .mshr_txreq_addr_sx1                          (mshr_txreq_addr_sx1               ),
                  .mshr_l3_hazard_valid_sx3_q                   (mshr_l3_hazard_valid_sx3_q        ),
+                 .pipe_evict_cam_addr_sx4                      (pipe_evict_cam_addr_sx4           ),
+                 .pipe_evict_cam_valid_sx4                     (pipe_evict_cam_valid_sx4          ),
+                 .pipe_evict_cam_idx_sx4                       (pipe_evict_cam_idx_sx4            ),
+                 .mshr_evict_hazard_sx5                        (mshr_evict_hazard_sx5             ),
                  .mshr_l3_addr_sx1                             (mshr_l3_addr_sx1                  ),
                  .mshr_dbf_rd_idx_sx1_q                        (mshr_dbf_rd_idx_sx1_q             ),
                  .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
@@ -764,6 +772,10 @@ module hnf `HNF_PARAM
                            .sf_rd_clines_q                               (sf_rd_clines_q                    ),
                            .lru_rd_data_q                                (lru_rd_data_q                     ),
                            .mshr_l3_hazard_valid_sx3_q                   (mshr_l3_hazard_valid_sx3_q        ),
+                           .mshr_evict_hazard_sx5                        (mshr_evict_hazard_sx5             ),
+                           .pipe_evict_cam_addr_sx4                      (pipe_evict_cam_addr_sx4           ),
+                           .pipe_evict_cam_valid_sx4                     (pipe_evict_cam_valid_sx4          ),
+                           .pipe_evict_cam_idx_sx4                       (pipe_evict_cam_idx_sx4            ),
 
                            //outputs
                            .loc_index_q                                  (cpl_loc_index_q                   ),

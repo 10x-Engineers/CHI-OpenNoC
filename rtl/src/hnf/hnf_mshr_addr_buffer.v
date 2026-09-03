@@ -31,6 +31,11 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
                                             pipe_cam_hazard_entry_sx3_q,
                                             pipe_sleep_entry_sx3_q,
                                             mshr_l3_hazard_valid_sx3_q,
+                                            pipe_evict_cam_addr_sx4,
+                                            pipe_evict_cam_valid_sx4,
+                                            pipe_evict_cam_idx_sx4,
+                                            mshr_mem_busy_sx,
+                                            mshr_evict_hazard_sx5,
                                             mshr_l3_entry_idx_sx1_q,
                                             mshr_txsnp_rd_idx_sx1_q,
                                             mshr_txreq_rd_idx_sx1_q,
@@ -66,6 +71,13 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
     output reg [`MSHR_ENTRIES_NUM-1:0]                          pipe_sleep_entry_sx3_q;//outputs to hnf_mshr_ctl
     output reg                                                  mshr_l3_hazard_valid_sx3_q;//outputs to hnf_mshr_ctl and hnf_cache_pipeline
 
+    //compare evict victim
+    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]  pipe_evict_cam_addr_sx4;//inputs from hnf_cache_pipeline
+    input wire                                                   pipe_evict_cam_valid_sx4;//inputs from hnf_cache_pipeline
+    input wire [`MSHR_ENTRIES_WIDTH-1:0]                         pipe_evict_cam_idx_sx4;//inputs from hnf_cache_pipeline
+    input wire [`MSHR_ENTRIES_NUM-1:0]                           mshr_mem_busy_sx;//inputs from hnf_mshr_ctl
+    output reg                                                  mshr_evict_hazard_sx5;//outputs to hnf_cache_pipeline
+
     //read_port
     input wire [`MSHR_ENTRIES_WIDTH-1:0]                         mshr_l3_entry_idx_sx1_q;//inputs from hnf_mshr_ctl
     input wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]                  mshr_txsnp_rd_idx_sx1_q;//inputs from hnf_mshr_ctl
@@ -98,6 +110,9 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
     reg                                 pipe_mshr_addr_valid_sx3_q;
     reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0] pipe_mshr_addr_sx3_q;
     reg [`MSHR_ENTRIES_WIDTH-1:0]       pipe_mshr_addr_idx_sx3_q;
+    reg                                 pipe_evict_cam_valid_sx5_q;
+    reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx5_q;
+    reg [`MSHR_ENTRIES_WIDTH-1:0]       pipe_evict_cam_idx_sx5_q;
 
     genvar i;
     function [`MSHR_ENTRIES_NUM-1:0] trans_id2num;
@@ -130,6 +145,22 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
             pipe_mshr_addr_valid_sx3_q  <=pipe_mshr_addr_valid_sx2_q;
             pipe_mshr_addr_sx3_q        <=pipe_mshr_addr_sx2_q      ;
             pipe_mshr_addr_idx_sx3_q    <=pipe_mshr_addr_idx_sx2_q  ;
+        end
+    end
+
+    // The victim address is taken at SX4 and flopped here so the compare lands in
+    // the SX5 cycle mshr_evict_hazard_sx5 is consumed, exactly as com_port1_delay
+    // does for the IE-hazard port.
+    always@(posedge clk or posedge rst) begin:com_port2_delay
+        if(rst)begin
+            pipe_evict_cam_valid_sx5_q <='d0;
+            pipe_evict_cam_addr_sx5_q  <='d0;
+            pipe_evict_cam_idx_sx5_q   <='d0;
+        end
+        else begin
+            pipe_evict_cam_valid_sx5_q <=pipe_evict_cam_valid_sx4;
+            pipe_evict_cam_addr_sx5_q  <=pipe_evict_cam_addr_sx4 ;
+            pipe_evict_cam_idx_sx5_q   <=pipe_evict_cam_idx_sx4  ;
         end
     end
 
@@ -231,6 +262,29 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
                 pipe_cam_hazard_entry_sx3_q = pipe_cam_hazard_entry_sx3_q;
                 pipe_sleep_entry_sx3_q      = pipe_sleep_entry_sx3_q     ;
                 mshr_l3_hazard_valid_sx3_q  = mshr_l3_hazard_valid_sx3_q ;
+            end
+        end
+    end
+
+    // Sec 4.11 (p.4-242, MUST): "It is the responsibility of the interconnect ... to
+    // ensure that there is a defined order in which transactions to the same cache
+    // line can occur". An eviction turns into a downstream write of the victim
+    // line, and Table 4-14 (p.4-179) pins it to Order=0b00 -- so it must not be
+    // taken while another entry already has a memory access armed for that line.
+    // The eviction is vetoed rather than slept: the evicting entry's own
+    // l3_evict_sx7_q is one of only two wake sources, so sleeping it cannot wake.
+    always@(*) begin:evict_compare_sx5
+        integer i;
+        mshr_evict_hazard_sx5 = 1'b0;
+        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+            if(pipe_evict_cam_valid_sx5_q && abf_can_compare_sx_q[i] == 1'b1 && mshr_mem_busy_sx[i] == 1'b1
+                    && abf_sx_q[i][`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == pipe_evict_cam_addr_sx5_q
+                    && pipe_evict_cam_idx_sx5_q != i[`MSHR_ENTRIES_WIDTH-1:0]
+                    && ~(mshr_dbf_retired_valid_sx1_q == 1'b1 && mshr_dbf_retired_idx_sx1_q == i))begin
+                mshr_evict_hazard_sx5 = 1'b1;
+            end
+            else begin
+                mshr_evict_hazard_sx5 = mshr_evict_hazard_sx5;
             end
         end
     end
