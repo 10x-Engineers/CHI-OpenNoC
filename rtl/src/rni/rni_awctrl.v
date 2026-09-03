@@ -947,7 +947,12 @@ module rni_awctrl `RNI_PARAM
         // this Requester keeps its Ordered-Write-Observation stream, which
         // Table 2-11 footnote (a) permits for both WriteUnique and WriteNoSnp.
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = aw_device_w ? 2'b11 : 2'b10;
-        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = aw_axcache_r[0];
+        // Sec 2.9.2 (p.2-126, MUST): EWA "must be asserted in any Write transaction
+        // that is not a WriteNoSnp transaction", and Table 2-11 (p.2-129) gives
+        // every Cacheable row EWA=1 -- AWCACHE Write-Through (bit[0]=0 with
+        // bits[3:2] set) would otherwise emit a combination the table calls
+        // Not valid.
+        aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = aw_cacheable_w | aw_axcache_r[0];
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = aw_device_w;
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = aw_cacheable_w;
         aw_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = aw_cacheable_w;
@@ -1393,11 +1398,13 @@ module rni_awctrl `RNI_PARAM
         end
     end
 
+    // Shadow the write buffer's d3 flit register; share its enable
+    // (rni_wr_buffer.v txdat_info_flop_en_d2_w) so the two stay aligned.
     always @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
             txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
-        else begin
+        else if(awctrl_txdat_not_busy_d2_i)begin
             txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <=txdat_rdy_entry_d2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
         end
     end
@@ -1406,7 +1413,7 @@ module rni_awctrl `RNI_PARAM
         if (rst_i == 1'b1)begin
             txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
-        else begin
+        else if(awctrl_txdat_not_busy_d2_i)begin
             txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
         end
     end
