@@ -1376,8 +1376,6 @@ module hnf_cache_pipeline `HNF_PARAM
                pipe_addr_sx4[`LOC_INDEX_RANGE]
            };
 
-    // The one predicate for "this fill pass will evict a dirty victim", so the
-    // SX5 flop below and the address buffer's evict CAM cannot drift apart.
     assign pipe_tag_evict_commit_sx4 = pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q;
 
     assign pipe_evict_cam_addr_sx4  = pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET];

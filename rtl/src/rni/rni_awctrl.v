@@ -1398,11 +1398,8 @@ module rni_awctrl `RNI_PARAM
         end
     end
 
-    // These two shadow the write buffer's d3 flit register, whose own enable is
-    // wb_txdat_not_busy_d2_o (rni_wr_buffer.v txdat_info_flop_en_d2_w). Shifting
-    // them unconditionally lets them run ahead whenever the flit is not accepted
-    // in the cycle it is first presented -- which loses txdat_send_vec for the
-    // packet actually on the wire and can set it for the next entry instead.
+    // Shadow the write buffer's d3 flit register; share its enable
+    // (rni_wr_buffer.v txdat_info_flop_en_d2_w) so the two stay aligned.
     always @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
             txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};

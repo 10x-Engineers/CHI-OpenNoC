@@ -564,8 +564,8 @@ module rni_arctrl
     // Sec 2.8 (p.2-119, MUST): "The Requester requires a ReadReceipt to determine
     // when it can send the next ordered request", and a Completer sending
     // separate responses "can send RespSepData response instead of ReadReceipt".
-    // The dependency chain above is same-ARID and same-cacheline, which is
-    // neither necessary nor sufficient for that: this gate is per Requester.
+    // Gated per Requester rather than per stream: Sec 2.8's Note (p.2-122)
+    // permits the narrower per-ARID form, which this does not attempt.
     assign arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_req_select_rdy_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_dep_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_select_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]
              & ~({RNI_AR_ENTRIES_NUM_PARAM{arctrl_ordered_pending_any_w}} & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
     assign arctrl_entry_req_hi_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];

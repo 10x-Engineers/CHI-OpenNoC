@@ -36,7 +36,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
                                             pipe_evict_cam_idx_sx4,
                                             mshr_mem_busy_sx,
                                             mshr_evict_hazard_sx5,
-                                            abf_internal_evict_valid_sx,
+                                            abf_internal_evict_addr_valid_sx_q,
                                             mshr_l3_entry_idx_sx1_q,
                                             mshr_txsnp_rd_idx_sx1_q,
                                             mshr_txreq_rd_idx_sx1_q,
@@ -73,12 +73,11 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
     output reg                                                  mshr_l3_hazard_valid_sx3_q;//outputs to hnf_mshr_ctl and hnf_cache_pipeline
 
     //compare evict victim
-    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]  pipe_evict_cam_addr_sx4;//inputs from hnf_cache_pipeline
+    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;//inputs from hnf_cache_pipeline
     input wire                                                   pipe_evict_cam_valid_sx4;//inputs from hnf_cache_pipeline
     input wire [`MSHR_ENTRIES_WIDTH-1:0]                         pipe_evict_cam_idx_sx4;//inputs from hnf_cache_pipeline
     input wire [`MSHR_ENTRIES_NUM-1:0]                           mshr_mem_busy_sx;//inputs from hnf_mshr_ctl
     output reg                                                  mshr_evict_hazard_sx5;//outputs to hnf_cache_pipeline
-    output wire [`MSHR_ENTRIES_NUM-1:0]                          abf_internal_evict_valid_sx;//outputs to hnf_mshr_ctl
 
     //read_port
     input wire [`MSHR_ENTRIES_WIDTH-1:0]                         mshr_l3_entry_idx_sx1_q;//inputs from hnf_mshr_ctl
@@ -106,7 +105,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
 
     reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0] abf_sx_q[0:`MSHR_ENTRIES_NUM-1];
     reg  [`MSHR_ENTRIES_NUM-1:0]        abf_can_compare_sx_q;
-    reg  [`MSHR_ENTRIES_NUM-1:0]        abf_internal_evict_addr_valid_sx_q;
+    output reg [`MSHR_ENTRIES_NUM-1:0]  abf_internal_evict_addr_valid_sx_q;//outputs to hnf_mshr_ctl
     reg                                 li_mshr_rxreq_valid_s1_q;
     reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s1_q;
     reg                                 pipe_mshr_addr_valid_sx3_q;
@@ -150,9 +149,6 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
         end
     end
 
-    // The victim address is taken at SX4 and flopped here so the compare lands in
-    // the SX5 cycle mshr_evict_hazard_sx5 is consumed, exactly as com_port1_delay
-    // does for the IE-hazard port.
     always@(posedge clk or posedge rst) begin:com_port2_delay
         if(rst)begin
             pipe_evict_cam_valid_sx5_q <='d0;
@@ -290,8 +286,6 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
             end
         end
     end
-
-    assign abf_internal_evict_valid_sx = abf_internal_evict_addr_valid_sx_q;
 
     assign mshr_l3_addr_sx1=abf_sx_q[mshr_l3_entry_idx_sx1_q];
     assign mshr_txsnp_addr_sx1=abf_sx_q[mshr_txsnp_rd_idx_sx1_q[`MSHR_ENTRIES_WIDTH-1:
