@@ -297,6 +297,7 @@ module hnf_mshr `HNF_PARAM
     output wire                                        mshr_l3_hazard_valid_sx3_q;
 
     wire [`MSHR_ENTRIES_NUM-1:0]                       mshr_mem_busy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]                       abf_internal_evict_valid_sx;
     output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
     output wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_rd_idx_sx1_q;
     output wire                                        mshr_dbf_rd_valid_sx1_q;
@@ -503,6 +504,7 @@ module hnf_mshr `HNF_PARAM
                              .pipe_evict_cam_idx_sx4                          (pipe_evict_cam_idx_sx4            ),
                              .mshr_mem_busy_sx                                (mshr_mem_busy_sx                  ),
                              .mshr_evict_hazard_sx5                           (mshr_evict_hazard_sx5             ),
+                             .abf_internal_evict_valid_sx                     (abf_internal_evict_valid_sx       ),
                              .mshr_l3_addr_sx1                                (mshr_l3_addr_sx1                  )
                          );
 
@@ -554,6 +556,7 @@ module hnf_mshr `HNF_PARAM
                      .rxreq_cam_hazard_entry_s1_q                     (rxreq_cam_hazard_entry_s1_q       ),
                      .mshr_l3_hazard_valid_sx3_q                      (mshr_l3_hazard_valid_sx3_q        ),
                      .mshr_mem_busy_sx                                (mshr_mem_busy_sx                  ),
+                     .abf_internal_evict_valid_sx                     (abf_internal_evict_valid_sx       ),
                      .pipe_cam_hazard_entry_sx3_q                     (pipe_cam_hazard_entry_sx3_q       ),
                      .pipe_sleep_entry_sx3_q                          (pipe_sleep_entry_sx3_q            ),
                      .txreq_mshr_won_sx1                              (txreq_mshr_won_sx1                ),

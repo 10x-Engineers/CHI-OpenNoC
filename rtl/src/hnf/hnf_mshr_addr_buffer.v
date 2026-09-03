@@ -36,6 +36,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
                                             pipe_evict_cam_idx_sx4,
                                             mshr_mem_busy_sx,
                                             mshr_evict_hazard_sx5,
+                                            abf_internal_evict_valid_sx,
                                             mshr_l3_entry_idx_sx1_q,
                                             mshr_txsnp_rd_idx_sx1_q,
                                             mshr_txreq_rd_idx_sx1_q,
@@ -77,6 +78,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
     input wire [`MSHR_ENTRIES_WIDTH-1:0]                         pipe_evict_cam_idx_sx4;//inputs from hnf_cache_pipeline
     input wire [`MSHR_ENTRIES_NUM-1:0]                           mshr_mem_busy_sx;//inputs from hnf_mshr_ctl
     output reg                                                  mshr_evict_hazard_sx5;//outputs to hnf_cache_pipeline
+    output wire [`MSHR_ENTRIES_NUM-1:0]                          abf_internal_evict_valid_sx;//outputs to hnf_mshr_ctl
 
     //read_port
     input wire [`MSHR_ENTRIES_WIDTH-1:0]                         mshr_l3_entry_idx_sx1_q;//inputs from hnf_mshr_ctl
@@ -288,6 +290,8 @@ module hnf_mshr_addr_buffer `HNF_PARAM (clk,
             end
         end
     end
+
+    assign abf_internal_evict_valid_sx = abf_internal_evict_addr_valid_sx_q;
 
     assign mshr_l3_addr_sx1=abf_sx_q[mshr_l3_entry_idx_sx1_q];
     assign mshr_txsnp_addr_sx1=abf_sx_q[mshr_txsnp_rd_idx_sx1_q[`MSHR_ENTRIES_WIDTH-1:

@@ -91,6 +91,7 @@ module hnf_mshr_ctl `HNF_PARAM
         rxreq_cam_hazard_entry_s1_q,
         mshr_l3_hazard_valid_sx3_q,
         mshr_mem_busy_sx,
+        abf_internal_evict_valid_sx,
         pipe_cam_hazard_entry_sx3_q,
         pipe_sleep_entry_sx3_q,
 
@@ -777,6 +778,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_rdy_sx;
     output wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mem_busy_sx;//outputs to hnf_mshr_addr_buffer
+    input wire [`MSHR_ENTRIES_NUM-1:0]          abf_internal_evict_valid_sx;//inputs from hnf_mshr_addr_buffer
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txreq_rdy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_datbuf_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rdy_sx;
@@ -3058,7 +3060,15 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?1:0);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
-    assign mshr_txreq_memattr_sx1     = (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
+    // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
+    // interconnect due to a Prefetch from Home or an eviction from the System
+    // cache" carries EWA, Cacheable and Allocate all 1 and Device 0. It answers
+    // to no upstream request, so mshr_memattr_s1_q holds nothing meaningful for
+    // it -- a snoop-filter evict entry never had one written (its internal
+    // request supplies no MemAttr) and an SLC victim rides the filling request's.
+    // Both are excluded here; every other downstream request preserves the
+    // MemAttr of the request that caused it (Sec 2.9.3 p.2-128).
+    assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | abf_internal_evict_valid_sx[mshr_txreq_entry_idx_sx1]) ? `CHIE_REQ_FLIT_MEMATTR_WIDTH'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 
