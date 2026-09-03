@@ -374,8 +374,8 @@ module hnf_mshr_bypass `HNF_PARAM (clk,
     assign mshr_txrsp_bypass_qos_s1      = li_mshr_rxreq_qos_s1_q;
     assign mshr_txrsp_bypass_tgtid_s1    = li_mshr_rxreq_srcid_s1_q;
     assign mshr_txrsp_bypass_txnid_s1    = li_mshr_rxreq_txnid_s1_q;
-    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?`CHIE_READRECEIPT:(wr_compdbid_s1_q?`CHIE_COMPDBIDRESP:(wr_dbid_s1_q?`CHIE_DBIDRESP:0));
-    assign mshr_txrsp_bypass_resperr_s1  = (wr_compdbid_s1_q&&li_mshr_rxreq_excl_s1_q&&excl_pass_s1)?1:0;
+    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?`CHIE_READRECEIPT:(wr_compdbid_s1_q?`CHIE_COMPDBIDRESP:(wr_dbid_s1_q?`CHIE_DBIDRESP:`CHIE_RSP_FLIT_OPCODE_WIDTH'd0));
+    assign mshr_txrsp_bypass_resperr_s1  = (wr_compdbid_s1_q&&li_mshr_rxreq_excl_s1_q&&excl_pass_s1)?`CHIE_RSP_FLIT_RESPERR_WIDTH'd1:`CHIE_RSP_FLIT_RESPERR_WIDTH'd0;
     assign mshr_txrsp_bypass_dbid_s1     = mshr_entry_idx_alloc_s1_q;
     assign mshr_txrsp_bypass_tracetag_s1 = li_mshr_rxreq_tracetag_s1_q;
 
@@ -383,9 +383,9 @@ module hnf_mshr_bypass `HNF_PARAM (clk,
     assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!excl_fail_s1;
     assign mshr_txreq_bypass_qos_s1         = li_mshr_rxreq_qos_s1_q;
     assign mshr_txreq_bypass_txnid_s1       = mshr_entry_idx_alloc_s1_q;
-    assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM;
+    assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM[`CHIE_REQ_FLIT_RETURNNID_WIDTH-1:0];
     assign mshr_txreq_bypass_returntxnid_s1 = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_txnid_s1_q:mshr_entry_idx_alloc_s1_q;
-    assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?`CHIE_READNOSNP:(tx_wrnosnpful_s1?`CHIE_WRITENOSNPFULL:(tx_wrnosnpptl_s1?`CHIE_WRITENOSNPPTL:0));
+    assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?`CHIE_READNOSNP:(tx_wrnosnpful_s1?`CHIE_WRITENOSNPFULL:(tx_wrnosnpptl_s1?`CHIE_WRITENOSNPPTL:`CHIE_REQ_FLIT_OPCODE_WIDTH'd0));
     assign mshr_txreq_bypass_size_s1        = li_mshr_rxreq_size_s1_q;
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;
     assign mshr_txreq_bypass_ns_s1          = li_mshr_rxreq_ns_s1_q;
@@ -393,7 +393,7 @@ module hnf_mshr_bypass `HNF_PARAM (clk,
     assign mshr_txreq_bypass_order_s1       = tx_rdnosnp_s1_q&&(li_mshr_rxreq_order_s1_q != 2'b10)&&(li_mshr_rxreq_expcompack_s1_q == 0)&&(li_mshr_rxreq_excl_s1_q == 0);
     assign mshr_txreq_bypass_pcrdtype_s1    = li_mshr_rxreq_pcrdtype_s1_q;
     assign mshr_txreq_bypass_memattr_s1     = li_mshr_rxreq_memattr_s1_q;
-    assign mshr_txreq_bypass_dodwt_s1       = tx_rdnosnp_s1_q?0:(tx_wrnosnpful_s1?do_dwt_wrnosnpfull_s1_q:(tx_wrnosnpptl_s1?do_dwt_wrnosnpptl_s1_q:0));
+    assign mshr_txreq_bypass_dodwt_s1       = tx_rdnosnp_s1_q?`CHIE_REQ_FLIT_DODWT_WIDTH'd0:(tx_wrnosnpful_s1?do_dwt_wrnosnpfull_s1_q:(tx_wrnosnpptl_s1?do_dwt_wrnosnpptl_s1_q:`CHIE_REQ_FLIT_DODWT_WIDTH'd0));
     assign mshr_txreq_bypass_tracetag_s1    = li_mshr_rxreq_tracetag_s1_q;
 
     //bypass_lost

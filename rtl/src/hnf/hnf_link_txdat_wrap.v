@@ -190,9 +190,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TGTID_RANGE]     = mshr_txdat_tgtid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_SRCID_RANGE]     = HNF_NID_PARAM;
+        txdatflit_mshr_s0[`CHIE_DAT_FLIT_SRCID_RANGE]     = HNF_NID_PARAM[`CHIE_DAT_FLIT_SRCID_WIDTH-1:0];
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_TXNID_RANGE]     = mshr_txdat_txnid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_HOMENID_RANGE]   = (mshr_txdat_opcode_sx2 == `CHIE_COMPDATA)?HNF_NID_PARAM : 0;
+        txdatflit_mshr_s0[`CHIE_DAT_FLIT_HOMENID_RANGE]   = (mshr_txdat_opcode_sx2 == `CHIE_COMPDATA)?HNF_NID_PARAM[`CHIE_DAT_FLIT_HOMENID_WIDTH-1:0] : {`CHIE_DAT_FLIT_HOMENID_WIDTH{1'b0}};
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_OPCODE_RANGE]    = mshr_txdat_opcode_sx2;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_RESPERR_RANGE]   = mshr_txdat_resperr_sx2;
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_RESP_RANGE]      = mshr_txdat_resp_sx2;
@@ -365,7 +365,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     //receive dbf_txdat_valid_sx1, pass pe
     always @(posedge clk or posedge rst) begin: dbf_txdat_pe_entry1_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_pe_entry1_sx <= {`CACHE_BE_WIDTH{1'b0}};
+            dbf_txdat_pe_entry1_sx <= 2'b00;
         else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_sx1;
         // Table 14-2 ACTIVATE (p.14-450, MUST): a credit must not be used until the
@@ -379,7 +379,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     always @(posedge clk or posedge rst) begin: dbf_txdat_pe_entry2_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_pe_entry2_sx <= {`CACHE_BE_WIDTH{1'b0}};
+            dbf_txdat_pe_entry2_sx <= 2'b00;
         else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_sx1;
         else if( dbf_txdat_valid_entry2_sx_ns & (~txdat_busy_sx))

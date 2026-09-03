@@ -23,8 +23,6 @@
 `include "chie_defines.v"
 `include "axi4_defines.v"
 
-`endif
-
 //////////////////////////////////////////////////////////////////////////S
 // CHIE size constants
 `define SNF_CHIE_SIZE1B                    3'h0
@@ -78,7 +76,7 @@
 `define SNF_LL_DAT_CRD_CNT_RANGE           3:0
 `define SNF_LL_DAT_CRD_CNT_MSB             3
 `define SNF_LL_DAT_CRD_CNT_LSB             0
-`define SNF_LL_DAT_MAX_CRD_VALUE           XP_LCRD_NUM_PARAMF
+`define SNF_LL_DAT_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
 
 ////////////////////////////////////////////////////////////////////////
 // snf_mshr_qos
@@ -117,3 +115,5 @@
 `define AXI4_AXADDR_WIDTH                       AXI4_PA_WIDTH_PARAM
 `define AXI4_AXLEN_WIDTH                        `AXI4_AWLEN_WIDTH
 `define AXI4_AXDATA_WIDTH                       AXI4_AXDATA_WIDTH_PARAM
+
+`endif

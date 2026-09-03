@@ -699,9 +699,20 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                        mshr_pcrd_alloc_s0;
     wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    mshr_pcrd_type_get_s0;
     wire [`MSHR_PCRDTYPE_NUMS-1:0]              mshr_pcrdtype_cnt_upd_s1;
-    wire [`MSHR_PCRDTYPE_NUMS-1:0]              mshr_pcrdtype_cnt_s1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_pcrdtype_cnt_s1[0:`MSHR_PCRDTYPE_NUMS-1];
     wire                                        mshr_l3_dmt_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_dmt_s1;
+
+    // Sec 13.10.5 (p.13-427) makes TxnID 12 bits; an MSHR index is
+    // `MSHR_ENTRIES_WIDTH. Named once here rather than truncated at every use.
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_snpdat_entry_idx_s0;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dat_entry_idx_s0;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_txreq_entry_idx_sx1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_txsnp_entry_idx_sx1;
+    assign mshr_snpdat_entry_idx_s0 = mshr_snpdat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
+    assign mshr_dat_entry_idx_s0    = mshr_dat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
+    assign mshr_txreq_entry_idx_sx1 = mshr_txreq_txnid_sx1_q[`MSHR_ENTRIES_WIDTH-1:0];
+    assign mshr_txsnp_entry_idx_sx1 = mshr_txsnp_txnid_sx1_q[`MSHR_ENTRIES_WIDTH-1:0];
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_memrd_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_getall_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_get_64B_s1;
@@ -1471,7 +1482,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_snp_d_s0        = li_mshr_rxdat_resp_s0[`CHIE_DAT_FLIT_RESP_WIDTH-1];
     assign mshr_snpdat_entry_s0 = li_mshr_rxdat_txnid_s0;
     assign mshr_snpdatid_s0     = li_mshr_rxdat_dataid_s0;
-    assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & ((mshr_snp_getid_s1_q[mshr_snpdat_entry_s0][1] == 1'b1 & mshr_snpdatid_s0 == 2'b00) | (mshr_snp_getid_s1_q[mshr_snpdat_entry_s0][0] == 1'b1 & mshr_snpdatid_s0 == 2'b10));
+    assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & ((mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][1] == 1'b1 & mshr_snpdatid_s0 == 2'b00) | (mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][0] == 1'b1 & mshr_snpdatid_s0 == 2'b10));
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snp_decode_comb_logic
@@ -1633,15 +1644,15 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_cb_dat_s0          = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_COPYBACKWRDATA);
     assign mshr_ncb_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_NCBWRDATACOMPACK | li_mshr_rxdat_opcode_s0 == `CHIE_NONCOPYBACKWRDATA);
     assign mshr_rn_dat_s0          = mshr_cb_dat_s0 | mshr_ncb_dat_s0 | mshr_datcancel_s0;
-    assign mshr_rn_dat_getall_s0   = (mshr_dat_rngetone_s1_q[mshr_dat_entry_s0] | mshr_size_s1_q[mshr_dat_entry_s0] != 3'b110) & mshr_rn_dat_s0;
+    assign mshr_rn_dat_getall_s0   = (mshr_dat_rngetone_s1_q[mshr_dat_entry_idx_s0] | mshr_size_s1_q[mshr_dat_entry_idx_s0] != 3'b110) & mshr_rn_dat_s0;
     assign mshr_datcancel_s0       = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL);
-    assign mshr_set_stop_cb_s0     = mshr_rn_dat_s0 & ((mshr_rn_dat_get_i_sc_s0 & (mshr_wb_s1_q[mshr_dat_entry_s0] | mshr_we_s1_q[mshr_dat_entry_s0])) |
-            ((mshr_rn_dat_get_i_sc_s0 | mshr_rn_dat_get_uc_s0) & mshr_wc_s1_q[mshr_dat_entry_s0]) |
-            (mshr_wb_s1_q[mshr_dat_entry_s0] & ~mshr_memattr_s1_q[mshr_dat_entry_s0][3:3] & mshr_rn_dat_get_uc_s0));
+    assign mshr_set_stop_cb_s0     = mshr_rn_dat_s0 & ((mshr_rn_dat_get_i_sc_s0 & (mshr_wb_s1_q[mshr_dat_entry_idx_s0] | mshr_we_s1_q[mshr_dat_entry_idx_s0])) |
+            ((mshr_rn_dat_get_i_sc_s0 | mshr_rn_dat_get_uc_s0) & mshr_wc_s1_q[mshr_dat_entry_idx_s0]) |
+            (mshr_wb_s1_q[mshr_dat_entry_idx_s0] & ~mshr_memattr_s1_q[mshr_dat_entry_idx_s0][3:3] & mshr_rn_dat_get_uc_s0));
     assign mshr_data_state_s0      = li_mshr_rxdat_valid_s0? li_mshr_rxdat_resp_s0:{`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
     assign mshr_rn_dat_get_i_s0    = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_I);
     assign mshr_rn_dat_get_uc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_UC);
-    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_UD_PD)) | (mshr_ncb_dat_s0 & mshr_wu_s1_q[mshr_dat_entry_s0] & mshr_memattr_s1_q[mshr_dat_entry_s0][3:3]);
+    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_UD_PD)) | (mshr_ncb_dat_s0 & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_memattr_s1_q[mshr_dat_entry_idx_s0][3:3]);
     assign mshr_rn_dat_get_sc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_SC);
     assign mshr_rn_dat_get_i_sc_s0 = mshr_rn_dat_get_i_s0 | mshr_rn_dat_get_sc_s0;
 
@@ -1931,8 +1942,12 @@ module hnf_mshr_ctl `HNF_PARAM
     generate
         for(entry=0;entry<`MSHR_PCRDTYPE_NUMS;entry=entry+1)begin : mshr_pcrdtype_cnt_s1_comb_logic
             assign mshr_pcrdtype_cnt_upd_s1[entry] = (mshr_pcrdgrant_frist_s0 & (mshr_pcrd_type_get_s0 == entry)) ||
-                   ((mshr_retry_alloc_s0 & (mshr_pcrdtype_cnt_s1_q[entry] > 0) & mshr_pcrd_type_get_s0 == entry));
-            assign mshr_pcrdtype_cnt_s1[entry]     = (mshr_pcrdgrant_frist_s0 & (mshr_pcrd_type_get_s0 == entry)) ? (mshr_pcrdtype_cnt_s1_q[entry] + 1) : (mshr_pcrdtype_cnt_s1_q[entry] - 1);
+                   ((mshr_retry_alloc_s0 & (mshr_pcrdtype_cnt_s1_q[entry] != {`MSHR_ENTRIES_WIDTH{1'b0}}) & mshr_pcrd_type_get_s0 == entry));
+            // Sec 2.11 (p.2-145): more than one P-Credit of a type can be outstanding,
+            // so this is a count, not a flag.
+            assign mshr_pcrdtype_cnt_s1[entry]     = (mshr_pcrdgrant_frist_s0 & (mshr_pcrd_type_get_s0 == entry)) ?
+                   (mshr_pcrdtype_cnt_s1_q[entry] + {{(`MSHR_ENTRIES_WIDTH-1){1'b0}},1'b1}) :
+                   (mshr_pcrdtype_cnt_s1_q[entry] - {{(`MSHR_ENTRIES_WIDTH-1){1'b0}},1'b1});
         end
     endgenerate
 
@@ -2622,12 +2637,12 @@ module hnf_mshr_ctl `HNF_PARAM
 
     always @* begin:find_mshr_retire_min_idx_comb_logic
         integer i;
-        mshr_retire_min_idx_sx             = {`MSHR_ENTRIES_NUM{1'b0}};
+        mshr_retire_min_idx_sx             = {`MSHR_ENTRIES_WIDTH{1'b0}};
         found_retire_min_idx               = 1'b0;
         mshr_l3_seq_min_idx_retire_sx1     = 1'b0;
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1) begin:find_mshr_retire_min_idx
             if(mshr_retire_rdy[i] == 1'b1 && !found_retire_min_idx)begin
-                mshr_retire_min_idx_sx         = i;
+                mshr_retire_min_idx_sx         = i[`MSHR_ENTRIES_WIDTH-1:0];
                 mshr_l3_seq_min_idx_retire_sx1 = mshr_seq_s1_q[i];
                 found_retire_min_idx           = 1'b1;
             end
@@ -2667,13 +2682,13 @@ module hnf_mshr_ctl `HNF_PARAM
 
     always @* begin:find_the_oldest_idx_entry
         integer i;
-        mshr_retire_oldest_idx_sx             = {`MSHR_ENTRIES_NUM{1'b0}};
+        mshr_retire_oldest_idx_sx             = {`MSHR_ENTRIES_WIDTH{1'b0}};
         mshr_oldest_is_retire                 = 1'b0;
         found_retire_oldest_idx               = 1'b0;
         mshr_l3_seq_oldest_idx_retire_sx1     = 1'b0;
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin : find_mshr_retire_oldest_idx
             if(mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0] == i) & ~mshr_entry_busy_sx[i] & ~sleep_sx_q[i] & !found_retire_oldest_idx)begin
-                mshr_retire_oldest_idx_sx         = i;
+                mshr_retire_oldest_idx_sx         = i[`MSHR_ENTRIES_WIDTH-1:0];
                 mshr_l3_seq_oldest_idx_retire_sx1 = mshr_seq_s1_q[i];
                 mshr_oldest_is_retire             = 1'b1;
                 found_retire_oldest_idx           = 1'b1;
@@ -2853,7 +2868,7 @@ module hnf_mshr_ctl `HNF_PARAM
         rxreq_cam_hazard_idx_s1        = {`MSHR_ENTRIES_WIDTH{1'b0}};
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(rxreq_cam_hazard_entry_s1_q[i] == 1'b1 && !found_rxreq_cam_hazard_idx)begin
-                rxreq_cam_hazard_idx_s1    = i;
+                rxreq_cam_hazard_idx_s1    = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_rxreq_cam_hazard_idx = 1'b1;
             end
             else begin
@@ -2869,7 +2884,7 @@ module hnf_mshr_ctl `HNF_PARAM
         pipe_sleep_idx_sx3       = {`MSHR_ENTRIES_WIDTH{1'b0}};
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(pipe_sleep_entry_sx3_q[i] == 1'b1 && !found_pipe_sleep_idx)begin
-                pipe_sleep_idx_sx3   = i;
+                pipe_sleep_idx_sx3   = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_pipe_sleep_idx = 1'b1;
             end
             else begin
@@ -2885,7 +2900,7 @@ module hnf_mshr_ctl `HNF_PARAM
         pipe_cam_hazard_idx_sx3       = {`MSHR_ENTRIES_WIDTH{1'b0}};
         for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(pipe_cam_hazard_entry_sx3_q[i] == 1'b1 && !found_pipe_cam_hazard_idx)begin
-                pipe_cam_hazard_idx_sx3   = i;
+                pipe_cam_hazard_idx_sx3   = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_pipe_cam_hazard_idx = 1'b1;
             end
             else begin
@@ -2995,7 +3010,7 @@ module hnf_mshr_ctl `HNF_PARAM
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txreq_wrap_other_ptr[i] = ~txreq_wrap_other_ptr_vector[i] & txreq_wrap_other_vec[i];
             if(txreq_wrap_other_ptr[i] == 1'b1 & found_txreq_wrap_other_ptr == 1'b0)begin
-                txreq_wrap_other_idx = i;
+                txreq_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_txreq_wrap_other_ptr = 1'b1;
             end
             else begin
@@ -3033,18 +3048,18 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign mshr_txreq_qos_sx1         = (mshr_qos_s1_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_returnnid_sx1   = ((mshr_dmt_sx8_q[mshr_txreq_txnid_sx1_q] | mshr_dwt_s2_q[mshr_txreq_txnid_sx1_q])?mshr_srcid_s1_q[mshr_txreq_txnid_sx1_q]:HNF_NID_PARAM);
-    assign mshr_txreq_returntxnid_sx1 = ((mshr_dmt_sx8_q[mshr_txreq_txnid_sx1_q] | mshr_dwt_s2_q[mshr_txreq_txnid_sx1_q])?mshr_txnid_s1_q[mshr_txreq_txnid_sx1_q]:mshr_txreq_txnid_sx1_q);
-    assign mshr_txreq_opcode_sx1      = (mshr_mem_rd_busy_sx_q[mshr_txreq_txnid_sx1_q]?`CHIE_READNOSNP:(mshr_wup_s1_q[mshr_txreq_txnid_sx1_q] | mshr_wrnosnpp_s1_q[mshr_txreq_txnid_sx1_q])?`CHIE_WRITENOSNPPTL:`CHIE_WRITENOSNPFULL);
-    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_txnid_sx1_q] & ((mshr_memattr_s1_q[mshr_txreq_txnid_sx1_q][3]) | (~mshr_memattr_s1_q[mshr_txreq_txnid_sx1_q][3] & (mshr_l3hit_sx8_q[mshr_txreq_txnid_sx1_q] | mshr_dat_old_get_s1_q[mshr_txreq_txnid_sx1_q])))) | (mshr_seq_s1_q[mshr_txreq_txnid_sx1_q]))? 3'b110 : mshr_size_s1_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_txnid_sx1_q] & mshr_dmt_sx8_q[mshr_txreq_txnid_sx1_q])?1:0);
-    assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_txnid_sx1_q]?mshr_pcrdtype_s1_q[mshr_txreq_txnid_sx1_q]:0);
-    assign mshr_txreq_memattr_sx1     = (mshr_memattr_s1_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_txnid_sx1_q]);
-    assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_txnid_sx1_q];
+    assign mshr_txreq_qos_sx1         = (mshr_qos_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_returnnid_sx1   = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM);
+    assign mshr_txreq_returntxnid_sx1 = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
+    assign mshr_txreq_opcode_sx1      = (mshr_mem_rd_busy_sx_q[mshr_txreq_entry_idx_sx1]?`CHIE_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1])?`CHIE_WRITENOSNPPTL:`CHIE_WRITENOSNPFULL);
+    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]))? 3'b110 : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?1:0);
+    assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
+    assign mshr_txreq_memattr_sx1     = (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 
     //************************************************************************//
 
@@ -3066,7 +3081,7 @@ module hnf_mshr_ctl `HNF_PARAM
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txrsp_wrap_other_ptr[i] = ~txrsp_wrap_other_ptr_vector[i] & txrsp_wrap_other_vec[i];
             if(txrsp_wrap_other_ptr[i] == 1'b1 & found_txrsp_wrap_other_ptr == 1'b0)begin
-                txrsp_wrap_other_idx = i;
+                txrsp_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_txrsp_wrap_other_ptr = 1'b1;
             end
             else begin
@@ -3153,7 +3168,7 @@ module hnf_mshr_ctl `HNF_PARAM
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txsnp_wrap_other_ptr[i] = ~txsnp_wrap_other_ptr_vector[i] & txsnp_wrap_other_vec[i];
             if(txsnp_wrap_other_ptr[i] == 1'b1 & found_txsnp_wrap_other_ptr == 1'b0)begin
-                txsnp_wrap_other_idx = i;
+                txsnp_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_txsnp_wrap_other_ptr = 1'b1;
             end
             else begin
@@ -3191,14 +3206,14 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign mshr_txsnp_qos_sx1      = (mshr_qos_s1_q[mshr_txsnp_txnid_sx1_q]);
-    assign mshr_txsnp_fwdnid_sx1   = mshr_dct_sx8_q[mshr_txsnp_txnid_sx1_q]? (mshr_srcid_s1_q[mshr_txsnp_txnid_sx1_q]) : {`CHIE_SNP_FLIT_FWDNID_WIDTH{1'b0}};
-    assign mshr_txsnp_fwdtxnid_sx1 = mshr_dct_sx8_q[mshr_txsnp_txnid_sx1_q]? (mshr_txnid_s1_q[mshr_txsnp_txnid_sx1_q]) : {`CHIE_SNP_FLIT_FWDTXNID_WIDTH{1'b0}};
-    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_txnid_sx1_q]?mshr_snpcode_sx8_q[mshr_txsnp_txnid_sx1_q]+16:mshr_snpcode_sx8_q[mshr_txsnp_txnid_sx1_q]);
-    assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_txnid_sx1_q]);
-    assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_txnid_sx1_q]);
-    assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_txnid_sx1_q];
-    assign mshr_txsnp_rn_vec_sx1   = (mshr_snp_bit_sx8_q[mshr_txsnp_txnid_sx1_q]);
+    assign mshr_txsnp_qos_sx1      = (mshr_qos_s1_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_fwdnid_sx1   = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_srcid_s1_q[mshr_txsnp_entry_idx_sx1]) : {`CHIE_SNP_FLIT_FWDNID_WIDTH{1'b0}};
+    assign mshr_txsnp_fwdtxnid_sx1 = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_txnid_s1_q[mshr_txsnp_entry_idx_sx1]) : {`CHIE_SNP_FLIT_FWDTXNID_WIDTH{1'b0}};
+    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]?mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]+16:mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_entry_idx_sx1];
+    assign mshr_txsnp_rn_vec_sx1   = (mshr_snp_bit_sx8_q[mshr_txsnp_entry_idx_sx1]);
 
     //************************************************************************//
 
@@ -3228,7 +3243,7 @@ module hnf_mshr_ctl `HNF_PARAM
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             cpl_wrap_other_ptr[i] = ~cpl_wrap_other_ptr_vector[i] & cpl_wrap_other_vec[i];
             if(cpl_wrap_other_ptr[i] == 1'b1 & found_cpl_wrap_other_ptr == 1'b0)begin
-                cpl_wrap_other_idx = i;
+                cpl_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_cpl_wrap_other_ptr = 1'b1;
             end
             else begin
@@ -3325,7 +3340,7 @@ module hnf_mshr_ctl `HNF_PARAM
         for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txdat_wrap_other_ptr[i] = ~txdat_wrap_other_ptr_vector[i] & txdat_wrap_other_vec[i];
             if(txdat_wrap_other_ptr[i] == 1'b1 & found_txdat_wrap_other_ptr == 1'b0)begin
-                txdat_wrap_other_idx = i;
+                txdat_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_txdat_wrap_other_ptr = 1'b1;
             end
             else begin

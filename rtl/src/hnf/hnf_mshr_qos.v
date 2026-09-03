@@ -400,7 +400,7 @@ module hnf_mshr_qos `HNF_PARAM
 
         for(i=0; i<`MSHR_ENTRIES_NUM; i = i+1)begin
             if (mshr_dyn_entry_idx_ptr_s0[i])
-                mshr_dyn_idx_alloc_s0 = i;
+                mshr_dyn_idx_alloc_s0 = i[`MSHR_ENTRIES_WIDTH-1:0];
             else
                 mshr_dyn_idx_alloc_s0 = mshr_dyn_idx_alloc_s0;
         end
@@ -430,7 +430,7 @@ module hnf_mshr_qos `HNF_PARAM
         mshr_static_idx_alloc_s0 = {`MSHR_ENTRIES_WIDTH{1'b0}};
         for(i=0; i<`MSHR_ENTRIES_NUM; i = i+1)begin
             if (mshr_static_entry_idx_ptr_s0[i])
-                mshr_static_idx_alloc_s0 = i;
+                mshr_static_idx_alloc_s0 = i[`MSHR_ENTRIES_WIDTH-1:0];
             else
                 mshr_static_idx_alloc_s0 = mshr_static_idx_alloc_s0;
         end

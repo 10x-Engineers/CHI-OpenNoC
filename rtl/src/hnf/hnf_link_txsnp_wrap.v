@@ -94,9 +94,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     reg [`HNF_LCRD_SNP_CNT_WIDTH-1:0]             snp_crd_cnt_ns_s0;
     reg [`HNF_SNP_FLIT_RANGE]                       txsnpflit_s0;
     reg                                             found_rn_vec;
-    reg [HNF_MSHR_RNF_NUM_PARAM-1:0]                found_rn_vec_num;
+    reg [`RNF_WIDTH-1:0]                            found_rn_vec_num;
     reg                                             found_tgt_vec;
-    reg [HNF_MSHR_RNF_NUM_PARAM-1:0]                found_tgt_vec_num;
+    reg [`RNF_WIDTH-1:0]                            found_tgt_vec_num;
     reg [CHIE_NID_WIDTH_PARAM-1:0]                  rnid_list_array[0:HNF_MSHR_RNF_NUM_PARAM-1];
 
     //internal wire signals
@@ -132,11 +132,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     always @* begin:found_rn_vec_comb_logic
         integer i;
         found_rn_vec     = 1'b0;
-        found_rn_vec_num = 0;
+        found_rn_vec_num = {`RNF_WIDTH{1'b0}};
         for (i=0; i<`RNF_NUM; i=i+1)begin
             if(mshr_txsnp_rn_vec_sx1[i] & ~found_rn_vec)begin
                 found_rn_vec = 1'b1;
-                found_rn_vec_num = i;
+                found_rn_vec_num = i[`RNF_WIDTH-1:0];
             end
         end
     end
@@ -144,21 +144,21 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     always @* begin:found_tgt_vec_comb_logic
         integer i;
         found_tgt_vec     = 1'b0;
-        found_tgt_vec_num = 0;
+        found_tgt_vec_num = {`RNF_WIDTH{1'b0}};
         for (i=0; i<`RNF_NUM; i=i+1)begin
             if(tgt_vec_q[i] & ~found_tgt_vec)begin
                 found_tgt_vec = 1'b1;
-                found_tgt_vec_num = i;
+                found_tgt_vec_num = i[`RNF_WIDTH-1:0];
             end
         end
     end
 
     always @* begin: txsnp_wrap_compute_snp_cnt_comb_logic
         integer i;
-        mshr_txsnp_rn_cnt = 0;
+        mshr_txsnp_rn_cnt = {`MSHR_SNPCNT_WIDTH{1'b0}};
         for (i = 0; i < `RNF_NUM; i = i + 1) begin
             if (mshr_txsnp_rn_vec_sx1[i] == 1'b1) begin
-                mshr_txsnp_rn_cnt = mshr_txsnp_rn_cnt + 1;
+                mshr_txsnp_rn_cnt = mshr_txsnp_rn_cnt + {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
             end
         end
     end
@@ -192,7 +192,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         else if(mshr_txsnp_valid_sx1_q == 1'b1 & txsnp_mshr_busy_sx1 == 1'b0)begin
             //MSHR txsnpflit wrap
             txsnpflit_s0[`CHIE_SNP_FLIT_QOS_RANGE]          = mshr_txsnp_qos_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_SRCID_RANGE]        = HNF_NID_PARAM;
+            txsnpflit_s0[`CHIE_SNP_FLIT_SRCID_RANGE]        = HNF_NID_PARAM[`CHIE_SNP_FLIT_SRCID_WIDTH-1:0];
             txsnpflit_s0[`CHIE_SNP_FLIT_TXNID_RANGE]        = mshr_txsnp_txnid_sx1_q;
             txsnpflit_s0[`CHIE_SNP_FLIT_FWDNID_RANGE]       = mshr_txsnp_fwdnid_sx1;
             txsnpflit_s0[`CHIE_SNP_FLIT_FWDTXNID_RANGE]     = mshr_txsnp_fwdtxnid_sx1;
@@ -249,13 +249,16 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             tgt_vec_q        <= {`RNF_NUM{1'b0}};
             txsnp_cnt_q      <= {`MSHR_SNPCNT_WIDTH{1'b0}};
         end
-        else if((txsnp_busy_sx == 1'b0) & (mshr_txsnp_valid_sx1_q == 1'b1) & (txsnp_cnt_q == 0))begin
+        // txsnp_cnt_tmp is the snoopee count of the fan-out being started, so an
+        // empty target vector would wrap the counter to all-ones and drive snoops at
+        // Request Nodes the MSHR never selected.
+        else if((txsnp_busy_sx == 1'b0) & (mshr_txsnp_valid_sx1_q == 1'b1) & (txsnp_cnt_q == 0) & (txsnp_cnt_tmp != {`MSHR_SNPCNT_WIDTH{1'b0}}))begin
             tgt_vec_q        <= tgt_vec;
-            txsnp_cnt_q      <= txsnp_cnt_tmp-1;
+            txsnp_cnt_q      <= txsnp_cnt_tmp - {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
         end
         //if src match, clear its valid, rn cnt-1
         else if((txsnp_crd_avail_s1 == 1'b1) & (txsnpflitv_s0 == 1'b1) & (txsnp_cnt_q > 0) & (found_tgt_vec == 1))begin
-            txsnp_cnt_q                   <= txsnp_cnt_q-1;
+            txsnp_cnt_q                   <= txsnp_cnt_q - {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
             tgt_vec_q[found_tgt_vec_num]  <= 1'b0;
         end
     end
