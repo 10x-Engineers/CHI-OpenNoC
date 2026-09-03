@@ -38,4 +38,4 @@ Mesh Generator 主要可以根据用户自定义配置完成 Mesh XP 的自动�
 ...
 Generate Mesh Wrapper mesh_wrapper_xxx.sv
 ```
-请将以下文件放入目标工程下: `mesh_wrapper_xxx.sv, chi_xp_node.sv, chi_xp_channel.v`
+请将以下文件放入目标工程下: `mesh_wrapper_xxx.sv, chi_xp_node.sv, chi_xp_channel.sv`

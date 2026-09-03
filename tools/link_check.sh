@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # tools/link_check.sh -- run rtl/tb/tb_hnf_link.sv, the Chapter 14 link-activation
-# check for hnf.v.
+# check for hnf.sv.
 #
 #   ./tools/link_check.sh          run under xrun (Xcelium)
 #   SIM=vcs ./tools/link_check.sh  run under VCS
@@ -23,11 +23,11 @@ cd "$(dirname "$0")/../rtl" || exit 2
 SIM=${SIM:-xrun}
 command -v "$SIM" >/dev/null || { echo "$SIM not on PATH"; exit 2; }
 
-# chi_ring_channel.v and xp_sel_bit_from_vec.v declare parameters with no default,
+# chi_ring_channel.sv and xp_sel_bit_from_vec.sv declare parameters with no default,
 # which xrun rejects, and the HN-F needs neither -- so name the misc modules it
 # does need rather than globbing.
-MISC="misc/hnf_biq.v misc/poll_function.v misc/poll_with_start_entry.v
-      misc/sync_fifo.v misc/chi_link_handshake.v"
+MISC="misc/hnf_biq.sv misc/poll_function.sv misc/poll_with_start_entry.sv
+      misc/sync_fifo.sv misc/chi_link_handshake.sv"
 OUT=$(mktemp -d)
 
 case "$SIM" in
@@ -37,7 +37,7 @@ case "$SIM" in
 esac
 
 # shellcheck disable=SC2086
-"${CMD[@]}" tb/tb_hnf_link.sv src/hnf/*.v $MISC > "$OUT/sim.log" 2>&1
+"${CMD[@]}" tb/tb_hnf_link.sv src/hnf/*.sv $MISC > "$OUT/sim.log" 2>&1
 grep -E "^(FAIL|tb_hnf_link:)" "$OUT/sim.log" | sed 's/^/  /'
 
 if grep -q "tb_hnf_link: PASSED" "$OUT/sim.log"; then
