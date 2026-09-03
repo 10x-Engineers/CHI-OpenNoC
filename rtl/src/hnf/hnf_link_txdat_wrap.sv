@@ -180,12 +180,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
     end
 
     always_comb begin : combinational_logic1
-        // RSVDC, DataCheck and Poison are the fields this node never sources. They
-        // used to be driven from separate `always_comb` blocks whose right-hand sides
-        // were constants, so the inferred sensitivity list was empty and the blocks
-        // never executed. Defaulting the whole flit to zero here covers them for any
-        // configured width, and the assignments below then override every field that
-        // does carry a value.
+        // RSVDC, DataCheck and Poison are the fields this node never sources.
+        // Defaulting the whole flit to zero covers them at any configured width;
+        // the assignments below override every field that does carry a value.
         txdatflit_mshr_s0 = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
 
         txdatflit_mshr_s0[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};

@@ -332,7 +332,6 @@ module snf_mshr `SNF_PARAM
 
     localparam [31:0]                          ENTRIES_M1 = `SNF_MSHR_ENTRIES_NUM-1;
     localparam [31:0]                          ENTRIES_M2 = `SNF_MSHR_ENTRIES_NUM-2;
-    localparam [`SNF_MSHR_ENTRIES_WIDTH-1:0]   IDX_ZERO   = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
     localparam [`SNF_MSHR_ENTRIES_WIDTH-1:0]   IDX_ONE    = {{(`SNF_MSHR_ENTRIES_WIDTH-1){1'b0}}, 1'b1};
     localparam [`SNF_MSHR_ENTRIES_WIDTH-1:0]   IDX_TWO    = {{(`SNF_MSHR_ENTRIES_WIDTH-2){1'b0}}, 2'd2};
     localparam [`SNF_MSHR_ENTRIES_WIDTH-1:0]   IDX_LAST   = ENTRIES_M1[`SNF_MSHR_ENTRIES_WIDTH-1:0];
@@ -885,7 +884,7 @@ module snf_mshr `SNF_PARAM
     assign txrsp_ewa_dwt_rdy_sx         = dbf_mshr_rxdat_ok_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_ewa_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_dodwt_s1_q[dbf_mshr_rxdat_ok_idx_sx];
     assign txrsp_ewa_dwt_rdy_entry_sx   = dbf_mshr_rxdat_ok_idx_sx ;
     assign txrsp_noewa_rdy_sx           = (bvalid_sx & bready_sx) ? (~rxreq_ewa_s1_q[bid_sx[`SNF_MSHR_ENTRIES_WIDTH-1:0]]  & txrsp_comp_s1_q[bid_sx[`SNF_MSHR_ENTRIES_WIDTH-1:0]]) : 1'b0;
-    assign txrsp_noewa_rdy_entry_sx     = (bvalid_sx & bready_sx) ? bid_sx[`SNF_MSHR_ENTRIES_WIDTH-1:0] : IDX_ZERO;
+    assign txrsp_noewa_rdy_entry_sx     = (bvalid_sx & bready_sx) ? bid_sx[`SNF_MSHR_ENTRIES_WIDTH-1:0] : {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
     assign txrsp_comp_wrdatcancel_sx    =  dbf_mshr_rxdat_cancel_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_cancel_idx_sx];
     assign txrsp_comp_wrcancel_sx       =  dbf_mshr_rxdat_cancel_idx_sx;
 
@@ -977,9 +976,9 @@ module snf_mshr `SNF_PARAM
         if(rst == 1'b1)
             arvalid_fifo_set_vec <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         else if(arvalid_en_s1 && arvalid_en2_s1)
-            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST_M1) ? IDX_ZERO : (arvalid_fifo_set_vec == IDX_LAST) ? IDX_ONE : (arvalid_fifo_set_vec + IDX_TWO);
+            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST_M1) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec == IDX_LAST) ? IDX_ONE : (arvalid_fifo_set_vec + IDX_TWO);
         else if ((arvalid_en_s1 && (~arvalid_en2_s1)) | ((~arvalid_en_s1) && arvalid_en2_s1))
-            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST) ? IDX_ZERO : (arvalid_fifo_set_vec + 1'b1);
+            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec + 1'b1);
     end
 
     generate
@@ -1013,7 +1012,7 @@ module snf_mshr `SNF_PARAM
         if(rst == 1'b1)
             arvalid_fifo_vec     <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         else if((arvalid_sx == 1'b1) && (arready_sx == 1'b1))
-            arvalid_fifo_vec     <= (arvalid_fifo_vec == IDX_LAST) ? IDX_ZERO : (arvalid_fifo_vec + 1'b1);
+            arvalid_fifo_vec     <= (arvalid_fifo_vec == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_vec + 1'b1);
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_arvalid_timing_logic
@@ -1189,14 +1188,14 @@ module snf_mshr `SNF_PARAM
         if(rst == 1'b1)
             awvalid_fifo_cnt_sx_q   <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         else if(dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx])
-            awvalid_fifo_cnt_sx_q   <= (awvalid_fifo_cnt_sx_q == IDX_LAST) ? IDX_ZERO : (awvalid_fifo_cnt_sx_q + 1'b1);
+            awvalid_fifo_cnt_sx_q   <= (awvalid_fifo_cnt_sx_q == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (awvalid_fifo_cnt_sx_q + 1'b1);
     end
 
     always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_out_comb_logic
         if(rst == 1'b1)
             awvalid_fifo_vec_sx        <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         else if((awvalid_sx == 1'b1) && (awready_sx == 1'b1))
-            awvalid_fifo_vec_sx        <= (awvalid_fifo_vec_sx == IDX_LAST) ? IDX_ZERO : (awvalid_fifo_vec_sx + 1'b1);
+            awvalid_fifo_vec_sx        <= (awvalid_fifo_vec_sx == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (awvalid_fifo_vec_sx + 1'b1);
     end
 
     generate
