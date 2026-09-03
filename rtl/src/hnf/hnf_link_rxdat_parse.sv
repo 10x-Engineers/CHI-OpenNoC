@@ -134,7 +134,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign rxdat_crd_grant_s0   = rxcrd_en & ((~rxdat_crd_cnt_zero) | li_mshr_rxdat_valid_s0);
     assign rxdatcrdv_ns_s0      = rxdat_crd_grant_s0;
     assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_s0 | li_mshr_rxdat_valid_s0;
-    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - rxdat_crd_grant_s0 + li_mshr_rxdat_valid_s0;
+    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_s0} + {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, li_mshr_rxdat_valid_s0};
     assign rxdat_crd_cnt_full   = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_DAT_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t

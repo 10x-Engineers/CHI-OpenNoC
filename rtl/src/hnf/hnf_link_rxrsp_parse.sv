@@ -116,7 +116,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     assign rxrsp_crd_grant_s0   = rxcrd_en & ((~rxrsp_crd_cnt_zero) | li_mshr_rxrsp_valid_s0);
     assign rxrspcrdv_ns_s0      = rxrsp_crd_grant_s0;
     assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_s0 | li_mshr_rxrsp_valid_s0;
-    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - rxrsp_crd_grant_s0 + li_mshr_rxrsp_valid_s0;
+    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, rxrsp_crd_grant_s0} + {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, li_mshr_rxrsp_valid_s0};
     assign rxrsp_crd_cnt_full   = (rxrsp_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_RSP_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxrsp_crd_cnt_s1_q_logic_t
