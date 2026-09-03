@@ -1,6 +1,5 @@
 # Structural lint of every CHI node. The repo's own flow needs VCS, which no
-# runner has, so this is Verilator-only -- see tools/lint.sh for what it gates on
-# and why the rest of the warning population is reported rather than enforced.
+# runner has, so this is Verilator-only -- see tools/lint.sh for what it gates on.
 name: lint
 
 on:
@@ -9,16 +8,40 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  # Keep in step with VERILATOR_PIN in tools/lint.sh. Pinned rather than taken from
+  # apt because the distro version is whatever the runner image ships, and Verilator's
+  # warning set moves between releases -- so an image bump would silently change what
+  # this gate reports.
+  VERILATOR_VERSION: 5.050
+
 jobs:
   verilator:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Verilator
+      - name: Cache Verilator
+        id: cache-verilator
+        uses: actions/cache@v4
+        with:
+          path: ~/verilator-install
+          key: verilator-${{ env.VERILATOR_VERSION }}-${{ runner.os }}
+
+      - name: Build Verilator ${{ env.VERILATOR_VERSION }}
+        if: steps.cache-verilator.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y verilator
+          sudo apt-get install -y git help2man perl python3 make autoconf g++ flex bison ccache libfl-dev
+          git clone --depth 1 --branch "v${VERILATOR_VERSION}" https://github.com/verilator/verilator.git /tmp/verilator
+          cd /tmp/verilator
+          autoconf
+          ./configure --prefix="$HOME/verilator-install"
+          make -j"$(nproc)"
+          make install
+
+      - name: Put Verilator on PATH
+        run: echo "$HOME/verilator-install/bin" >> "$GITHUB_PATH"
 
       - name: Lint every node
         run: ./tools/lint.sh

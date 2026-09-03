@@ -38,6 +38,13 @@ cd "$(dirname "$0")/../rtl" || exit 2
 
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
 
+# The version CI installs. Verilator's warning set moves between releases, so a
+# clean run under a different binary does not prove a clean run in CI: 5.020 also
+# reports WIDTHEXPAND for a 1-bit operand widened into an N-bit arithmetic context,
+# which 5.050 treats as noise. The WIDTHTRUNC and WIDTHCONCAT sets -- the ones where
+# information is actually lost -- are identical between the two.
+VERILATOR_PIN=5.050
+
 command -v verilator >/dev/null || { echo "verilator not on PATH"; exit 2; }
 verilator --version
 # ALWNEVER is emitted only by Verilator 5.x. An older binary reports none and would
@@ -46,6 +53,11 @@ MAJOR=$(verilator --version | sed -nE 's/^Verilator ([0-9]+).*/\1/p')
 if [ -z "$MAJOR" ] || [ "$MAJOR" -lt 5 ]; then
   echo "FAIL: Verilator 5.0 or later required (ALWNEVER is not reported before 5.x)"
   exit 2
+fi
+VERSION=$(verilator --version | sed -nE 's/^Verilator ([0-9.]+).*/\1/p')
+if [ "$VERSION" != "$VERILATOR_PIN" ]; then
+  echo "NOTE: CI pins Verilator $VERILATOR_PIN, this is $VERSION -- the two report"
+  echo "      different warning sets, so a pass here is not a pass in CI."
 fi
 
 rc=0
