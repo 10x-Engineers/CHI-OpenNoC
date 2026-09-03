@@ -325,6 +325,8 @@ module snf_mshr `SNF_PARAM
     reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_cmo_owed_q;
     reg  [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]              txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
     reg  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_any_sent_q;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_comp_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_comp_queued_sx;
 
     genvar entry;
 
@@ -494,11 +496,13 @@ module snf_mshr `SNF_PARAM
                     txrsp_cmo_opcode_q[entry] <= rxreq_cwpersist_s0 ? `CHIE_COMPPERSIST : `CHIE_COMPCMO;
                 end
                 else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
-                    if (txrsp_q2_valid_q[entry])
+                    if (txrsp_comp_queued_sx[entry])
                         txrsp_q2_valid_q[entry]   <= 1'b0;
                     else
                         txrsp_cmo_owed_q[entry]   <= 1'b0;
                 end
+                else if(txrsp_comp_rdy_sx[entry] && txrsp_rdy_sx_q[entry])
+                    txrsp_q2_valid_q[entry]   <= 1'b1;
             end
 
             always @(posedge clk or posedge rst)begin : txrsp_any_sent_timing_logic
@@ -885,8 +889,8 @@ module snf_mshr `SNF_PARAM
                     txrsp_opcode_rdy_sx_q[entry] <= {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
                 end
                 else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
-                    txrsp_rdy_sx_q[entry] <= txrsp_q2_valid_q[entry] | txrsp_cmo_owed_q[entry];
-                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_q2_valid_q[entry] ? `CHIE_COMP
+                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry];
+                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] ? `CHIE_COMP
                                                   : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
                                                   : {`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
                 end
@@ -898,19 +902,26 @@ module snf_mshr `SNF_PARAM
                     txrsp_rdy_sx_q[entry] <= 1'b1;
                     txrsp_opcode_rdy_sx_q[entry] <= txrsp_opcode_en_sx;
                 end
-                else if (txrsp_ewa_dwt_rdy_sx && (entry == txrsp_ewa_dwt_rdy_entry_sx))begin
-                    txrsp_rdy_sx_q[entry] <= 1'b1;
-                    txrsp_opcode_rdy_sx_q[entry] <= `CHIE_COMP;
-                end
-                else if (txrsp_noewa_rdy_sx && (entry == txrsp_noewa_rdy_entry_sx)) begin
-                    txrsp_rdy_sx_q[entry] <= 1'b1;
-                    txrsp_opcode_rdy_sx_q[entry] <= `CHIE_COMP;
-                end
-                else if (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx)) begin
+                // Only when the slot is free. A Comp arriving while the entry's
+                // grant is still queued is banked instead -- Sec 2.3.9 (p.2-79,
+                // MUST) gives a Home-to-Subordinate write DBIDResp + Comp or
+                // CompDBIDResp, and overwriting the grant leaves it neither.
+                else if (txrsp_comp_rdy_sx[entry] && (~txrsp_rdy_sx_q[entry])) begin
                     txrsp_rdy_sx_q[entry] <= 1'b1;
                     txrsp_opcode_rdy_sx_q[entry] <= `CHIE_COMP;
                 end
             end
+        end
+    endgenerate
+
+    // The three points a write's Comp becomes ready, per entry, and what the entry
+    // owes as a Comp once the currently armed response is sent.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign txrsp_comp_rdy_sx[entry] = (txrsp_ewa_dwt_rdy_sx      && (entry == txrsp_ewa_dwt_rdy_entry_sx))
+                                            | (txrsp_noewa_rdy_sx        && (entry == txrsp_noewa_rdy_entry_sx))
+                                            | (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx));
+            assign txrsp_comp_queued_sx[entry] = txrsp_q2_valid_q[entry] | txrsp_comp_rdy_sx[entry];
         end
     endgenerate
 
@@ -1351,7 +1362,7 @@ module snf_mshr `SNF_PARAM
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign all_rsp_sent_sx[entry] = txrsp_any_sent_q[entry] && (~txrsp_rdy_sx_q[entry])
-                                         && (~txrsp_q2_valid_q[entry]) && (~txrsp_cmo_owed_q[entry]);
+                                         && (~txrsp_comp_queued_sx[entry]) && (~txrsp_cmo_owed_q[entry]);
         end
     endgenerate
 
