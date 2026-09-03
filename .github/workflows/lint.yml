@@ -13,7 +13,9 @@ env:
   # apt because the distro version is whatever the runner image ships, and Verilator's
   # warning set moves between releases -- so an image bump would silently change what
   # this gate reports.
-  VERILATOR_VERSION: 5.050
+  # Quoted: unquoted 5.050 is a YAML float and reaches the shell as "5.05",
+  # which is not a tag.
+  VERILATOR_VERSION: "5.050"
 
 jobs:
   verilator:
