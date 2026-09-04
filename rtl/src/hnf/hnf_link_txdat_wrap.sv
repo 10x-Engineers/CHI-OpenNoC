@@ -15,107 +15,68 @@
 *    Nana Cai <cainana@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_link_txdat_wrap `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from link
-        txdat_lcrdv,
-        lcrd_return_en,
-        txlink_run,
-        txdat_flit_avail,
-
-        //inputs from hnf_mshr
-        mshr_txdat_tgtid_sx2,
-        mshr_txdat_txnid_sx2,
-        mshr_txdat_opcode_sx2,
-        mshr_txdat_resp_sx2,
-        mshr_txdat_resperr_sx2,
-        mshr_txdat_dbid_sx2,
-        mshr_txdat_ccid_sx2,
-        mshr_txdat_tracetag_sx2,
-
-        //inputs from hnf_data_buffer
-        dbf_txdat_data_sx1,
-        dbf_txdat_idx_sx1,
-        dbf_txdat_be_sx1,
-        dbf_txdat_valid_sx1,
-        dbf_txdat_pe_sx1,
-
-        //outputs to hnf_link
-        txdatflitv,
-        txdatflit,
-        txdatflitpend,
-
-        //outputs to hnf_mshr
-        txdat_mshr_clr_dbf_busy_valid_sx3,
-        txdat_mshr_clr_dbf_busy_idx_sx3,
-        txdat_mshr_rd_idx_sx2,
-        txdat_mshr_busy_sx
-    );
-
     //global inputs
-    input wire                                    clk;
-    input wire                                    rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_link
-    input wire                                    txdat_lcrdv;
-    input wire                                    lcrd_return_en;
-    input wire                                    txlink_run;
-    output wire                                   txdat_flit_avail;
+    input wire txdat_lcrdv,
+    input wire lcrd_return_en,
+    input wire txlink_run,
+    output wire txdat_flit_avail,
 
     //inputs from hnf_mshr
-    input wire [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]   mshr_txdat_tgtid_sx2;
-    input wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]   mshr_txdat_txnid_sx2;
-    input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]  mshr_txdat_opcode_sx2;
-    input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]    mshr_txdat_resp_sx2;
-    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0] mshr_txdat_resperr_sx2;
-    input wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]    mshr_txdat_dbid_sx2;
-    input wire [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]    mshr_txdat_ccid_sx2;
-    input wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0] mshr_txdat_tracetag_sx2;
+    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx2,
+    input wire [11:0] mshr_txdat_txnid_sx2,
+    input chie_pkg::dat_opcode_e mshr_txdat_opcode_sx2,
+    input chie_pkg::resp_state_e mshr_txdat_resp_sx2,
+    input chie_pkg::resp_err_e mshr_txdat_resperr_sx2,
+    input wire [11:0] mshr_txdat_dbid_sx2,
+    input wire [1:0] mshr_txdat_ccid_sx2,
+    input wire mshr_txdat_tracetag_sx2,
 
     //inputs from hnf_data_buffer
-    input wire                                    dbf_txdat_valid_sx1;
-    input wire [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]  dbf_txdat_data_sx1;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]          dbf_txdat_idx_sx1;
-    input wire [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]    dbf_txdat_be_sx1;
-    input wire [1:0]                              dbf_txdat_pe_sx1;
+    input wire dbf_txdat_valid_sx1,
+    input wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] dbf_txdat_idx_sx1,
+    input wire [chie_pkg::BE_WIDTH*2-1:0] dbf_txdat_be_sx1,
+    input wire [1:0] dbf_txdat_pe_sx1,
 
     //outputs to hnf_link
-    output logic                                    txdatflitv;
-    output logic  [`CHIE_DAT_FLIT_RANGE]            txdatflit;
-    output wire                                   txdatflitpend;
+    output logic txdatflitv,
+    output chie_pkg::dat_flit_s txdatflit,
+    output wire txdatflitpend,
 
     //outputs to hnf_mshr
-    output logic                                    txdat_mshr_clr_dbf_busy_valid_sx3;
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]         txdat_mshr_clr_dbf_busy_idx_sx3;
-    output wire [`MSHR_ENTRIES_WIDTH-1:0]         txdat_mshr_rd_idx_sx2;
-    output wire                                   txdat_mshr_busy_sx;
+    output logic txdat_mshr_clr_dbf_busy_valid_sx3,
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_clr_dbf_busy_idx_sx3,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_rd_idx_sx2,
+    output wire txdat_mshr_busy_sx
+    );
 
     //internal reg signals
-    logic [`CHIE_DAT_FLIT_RANGE]                    txdatflit_mshr_s0;
+    chie_pkg::dat_flit_s                    txdatflit_mshr_s0;
     logic                                           dbf_txdat_valid_entry1_sx;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]         dbf_txdat_data_entry1_sx;
+    logic [chie_pkg::DATA_WIDTH*2-1:0]         dbf_txdat_data_entry1_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]                 dbf_txdat_idx_entry1_sx;
-    logic [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]           dbf_txdat_be_entry1_sx;
+    logic [chie_pkg::BE_WIDTH*2-1:0]           dbf_txdat_be_entry1_sx;
     logic [1:0]                                     dbf_txdat_pe_entry1_sx;
     logic                                           dbf_txdat_valid_entry2_sx;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]         dbf_txdat_data_entry2_sx;
+    logic [chie_pkg::DATA_WIDTH*2-1:0]         dbf_txdat_data_entry2_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]                 dbf_txdat_idx_entry2_sx;
-    logic [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]           dbf_txdat_be_entry2_sx;
+    logic [chie_pkg::BE_WIDTH*2-1:0]           dbf_txdat_be_entry2_sx;
     logic [1:0]                                     dbf_txdat_pe_entry2_sx;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0]             txdat_crd_cnt_q;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0]             dat_crd_cnt_ns_s0;
     logic                                           dbf_txdat_valid_entry2_sx_ns;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]        mshr_txdat_dataid_sx_ns;
-    logic [`CHIE_DAT_FLIT_BE_WIDTH-1:0]             mshr_txdat_be_sx_ns;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]           mshr_txdat_data_sx_ns;
+    wire [1:0]        mshr_txdat_dataid_sx_ns;
+    logic [chie_pkg::BE_WIDTH-1:0]             mshr_txdat_be_sx_ns;
+    logic [chie_pkg::DATA_WIDTH-1:0]           mshr_txdat_data_sx_ns;
 
     //internal wire signals
     wire                                          dat_crd_cnt_not_zero_sx;
@@ -124,7 +85,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     wire                                          txdatcrdv_s0;
     wire                                          txdat_crd_cnt_inc_sx;
     wire                                          txdat_req_s0;
-    wire [`CHIE_DAT_FLIT_RANGE]                   txdatflit_s0;
+    chie_pkg::dat_flit_s                   txdatflit_s0;
     wire                                          txdatflitv_s0;
     wire                                          txdat_crd_cnt_dec_sx;
     wire                                          update_dat_crd_cnt_s0;
@@ -152,29 +113,29 @@ module hnf_link_txdat_wrap `HNF_PARAM
            ({2{(~dbf_txdat_valid_entry2_sx_ns) & (~dbf_txdat_pe_entry1_sx[0])}} & 2'b10);
 
     always_comb begin: txdat_be_sel_comb_logic
-        mshr_txdat_be_sx_ns = {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
+        mshr_txdat_be_sx_ns = '0;
         if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[`CHIE_DAT_FLIT_BE_WIDTH-1:0];
+            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[chie_pkg::BE_WIDTH-1:0];
         else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[(`CHIE_DAT_FLIT_BE_WIDTH*2)-1:`CHIE_DAT_FLIT_BE_WIDTH];
+            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
         else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[`CHIE_DAT_FLIT_BE_WIDTH-1:0];
+            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[chie_pkg::BE_WIDTH-1:0];
         else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[(`CHIE_DAT_FLIT_BE_WIDTH*2)-1:`CHIE_DAT_FLIT_BE_WIDTH];
+            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
         else
             ;
     end
 
     always_comb begin: txdat_data_sel_comb_logic
-        mshr_txdat_data_sx_ns = {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
+        mshr_txdat_data_sx_ns = '0;
         if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[chie_pkg::DATA_WIDTH-1:0];
         else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[(`CHIE_DAT_FLIT_DATA_WIDTH*2)-1:`CHIE_DAT_FLIT_DATA_WIDTH];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
         else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[chie_pkg::DATA_WIDTH-1:0];
         else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[(`CHIE_DAT_FLIT_DATA_WIDTH*2)-1:`CHIE_DAT_FLIT_DATA_WIDTH];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
         else
             ;
     end
@@ -183,27 +144,27 @@ module hnf_link_txdat_wrap `HNF_PARAM
         // RSVDC, DataCheck and Poison are the fields this node never sources.
         // Defaulting the whole flit to zero covers them at any configured width;
         // the assignments below override every field that does carry a value.
-        txdatflit_mshr_s0 = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+        txdatflit_mshr_s0 = '0;
 
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TGTID_RANGE]     = mshr_txdat_tgtid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_SRCID_RANGE]     = HNF_NID_PARAM[`CHIE_DAT_FLIT_SRCID_WIDTH-1:0];
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TXNID_RANGE]     = mshr_txdat_txnid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_HOMENID_RANGE]   = (mshr_txdat_opcode_sx2 == `CHIE_COMPDATA)?HNF_NID_PARAM[`CHIE_DAT_FLIT_HOMENID_WIDTH-1:0] : {`CHIE_DAT_FLIT_HOMENID_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_OPCODE_RANGE]    = mshr_txdat_opcode_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_RESPERR_RANGE]   = mshr_txdat_resperr_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_RESP_RANGE]      = mshr_txdat_resp_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_FWDSTATE_RANGE]  = {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_CBUSY_RANGE]     = {`CHIE_DAT_FLIT_CBUSY_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_DBID_RANGE]      = mshr_txdat_dbid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_CCID_RANGE]      = mshr_txdat_ccid_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_DATAID_RANGE]    = mshr_txdat_dataid_sx_ns;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TAGOP_RANGE]     = {`CHIE_DAT_FLIT_TAGOP_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TAG_RANGE]       = {`CHIE_DAT_FLIT_TAG_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TU_RANGE]        = {`CHIE_DAT_FLIT_TU_WIDTH{1'b0}};
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_TRACETAG_RANGE]  = mshr_txdat_tracetag_sx2;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_BE_RANGE]        = mshr_txdat_be_sx_ns;
-        txdatflit_mshr_s0[`CHIE_DAT_FLIT_DATA_RANGE]      = mshr_txdat_data_sx_ns;
+        txdatflit_mshr_s0.qos       = '0;
+        txdatflit_mshr_s0.tgtid     = mshr_txdat_tgtid_sx2;
+        txdatflit_mshr_s0.srcid     = HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
+        txdatflit_mshr_s0.txnid     = mshr_txdat_txnid_sx2;
+        txdatflit_mshr_s0.homenid   = (mshr_txdat_opcode_sx2 == chie_pkg::DAT_COMPDATA)?HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0] : '0;
+        txdatflit_mshr_s0.opcode    = mshr_txdat_opcode_sx2;
+        txdatflit_mshr_s0.resperr   = mshr_txdat_resperr_sx2;
+        txdatflit_mshr_s0.resp      = mshr_txdat_resp_sx2;
+        txdatflit_mshr_s0.datasource.fwdstate  = '0;
+        txdatflit_mshr_s0.cbusy     = '0;
+        txdatflit_mshr_s0.dbid      = mshr_txdat_dbid_sx2;
+        txdatflit_mshr_s0.ccid      = mshr_txdat_ccid_sx2;
+        txdatflit_mshr_s0.dataid    = mshr_txdat_dataid_sx_ns;
+        txdatflit_mshr_s0.tagop     = '0;
+        txdatflit_mshr_s0.tag       = '0;
+        txdatflit_mshr_s0.tu        = '0;
+        txdatflit_mshr_s0.tracetag  = mshr_txdat_tracetag_sx2;
+        txdatflit_mshr_s0.be        = mshr_txdat_be_sx_ns;
+        txdatflit_mshr_s0.data      = mshr_txdat_data_sx_ns;
     end
 
     assign txdatflit_s0            = txdatflit_mshr_s0;
@@ -218,11 +179,11 @@ module hnf_link_txdat_wrap `HNF_PARAM
     //txdatflit sending logic
     always_ff @(posedge clk or posedge rst) begin: txdatflit_logic_t
         if(rst == 1'b1)begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b0;
         end
         else if(txdat_lcrd_rtn_sx == 1'b1)begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b1;
         end
         else if((txdatflitv_s0 == 1'b1) & (txdat_crd_avail_s1 == 1'b1))begin
@@ -418,7 +379,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
 `ifdef DISPLAY_INFO
     always_ff @(posedge clk)begin
         if(txdatflitv)begin
-            `display_info($sformatf("HNF TXDAT send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n resp: %h\n resperr: %h\n dbid: %h\n dataid: %h\n be: %h\n data: %h\n Time: %0d\n",txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE],txdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE],txdatflit[`CHIE_DAT_FLIT_TXNID_RANGE],txdatflit[`CHIE_DAT_FLIT_RESP_RANGE],txdatflit[`CHIE_DAT_FLIT_RESPERR_RANGE],txdatflit[`CHIE_DAT_FLIT_DBID_RANGE],txdatflit[`CHIE_DAT_FLIT_DATAID_RANGE],txdatflit[`CHIE_DAT_FLIT_BE_RANGE],txdatflit[`CHIE_DAT_FLIT_DATA_RANGE],$time()));
+            `display_info($sformatf("HNF TXDAT send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n resp: %h\n resperr: %h\n dbid: %h\n dataid: %h\n be: %h\n data: %h\n Time: %0d\n",txdatflit.tgtid,txdatflit.opcode,txdatflit.txnid,txdatflit.resp,txdatflit.resperr,txdatflit.dbid,txdatflit.dataid,txdatflit.be,txdatflit.data,$time()));
         end
     end
 `endif

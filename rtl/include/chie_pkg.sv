@@ -157,6 +157,31 @@ package chie_pkg;
     DAT_NCBWRDATACOMPACK  = 4'hc
   } dat_opcode_e;
 
+  typedef enum logic [4:0] {
+    SNP_SNPLCRDRETURN        = 5'h00,
+    SNP_SNPSHARED            = 5'h01,
+    SNP_SNPCLEAN             = 5'h02,
+    SNP_SNPONCE              = 5'h03,
+    SNP_SNPNOTSHAREDDIRTY    = 5'h04,
+    SNP_SNPUNIQUESTASH       = 5'h05,
+    SNP_SNPMAKEINVALIDSTASH  = 5'h06,
+    SNP_SNPUNIQUE            = 5'h07,
+    SNP_SNPCLEANSHARED       = 5'h08,
+    SNP_SNPCLEANINVALID      = 5'h09,
+    SNP_SNPMAKEINVALID       = 5'h0a,
+    SNP_SNPSTASHUNIQUE       = 5'h0b,
+    SNP_SNPSTASHSHARED       = 5'h0c,
+    SNP_SNPDVMOP             = 5'h0d,
+    SNP_SNPQUERY             = 5'h10,
+    SNP_SNPSHAREDFWD         = 5'h11,
+    SNP_SNPCLEANFWD          = 5'h12,
+    SNP_SNPONCEFWD           = 5'h13,
+    SNP_SNPNOTSHAREDDIRTYFWD = 5'h14,
+    SNP_SNPPREFERUNIQUE      = 5'h15,
+    SNP_SNPPREFERUNIQUEFWD   = 5'h16,
+    SNP_SNPUNIQUEFWD         = 5'h17
+  } snp_opcode_e;
+
   // Table 13-31 (SS13.10.32). EX_OK and DATA are the two the macro header left
   // commented out, so a raw literal was the only way to name them.
   typedef enum logic [1:0] {
@@ -166,7 +191,8 @@ package chie_pkg;
     RESP_ERR_NON_DATA = 2'b11
   } resp_err_e;
 
-  // Table 13-30. The Comp and Snp response state spaces share the encoding.
+  // Table 13-30 (SS13.10.32). One field, read two ways: the mnemonics below are
+  // the Snoop-response reading, and a CompData reads 010/110/111 as UC/UD_PD/SD_PD.
   typedef enum logic [2:0] {
     RESP_I     = 3'b000,
     RESP_SC    = 3'b001,
@@ -174,7 +200,8 @@ package chie_pkg;
     RESP_SD    = 3'b011,
     RESP_I_PD  = 3'b100,
     RESP_SC_PD = 3'b101,
-    RESP_UC_PD = 3'b110
+    RESP_UC_PD = 3'b110,
+    RESP_SD_PD = 3'b111
   } resp_state_e;
 
   // Table 2-9 (SS2.8 p.2-119). All four encodings, including the reserved one --
@@ -335,9 +362,36 @@ package chie_pkg;
     logic [NID_WIDTH-1:0] srcid;
   } pcrdgrantq_s;
 
+  // SS13.10.11 (p.13-427) overlays StashLPID/StashLPIDValid and VMIDExt on the
+  // FwdTxnID bits.
+  typedef union packed {
+    logic [11:0] fwdtxnid;
+    logic [11:0] vmidext;
+    struct packed {
+      logic [5:0] unused;
+      logic       stashlpidvalid;
+      logic [4:0] stashlpid;
+    } stash;
+  } snp_fwdtxnid_u;
+
+  typedef struct packed {
+    logic                       tracetag;
+    logic                       rettosrc;
+    logic                       donotgotosd;
+    logic                       ns;
+    logic [SNP_ADDR_WIDTH-1:0]  addr;
+    snp_opcode_e                opcode;
+    snp_fwdtxnid_u              fwdtxnid;
+    logic [NID_WIDTH-1:0]       fwdnid;
+    logic [11:0]                txnid;
+    logic [NID_WIDTH-1:0]       srcid;
+    logic [3:0]                 qos;
+  } snp_flit_s;
+
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);
   parameter int RSP_FLIT_WIDTH = $bits(rsp_flit_s);
   parameter int DAT_FLIT_WIDTH = $bits(dat_flit_s);
+  parameter int SNP_FLIT_WIDTH = $bits(snp_flit_s);
 
 endpackage
 

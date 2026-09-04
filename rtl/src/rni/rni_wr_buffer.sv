@@ -17,7 +17,6 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni_wr_buffer `RNI_PARAM
     (
@@ -105,8 +104,8 @@ module rni_wr_buffer `RNI_PARAM
     wire [`RNI_DMASK_CT_WIDTH-1:0]                                  aw_fdmask_s3_w;
     wire                                                            wb_bank_done_w;
     wire                                                            brsp_fifo_push_d2_w;
-    wire [`BRSP_FIFO_ENTRIES_WIDTH-1:0]                             brsp_fifo_in_d2_w;
-    wire [`BRSP_FIFO_ENTRIES_WIDTH-1:0]                             brsp_fifo_out_d3_w;
+    opennoc_rni_pkg::brsp_fifo_s                             brsp_fifo_in_d2_w;
+    opennoc_rni_pkg::brsp_fifo_s                             brsp_fifo_out_d3_w;
     wire                                                            brsp_fifo_empty_w;
     wire                                        brsp_seg_pop_w;
     chie_pkg::resp_err_e      brsp_seg_resperr_q;
@@ -436,7 +435,7 @@ module rni_wr_buffer `RNI_PARAM
     assign brsp_fifo_in_d2_w   = {brsp_axid_d2_i,brsp_resperr_d2_i,brsp_last_v_d2_q_i};
 
     sync_fifo #(
-                  .FIFO_ENTRIES_WIDTH ( `BRSP_FIFO_ENTRIES_WIDTH ),
+                  .FIFO_ENTRIES_WIDTH ( $bits(opennoc_rni_pkg::brsp_fifo_s) ),
                   .FIFO_ENTRIES_DEPTH ( `BRSP_FIFO_ENTRIES_DEPTH ),
                   .FIFO_BYP_ENABLE    ( 1'b0                     )
               )brsp_fifo(
@@ -451,13 +450,13 @@ module rni_wr_buffer `RNI_PARAM
                   .count    (                       )
               );
 
-    assign wb_brsp_fifo_pop_d3_o = (~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]) | (BVALID0 & BREADY0);
+    assign wb_brsp_fifo_pop_d3_o = (~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w.last) | (BVALID0 & BREADY0);
 
     // An AXI burst that rni_segburst split into several CHI writes pops one FIFO
     // entry per segment and drives BRESP from the last alone, so an error on an
     // earlier segment has to be carried forward -- AMBA AXI4 gives a burst one
     // response, and the CHI error on any of its writes is an error for it.
-    assign brsp_seg_pop_w = ~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE];
+    assign brsp_seg_pop_w = ~brsp_fifo_empty_w & ~brsp_fifo_out_d3_w.last;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
@@ -467,14 +466,14 @@ module rni_wr_buffer `RNI_PARAM
             brsp_seg_resperr_q[2-1:0] <= '0;
         end
         else if (brsp_seg_pop_w)begin
-            brsp_seg_resperr_q[2-1:0] <= brsp_seg_resperr_q[2-1:0] | brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE];
+            brsp_seg_resperr_q[2-1:0] <= brsp_seg_resperr_q[2-1:0] | brsp_fifo_out_d3_w.resperr;
         end
     end
 
-    assign B_CH_S0[`AXI4_BID_RANGE]   = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? brsp_fifo_out_d3_w[`BRSP_FIFO_AXID_RANGE] : 0;
-    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? (brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE] | brsp_seg_resperr_q[2-1:0]) : 0;
+    assign B_CH_S0[`AXI4_BID_RANGE]   = brsp_fifo_out_d3_w.last? brsp_fifo_out_d3_w.axid : 0;
+    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w.last? (brsp_fifo_out_d3_w.resperr | brsp_seg_resperr_q[2-1:0]) : 0;
 
-    assign BVALID0 = ~brsp_fifo_empty_w & brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE];
+    assign BVALID0 = ~brsp_fifo_empty_w & brsp_fifo_out_d3_w.last;
 
     // Assertion Checker
 `ifdef ASSERT_CHECKER_ON

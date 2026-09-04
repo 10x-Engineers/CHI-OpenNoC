@@ -16,7 +16,6 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"

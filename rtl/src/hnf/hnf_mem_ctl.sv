@@ -15,7 +15,6 @@
 *    Li Zhao <lizhao@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 

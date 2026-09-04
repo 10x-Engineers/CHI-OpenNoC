@@ -17,7 +17,6 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni_misc `RNI_PARAM
     (
@@ -31,7 +30,7 @@ module rni_misc `RNI_PARAM
 
     // rni_aw_ctl Interface
     output wire pcrdgnt_pkt_v_d2_o,
-    output wire [`PCRDGRANT_PKT_WIDTH-1:0] pcrdgnt_pkt_d2_o,
+    output opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_o,
     input wire ar_pcrdgnt_l_present_d3_i,
     input wire ar_pcrdgnt_h_present_d3_i,
     input wire aw_pcrdgnt_l_present_d3_i,
@@ -48,8 +47,8 @@ module rni_misc `RNI_PARAM
     wire [3:0] pcrdgnt_pcrdtype_d1_w;
     wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_srcid_d1_w;
     wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_tgtid_d1_w;
-    wire [`PCRDGRANT_PKT_WIDTH-1:0]          pcrdgnt_fifo_in_d1_w;
-    wire [`PCRDGRANT_PKT_WIDTH-1:0]          pcrdgnt_fifo_out_d2_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_in_d1_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_out_d2_w;
     wire                                     pcrdgnt_fifo_empty_d2_w;
     wire                                     nxt_h_pcrdgnt_ptr_w;
     wire                                     nxt_l_pcrdgnt_ptr_w;
@@ -67,7 +66,7 @@ module rni_misc `RNI_PARAM
 
     //local param
     localparam FIFO_ENTRIES_DEPTH = 32;
-    localparam FIFO_ENTRIES_WIDTH = `PCRDGRANT_PKT_WIDTH;
+    localparam FIFO_ENTRIES_WIDTH = $bits(opennoc_rni_pkg::pcrdgrant_pkt_s);
     localparam L_DISABLE_H_EN     = 1'b0;
 
     //main function

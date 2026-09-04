@@ -17,7 +17,6 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni `RNI_PARAM
     (
@@ -104,7 +103,8 @@ module rni `RNI_PARAM
     wire                                        rxrspflitv_d1;
     chie_pkg::rsp_flit_s             rxrspflit_d1_q;
     wire                                        rxdatflitv_d1;
-    wire                                        rxdatflitv_d1_w;chie_pkg::dat_flit_s                 rxdatflit_d1;
+    wire                                        rxdatflitv_d1_w;
+    chie_pkg::dat_flit_s                 rxdatflit_d1;
     wire [11:0]       rxdatflit_txnid_d1;
     wire [1:0]      rxdatflit_dataid_d1;
     wire                                        arctrl_rxdat_rb_v_d2;
@@ -121,7 +121,7 @@ module rni `RNI_PARAM
     wire                                        aw_txdatflitv_s3;
     wire                                        aw_txdatflit_sent_s3;
     wire                                        pcrdgnt_pkt_v_d2;
-    wire [`PCRDGRANT_PKT_WIDTH-1:0]             pcrdgnt_pkt_d2;
+    opennoc_rni_pkg::pcrdgrant_pkt_s             pcrdgnt_pkt_d2;
     chie_pkg::req_flit_s             arctrl_txreqflit_s4;
     wire                                        arctrl_txreqflitv_s4;
     wire                                        arctrl_txreqflit_sent_s4;

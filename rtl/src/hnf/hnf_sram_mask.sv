@@ -14,7 +14,6 @@
 *    Hongyu Gao <gaohongyu@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
@@ -22,23 +21,16 @@ module hnf_sram_mask #(
         parameter RAM_ADDR_WIDTH = 10,
         parameter RAM_DATA_WIDTH = 512,
         parameter RAM_MASK_WIDTH = 16
-    ) (
-        CLK,
-        WE,
-        ADDR,
-        WMASK,
-        DATA_IN,
-        DATA_OUT
+    )
+    (
+    input wire CLK,
+    input wire WE,
+    input wire [RAM_ADDR_WIDTH-1:0] ADDR,
+    input wire [RAM_MASK_WIDTH-1:0] WMASK,
+    input wire [RAM_DATA_WIDTH-1:0] DATA_IN,
+    output wire [RAM_DATA_WIDTH*RAM_MASK_WIDTH-1:0] DATA_OUT
     );
-
     localparam RAM_DEPTH = 2**RAM_ADDR_WIDTH;
-
-    input  wire                                      CLK;
-    input  wire                                      WE;
-    input  wire [RAM_ADDR_WIDTH-1:0]                 ADDR;
-    input  wire [RAM_MASK_WIDTH-1:0]                 WMASK;
-    input  wire [RAM_DATA_WIDTH-1:0]  DATA_IN;
-    output wire [RAM_DATA_WIDTH*RAM_MASK_WIDTH-1:0]  DATA_OUT;
 
     wire [RAM_DATA_WIDTH*RAM_MASK_WIDTH-1:0]         data_out_raw;
     logic  [RAM_DATA_WIDTH*RAM_MASK_WIDTH-1:0]         memory_data [RAM_DEPTH-1:0];

@@ -18,7 +18,6 @@
 // This block contains 4 data buffer bank
 
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 `include "rni_defines.svh"
 `include "rni_param.svh"
 

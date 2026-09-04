@@ -14,7 +14,6 @@
 *    Hongyu Gao <gaohongyu@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 `ifndef FPGA_MEMORY

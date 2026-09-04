@@ -14,100 +14,56 @@
 *    Nana Cai <cainana@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_link_rxreq_parse `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_link
-        rxreqflitv,
-        rxreqflit,
-        rxreqflitpend,
-        rxcrd_en,
-        rxreq_crd_cnt_full,
-
-        //inputs from hnf_cache_pipeline
-        biq_req_valid_s0_q,
-        biq_req_addr_s0_q,
-
-        //inputs from hnf_mshr_qos
-        qos_seq_pool_full_s0_q,
-        rxreq_retry_enable_s0,
-
-        //inputs from hnf_link_txrsp_wrap
-        txrsp_mshr_retryack_won_s1,
-
-        //outputs to link
-        rxreq_lcrdv,
-
-        //outputs to hnf_mshr
-        li_mshr_rxreq_valid_s0,
-        li_mshr_rxreq_qos_s0,
-        li_mshr_rxreq_srcid_s0,
-        li_mshr_rxreq_txnid_s0,
-        li_mshr_rxreq_opcode_s0,
-        li_mshr_rxreq_size_s0,
-        li_mshr_rxreq_addr_s0,
-        li_mshr_rxreq_ns_s0,
-        li_mshr_rxreq_allowretry_s0,
-        li_mshr_rxreq_order_s0,
-        li_mshr_rxreq_pcrdtype_s0,
-        li_mshr_rxreq_memattr_s0,
-        li_mshr_rxreq_lpid_s0,
-        li_mshr_rxreq_excl_s0,
-        li_mshr_rxreq_expcompack_s0,
-        li_mshr_rxreq_tracetag_s0
-    );
-
     //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from link
-    input wire                                      rxreqflitv;
-    input wire [`CHIE_REQ_FLIT_RANGE]               rxreqflit;
-    input wire                                      rxreqflitpend;
+    input wire rxreqflitv,
+    input chie_pkg::req_flit_s rxreqflit,
+    input wire rxreqflitpend,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire                                      rxcrd_en;
-    output wire                                     rxreq_crd_cnt_full;
+    input wire rxcrd_en,
+    output wire rxreq_crd_cnt_full,
 
     //inputs from hnf_cache_pipeline
-    input wire                                      biq_req_valid_s0_q;
-    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]      biq_req_addr_s0_q;
+    input wire biq_req_valid_s0_q,
+    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
 
     //inputs from hnf_mshr_qos
-    input wire                                      qos_seq_pool_full_s0_q;
-    input wire                                      rxreq_retry_enable_s0;
+    input wire qos_seq_pool_full_s0_q,
+    input wire rxreq_retry_enable_s0,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire                                      txrsp_mshr_retryack_won_s1;
+    input wire txrsp_mshr_retryack_won_s1,
 
     //outputs to link
-    output wire                                     rxreq_lcrdv;
+    output wire rxreq_lcrdv,
 
     //outputs to hnf_mshr
-    output wire                                     li_mshr_rxreq_valid_s0;
-    output wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]      li_mshr_rxreq_qos_s0;
-    output wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]    li_mshr_rxreq_srcid_s0;
-    output wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]    li_mshr_rxreq_txnid_s0;
-    output wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]   li_mshr_rxreq_opcode_s0;
-    output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]     li_mshr_rxreq_size_s0;
-    output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]     li_mshr_rxreq_addr_s0;
-    output wire                                     li_mshr_rxreq_ns_s0;
-    output wire                                     li_mshr_rxreq_allowretry_s0;
-    output wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]    li_mshr_rxreq_order_s0;
-    output wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0] li_mshr_rxreq_pcrdtype_s0;
-    output wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]  li_mshr_rxreq_memattr_s0;
-    output wire [`CHIE_REQ_FLIT_LPID_WIDTH-1:0]     li_mshr_rxreq_lpid_s0;
-    output wire                                     li_mshr_rxreq_excl_s0;
-    output wire                                     li_mshr_rxreq_expcompack_s0;
-    output wire                                     li_mshr_rxreq_tracetag_s0;
+    output wire li_mshr_rxreq_valid_s0,
+    output wire [3:0] li_mshr_rxreq_qos_s0,
+    output wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
+    output wire [11:0] li_mshr_rxreq_txnid_s0,
+    output chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
+    output chie_pkg::size_e li_mshr_rxreq_size_s0,
+    output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
+    output wire li_mshr_rxreq_ns_s0,
+    output wire li_mshr_rxreq_allowretry_s0,
+    output chie_pkg::order_e li_mshr_rxreq_order_s0,
+    output wire [3:0] li_mshr_rxreq_pcrdtype_s0,
+    output chie_pkg::memattr_s li_mshr_rxreq_memattr_s0,
+    output wire [7:0] li_mshr_rxreq_lpid_s0,
+    output wire li_mshr_rxreq_excl_s0,
+    output wire li_mshr_rxreq_expcompack_s0,
+    output wire li_mshr_rxreq_tracetag_s0
+    );
 
     //internal reg signals
     logic                                             rxreqflitv_en_q;
@@ -139,24 +95,24 @@ module hnf_link_rxreq_parse `HNF_PARAM
     //rxreqflit decode
     assign li_mshr_rxreq_valid_s0      = (rxreqflitv == 1'b1) || (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0);
 
-    assign li_mshr_rxreq_qos_s0        = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_QOS_RANGE]       :{`CHIE_REQ_FLIT_QOS_WIDTH{1'b0}};
-    assign li_mshr_rxreq_srcid_s0      = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_SRCID_RANGE]     :{`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
-    assign li_mshr_rxreq_txnid_s0      = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_TXNID_RANGE]     :{`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
-    assign li_mshr_rxreq_opcode_s0     = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE]    :(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? `SF_EVICT : {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}};
-    assign li_mshr_rxreq_size_s0       = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_SIZE_RANGE]      :{`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+    assign li_mshr_rxreq_qos_s0        = (rxreqflitv == 1'b1)? rxreqflit.qos       :'0;
+    assign li_mshr_rxreq_srcid_s0      = (rxreqflitv == 1'b1)? rxreqflit.srcid     :'0;
+    assign li_mshr_rxreq_txnid_s0      = (rxreqflitv == 1'b1)? rxreqflit.txnid     :'0;
+    assign li_mshr_rxreq_opcode_s0     = (rxreqflitv == 1'b1)? rxreqflit.opcode    :(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? chie_pkg::REQ_SNOOPFILTEREVICT : chie_pkg::REQ_REQLCRDRETURN;
+    assign li_mshr_rxreq_size_s0       = (rxreqflitv == 1'b1)? rxreqflit.size      :chie_pkg::SIZE_1B;
 
-    assign li_mshr_rxreq_addr_s0       = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_ADDR_RANGE]      :
-           (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0)? biq_req_addr_s0_q:{`CHIE_REQ_FLIT_ADDR_WIDTH{1'b0}};
+    assign li_mshr_rxreq_addr_s0       = (rxreqflitv == 1'b1)? rxreqflit.addr      :
+           (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0)? biq_req_addr_s0_q:'0;
 
-    assign li_mshr_rxreq_ns_s0         = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_NS_RANGE]        :{`CHIE_REQ_FLIT_NS_WIDTH{1'b0}};
-    assign li_mshr_rxreq_allowretry_s0 = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE]:(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? {`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH{1'b1}} : {`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH{1'b0}};
-    assign li_mshr_rxreq_order_s0      = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_ORDER_RANGE]     :{`CHIE_REQ_FLIT_ORDER_WIDTH{1'b0}};
-    assign li_mshr_rxreq_pcrdtype_s0   = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_PCRDTYPE_RANGE]  :{`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
-    assign li_mshr_rxreq_memattr_s0    = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_MEMATTR_RANGE]   :{`CHIE_REQ_FLIT_MEMATTR_WIDTH{1'b0}};
-    assign li_mshr_rxreq_lpid_s0       = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_LPID_RANGE]      :{`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
-    assign li_mshr_rxreq_excl_s0       = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_EXCL_RANGE]      :{`CHIE_REQ_FLIT_EXCL_WIDTH{1'b0}};
-    assign li_mshr_rxreq_expcompack_s0 = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_EXPCOMPACK_RANGE]:{`CHIE_REQ_FLIT_EXPCOMPACK_WIDTH{1'b0}};
-    assign li_mshr_rxreq_tracetag_s0   = (rxreqflitv == 1'b1)? rxreqflit[`CHIE_REQ_FLIT_TRACETAG_RANGE]  :{`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
+    assign li_mshr_rxreq_ns_s0         = (rxreqflitv == 1'b1)? rxreqflit.ns        :'0;
+    assign li_mshr_rxreq_allowretry_s0 = (rxreqflitv == 1'b1)? rxreqflit.allowretry:(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? {1{1'b1}} : '0;
+    assign li_mshr_rxreq_order_s0      = (rxreqflitv == 1'b1)? rxreqflit.order     :chie_pkg::ORDER_NONE;
+    assign li_mshr_rxreq_pcrdtype_s0   = (rxreqflitv == 1'b1)? rxreqflit.pcrdtype  :'0;
+    assign li_mshr_rxreq_memattr_s0    = (rxreqflitv == 1'b1)? rxreqflit.memattr   :'0;
+    assign li_mshr_rxreq_lpid_s0       = (rxreqflitv == 1'b1)? rxreqflit.lpid      :'0;
+    assign li_mshr_rxreq_excl_s0       = (rxreqflitv == 1'b1)? rxreqflit.excl      :'0;
+    assign li_mshr_rxreq_expcompack_s0 = (rxreqflitv == 1'b1)? rxreqflit.expcompack:'0;
+    assign li_mshr_rxreq_tracetag_s0   = (rxreqflitv == 1'b1)? rxreqflit.tracetag  :'0;
 
     //rxreq L-credit
     assign li_req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;
@@ -214,7 +170,7 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // opcode this rejects is the link flit, which FLITV must never carry
     // (Sec 13.11 p.13-442).
     always_comb begin
-        `display_fatal( (!((rxreqflitv == 1'b1))) || (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] != `CHIE_REQLCRDRETURN),$sformatf("Fatal info: RXREQ received a link flit with FLITV asserted, opcode: %h",rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE]));
+        `display_fatal( (!((rxreqflitv == 1'b1))) || (rxreqflit.opcode != chie_pkg::REQ_REQLCRDRETURN),$sformatf("Fatal info: RXREQ received a link flit with FLITV asserted, opcode: %h",rxreqflit.opcode));
     end
 `endif
 endmodule

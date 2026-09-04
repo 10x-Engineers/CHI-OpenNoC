@@ -17,7 +17,6 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni_link_ctl `RNI_PARAM
     (
@@ -88,17 +87,20 @@ module rni_link_ctl `RNI_PARAM
     wire                                   txdat_lcrd_avail_d3_w;
     wire                                   txrsp_lcrd_avail_d0_w;
     wire                                   txreq_lcrd_avail_s4_w;
-    wire                                   txdatflitv_en_w;chie_pkg::dat_flit_s            txdatflit_d3_w;
+    wire                                   txdatflitv_en_w;
+    chie_pkg::dat_flit_s            txdatflit_d3_w;
     wire                                   ax_txrspflitv_d0_w;
     wire                                   ax_txrspflit_upd_d0_w;
     wire                                   ax_txrspflit_sel_d0_w;
     wire                                   ax_txrspflit_sent_d0_w;
-    wire                                   txrspflitv_en_w;chie_pkg::rsp_flit_s            txrspflit_d0_w;
+    wire                                   txrspflitv_en_w;
+    chie_pkg::rsp_flit_s            txrspflit_d0_w;
     wire [1:0]                             ax_txreqflitv_s4_w;
     wire                                   ax_txreqflit_upd_s4_w;
     wire [1:0]                             ax_txreqflit_sel_s4_w;
     wire                                   ax_txreqflit_sent_s4_w;
-    wire                                   txreqflitv_en_w;chie_pkg::req_flit_s            txreqflit_s4_w;
+    wire                                   txreqflitv_en_w;
+    chie_pkg::req_flit_s            txreqflit_s4_w;
     wire [`LL_STATE_WIDTH-1:0]             txlink_state;
     wire [`LL_STATE_WIDTH-1:0]             rxlink_state;
     wire                                   txflit_avail;
@@ -117,9 +119,15 @@ module rni_link_ctl `RNI_PARAM
     logic                                    rxrspflitv_d1_q;
     logic                                    rxdatflitpend_d1_q;
     logic                                    rxdatflitv_d1_q;
-    logic                                    txdatflitv_d4_q;chie_pkg::dat_flit_s            txdatflit_d4_q;
-    logic                                    txrspflitv_d1_q;chie_pkg::rsp_flit_s            txrspflit_d1_q;
-    logic                                    txreqflitv_s5_q;chie_pkg::req_flit_s            txreqflit_s5_q;chie_pkg::dat_flit_s            txdatflit_lcrd_d4;chie_pkg::rsp_flit_s            txrspflit_lcrd_d4;chie_pkg::req_flit_s            txreqflit_lcrd_d4;
+    logic                                    txdatflitv_d4_q;
+    chie_pkg::dat_flit_s            txdatflit_d4_q;
+    logic                                    txrspflitv_d1_q;
+    chie_pkg::rsp_flit_s            txrspflit_d1_q;
+    logic                                    txreqflitv_s5_q;
+    chie_pkg::req_flit_s            txreqflit_s5_q;
+    chie_pkg::dat_flit_s            txdatflit_lcrd_d4;
+    chie_pkg::rsp_flit_s            txrspflit_lcrd_d4;
+    chie_pkg::req_flit_s            txreqflit_lcrd_d4;
 
     // local parameter
     localparam XP_LCRD_NUM_PARAM = 15;

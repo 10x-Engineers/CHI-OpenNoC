@@ -14,283 +14,211 @@
 *    Jianhong Zhang <zhangjianhong@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf `HNF_PARAM
     (
-        //inputs
-        CLK,
-        RST,
-        TXLINKACTIVEREQ,
-        TXLINKACTIVEACK,
-        RXLINKACTIVEREQ,
-        RXLINKACTIVEACK,
-        TXSACTIVE,
-        RXSACTIVE,
-        RXREQFLITV,
-        RXREQFLIT,
-        RXREQFLITPEND,
-        RXRSPFLITV,
-        RXRSPFLIT,
-        RXRSPFLITPEND,
-        RXDATFLITV,
-        RXDATFLIT,
-        RXDATFLITPEND,
-        TXREQLCRDV,
-        TXRSPLCRDV,
-        TXSNPLCRDV,
-        TXDATLCRDV,
-
-        //outputs
-        RXREQLCRDV,
-        RXRSPLCRDV,
-        RXDATLCRDV,
-        TXREQFLITV,
-        TXREQFLIT,
-        TXREQFLITPEND,
-        TXRSPFLITV,
-        TXRSPFLIT,
-        TXRSPFLITPEND,
-        TXSNPFLITV,
-        TXSNPFLIT,
-        TXSNPFLITPEND,
-        TXDATFLITV,
-        TXDATFLIT,
-        TXDATFLITPEND,
-
-        notify_reg
-
-`ifdef tb_hnf
-
-        //debug signals
-        ,
-        dbg_l3_valid_q,
-        dbg_l3_index_q,
-        dbg_l3_rd_ways_q,
-        dbg_l3_wr_data_q,
-        dbg_l3_wr_ways_q,
-        dbg_loc_valid_q,
-        dbg_loc_index_q,
-        dbg_loc_rd_en_q,
-        dbg_loc_wr_ways_q,
-        dbg_loc_wr_cline_q,
-        dbg_sf_valid_q,
-        dbg_sf_index_q,
-        dbg_sf_rd_en_q,
-        dbg_sf_wr_ways_q,
-        dbg_sf_wr_cline_q,
-        dbg_lru_valid_q,
-        dbg_lru_index_q,
-        dbg_lru_rd_en_q,
-        dbg_lru_wr_en_q,
-        dbg_lru_wr_data_q,
-        dbg_l3_rd_data_q,
-        dbg_lru_rd_data_q,
-        dbg_loc_rd_clines_q,
-        dbg_sf_rd_clines_q
-`endif
-
-    );
     //inputs
-    input wire                                  CLK;
-    input wire                                  RST;
+    input wire CLK,
+    input wire RST,
 
     //CHIE link activation
-    output wire                                 TXLINKACTIVEREQ;
-    input  wire                                 TXLINKACTIVEACK;
-    input  wire                                 RXLINKACTIVEREQ;
-    output wire                                 RXLINKACTIVEACK;
-    output wire                                 TXSACTIVE;
-    input  wire                                 RXSACTIVE;
-    input wire                                  RXREQFLITV;
-    input wire [`CHIE_REQ_FLIT_RANGE]           RXREQFLIT;
-    input wire                                  RXREQFLITPEND;
-    input wire                                  RXRSPFLITV;
-    input wire [`CHIE_RSP_FLIT_RANGE]           RXRSPFLIT;
-    input wire                                  RXRSPFLITPEND;
-    input wire                                  RXDATFLITV;
-    input wire [`CHIE_DAT_FLIT_RANGE]           RXDATFLIT;
-    input wire                                  RXDATFLITPEND;
-    input wire                                  TXREQLCRDV;
-    input wire                                  TXRSPLCRDV;
-    input wire                                  TXSNPLCRDV;
-    input wire                                  TXDATLCRDV;
+    output wire TXLINKACTIVEREQ,
+    input wire TXLINKACTIVEACK,
+    input wire RXLINKACTIVEREQ,
+    output wire RXLINKACTIVEACK,
+    output wire TXSACTIVE,
+    input wire RXSACTIVE,
+    input wire RXREQFLITV,
+    input chie_pkg::req_flit_s RXREQFLIT,
+    input wire RXREQFLITPEND,
+    input wire RXRSPFLITV,
+    input chie_pkg::rsp_flit_s RXRSPFLIT,
+    input wire RXRSPFLITPEND,
+    input wire RXDATFLITV,
+    input chie_pkg::dat_flit_s RXDATFLIT,
+    input wire RXDATFLITPEND,
+    input wire TXREQLCRDV,
+    input wire TXRSPLCRDV,
+    input wire TXSNPLCRDV,
+    input wire TXDATLCRDV,
 
     //outputs
-    output wire                                 RXREQLCRDV;
-    output wire                                 RXRSPLCRDV;
-    output wire                                 RXDATLCRDV;
-    output wire                                 TXREQFLITV;
-    output wire [`CHIE_REQ_FLIT_RANGE]          TXREQFLIT;
-    output wire                                 TXREQFLITPEND;
-    output wire                                 TXRSPFLITV;
-    output wire [`CHIE_RSP_FLIT_RANGE]          TXRSPFLIT;
-    output wire                                 TXRSPFLITPEND;
-    output wire                                 TXSNPFLITV;
-    output wire [`HNF_SNP_FLIT_RANGE]           TXSNPFLIT;
-    output wire                                 TXSNPFLITPEND;
-    output wire                                 TXDATFLITV;
-    output wire [`CHIE_DAT_FLIT_RANGE]          TXDATFLIT;
-    output wire                                 TXDATFLITPEND;
-    output wire [2:0]                           notify_reg;
+    output wire RXREQLCRDV,
+    output wire RXRSPLCRDV,
+    output wire RXDATLCRDV,
+    output wire TXREQFLITV,
+    output chie_pkg::req_flit_s TXREQFLIT,
+    output wire TXREQFLITPEND,
+    output wire TXRSPFLITV,
+    output chie_pkg::rsp_flit_s TXRSPFLIT,
+    output wire TXRSPFLITPEND,
+    output wire TXSNPFLITV,
+    output opennoc_hnf_pkg::snp_routed_s TXSNPFLIT,
+    output wire TXSNPFLITPEND,
+    output wire TXDATFLITV,
+    output chie_pkg::dat_flit_s TXDATFLIT,
+    output wire TXDATFLITPEND,
+    output wire [2:0] notify_reg
 
 `ifdef tb_hnf
+    ,
     //debug ports
     //inputs
-    input wire                                      dbg_l3_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_l3_index_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_l3_rd_ways_q;
-    input wire [`CACHE_LINE_WIDTH-1:0]              dbg_l3_wr_data_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_l3_wr_ways_q;
-    input wire                                      dbg_loc_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_loc_index_q;
-    input wire                                      dbg_loc_rd_en_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_loc_wr_ways_q;
-    input wire [`LOC_CLINE_WIDTH-1:0]               dbg_loc_wr_cline_q;
-    input wire                                      dbg_sf_valid_q;
-    input wire [`SF_INDEX_WIDTH-1:0]                dbg_sf_index_q;
-    input wire                                      dbg_sf_rd_en_q;
-    input wire [`SF_WAY_NUM-1:0]                    dbg_sf_wr_ways_q;
-    input wire [`SF_CLINE_WIDTH-1:0]                dbg_sf_wr_cline_q;
-    input wire                                      dbg_lru_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_lru_index_q;
-    input wire                                      dbg_lru_rd_en_q;
-    input wire                                      dbg_lru_wr_en_q;
-    input wire [`LRU_CLINE_WIDTH-1:0]               dbg_lru_wr_data_q;
+    input wire dbg_l3_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_l3_index_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_l3_rd_ways_q,
+    input wire [`CACHE_LINE_WIDTH-1:0] dbg_l3_wr_data_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_l3_wr_ways_q,
+    input wire dbg_loc_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_loc_index_q,
+    input wire dbg_loc_rd_en_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_loc_wr_ways_q,
+    input wire [`LOC_CLINE_WIDTH-1:0] dbg_loc_wr_cline_q,
+    input wire dbg_sf_valid_q,
+    input wire [`SF_INDEX_WIDTH-1:0] dbg_sf_index_q,
+    input wire dbg_sf_rd_en_q,
+    input wire [`SF_WAY_NUM-1:0] dbg_sf_wr_ways_q,
+    input wire [`SF_CLINE_WIDTH-1:0] dbg_sf_wr_cline_q,
+    input wire dbg_lru_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_lru_index_q,
+    input wire dbg_lru_rd_en_q,
+    input wire dbg_lru_wr_en_q,
+    input wire [`LRU_CLINE_WIDTH-1:0] dbg_lru_wr_data_q,
 
     //outputs
-    output wire [`CACHE_LINE_WIDTH-1:0]             dbg_l3_rd_data_q;
-    output wire [`LRU_CLINE_WIDTH-1:0]              dbg_lru_rd_data_q;
-    output wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] dbg_loc_rd_clines_q;
-    output wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]   dbg_sf_rd_clines_q;
+    output wire [`CACHE_LINE_WIDTH-1:0] dbg_l3_rd_data_q,
+    output wire [`LRU_CLINE_WIDTH-1:0] dbg_lru_rd_data_q,
+    output wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] dbg_loc_rd_clines_q,
+    output wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] dbg_sf_rd_clines_q
 `endif
+    );
 
     //wires
     wire                                        biq_req_valid_s0_q;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        biq_req_addr_s0_q;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        biq_req_addr_s0_q;
     wire                                        qos_seq_pool_full_s0_q;
     wire                                        rxreq_retry_enable_s0;
     wire                                        mshr_txreq_bypass_valid_s1;
-    wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]         mshr_txreq_bypass_qos_s1;
-    wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]       mshr_txreq_bypass_txnid_s1;
-    wire [`CHIE_REQ_FLIT_RETURNNID_WIDTH-1:0]   mshr_txreq_bypass_returnnid_s1;
-    wire [`CHIE_REQ_FLIT_RETURNTXNID_WIDTH-1:0] mshr_txreq_bypass_returntxnid_s1;
-    wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]      mshr_txreq_bypass_opcode_s1;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        mshr_txreq_bypass_size_s1;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_txreq_bypass_addr_s1;
-    wire [`CHIE_REQ_FLIT_NS_WIDTH-1:0]          mshr_txreq_bypass_ns_s1;
-    wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0]  mshr_txreq_bypass_allowretry_s1;
-    wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]       mshr_txreq_bypass_order_s1;
-    wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]    mshr_txreq_bypass_pcrdtype_s1;
-    wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]     mshr_txreq_bypass_memattr_s1;
-    wire [`CHIE_REQ_FLIT_DODWT_WIDTH-1:0]       mshr_txreq_bypass_dodwt_s1;
-    wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]    mshr_txreq_bypass_tracetag_s1;
+    wire [3:0]         mshr_txreq_bypass_qos_s1;
+    wire [11:0]       mshr_txreq_bypass_txnid_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]   mshr_txreq_bypass_returnnid_s1;
+    wire [12-1:0] mshr_txreq_bypass_returntxnid_s1;
+    chie_pkg::req_opcode_e      mshr_txreq_bypass_opcode_s1;
+    chie_pkg::size_e        mshr_txreq_bypass_size_s1;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        mshr_txreq_bypass_addr_s1;
+    wire          mshr_txreq_bypass_ns_s1;
+    wire  mshr_txreq_bypass_allowretry_s1;
+    chie_pkg::order_e       mshr_txreq_bypass_order_s1;
+    wire [3:0]    mshr_txreq_bypass_pcrdtype_s1;
+    chie_pkg::memattr_s     mshr_txreq_bypass_memattr_s1;
+    wire       mshr_txreq_bypass_dodwt_s1;
+    wire    mshr_txreq_bypass_tracetag_s1;
     wire                                        mshr_txreq_valid_sx1_q;
-    wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]         mshr_txreq_qos_sx1;
-    wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]       mshr_txreq_txnid_sx1_q;
-    wire [`CHIE_REQ_FLIT_RETURNNID_WIDTH-1:0]   mshr_txreq_returnnid_sx1;
-    wire [`CHIE_REQ_FLIT_RETURNTXNID_WIDTH-1:0] mshr_txreq_returntxnid_sx1;
-    wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]      mshr_txreq_opcode_sx1;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        mshr_txreq_size_sx1;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_txreq_addr_sx1;
-    wire [`CHIE_REQ_FLIT_NS_WIDTH-1:0]          mshr_txreq_ns_sx1;
-    wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0]  mshr_txreq_allowretry_sx1;
-    wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]       mshr_txreq_order_sx1;
-    wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]    mshr_txreq_pcrdtype_sx1;
-    wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]     mshr_txreq_memattr_sx1;
-    wire [`CHIE_REQ_FLIT_DODWT_WIDTH-1:0]       mshr_txreq_dodwt_sx1;
-    wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]    mshr_txreq_tracetag_sx1;
+    wire [3:0]         mshr_txreq_qos_sx1;
+    wire [11:0]       mshr_txreq_txnid_sx1_q;
+    wire [chie_pkg::NID_WIDTH-1:0]   mshr_txreq_returnnid_sx1;
+    wire [12-1:0] mshr_txreq_returntxnid_sx1;
+    chie_pkg::req_opcode_e      mshr_txreq_opcode_sx1;
+    chie_pkg::size_e        mshr_txreq_size_sx1;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        mshr_txreq_addr_sx1;
+    wire          mshr_txreq_ns_sx1;
+    wire  mshr_txreq_allowretry_sx1;
+    chie_pkg::order_e       mshr_txreq_order_sx1;
+    wire [3:0]    mshr_txreq_pcrdtype_sx1;
+    chie_pkg::memattr_s     mshr_txreq_memattr_sx1;
+    wire       mshr_txreq_dodwt_sx1;
+    wire    mshr_txreq_tracetag_sx1;
     wire                                        mshr_txrsp_bypass_valid_s1;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]         mshr_txrsp_bypass_qos_s1;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]       mshr_txrsp_bypass_tgtid_s1;
-    wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]       mshr_txrsp_bypass_txnid_s1;
-    wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]      mshr_txrsp_bypass_opcode_s1;
-    wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]     mshr_txrsp_bypass_resperr_s1;
-    wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]        mshr_txrsp_bypass_dbid_s1;
-    wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]    mshr_txrsp_bypass_tracetag_s1;
+    wire [3:0]         mshr_txrsp_bypass_qos_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]       mshr_txrsp_bypass_tgtid_s1;
+    wire [11:0]       mshr_txrsp_bypass_txnid_s1;
+    chie_pkg::rsp_opcode_e      mshr_txrsp_bypass_opcode_s1;
+    chie_pkg::resp_err_e     mshr_txrsp_bypass_resperr_s1;
+    wire [11:0]        mshr_txrsp_bypass_dbid_s1;
+    wire    mshr_txrsp_bypass_tracetag_s1;
     wire                                        qos_txrsp_retryack_valid_s1;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]         qos_txrsp_retryack_qos_s1;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]       qos_txrsp_retryack_tgtid_s1;
-    wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]       qos_txrsp_retryack_txnid_s1;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    qos_txrsp_retryack_pcrdtype_s1;
-    wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]    qos_txrsp_retryack_tracetag_s1;
+    wire [3:0]         qos_txrsp_retryack_qos_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]       qos_txrsp_retryack_tgtid_s1;
+    wire [11:0]       qos_txrsp_retryack_txnid_s1;
+    wire [3:0]    qos_txrsp_retryack_pcrdtype_s1;
+    wire    qos_txrsp_retryack_tracetag_s1;
     wire                                        qos_txrsp_pcrdgnt_valid_s2;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]         qos_txrsp_pcrdgnt_qos_s2;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]       qos_txrsp_pcrdgnt_tgtid_s2;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    qos_txrsp_pcrdgnt_pcrdtype_s2;
+    wire [3:0]         qos_txrsp_pcrdgnt_qos_s2;
+    wire [chie_pkg::NID_WIDTH-1:0]       qos_txrsp_pcrdgnt_tgtid_s2;
+    wire [3:0]    qos_txrsp_pcrdgnt_pcrdtype_s2;
     wire                                        mshr_txrsp_valid_sx1_q;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]         mshr_txrsp_qos_sx1;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]       mshr_txrsp_tgtid_sx1;
-    wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]       mshr_txrsp_txnid_sx1_q;
-    wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]      mshr_txrsp_opcode_sx1;
-    wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]     mshr_txrsp_resperr_sx1;
-    wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]        mshr_txrsp_resp_sx1;
-    wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]        mshr_txrsp_dbid_sx1;
-    wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]    mshr_txrsp_tracetag_sx1;
+    wire [3:0]         mshr_txrsp_qos_sx1;
+    wire [chie_pkg::NID_WIDTH-1:0]       mshr_txrsp_tgtid_sx1;
+    wire [11:0]       mshr_txrsp_txnid_sx1_q;
+    chie_pkg::rsp_opcode_e      mshr_txrsp_opcode_sx1;
+    chie_pkg::resp_err_e     mshr_txrsp_resperr_sx1;
+    chie_pkg::resp_state_e        mshr_txrsp_resp_sx1;
+    wire [11:0]        mshr_txrsp_dbid_sx1;
+    wire    mshr_txrsp_tracetag_sx1;
     wire                                        mshr_txsnp_valid_sx1_q;
-    wire [`CHIE_SNP_FLIT_QOS_WIDTH-1:0]         mshr_txsnp_qos_sx1;
-    wire [`CHIE_SNP_FLIT_TXNID_WIDTH-1:0]       mshr_txsnp_txnid_sx1_q;
-    wire [`CHIE_SNP_FLIT_FWDNID_WIDTH-1:0]      mshr_txsnp_fwdnid_sx1;
-    wire [`CHIE_SNP_FLIT_FWDTXNID_WIDTH-1:0]    mshr_txsnp_fwdtxnid_sx1;
-    wire [`CHIE_SNP_FLIT_OPCODE_WIDTH-1:0]      mshr_txsnp_opcode_sx1;
-    wire [`CHIE_SNP_FLIT_ADDR_WIDTH-1:0]        mshr_txsnp_addr_sx1;
-    wire [`CHIE_SNP_FLIT_NS_WIDTH-1:0]          mshr_txsnp_ns_sx1;
-    wire [`CHIE_SNP_FLIT_RETTOSRC_WIDTH-1:0]    mshr_txsnp_rettosrc_sx1;
-    wire [`CHIE_SNP_FLIT_TRACETAG_WIDTH-1:0]    mshr_txsnp_tracetag_sx1;
+    wire [3:0]         mshr_txsnp_qos_sx1;
+    wire [11:0]       mshr_txsnp_txnid_sx1_q;
+    wire [chie_pkg::NID_WIDTH-1:0]      mshr_txsnp_fwdnid_sx1;
+    wire [11:0]    mshr_txsnp_fwdtxnid_sx1;
+    chie_pkg::snp_opcode_e      mshr_txsnp_opcode_sx1;
+    wire [chie_pkg::SNP_ADDR_WIDTH-1:0]        mshr_txsnp_addr_sx1;
+    wire          mshr_txsnp_ns_sx1;
+    wire    mshr_txsnp_rettosrc_sx1;
+    wire    mshr_txsnp_tracetag_sx1;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]           mshr_txsnp_rn_vec_sx1;
-    wire [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]       mshr_txdat_tgtid_sx2;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]       mshr_txdat_txnid_sx2;
-    wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]      mshr_txdat_opcode_sx2;
-    wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]        mshr_txdat_resp_sx2;
-    wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]     mshr_txdat_resperr_sx2;
-    wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]        mshr_txdat_dbid_sx2;
-    wire [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]        mshr_txdat_ccid_sx2;
-    wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]    mshr_txdat_tracetag_sx2;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]      dbf_txdat_data_sx1;
+    wire [chie_pkg::NID_WIDTH-1:0]       mshr_txdat_tgtid_sx2;
+    wire [11:0]       mshr_txdat_txnid_sx2;
+    chie_pkg::dat_opcode_e      mshr_txdat_opcode_sx2;
+    chie_pkg::resp_state_e        mshr_txdat_resp_sx2;
+    chie_pkg::resp_err_e     mshr_txdat_resperr_sx2;
+    wire [11:0]        mshr_txdat_dbid_sx2;
+    wire [1:0]        mshr_txdat_ccid_sx2;
+    wire    mshr_txdat_tracetag_sx2;
+    wire [chie_pkg::DATA_WIDTH*2-1:0]      dbf_txdat_data_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              dbf_txdat_idx_sx1;
-    wire [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]        dbf_txdat_be_sx1;
+    wire [chie_pkg::BE_WIDTH*2-1:0]        dbf_txdat_be_sx1;
     wire [1:0]                                  dbf_txdat_pe_sx1;
     wire                                        dbf_txdat_valid_sx1;
     wire                                        li_mshr_rxreq_valid_s0;
-    wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]         li_mshr_rxreq_qos_s0;
-    wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]       li_mshr_rxreq_srcid_s0;
-    wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]       li_mshr_rxreq_txnid_s0;
-    wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]      li_mshr_rxreq_opcode_s0;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        li_mshr_rxreq_size_s0;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        li_mshr_rxreq_addr_s0;
+    wire [3:0]         li_mshr_rxreq_qos_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]       li_mshr_rxreq_srcid_s0;
+    wire [11:0]       li_mshr_rxreq_txnid_s0;
+    chie_pkg::req_opcode_e      li_mshr_rxreq_opcode_s0;
+    chie_pkg::size_e        li_mshr_rxreq_size_s0;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        li_mshr_rxreq_addr_s0;
     wire                                        li_mshr_rxreq_ns_s0;
     wire                                        li_mshr_rxreq_allowretry_s0;
-    wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]       li_mshr_rxreq_order_s0;
-    wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]    li_mshr_rxreq_pcrdtype_s0;
-    wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]     li_mshr_rxreq_memattr_s0;
-    wire [`CHIE_REQ_FLIT_LPID_WIDTH-1:0]        li_mshr_rxreq_lpid_s0;
+    chie_pkg::order_e       li_mshr_rxreq_order_s0;
+    wire [3:0]    li_mshr_rxreq_pcrdtype_s0;
+    chie_pkg::memattr_s     li_mshr_rxreq_memattr_s0;
+    wire [7:0]        li_mshr_rxreq_lpid_s0;
     wire                                        li_mshr_rxreq_excl_s0;
     wire                                        li_mshr_rxreq_expcompack_s0;
     wire                                        li_mshr_rxreq_tracetag_s0;
     wire                                        li_mshr_rxrsp_valid_s0;
-    wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]       li_mshr_rxrsp_srcid_s0;
-    wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]       li_mshr_rxrsp_txnid_s0;
-    wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]      li_mshr_rxrsp_opcode_s0;
-    wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]        li_mshr_rxrsp_resp_s0;
-    wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]     li_mshr_rxrsp_resperr_s0;
-    wire [`CHIE_RSP_FLIT_FWDSTATE_WIDTH-1:0]    li_mshr_rxrsp_fwdstate_s0;
-    wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]        li_mshr_rxrsp_dbid_s0;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    li_mshr_rxrsp_pcrdtype_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]       li_mshr_rxrsp_srcid_s0;
+    wire [11:0]       li_mshr_rxrsp_txnid_s0;
+    chie_pkg::rsp_opcode_e      li_mshr_rxrsp_opcode_s0;
+    chie_pkg::resp_state_e        li_mshr_rxrsp_resp_s0;
+    chie_pkg::resp_err_e     li_mshr_rxrsp_resperr_s0;
+    wire [2:0]    li_mshr_rxrsp_fwdstate_s0;
+    wire [11:0]        li_mshr_rxrsp_dbid_s0;
+    wire [3:0]    li_mshr_rxrsp_pcrdtype_s0;
     wire                                        li_mshr_rxdat_valid_s0;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]       li_mshr_rxdat_txnid_s0;
-    wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]      li_mshr_rxdat_opcode_s0;
-    wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]        li_mshr_rxdat_resp_s0;
-    wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]     li_mshr_rxdat_resperr_s0;
-    wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0]    li_mshr_rxdat_fwdstate_s0;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]      li_mshr_rxdat_dataid_s0;
+    wire [11:0]       li_mshr_rxdat_txnid_s0;
+    chie_pkg::dat_opcode_e      li_mshr_rxdat_opcode_s0;
+    chie_pkg::resp_state_e        li_mshr_rxdat_resp_s0;
+    chie_pkg::resp_err_e     li_mshr_rxdat_resperr_s0;
+    wire [3:0]    li_mshr_rxdat_fwdstate_s0;
+    wire [1:0]      li_mshr_rxdat_dataid_s0;
     wire                                        li_dbf_rxdat_valid_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              li_dbf_rxdat_txnid_s0;
-    wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]      li_dbf_rxdat_opcode_s0;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]      li_dbf_rxdat_dataid_s0;
-    wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]          li_dbf_rxdat_be_s0;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]        li_dbf_rxdat_data_s0;
+    chie_pkg::dat_opcode_e      li_dbf_rxdat_opcode_s0;
+    wire [1:0]      li_dbf_rxdat_dataid_s0;
+    wire [chie_pkg::BE_WIDTH-1:0]          li_dbf_rxdat_be_s0;
+    wire [chie_pkg::DATA_WIDTH-1:0]        li_dbf_rxdat_data_s0;
     wire                                        txrsp_mshr_retryack_won_s1;
     wire                                        txrsp_mshr_pcrdgnt_won_s2;
     wire                                        txrsp_mshr_won_sx1;
@@ -302,14 +230,14 @@ module hnf `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]              txdat_mshr_clr_dbf_busy_idx_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              txdat_mshr_rd_idx_sx2;
     wire                                        txdat_mshr_busy_sx;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        pipe_mshr_addr_sx2_q;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        pipe_mshr_addr_sx2_q;
     wire                                        pipe_mshr_addr_valid_sx2_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              pipe_mshr_addr_idx_sx2_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              l3_mshr_entry_sx7_q;
     wire                                        l3_evict_sx7_q;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        l3_evict_addr_sx7_q;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        l3_evict_addr_sx7_q;
     wire                                        l3_pipeval_sx7_q;
-    wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]      l3_opcode_sx7_q;
+    chie_pkg::req_opcode_e      l3_opcode_sx7_q;
     wire                                        l3_memrd_sx7_q;
     wire                                        l3_hit_sx7_q;
     wire                                        l3_hit_d_sx7_q;
@@ -321,10 +249,10 @@ module hnf `HNF_PARAM
     wire                                        l3_mshr_wr_op_sx7_q;
     wire                                        mshr_l3_hazard_valid_sx3_q;
     wire                                        mshr_evict_hazard_sx5;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;
     wire                                        pipe_evict_cam_valid_sx4;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              pipe_evict_cam_idx_sx4;
-    wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        mshr_l3_addr_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_rd_idx_sx1_q;
     wire                                        mshr_dbf_rd_valid_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_err_fill_idx_sx1_q;
@@ -334,7 +262,7 @@ module hnf `HNF_PARAM
     wire                                        mshr_l3_req_en_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_l3_entry_idx_sx1_q;
     wire                                        mshr_l3_fill_sx1_q;
-    wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]      mshr_l3_opcode_sx1_q;
+    chie_pkg::req_opcode_e      mshr_l3_opcode_sx1_q;
     wire [CHIE_NID_WIDTH_PARAM-1:0]             mshr_l3_rnf_sx1_q;
     wire                                        mshr_l3_fill_dirty_sx1_q;
     wire                                        mshr_l3_seq_retire_sx1_q;

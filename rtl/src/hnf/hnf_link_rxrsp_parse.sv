@@ -14,64 +14,38 @@
 *    Chunyan Lin <linchunyan@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_link_rxrsp_parse `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_link
-        rxrspflitv,
-        rxrspflit,
-        rxrspflitpend,
-        rxcrd_en,
-        rxrsp_crd_cnt_full,
-
-        //outputs to hnf_link
-        rxrsp_lcrdv,
-
-        //outputs to hnf_mshr
-        li_mshr_rxrsp_valid_s0,
-        li_mshr_rxrsp_srcid_s0,
-        li_mshr_rxrsp_txnid_s0,
-        li_mshr_rxrsp_opcode_s0,
-        li_mshr_rxrsp_resp_s0,
-        li_mshr_rxrsp_resperr_s0,
-        li_mshr_rxrsp_fwdstate_s0,
-        li_mshr_rxrsp_dbid_s0,
-        li_mshr_rxrsp_pcrdtype_s0
-    );
-
     //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_link
-    input wire                                      rxrspflitv;
-    input wire [`CHIE_RSP_FLIT_RANGE]               rxrspflit;
-    input wire                                      rxrspflitpend;
+    input wire rxrspflitv,
+    input chie_pkg::rsp_flit_s rxrspflit,
+    input wire rxrspflitpend,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire                                      rxcrd_en;
-    output wire                                     rxrsp_crd_cnt_full;
+    input wire rxcrd_en,
+    output wire rxrsp_crd_cnt_full,
 
     //outputs to hnf_link
-    output wire                                     rxrsp_lcrdv;
+    output wire rxrsp_lcrdv,
 
     //outputs to hnf_mshr
-    output wire                                     li_mshr_rxrsp_valid_s0;
-    output wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]    li_mshr_rxrsp_srcid_s0;
-    output wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]    li_mshr_rxrsp_txnid_s0;
-    output wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]   li_mshr_rxrsp_opcode_s0;
-    output wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]     li_mshr_rxrsp_resp_s0;
-    output wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]  li_mshr_rxrsp_resperr_s0;
-    output wire [`CHIE_RSP_FLIT_FWDSTATE_WIDTH-1:0] li_mshr_rxrsp_fwdstate_s0;
-    output wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]     li_mshr_rxrsp_dbid_s0;
-    output wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] li_mshr_rxrsp_pcrdtype_s0;
+    output wire li_mshr_rxrsp_valid_s0,
+    output wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxrsp_srcid_s0,
+    output wire [11:0] li_mshr_rxrsp_txnid_s0,
+    output chie_pkg::rsp_opcode_e li_mshr_rxrsp_opcode_s0,
+    output chie_pkg::resp_state_e li_mshr_rxrsp_resp_s0,
+    output chie_pkg::resp_err_e li_mshr_rxrsp_resperr_s0,
+    output wire [2:0] li_mshr_rxrsp_fwdstate_s0,
+    output wire [11:0] li_mshr_rxrsp_dbid_s0,
+    output wire [3:0] li_mshr_rxrsp_pcrdtype_s0
+    );
 
     //internal reg signals
     logic                                             rxrspflitv_en_q;
@@ -98,14 +72,14 @@ module hnf_link_rxrsp_parse `HNF_PARAM
 
     //rxrsp decode
     assign li_mshr_rxrsp_valid_s0      = (rxrspflitv == 1'b1);
-    assign li_mshr_rxrsp_srcid_s0      = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_SRCID_RANGE]     :{`CHIE_RSP_FLIT_SRCID_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_txnid_s0      = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_TXNID_RANGE]     :{`CHIE_RSP_FLIT_TXNID_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_opcode_s0     = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_OPCODE_RANGE]    :{`CHIE_RSP_FLIT_OPCODE_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_resp_s0       = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_RESP_RANGE]      :{`CHIE_RSP_FLIT_RESP_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_resperr_s0    = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_RESPERR_RANGE]   :{`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_fwdstate_s0   = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_FWDSTATE_RANGE]  :{`CHIE_RSP_FLIT_FWDSTATE_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_dbid_s0       = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_DBID_RANGE]      :{`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
-    assign li_mshr_rxrsp_pcrdtype_s0   = (rxrspflitv == 1'b1)? rxrspflit[`CHIE_RSP_FLIT_PCRDTYPE_RANGE]  :{`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{1'b0}};
+    assign li_mshr_rxrsp_srcid_s0      = (rxrspflitv == 1'b1)? rxrspflit.srcid     :'0;
+    assign li_mshr_rxrsp_txnid_s0      = (rxrspflitv == 1'b1)? rxrspflit.txnid     :'0;
+    assign li_mshr_rxrsp_opcode_s0     = (rxrspflitv == 1'b1)? rxrspflit.opcode    :chie_pkg::RSP_RSPLCRDRETURN;
+    assign li_mshr_rxrsp_resp_s0       = (rxrspflitv == 1'b1)? rxrspflit.resp      :chie_pkg::RESP_I;
+    assign li_mshr_rxrsp_resperr_s0    = (rxrspflitv == 1'b1)? rxrspflit.resperr   :chie_pkg::RESP_ERR_NORM_OK;
+    assign li_mshr_rxrsp_fwdstate_s0   = (rxrspflitv == 1'b1)? rxrspflit.fwdstate  :'0;
+    assign li_mshr_rxrsp_dbid_s0       = (rxrspflitv == 1'b1)? rxrspflit.dbid      :'0;
+    assign li_mshr_rxrsp_pcrdtype_s0   = (rxrspflitv == 1'b1)? rxrspflit.pcrdtype  :'0;
 
     //if lcrd is zero
     assign rxrsp_crd_cnt_zero = (rxrsp_crd_cnt_s1_q == {`HNF_LCRD_RSP_CNT_WIDTH{1'b0}});
@@ -150,7 +124,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
     always_comb begin
-        `display_fatal( (!li_mshr_rxrsp_valid_s0) || (li_mshr_rxrsp_opcode_s0 == `CHIE_RSPLCRDRETURN)||(li_mshr_rxrsp_opcode_s0 == `CHIE_SNPRESP)||(li_mshr_rxrsp_opcode_s0 == `CHIE_COMPACK)||(li_mshr_rxrsp_opcode_s0 == `CHIE_RETRYACK)||(li_mshr_rxrsp_opcode_s0 == `CHIE_COMP)||(li_mshr_rxrsp_opcode_s0 == `CHIE_COMPDBIDRESP)||(li_mshr_rxrsp_opcode_s0 == `CHIE_DBIDRESP)||(li_mshr_rxrsp_opcode_s0 == `CHIE_PCRDGRANT)||(li_mshr_rxrsp_opcode_s0 ==  `CHIE_READRECEIPT)||(li_mshr_rxrsp_opcode_s0 == `CHIE_SNPRESPFWDED),$sformatf("Fatal info: RXRSP received a unsupported flit with opcode: %h",li_mshr_rxrsp_opcode_s0));
+        `display_fatal( (!li_mshr_rxrsp_valid_s0) || (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RSPLCRDRETURN)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RETRYACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPDBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_DBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_PCRDGRANT)||(li_mshr_rxrsp_opcode_s0 ==  chie_pkg::RSP_READRECEIPT)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESPFWDED),$sformatf("Fatal info: RXRSP received a unsupported flit with opcode: %h",li_mshr_rxrsp_opcode_s0));
     end
 `endif
 endmodule

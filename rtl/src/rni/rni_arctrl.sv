@@ -15,7 +15,6 @@
 */
 
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 `include "rni_defines.svh"
 `include "rni_param.svh"
 
@@ -49,7 +48,7 @@ module rni_arctrl
     output wire [`RNI_BC_WIDTH-1:0] arctrl_rb_bc_d4_o,
 
     input wire pcrdgnt_pkt_v_d2_i,
-    input wire [`PCRDGRANT_PKT_WIDTH-1:0] pcrdgnt_pkt_d2_i,
+    input opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_i,
     output wire arctrl_pcrdgnt_h_present_d3_o,
     output wire arctrl_pcrdgnt_l_present_d3_o,
     input wire ar_pcrdgnt_h_win_d3_i,
@@ -780,9 +779,9 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:pcrdtype_match
             always_comb begin
                 if(rxrsp_pcrdgrant_recv_flag_w & rxrsp_retryack_recv_vec_q[entry] & ~(rxrsp_pcrdgrant_recv_vec_q[entry] | rxrsp_pcrdgrant_recv_vec_ns_w[entry]))begin
-                    rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_PCRDTYPE_RANGE] == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_SRCID_RANGE] == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_TGTID_RANGE] == RNI_NID_PARAM) && arctrl_entry_qos_hi_q[entry];
+                    rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i.pcrdtype == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
+                                                (pcrdgnt_pkt_d2_i.srcid == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
+                                                (pcrdgnt_pkt_d2_i.tgtid == RNI_NID_PARAM) && arctrl_entry_qos_hi_q[entry];
                 end
                 else begin
                     rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = 1'b0;
@@ -791,9 +790,9 @@ module rni_arctrl
 
             always_comb begin
                 if(rxrsp_pcrdgrant_recv_flag_w & rxrsp_retryack_recv_vec_q[entry] & ~(rxrsp_pcrdgrant_recv_vec_q[entry] | rxrsp_pcrdgrant_recv_vec_ns_w[entry]))begin
-                    rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_PCRDTYPE_RANGE] == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_SRCID_RANGE] == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_TGTID_RANGE] == RNI_NID_PARAM) && ~arctrl_entry_qos_hi_q[entry];
+                    rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i.pcrdtype == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
+                                                (pcrdgnt_pkt_d2_i.srcid == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
+                                                (pcrdgnt_pkt_d2_i.tgtid == RNI_NID_PARAM) && ~arctrl_entry_qos_hi_q[entry];
                 end
                 else begin
                     rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = 1'b0;

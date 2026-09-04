@@ -16,7 +16,6 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
@@ -45,10 +44,10 @@ module hni_txrsp `HNI_PARAM
     input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
 
     input wire qos_txrsp_retryack_valid_s1,
-    input wire [`HNI_RETRY_ACKQ_DATA_RANGE] qos_txrsp_retryack_fifo_s1,
+    input chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
 
     input wire qos_txrsp_pcrdgnt_valid_s2,
-    input wire [`HNI_PCRDGRANTQ_DATA_RANGE] qos_txrsp_pcrdgnt_fifo_s2,
+    input chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
 
     //inputs from hni_mshr
     input wire mshr_entry_sleep_s1,  //endpoint hazard
@@ -274,25 +273,25 @@ module hni_txrsp `HNI_PARAM
     end
     always_comb begin
         //RetryAck wrap
-        txrspflit_retyack_s1.qos      = qos_txrsp_retryack_fifo_s1[`HNI_RETRY_ACKQ_QOS_RANGE];
-        txrspflit_retyack_s1.tgtid    = qos_txrsp_retryack_fifo_s1[`HNI_RETRY_ACKQ_SRCID_RANGE];
+        txrspflit_retyack_s1.qos      = qos_txrsp_retryack_fifo_s1.qos;
+        txrspflit_retyack_s1.tgtid    = qos_txrsp_retryack_fifo_s1.srcid;
         txrspflit_retyack_s1.srcid    = `HNI0_ID;
-        txrspflit_retyack_s1.txnid    = qos_txrsp_retryack_fifo_s1[`HNI_RETRY_ACKQ_TXNID_RANGE];
+        txrspflit_retyack_s1.txnid    = qos_txrsp_retryack_fifo_s1.txnid;
         txrspflit_retyack_s1.opcode   = chie_pkg::RSP_RETRYACK;
         txrspflit_retyack_s1.resperr  = chie_pkg::RESP_ERR_NORM_OK;
         txrspflit_retyack_s1.resp     = chie_pkg::RESP_I;
         txrspflit_retyack_s1.fwdstate = '0;
         txrspflit_retyack_s1.cbusy    = '0;
         txrspflit_retyack_s1.dbid     = '0;
-        txrspflit_retyack_s1.pcrdtype = qos_txrsp_retryack_fifo_s1[`HNI_RETRY_ACKQ_PCRDTYPE_RANGE];
+        txrspflit_retyack_s1.pcrdtype = qos_txrsp_retryack_fifo_s1.pcrdtype;
         txrspflit_retyack_s1.tagop    = '0;
-        txrspflit_retyack_s1.tracetag = qos_txrsp_retryack_fifo_s1[`HNI_RETRY_ACKQ_TRACE_RANGE];
+        txrspflit_retyack_s1.tracetag = qos_txrsp_retryack_fifo_s1.trace;
     end
 
     always_comb begin
         //PCrdGrant wrap
-        txrspflit_pcrdgnt_s2.qos      = qos_txrsp_pcrdgnt_fifo_s2[`HNI_PCRDGRANTQ_QOS_RANGE];
-        txrspflit_pcrdgnt_s2.tgtid    = qos_txrsp_pcrdgnt_fifo_s2[`HNI_PCRDGRANTQ_SRCID_RANGE];
+        txrspflit_pcrdgnt_s2.qos      = qos_txrsp_pcrdgnt_fifo_s2.qos;
+        txrspflit_pcrdgnt_s2.tgtid    = qos_txrsp_pcrdgnt_fifo_s2.srcid;
         txrspflit_pcrdgnt_s2.srcid    = `HNI0_ID;
         txrspflit_pcrdgnt_s2.txnid    = '0;
         txrspflit_pcrdgnt_s2.opcode   = chie_pkg::RSP_PCRDGRANT;
@@ -301,7 +300,7 @@ module hni_txrsp `HNI_PARAM
         txrspflit_pcrdgnt_s2.fwdstate = '0;
         txrspflit_pcrdgnt_s2.cbusy    = '0;
         txrspflit_pcrdgnt_s2.dbid     = '0;
-        txrspflit_pcrdgnt_s2.pcrdtype = qos_txrsp_pcrdgnt_fifo_s2[`HNI_PCRDGRANTQ_PCRDTYPE_RANGE];
+        txrspflit_pcrdgnt_s2.pcrdtype = qos_txrsp_pcrdgnt_fifo_s2.pcrdtype;
         txrspflit_pcrdgnt_s2.tagop    = '0;
         txrspflit_pcrdgnt_s2.tracetag = '0;
     end

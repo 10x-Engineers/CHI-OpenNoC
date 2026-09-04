@@ -16,7 +16,6 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
@@ -42,10 +41,10 @@ module hni_qos `HNI_PARAM
 
     //outputs to TXRSP
     output wire qos_txrsp_retryack_valid_s1,
-    output wire [`HNI_RETRY_ACKQ_DATA_RANGE] qos_txrsp_retryack_fifo_s1,
+    output chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
 
     output wire qos_txrsp_pcrdgnt_valid_s2,
-    output wire [`HNI_PCRDGRANTQ_DATA_RANGE] qos_txrsp_pcrdgnt_fifo_s2,
+    output chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
 
     //outputs to RXREQ
     output wire rxreq_retry_enable_s0,
@@ -113,8 +112,8 @@ module hni_qos `HNI_PARAM
     wire [`HNI_QOS_CLASS_WIDTH-1:0]                  qos_class_pool_s0;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 qos_class_pool_flop_en_s0;
     wire                                             mark_mshr_static_sx;
-    wire [`HNI_RETRY_ACKQ_DATA_RANGE]                retry_ackq_datain_s0;
-    wire [`HNI_PCRDGRANTQ_DATA_RANGE]                pcrdgrant_fifo_datain_s1;
+    chie_pkg::retry_ackq_s                retry_ackq_datain_s0;
+    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_datain_s1;
     wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_srcid_match_vec_s0;
     wire                                             ret_bank_alloc_en_s0;
     wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_entry_v_s0;
@@ -151,12 +150,12 @@ module hni_qos `HNI_PARAM
     wire [chie_pkg::NID_WIDTH-1:0]            pcrdgnt_srcid_s1;
     wire [3:0]              pcrdgnt_qos_s1;
     wire [3:0]         retry_ackq_pcrdtype_s0;
-    wire [`HNI_RETRY_ACKQ_DATA_RANGE]                retry_ack_fifo_dataout_s1;
+    chie_pkg::retry_ackq_s                retry_ack_fifo_dataout_s1;
     wire                                             retry_ack_fifo_empty;
     wire                                             retry_ack_fifo_full;
     wire                                             retry_ack_fifo_push;
     wire                                             retry_ack_fifo_pop;
-    wire [`HNI_PCRDGRANTQ_DATA_RANGE]                pcrdgrant_fifo_dataout_s2;
+    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_dataout_s2;
     wire                                             pcrdgrant_fifo_empty;
     wire                                             pcrdgrant_fifo_full;
     wire                                             pcrdgrant_fifo_push;
@@ -487,17 +486,17 @@ module hni_qos `HNI_PARAM
     assign retry_ackq_pcrdtype_s0 = { 2'b0, qpc_high_s0, qpc_low_s0};
 
     //retry_ack_fifo flit assamble
-    assign retry_ackq_datain_s0[`HNI_RETRY_ACKQ_SRCID_RANGE]    = rxreq_srcid_s0;
-    assign retry_ackq_datain_s0[`HNI_RETRY_ACKQ_TXNID_RANGE]    = rxreq_txnid_s0;
-    assign retry_ackq_datain_s0[`HNI_RETRY_ACKQ_QOS_RANGE]      = rxreq_qos_s0;
-    assign retry_ackq_datain_s0[`HNI_RETRY_ACKQ_TRACE_RANGE]    = rxreq_tracetag_s0;
-    assign retry_ackq_datain_s0[`HNI_RETRY_ACKQ_PCRDTYPE_RANGE] = retry_ackq_pcrdtype_s0;
+    assign retry_ackq_datain_s0.srcid    = rxreq_srcid_s0;
+    assign retry_ackq_datain_s0.txnid    = rxreq_txnid_s0;
+    assign retry_ackq_datain_s0.qos      = rxreq_qos_s0;
+    assign retry_ackq_datain_s0.trace    = rxreq_tracetag_s0;
+    assign retry_ackq_datain_s0.pcrdtype = retry_ackq_pcrdtype_s0;
 
     assign retry_ack_fifo_push = rxreq_retry_enable_s0 & (~retry_ack_fifo_full | (retry_ack_fifo_full & txrsp_retryack_won_s1));
     assign retry_ack_fifo_pop  = txrsp_retryack_won_s1 & ~retry_ack_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH (`HNI_RETRY_ACKQ_DATA_WIDTH    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::retry_ackq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`HNI_RETRY_ACKQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE    (1'b0                          )
                    )retry_ack_fifo(
@@ -779,15 +778,15 @@ module hni_qos `HNI_PARAM
     end
 
     //encode pcrdgrant part fields to fifo
-    assign pcrdgrant_fifo_datain_s1[`HNI_PCRDGRANTQ_SRCID_RANGE]    = pcrdgnt_srcid_s1;
-    assign pcrdgrant_fifo_datain_s1[`HNI_PCRDGRANTQ_QOS_RANGE]      = pcrdgnt_qos_s1;
-    assign pcrdgrant_fifo_datain_s1[`HNI_PCRDGRANTQ_PCRDTYPE_RANGE] = pcrdgnt_pcrdtype_s1;
+    assign pcrdgrant_fifo_datain_s1.srcid    = pcrdgnt_srcid_s1;
+    assign pcrdgrant_fifo_datain_s1.qos      = pcrdgnt_qos_s1;
+    assign pcrdgrant_fifo_datain_s1.pcrdtype = pcrdgnt_pcrdtype_s1;
 
     assign pcrdgrant_fifo_push = pcrdgnt_req_enable_s1 & (~pcrdgrant_fifo_full | (pcrdgrant_fifo_full & txrsp_pcrdgnt_won_s2));
     assign pcrdgrant_fifo_pop  = txrsp_pcrdgnt_won_s2 & ~pcrdgrant_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH (`HNI_PCRDGRANTQ_DATA_WIDTH    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::pcrdgrantq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`HNI_PCRDGRANTQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE    (1'b0                          )
                    )pcrdgrant_fifo(
