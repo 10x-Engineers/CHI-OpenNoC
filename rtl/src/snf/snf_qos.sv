@@ -24,66 +24,39 @@
 
 module snf_qos `SNF_PARAM
     (
-        clk,
-        rst,
-
-        rxreq_valid_s0,
-        rxreqflit_s0,
-
-        txrsp_retryack_won_s1,
-        txrsp_pcrdgnt_won_s2,
-
-        mshr_retired_valid_sx,
-        mshr_retired_idx_sx,
-
-        qos_txrsp_retryack_valid_s1,
-        qos_txrsp_retryack_fifo_s1,
-
-        qos_txrsp_pcrdgnt_valid_s2,
-        qos_txrsp_pcrdgnt_fifo_s2,
-
-        rxreq_retry_enable_s0,
-
-        rxreq_alloc_en_s0,
-        rxreq_alloc_flit_s0,
-        mshr_entry_idx_alloc_s0,
-
-        qos_active_sx
-    );
-    //inputs
-    input wire                                       clk;
-    input wire                                       rst;
+        input  wire                               clk,
+        input  wire                               rst,
 
     //inputs from RXREQ
-    input wire                                       rxreq_valid_s0;
-    input  chie_pkg::req_flit_s                      rxreqflit_s0;
+        input  wire                               rxreq_valid_s0,
+        input  chie_pkg::req_flit_s               rxreqflit_s0,
 
     //inputs from TXRSP
-    input wire                                       txrsp_retryack_won_s1;
-    input wire                                       txrsp_pcrdgnt_won_s2;
+        input  wire                               txrsp_retryack_won_s1,
+        input  wire                               txrsp_pcrdgnt_won_s2,
 
     //inputs from snf_mshr
-    input wire                                       mshr_retired_valid_sx;
-    input wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]         mshr_retired_idx_sx;
+        input  wire                               mshr_retired_valid_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
 
     //outputs to TXRSP
-    output wire                                      qos_txrsp_retryack_valid_s1;
-    output snf_pkg::retry_ackq_s         qos_txrsp_retryack_fifo_s1;
+        output  wire                               qos_txrsp_retryack_valid_s1,
+        output  snf_pkg::retry_ackq_s              qos_txrsp_retryack_fifo_s1,
 
-    output wire                                      qos_txrsp_pcrdgnt_valid_s2;
-    output snf_pkg::pcrdgrantq_s         qos_txrsp_pcrdgnt_fifo_s2;
+        output  wire                               qos_txrsp_pcrdgnt_valid_s2,
+        output  snf_pkg::pcrdgrantq_s              qos_txrsp_pcrdgnt_fifo_s2,
 
     //outputs to RXREQ
-    output wire                                      rxreq_retry_enable_s0;
+        output  wire                               rxreq_retry_enable_s0,
 
     //outputs to mshr
-    output wire                                      rxreq_alloc_en_s0;
-    output chie_pkg::req_flit_s                      rxreq_alloc_flit_s0;
-    output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]        mshr_entry_idx_alloc_s0;
+        output  wire                               rxreq_alloc_en_s0,
+        output  chie_pkg::req_flit_s               rxreq_alloc_flit_s0,
+        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
 
     //outputs to the link handshake
-    output wire                                      qos_active_sx;
-
+        output  wire                               qos_active_sx
+    );
     //internal wire signals
     logic [11:0]            rxreq_txnid_s0;
     logic [3:0]              rxreq_qos_s0;

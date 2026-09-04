@@ -24,161 +24,84 @@
 
 module snf_mshr `SNF_PARAM
     (
-        clk,
-        rst,
-        rxreq_alloc_en_s0,
-        rxreq_alloc_flit_s0,
-        mshr_entry_idx_alloc_s0,
-        txrsp_valid_sx,
-        txrsp_qos_sx,
-        txrsp_tgtid_sx,
-        txrsp_txnid_sx,
-        txrsp_opcode_sx,
-        txrsp_resperr_sx,
-        txrsp_resp_sx,
-        txrsp_dbid_sx,
-        txrsp_srcid_sx,
-        txrsp_tracetag_sx,
-        txrsp_won_sx,
-        rxreq_dbf_en_s1,
-        rxreq_dbf_addr_s1,
-        rxreq_dbf_wr_s1,
-        rxreq_dbf_wrzero_s1,
-        rxreq_dbf_size_s1,
-        rxreq_dbf_axlen_s1,
-        rxreq_dbf_entry_idx_s1,
-        dbf_mshr_rdata_en_sx,
-        dbf_mshr_rdata_idx_sx,
-        dbf_mshr_rdata_cdmask_sx,
-        dbf_mshr_rxdat_ok_sx,
-        dbf_mshr_rxdat_ok_idx_sx,
-        dbf_mshr_rxdat_cancel_sx,
-        dbf_mshr_rxdat_cancel_idx_sx,
-        mshr_txdat_en_sx,
-        mshr_txdat_entry_idx_sx,
-        mshr_txdat_dataid_sx,
-        mshr_txdat_txnid_sx,
-        mshr_txdat_opcode_sx,
-        mshr_txdat_resp_sx,
-        mshr_txdat_resperr_sx,
-        mshr_txdat_dbid_sx,
-        mshr_txdat_tgtid_sx,
-        mshr_txdat_srcid_sx,
-        mshr_txdat_homenid_sx,
-        mshr_txdat_tracetag_sx,
-        mshr_txdat_won_sx,
-        mshr_wdat_en_sx,
-        mshr_wdat_entry_idx_sx,
-        mshr_retired_valid_sx,
-        mshr_retired_idx_sx,
-        arid_sx,
-        araddr_sx,
-        arlen_sx,
-        arsize_sx,
-        arburst_sx,
-        arlock_sx,
-        arcache_sx,
-        arprot_sx,
-        arqos_sx,
-        arregion_sx,
-        arvalid_sx,
-        arready_sx,
-        awid_sx,
-        awaddr_sx,
-        awlen_sx,
-        awsize_sx,
-        awburst_sx,
-        awlock_sx,
-        awcache_sx,
-        awprot_sx,
-        awqos_sx,
-        awregion_sx,
-        awvalid_sx,
-        awready_sx,
-        bid_sx,
-        bresp_sx,
-        bvalid_sx,
-        bready_sx
+        input  wire                               clk,
+        input  wire                               rst,
+        input  wire                               rxreq_alloc_en_s0,
+        input  chie_pkg::req_flit_s               rxreq_alloc_flit_s0,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+
+        output  wire                               txrsp_valid_sx,
+        output  logic [3:0]                        txrsp_qos_sx,
+        output  logic [chie_pkg::NID_WIDTH-1:0]    txrsp_tgtid_sx,
+        output  logic [11:0]                       txrsp_txnid_sx,
+        output  chie_pkg::rsp_opcode_e             txrsp_opcode_sx,
+        output  chie_pkg::resp_err_e               txrsp_resperr_sx,
+        output  chie_pkg::resp_state_e             txrsp_resp_sx,
+        output  logic [11:0]                       txrsp_dbid_sx,
+        output  logic [chie_pkg::NID_WIDTH-1:0]    txrsp_srcid_sx,
+        output  logic                              txrsp_tracetag_sx,
+
+        input  wire                               txrsp_won_sx,
+        output  wire                               rxreq_dbf_en_s1,
+        output  logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s1,
+        output  wire                               rxreq_dbf_wr_s1,
+        output  wire                               rxreq_dbf_wrzero_s1,
+        output  chie_pkg::size_e                   rxreq_dbf_size_s1,
+        output  wire [`AXI4_ARLEN_WIDTH-1:0]       rxreq_dbf_axlen_s1,
+        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] rxreq_dbf_entry_idx_s1,
+        input  wire                               dbf_mshr_rdata_en_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rdata_idx_sx,
+        input  wire [`SNF_MASK_CD_WIDTH-1:0]      dbf_mshr_rdata_cdmask_sx,
+        input  wire                               dbf_mshr_rxdat_ok_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rxdat_ok_idx_sx,
+        input  wire                               dbf_mshr_rxdat_cancel_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rxdat_cancel_idx_sx,
+        output  wire                               mshr_txdat_en_sx,
+        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_txdat_entry_idx_sx,
+        output  logic [1:0]                        mshr_txdat_dataid_sx,
+        output  logic [11:0]                       mshr_txdat_txnid_sx,
+        output  chie_pkg::dat_opcode_e             mshr_txdat_opcode_sx,
+        output  chie_pkg::resp_state_e             mshr_txdat_resp_sx,
+        output  chie_pkg::resp_err_e               mshr_txdat_resperr_sx,
+        output  logic [11:0]                       mshr_txdat_dbid_sx,
+        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_tgtid_sx,
+        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_srcid_sx,
+        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_homenid_sx,
+        output  logic                              mshr_txdat_tracetag_sx,
+        input  wire                               mshr_txdat_won_sx,
+        output  wire                               mshr_wdat_en_sx,
+        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_wdat_entry_idx_sx,
+        output  wire                               mshr_retired_valid_sx,
+        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
+        output  wire [`AXI4_ARID_WIDTH-1:0]        arid_sx,
+        output  wire [`AXI4_ARADDR_WIDTH-1:0]      araddr_sx,
+        output  wire [`AXI4_ARLEN_WIDTH-1:0]       arlen_sx,
+        output  wire [`AXI4_ARSIZE_WIDTH-1:0]      arsize_sx,
+        output  wire [`AXI4_ARBURST_WIDTH-1:0]     arburst_sx,
+        output  wire [`AXI4_ARLOCK_WIDTH-1:0]      arlock_sx,
+        output  wire [`AXI4_ARCACHE_WIDTH-1:0]     arcache_sx,
+        output  wire [`AXI4_ARPROT_WIDTH-1:0]      arprot_sx,
+        output  wire [`AXI4_ARQOS_WIDTH-1:0]       arqos_sx,
+        output  wire [`AXI4_ARREGION_WIDTH-1:0]    arregion_sx,
+        output  logic                              arvalid_sx,
+        input  wire                               arready_sx,
+        output  wire [`AXI4_AWID_WIDTH-1:0]        awid_sx,
+        output  wire [`AXI4_AWADDR_WIDTH-1:0]      awaddr_sx,
+        output  wire [`AXI4_AWLEN_WIDTH-1:0]       awlen_sx,
+        output  wire [`AXI4_AWSIZE_WIDTH-1:0]      awsize_sx,
+        output  wire [`AXI4_AWBURST_WIDTH-1:0]     awburst_sx,
+        output  wire [`AXI4_AWLOCK_WIDTH-1:0]      awlock_sx,
+        output  wire [`AXI4_AWCACHE_WIDTH-1:0]     awcache_sx,
+        output  wire [`AXI4_AWPROT_WIDTH-1:0]      awprot_sx,
+        output  wire [`AXI4_AWQOS_WIDTH-1:0]       awqos_sx,
+        output  wire [`AXI4_AWREGION_WIDTH-1:0]    awregion_sx,
+        output  logic                              awvalid_sx,
+        input  wire                               awready_sx,
+        input  wire [`AXI4_BID_WIDTH-1:0]         bid_sx,
+        input  wire [`AXI4_BRESP_WIDTH-1:0]       bresp_sx,
+        input  wire                               bvalid_sx,
+        output  wire                               bready_sx
     );
-
-    input wire                                          clk;
-    input wire                                          rst;
-    input wire                                          rxreq_alloc_en_s0;
-    input  chie_pkg::req_flit_s                         rxreq_alloc_flit_s0;
-    input wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]            mshr_entry_idx_alloc_s0;
-
-    output wire                                         txrsp_valid_sx;
-    output logic [3:0]          txrsp_qos_sx;
-    output logic [chie_pkg::NID_WIDTH-1:0]        txrsp_tgtid_sx;
-    output logic [11:0]        txrsp_txnid_sx;
-    output chie_pkg::rsp_opcode_e       txrsp_opcode_sx;
-    output chie_pkg::resp_err_e      txrsp_resperr_sx;
-    output chie_pkg::resp_state_e         txrsp_resp_sx;
-    output logic [11:0]         txrsp_dbid_sx;
-    output logic [chie_pkg::NID_WIDTH-1:0]        txrsp_srcid_sx;
-    output logic     txrsp_tracetag_sx;
-
-    input wire                                          txrsp_won_sx;
-    output wire                                         rxreq_dbf_en_s1;
-    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0]         rxreq_dbf_addr_s1;
-    output wire                                         rxreq_dbf_wr_s1;
-    output wire                                         rxreq_dbf_wrzero_s1;
-    output chie_pkg::size_e         rxreq_dbf_size_s1;
-    output wire [`AXI4_ARLEN_WIDTH-1:0]                 rxreq_dbf_axlen_s1;
-    output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           rxreq_dbf_entry_idx_s1;
-    input  wire                                         dbf_mshr_rdata_en_sx;
-    input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           dbf_mshr_rdata_idx_sx;
-    input  wire [`SNF_MASK_CD_WIDTH-1:0]                dbf_mshr_rdata_cdmask_sx;
-    input  wire                                         dbf_mshr_rxdat_ok_sx;
-    input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           dbf_mshr_rxdat_ok_idx_sx;
-    input  wire                                         dbf_mshr_rxdat_cancel_sx;
-    input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           dbf_mshr_rxdat_cancel_idx_sx;
-    output wire                                         mshr_txdat_en_sx;
-    output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           mshr_txdat_entry_idx_sx;
-    output  logic [1:0]       mshr_txdat_dataid_sx;
-    output  logic [11:0]        mshr_txdat_txnid_sx;
-    output  chie_pkg::dat_opcode_e       mshr_txdat_opcode_sx;
-    output  chie_pkg::resp_state_e         mshr_txdat_resp_sx;
-    output  chie_pkg::resp_err_e      mshr_txdat_resperr_sx;
-    output  logic [11:0]         mshr_txdat_dbid_sx;
-    output  logic [chie_pkg::NID_WIDTH-1:0]        mshr_txdat_tgtid_sx;
-    output  logic [chie_pkg::NID_WIDTH-1:0]        mshr_txdat_srcid_sx;
-    output  logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_homenid_sx;
-    output  logic     mshr_txdat_tracetag_sx;
-    input wire                                          mshr_txdat_won_sx;
-    output wire                                         mshr_wdat_en_sx;
-    output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           mshr_wdat_entry_idx_sx;
-    output wire                                         mshr_retired_valid_sx;
-    output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]           mshr_retired_idx_sx;
-    output wire [`AXI4_ARID_WIDTH-1:0]                  arid_sx;
-    output wire [`AXI4_ARADDR_WIDTH-1:0]                araddr_sx;
-    output wire [`AXI4_ARLEN_WIDTH-1:0]                 arlen_sx;
-    output wire [`AXI4_ARSIZE_WIDTH-1:0]                arsize_sx;
-    output wire [`AXI4_ARBURST_WIDTH-1:0]               arburst_sx;
-    output wire [`AXI4_ARLOCK_WIDTH-1:0]                arlock_sx;
-    output wire [`AXI4_ARCACHE_WIDTH-1:0]               arcache_sx;
-    output wire [`AXI4_ARPROT_WIDTH-1:0]                arprot_sx;
-    output wire [`AXI4_ARQOS_WIDTH-1:0]                 arqos_sx;
-    output wire [`AXI4_ARREGION_WIDTH-1:0]              arregion_sx;
-    output logic                                          arvalid_sx;
-    input  wire                                         arready_sx;
-    output wire [`AXI4_AWID_WIDTH-1:0]                  awid_sx;
-    output wire [`AXI4_AWADDR_WIDTH-1:0]                awaddr_sx;
-    output wire [`AXI4_AWLEN_WIDTH-1:0]                 awlen_sx;
-    output wire [`AXI4_AWSIZE_WIDTH-1:0]                awsize_sx;
-    output wire [`AXI4_AWBURST_WIDTH-1:0]               awburst_sx;
-    output wire [`AXI4_AWLOCK_WIDTH-1:0]                awlock_sx;
-    output wire [`AXI4_AWCACHE_WIDTH-1:0]               awcache_sx;
-    output wire [`AXI4_AWPROT_WIDTH-1:0]                awprot_sx;
-    output wire [`AXI4_AWQOS_WIDTH-1:0]                 awqos_sx;
-    output wire [`AXI4_AWREGION_WIDTH-1:0]              awregion_sx;
-    output logic                                          awvalid_sx;
-    input  wire                                         awready_sx;
-    input  wire [`AXI4_BID_WIDTH-1:0]                   bid_sx;
-    input  wire [`AXI4_BRESP_WIDTH-1:0]                 bresp_sx;
-    input  wire                                         bvalid_sx;
-    output wire                                         bready_sx;
-
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   mshr_entry_idx_alloc_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     mshr_entry_valid_sx_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     sleep_s2_q;

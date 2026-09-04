@@ -24,138 +24,74 @@
 
 module snf `SNF_PARAM
     (
-        CLK,
-        RST,
-        TXLINKACTIVEREQ,
-        TXLINKACTIVEACK,
-        RXLINKACTIVEREQ,
-        RXLINKACTIVEACK,
-        TXSACTIVE,
-        RXSACTIVE,
-        RXREQFLITV,
-        RXREQFLIT,
-        RXREQFLITPEND,
-        RXREQLCRDV,
-        RXDATFLITV,
-        RXDATFLIT,
-        RXDATFLITPEND,
-        RXDATLCRDV,
-        TXRSPFLITV,
-        TXRSPFLIT,
-        TXRSPFLITPEND,
-        TXRSPLCRDV,
-        TXDATFLITV,
-        TXDATFLIT,
-        TXDATFLITPEND,
-        TXDATLCRDV,
-        ARID,
-        ARADDR,
-        ARLEN,
-        ARSIZE,
-        ARBURST,
-        ARLOCK,
-        ARCACHE,
-        ARPROT,
-        ARQOS,
-        ARREGION,
-        ARVALID,
-        ARREADY,
-        RID,
-        RDATA,
-        RRESP,
-        RLAST,
-        RVALID,
-        RREADY,
-        AWID,
-        AWADDR,
-        AWLEN,
-        AWSIZE,
-        AWBURST,
-        AWLOCK,
-        AWCACHE,
-        AWPROT,
-        AWQOS,
-        AWREGION,
-        AWVALID,
-        AWREADY,
-        WDATA,
-        WSTRB,
-        WLAST,
-        WVALID,
-        WREADY,
-        BID,
-        BRESP,
-        BVALID,
-        BREADY
-    );
-    input wire                                  CLK;
-    input wire                                  RST;
+        input  wire                               CLK,
+        input  wire                               RST,
 
     //CHIE interface
-    output wire                                 TXLINKACTIVEREQ;
-    input  wire                                 TXLINKACTIVEACK;
-    input  wire                                 RXLINKACTIVEREQ;
-    output wire                                 RXLINKACTIVEACK;
-    output wire                                 TXSACTIVE;
-    input  wire                                 RXSACTIVE;
-    input wire                                  RXREQFLITV;
-    input  chie_pkg::req_flit_s                 RXREQFLIT;
-    input wire                                  RXREQFLITPEND;
-    output wire                                 RXREQLCRDV;
-    input wire                                  RXDATFLITV;
-    input  chie_pkg::dat_flit_s                 RXDATFLIT;
-    input wire                                  RXDATFLITPEND;
-    output wire                                 RXDATLCRDV;
-    output wire                                 TXRSPFLITV;
-    output chie_pkg::rsp_flit_s                 TXRSPFLIT;
-    output wire                                 TXRSPFLITPEND;
-    input wire                                  TXRSPLCRDV;
-    output wire                                 TXDATFLITV;
-    output chie_pkg::dat_flit_s                 TXDATFLIT;
-    output wire                                 TXDATFLITPEND;
-    input wire                                  TXDATLCRDV;
+        output  wire                               TXLINKACTIVEREQ,
+        input  wire                               TXLINKACTIVEACK,
+        input  wire                               RXLINKACTIVEREQ,
+        output  wire                               RXLINKACTIVEACK,
+        output  wire                               TXSACTIVE,
+        input  wire                               RXSACTIVE,
+        input  wire                               RXREQFLITV,
+        input  chie_pkg::req_flit_s               RXREQFLIT,
+        input  wire                               RXREQFLITPEND,
+        output  wire                               RXREQLCRDV,
+        input  wire                               RXDATFLITV,
+        input  chie_pkg::dat_flit_s               RXDATFLIT,
+        input  wire                               RXDATFLITPEND,
+        output  wire                               RXDATLCRDV,
+        output  wire                               TXRSPFLITV,
+        output  chie_pkg::rsp_flit_s               TXRSPFLIT,
+        output  wire                               TXRSPFLITPEND,
+        input  wire                               TXRSPLCRDV,
+        output  wire                               TXDATFLITV,
+        output  chie_pkg::dat_flit_s               TXDATFLIT,
+        output  wire                               TXDATFLITPEND,
+        input  wire                               TXDATLCRDV,
 
     //AXI interface
-    output wire [`AXI4_ARID_WIDTH-1:0]          ARID;
-    output wire [`AXI4_ARADDR_WIDTH-1:0]        ARADDR;
-    output wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN;
-    output wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE;
-    output wire [`AXI4_ARBURST_WIDTH-1:0]       ARBURST;
-    output wire [`AXI4_ARLOCK_WIDTH-1:0]        ARLOCK;
-    output wire [`AXI4_ARCACHE_WIDTH-1:0]       ARCACHE;
-    output wire [`AXI4_ARPROT_WIDTH-1:0]        ARPROT;
-    output wire [`AXI4_ARQOS_WIDTH-1:0]         ARQOS;
-    output wire [`AXI4_ARREGION_WIDTH-1:0]      ARREGION;
-    output wire                                 ARVALID;
-    input  wire                                 ARREADY;
-    input  wire [`AXI4_RID_WIDTH-1:0]           RID;
-    input  wire [`AXI4_RDATA_WIDTH-1:0]         RDATA;
-    input  wire [`AXI4_RRESP_WIDTH-1:0]         RRESP;
-    input  wire [`AXI4_RLAST_WIDTH-1:0]         RLAST;
-    input  wire                                 RVALID;
-    output wire                                 RREADY;
-    output wire [`AXI4_AWID_WIDTH-1:0]          AWID;
-    output wire [`AXI4_AWADDR_WIDTH-1:0]        AWADDR;
-    output wire [`AXI4_AWLEN_WIDTH-1:0]         AWLEN;
-    output wire [`AXI4_AWSIZE_WIDTH-1:0]        AWSIZE;
-    output wire [`AXI4_AWBURST_WIDTH-1:0]       AWBURST;
-    output wire [`AXI4_AWLOCK_WIDTH-1:0]        AWLOCK;
-    output wire [`AXI4_AWCACHE_WIDTH-1:0]       AWCACHE;
-    output wire [`AXI4_AWPROT_WIDTH-1:0]        AWPROT;
-    output wire [`AXI4_AWQOS_WIDTH-1:0]         AWQOS;
-    output wire [`AXI4_AWREGION_WIDTH-1:0]      AWREGION;
-    output wire                                 AWVALID;
-    input  wire                                 AWREADY;
-    output wire [`AXI4_WDATA_WIDTH-1:0]         WDATA;
-    output wire [`AXI4_WSTRB_WIDTH-1:0]         WSTRB;
-    output wire                                 WLAST;
-    output wire                                 WVALID;
-    input  wire                                 WREADY;
-    input  wire [`AXI4_BID_WIDTH-1:0]           BID;
-    input  wire [`AXI4_BRESP_WIDTH-1:0]         BRESP;
-    input  wire                                 BVALID;
-    output wire                                 BREADY;
-
+        output  wire [`AXI4_ARID_WIDTH-1:0]        ARID,
+        output  wire [`AXI4_ARADDR_WIDTH-1:0]      ARADDR,
+        output  wire [`AXI4_ARLEN_WIDTH-1:0]       ARLEN,
+        output  wire [`AXI4_ARSIZE_WIDTH-1:0]      ARSIZE,
+        output  wire [`AXI4_ARBURST_WIDTH-1:0]     ARBURST,
+        output  wire [`AXI4_ARLOCK_WIDTH-1:0]      ARLOCK,
+        output  wire [`AXI4_ARCACHE_WIDTH-1:0]     ARCACHE,
+        output  wire [`AXI4_ARPROT_WIDTH-1:0]      ARPROT,
+        output  wire [`AXI4_ARQOS_WIDTH-1:0]       ARQOS,
+        output  wire [`AXI4_ARREGION_WIDTH-1:0]    ARREGION,
+        output  wire                               ARVALID,
+        input  wire                               ARREADY,
+        input  wire [`AXI4_RID_WIDTH-1:0]         RID,
+        input  wire [`AXI4_RDATA_WIDTH-1:0]       RDATA,
+        input  wire [`AXI4_RRESP_WIDTH-1:0]       RRESP,
+        input  wire [`AXI4_RLAST_WIDTH-1:0]       RLAST,
+        input  wire                               RVALID,
+        output  wire                               RREADY,
+        output  wire [`AXI4_AWID_WIDTH-1:0]        AWID,
+        output  wire [`AXI4_AWADDR_WIDTH-1:0]      AWADDR,
+        output  wire [`AXI4_AWLEN_WIDTH-1:0]       AWLEN,
+        output  wire [`AXI4_AWSIZE_WIDTH-1:0]      AWSIZE,
+        output  wire [`AXI4_AWBURST_WIDTH-1:0]     AWBURST,
+        output  wire [`AXI4_AWLOCK_WIDTH-1:0]      AWLOCK,
+        output  wire [`AXI4_AWCACHE_WIDTH-1:0]     AWCACHE,
+        output  wire [`AXI4_AWPROT_WIDTH-1:0]      AWPROT,
+        output  wire [`AXI4_AWQOS_WIDTH-1:0]       AWQOS,
+        output  wire [`AXI4_AWREGION_WIDTH-1:0]    AWREGION,
+        output  wire                               AWVALID,
+        input  wire                               AWREADY,
+        output  wire [`AXI4_WDATA_WIDTH-1:0]       WDATA,
+        output  wire [`AXI4_WSTRB_WIDTH-1:0]       WSTRB,
+        output  wire                               WLAST,
+        output  wire                               WVALID,
+        input  wire                               WREADY,
+        input  wire [`AXI4_BID_WIDTH-1:0]         BID,
+        input  wire [`AXI4_BRESP_WIDTH-1:0]       BRESP,
+        input  wire                               BVALID,
+        output  wire                               BREADY
+    );
     wire                                        rxreq_retry_enable_s0;
     wire                                        txrsp_retryack_won_s1;
     wire                                        rxreq_valid_s0;
