@@ -20,170 +20,90 @@
 
 module hnf_mem_ctl `HNF_PARAM
     (
-
-        // global inputs
-        clk,
-        rst,
-`ifdef tb_hnf
-        // debug ports
-        dbg_l3_valid_q,
-        dbg_l3_index_q,
-        dbg_l3_rd_ways_q,
-        dbg_l3_wr_data_q,
-        dbg_l3_wr_ways_q,
-        dbg_loc_valid_q,
-        dbg_loc_index_q,
-        dbg_loc_rd_en_q,
-        dbg_loc_wr_ways_q,
-        dbg_loc_wr_cline_q,
-        dbg_sf_valid_q,
-        dbg_sf_index_q,
-        dbg_sf_rd_en_q,
-        dbg_sf_wr_ways_q,
-        dbg_sf_wr_cline_q,
-        dbg_lru_valid_q,
-        dbg_lru_index_q,
-        dbg_lru_rd_en_q,
-        dbg_lru_wr_en_q,
-        dbg_lru_wr_data_q,
-        dbg_l3_rd_data_q,
-        dbg_lru_rd_data_q,
-        dbg_loc_rd_clines_q,
-        dbg_sf_rd_clines_q,
-        loc_rd_clines_q,
-        sf_rd_clines_q,
-        l3_rd_data_q,
-        lru_rd_data_q,
-`endif
-        // cpl ports
-        cpl_l3_index_q,
-        cpl_l3_rd_ways_q,
-        dbf_l3_wr_data_q,
-        cpl_l3_wr_ways_q,
-        cpl_loc_index_q,
-        cpl_loc_rd_en_q,
-        cpl_loc_wr_ways_q,
-        cpl_loc_wr_cline_q,
-        cpl_sf_index_q,
-        cpl_sf_rd_en_q,
-        cpl_sf_wr_ways_q,
-        cpl_sf_wr_cline_q,
-        cpl_lru_index_q,
-        cpl_lru_rd_en_q,
-        cpl_lru_wr_en_q,
-        cpl_lru_wr_data_q,
-
-        // sf sram ports
-        sf_index_q,
-        sf_rd_en_q,
-        sf_wr_ways_q,
-        sf_wr_cline_q,
-
-        // tag sram ports
-        loc_index_q,
-        loc_rd_en_q,
-        loc_wr_ways_q,
-        loc_wr_cline_q,
-
-        // lru sram ports
-        lru_index_q,
-        lru_rd_en_q,
-        lru_wr_en_q,
-        lru_wr_data_q,
-
-        // L3 sram ports
-        l3_index_q,
-        l3_rd_ways_q,
-        l3_wr_data_q,
-        l3_wr_ways_q,
-
-        // notify output reg port
-        notify_reg
-    );
-
     // global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
 `ifdef tb_hnf
     //debug ports
     //inputs
-    input wire                                      dbg_l3_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_l3_index_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_l3_rd_ways_q;
-    input wire [`CACHE_LINE_WIDTH-1:0]              dbg_l3_wr_data_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_l3_wr_ways_q;
-    input wire                                      dbg_loc_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_loc_index_q;
-    input wire                                      dbg_loc_rd_en_q;
-    input wire [`LOC_WAY_NUM-1:0]                   dbg_loc_wr_ways_q;
-    input wire [`LOC_CLINE_WIDTH-1:0]               dbg_loc_wr_cline_q;
-    input wire                                      dbg_sf_valid_q;
-    input wire [`SF_INDEX_WIDTH-1:0]                dbg_sf_index_q;
-    input wire                                      dbg_sf_rd_en_q;
-    input wire [`SF_WAY_NUM-1:0]                    dbg_sf_wr_ways_q;
-    input wire [`SF_CLINE_WIDTH-1:0]                dbg_sf_wr_cline_q;
-    input wire                                      dbg_lru_valid_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               dbg_lru_index_q;
-    input wire                                      dbg_lru_rd_en_q;
-    input wire                                      dbg_lru_wr_en_q;
-    input wire [`LRU_CLINE_WIDTH-1:0]               dbg_lru_wr_data_q;
-    input wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]  loc_rd_clines_q;
-    input wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]    sf_rd_clines_q;
-    input wire [`CACHE_LINE_WIDTH-1:0]              l3_rd_data_q;
-    input wire [`LRU_CLINE_WIDTH-1:0]               lru_rd_data_q;
+    input wire dbg_l3_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_l3_index_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_l3_rd_ways_q,
+    input wire [`CACHE_LINE_WIDTH-1:0] dbg_l3_wr_data_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_l3_wr_ways_q,
+    input wire dbg_loc_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_loc_index_q,
+    input wire dbg_loc_rd_en_q,
+    input wire [`LOC_WAY_NUM-1:0] dbg_loc_wr_ways_q,
+    input wire [`LOC_CLINE_WIDTH-1:0] dbg_loc_wr_cline_q,
+    input wire dbg_sf_valid_q,
+    input wire [`SF_INDEX_WIDTH-1:0] dbg_sf_index_q,
+    input wire dbg_sf_rd_en_q,
+    input wire [`SF_WAY_NUM-1:0] dbg_sf_wr_ways_q,
+    input wire [`SF_CLINE_WIDTH-1:0] dbg_sf_wr_cline_q,
+    input wire dbg_lru_valid_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] dbg_lru_index_q,
+    input wire dbg_lru_rd_en_q,
+    input wire dbg_lru_wr_en_q,
+    input wire [`LRU_CLINE_WIDTH-1:0] dbg_lru_wr_data_q,
+    input wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q,
+    input wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] sf_rd_clines_q,
+    input wire [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q,
+    input wire [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q,
 
     //outputs
-    output wire [`CACHE_LINE_WIDTH-1:0]             dbg_l3_rd_data_q;
-    output wire [`LRU_CLINE_WIDTH-1:0]              dbg_lru_rd_data_q;
-    output logic  [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] dbg_loc_rd_clines_q;
-    output logic  [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]   dbg_sf_rd_clines_q;
+    output wire [`CACHE_LINE_WIDTH-1:0] dbg_l3_rd_data_q,
+    output wire [`LRU_CLINE_WIDTH-1:0] dbg_lru_rd_data_q,
+    output logic  [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] dbg_loc_rd_clines_q,
+    output logic  [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] dbg_sf_rd_clines_q,
 `endif
 
     // cpl ports
-    input wire [`LOC_INDEX_WIDTH-1:0]               cpl_l3_index_q;
-    input wire [`LOC_WAY_NUM-1:0]                   cpl_l3_rd_ways_q;
-    input wire [`CACHE_LINE_WIDTH-1:0]              dbf_l3_wr_data_q;
-    input wire [`LOC_WAY_NUM-1:0]                   cpl_l3_wr_ways_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               cpl_loc_index_q;
-    input wire                                      cpl_loc_rd_en_q;
-    input wire [`LOC_WAY_NUM-1:0]                   cpl_loc_wr_ways_q;
-    input wire [`LOC_CLINE_WIDTH-1:0]               cpl_loc_wr_cline_q;
-    input wire [`SF_INDEX_WIDTH-1:0]                cpl_sf_index_q;
-    input wire                                      cpl_sf_rd_en_q;
-    input wire [`SF_WAY_NUM-1:0]                    cpl_sf_wr_ways_q;
-    input wire [`SF_CLINE_WIDTH-1:0]                cpl_sf_wr_cline_q;
-    input wire [`LOC_INDEX_WIDTH-1:0]               cpl_lru_index_q;
-    input wire                                      cpl_lru_rd_en_q;
-    input wire                                      cpl_lru_wr_en_q;
-    input wire [`LRU_CLINE_WIDTH-1:0]               cpl_lru_wr_data_q;
+    input wire [`LOC_INDEX_WIDTH-1:0] cpl_l3_index_q,
+    input wire [`LOC_WAY_NUM-1:0] cpl_l3_rd_ways_q,
+    input wire [`CACHE_LINE_WIDTH-1:0] dbf_l3_wr_data_q,
+    input wire [`LOC_WAY_NUM-1:0] cpl_l3_wr_ways_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] cpl_loc_index_q,
+    input wire cpl_loc_rd_en_q,
+    input wire [`LOC_WAY_NUM-1:0] cpl_loc_wr_ways_q,
+    input wire [`LOC_CLINE_WIDTH-1:0] cpl_loc_wr_cline_q,
+    input wire [`SF_INDEX_WIDTH-1:0] cpl_sf_index_q,
+    input wire cpl_sf_rd_en_q,
+    input wire [`SF_WAY_NUM-1:0] cpl_sf_wr_ways_q,
+    input wire [`SF_CLINE_WIDTH-1:0] cpl_sf_wr_cline_q,
+    input wire [`LOC_INDEX_WIDTH-1:0] cpl_lru_index_q,
+    input wire cpl_lru_rd_en_q,
+    input wire cpl_lru_wr_en_q,
+    input wire [`LRU_CLINE_WIDTH-1:0] cpl_lru_wr_data_q,
 
     // sf sram ports
-    output wire [`SF_INDEX_WIDTH-1:0]               sf_index_q;
-    output wire                                     sf_rd_en_q;
-    output wire [`SF_WAY_NUM-1:0]                   sf_wr_ways_q;
-    output wire [`SF_CLINE_WIDTH-1:0]               sf_wr_cline_q;
+    output wire [`SF_INDEX_WIDTH-1:0] sf_index_q,
+    output wire sf_rd_en_q,
+    output wire [`SF_WAY_NUM-1:0] sf_wr_ways_q,
+    output wire [`SF_CLINE_WIDTH-1:0] sf_wr_cline_q,
 
     // tag sram ports
-    output wire [`LOC_INDEX_WIDTH-1:0]              loc_index_q;
-    output wire                                     loc_rd_en_q;
-    output wire [`LOC_WAY_NUM-1:0]                  loc_wr_ways_q;
-    output wire [`LOC_CLINE_WIDTH-1:0]              loc_wr_cline_q;
+    output wire [`LOC_INDEX_WIDTH-1:0] loc_index_q,
+    output wire loc_rd_en_q,
+    output wire [`LOC_WAY_NUM-1:0] loc_wr_ways_q,
+    output wire [`LOC_CLINE_WIDTH-1:0] loc_wr_cline_q,
 
     // lru sram ports
-    output wire [`LOC_INDEX_WIDTH-1:0]              lru_index_q;
-    output wire                                     lru_rd_en_q;
-    output wire                                     lru_wr_en_q;
-    output wire [`LRU_CLINE_WIDTH-1:0]              lru_wr_data_q;
+    output wire [`LOC_INDEX_WIDTH-1:0] lru_index_q,
+    output wire lru_rd_en_q,
+    output wire lru_wr_en_q,
+    output wire [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
 
     // L3 sram ports
-    output wire [`LOC_INDEX_WIDTH-1:0]              l3_index_q;
-    output wire [`LOC_WAY_NUM-1:0]                  l3_rd_ways_q;
-    output wire [`LOC_WAY_NUM-1:0]                  l3_wr_ways_q;
-    output wire [`CACHE_LINE_WIDTH-1:0]             l3_wr_data_q;
+    output wire [`LOC_INDEX_WIDTH-1:0] l3_index_q,
+    output wire [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
+    output wire [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
+    output wire [`CACHE_LINE_WIDTH-1:0] l3_wr_data_q,
 
     // notify output reg port
-    output logic  [2:0]                               notify_reg;
+    output logic  [2:0] notify_reg
+    );
 
     // internal regs
     localparam [31:0] SF_CNT_LAST  = {{(32-`SF_INDEX_WIDTH){1'b0}},  {`SF_INDEX_WIDTH{1'b1}}};

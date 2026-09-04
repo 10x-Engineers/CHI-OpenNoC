@@ -18,56 +18,35 @@
 // Self-contained on purpose: a node includes only its own defines header, so the
 // LINKACTIVE state encoding of Table 14-1 (p.14-449) lives here rather than in
 // any one node's macro set.
-module chi_link_handshake
+module chi_link_handshake #(
+        localparam LL_STATE_WIDTH = 2
+    )
     (
-        // global input
-        clk,
-        rst,
+    // global input
+    input wire clk,
+    input wire rst,
 
-        // link handshake interface
-        TXLINKACTIVEREQ,
-        TXLINKACTIVEACK,
+    // link handshake interface
+    output wire TXLINKACTIVEREQ,
+    input wire TXLINKACTIVEACK,
 
-        RXLINKACTIVEREQ,
-        RXLINKACTIVEACK,
+    input wire RXLINKACTIVEREQ,
+    output wire RXLINKACTIVEACK,
 
-        txlink_state,
-        rxlink_state,
+    output wire [LL_STATE_WIDTH-1:0] txlink_state,
+    output wire [LL_STATE_WIDTH-1:0] rxlink_state,
 
-        txflit_avail,
-        rxcrd_cnt_full,
+    input wire txflit_avail,
+    input wire rxcrd_cnt_full,
 
-        lcrd_return_en,
-        rxcrd_en,
-        txlink_run
+    output wire lcrd_return_en,
+    output wire rxcrd_en,
+    output wire txlink_run
     );
-
-    localparam LL_STATE_WIDTH = 2;
     localparam LL_STOP        = 2'b00;
     localparam LL_ACTIVATE    = 2'b10;
     localparam LL_RUN         = 2'b11;
     localparam LL_DEACTIVATE  = 2'b01;
-
-    // global input
-    input  wire                       clk;
-    input  wire                       rst;
-
-    // link handshake interface
-    output wire                       TXLINKACTIVEREQ;
-    input  wire                       TXLINKACTIVEACK;
-
-    input  wire                       RXLINKACTIVEREQ;
-    output wire                       RXLINKACTIVEACK;
-
-    output wire [LL_STATE_WIDTH-1:0] txlink_state;
-    output wire [LL_STATE_WIDTH-1:0] rxlink_state;
-
-    input  wire                       txflit_avail;
-    input  wire                       rxcrd_cnt_full;
-
-    output wire                       lcrd_return_en;
-    output wire                       rxcrd_en;
-    output wire                       txlink_run;
 
     // wire
 

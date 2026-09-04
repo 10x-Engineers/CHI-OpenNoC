@@ -20,50 +20,50 @@ module chi_ring_channel #(
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN = {4{1'b1}},
         parameter CHIE_NID_WIDTH_PARAM = 7,
-        parameter ROUTER_NODE_NUM
-    ) (
-        clk,
-        rst,
-        my_xid,
-        TXLINKACTIVEREQ_P0,
-        TXLINKACTIVEACK_P0,
+        parameter ROUTER_NODE_NUM,
+        localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM
+    )
+    (
+    input wire clk,
+    input wire rst,
+    input wire [CHIE_NID_WIDTH-1:1] my_xid,
 
-        TXLINKACTIVEREQ_P1,
-        TXLINKACTIVEACK_P1,
+    input wire TXLINKACTIVEREQ_P0,
+    input wire TXLINKACTIVEACK_P0,
+    input wire TXLINKACTIVEREQ_P1,
+    input wire TXLINKACTIVEACK_P1,
 
-        RXFLITV_E,
-        RXFLITV_W,
-        RXFLITV_P0,
-        RXFLITV_P1,
+    input wire RXFLITV_E,
+    input wire RXFLITV_W,
+    input wire RXFLITV_P0,
+    input wire RXFLITV_P1,
 
-        RXFLIT_E,
-        RXFLIT_W,
-        RXFLIT_P0,
-        RXFLIT_P1,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_E,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_W,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_P0,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_P1,
 
-        RXLCRDV_E,
-        RXLCRDV_W,
-        RXLCRDV_P0,
-        RXLCRDV_P1,
+    output wire RXLCRDV_E,
+    output wire RXLCRDV_W,
+    output wire RXLCRDV_P0,
+    output wire RXLCRDV_P1,
 
-        TXFLITV_E,
-        TXFLITV_W,
-        TXFLITV_P0,
-        TXFLITV_P1,
+    output wire TXFLITV_E,
+    output wire TXFLITV_W,
+    output wire TXFLITV_P0,
+    output wire TXFLITV_P1,
 
-        TXFLIT_E,
-        TXFLIT_W,
-        TXFLIT_P0,
-        TXFLIT_P1,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_E,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_W,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_P0,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_P1,
 
-        TXLCRDV_E,
-        TXLCRDV_W,
-        TXLCRDV_P0,
-        TXLCRDV_P1
+    input wire TXLCRDV_E,
+    input wire TXLCRDV_W,
+    input wire TXLCRDV_P0,
+    input wire TXLCRDV_P1
     );
-
     localparam LCRD_MAX_NUM = ($pow(2, LCRD_NUM_WIDTH) - 1);
-    localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM;
     localparam RX_MAX_ENTRY = 2'h2;
     localparam XP_INTF_E = 0;
     localparam XP_INTF_W = 1;
@@ -71,52 +71,12 @@ module chi_ring_channel #(
     localparam XP_INTF_P1 = 3;
     localparam XP_INTF_MAX = 4;
 	localparam XP_VALID_NID_WIDTH = $clog2(ROUTER_NODE_NUM);
-
     // CHI E.b Sec 16.1: NodeID_Width is 7-11.
     initial begin
         if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
             $fatal(1, "chi_ring_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
                    CHIE_NID_WIDTH_PARAM);
     end
-
-    input wire clk;
-    input wire rst;
-    input wire [CHIE_NID_WIDTH-1:1] my_xid;
-
-    input wire TXLINKACTIVEREQ_P0;
-    input wire TXLINKACTIVEACK_P0;
-    input wire TXLINKACTIVEREQ_P1;
-    input wire TXLINKACTIVEACK_P1;
-
-    input wire RXFLITV_E;
-    input wire RXFLITV_W;
-    input wire RXFLITV_P0;
-    input wire RXFLITV_P1;
-
-    input wire [FLIT_WIDTH-1:0] RXFLIT_E;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_W;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P0;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P1;
-
-    output wire RXLCRDV_E;
-    output wire RXLCRDV_W;
-    output wire RXLCRDV_P0;
-    output wire RXLCRDV_P1;
-
-    output wire TXFLITV_E;
-    output wire TXFLITV_W;
-    output wire TXFLITV_P0;
-    output wire TXFLITV_P1;
-
-    output wire [FLIT_WIDTH-1:0] TXFLIT_E;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_W;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P0;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P1;
-
-    input wire TXLCRDV_E;
-    input wire TXLCRDV_W;
-    input wire TXLCRDV_P0;
-    input wire TXLCRDV_P1;
 
     wire [XP_INTF_MAX-1:0] rxactive_run;
     logic [XP_INTF_MAX-1:0] rxactive_run_q;

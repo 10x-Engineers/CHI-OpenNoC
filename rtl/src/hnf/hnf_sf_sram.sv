@@ -70,32 +70,19 @@ endmodule
 `else
 module hnf_sf_sram `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_cache_pipeline
-        sf_index_q,
-        sf_rd_en_q,
-        sf_wr_ways_q,
-        sf_wr_cline_q,
-
-        //outputs to hnf_cache_pipeline
-        sf_rd_clines_q
-    );
-
     //global inputs
-    input wire                                    clk;
-    input wire                                    rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`SF_INDEX_WIDTH-1:0]              sf_index_q;
-    input wire                                    sf_rd_en_q;
-    input wire [`SF_WAY_NUM-1:0]                  sf_wr_ways_q;
-    input wire [`SF_CLINE_WIDTH-1:0]              sf_wr_cline_q;
+    input wire [`SF_INDEX_WIDTH-1:0] sf_index_q,
+    input wire sf_rd_en_q,
+    input wire [`SF_WAY_NUM-1:0] sf_wr_ways_q,
+    input wire [`SF_CLINE_WIDTH-1:0] sf_wr_cline_q,
 
     //outputs to hnf_cache_pipeline
-    output logic [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]  sf_rd_clines_q;
+    output logic [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] sf_rd_clines_q
+    );
 
     //internal wire signals
     wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]        sram_out,sram_out1;

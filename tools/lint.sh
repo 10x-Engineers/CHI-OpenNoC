@@ -66,7 +66,11 @@ for n in "${NODES[@]}"; do
   echo "==================== $n ===================="
   # chie_pkg.sv is listed rather than left to -Iinclude: Verilator resolves a
   # missing *module* from the include path by filename, but not a package.
+  # The design's own assertions ship gated off, so nothing compiled them until
+  # they were turned on here; DISPLAY_INFO stays off, being $display tracing
+  # rather than a check.
   out=$(verilator --lint-only -Wno-fatal --top-module "$n" \
+          -DASSERT_CHECKER_ON -DDISPLAY_FATAL \
           -Iinclude -Imisc -I"src/$n" include/chie_pkg.sv \
           $([ -f "include/opennoc_${n}_pkg.sv" ] && echo "include/opennoc_${n}_pkg.sv") \
           misc/chie_flit_rsvdc_check.sv src/"$n"/*.sv 2>&1)

@@ -292,7 +292,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 `ifdef DISPLAY_INFO
     always_ff @(posedge clk)begin
         if(txsnpflitv)begin
-            `display_info($sformatf("HNF TXSNP send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n fwdnid: %h\n fwdtxnid: %h\n addr: %h\n rettosrc: %h\n Time: %0d\n",txsnpflit.flit[chie_pkg::SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:chie_pkg::SNP_FLIT_WIDTH],txsnpflit.flit.opcode,txsnpflit.flit.txnid,txsnpflit.flit.fwdnid,txsnpflit.flit.fwdtxnid,txsnpflit.flit.addr,txsnpflit.flit.rettosrc,$time()));
+            `display_info($sformatf("HNF TXSNP send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n fwdnid: %h\n fwdtxnid: %h\n addr: %h\n rettosrc: %h\n Time: %0d\n",txsnpflit.tgtid,txsnpflit.flit.opcode,txsnpflit.flit.txnid,txsnpflit.flit.fwdnid,txsnpflit.flit.fwdtxnid,txsnpflit.flit.addr,txsnpflit.flit.rettosrc,$time()));
         end
     end
 `endif

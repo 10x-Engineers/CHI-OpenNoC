@@ -23,60 +23,60 @@ module chi_xp_channel #(
         parameter CHIE_NID_WIDTH_PARAM = 7,
         parameter XP_XID_WIDTH  = 3,
         parameter XP_YID_WIDTH  = 3
-    ) (
-        clk,
-        rst,
-        my_xid,
-        my_yid,
-        TXLINKACTIVEREQ_P0,
-        TXLINKACTIVEACK_P0,
+    )
+    (
+    input wire clk,
+    input wire rst,
+    input wire [XP_XID_WIDTH-1:0] my_xid,
+    input wire [XP_YID_WIDTH-1:0] my_yid,
 
-        TXLINKACTIVEREQ_P1,
-        TXLINKACTIVEACK_P1,
+    input wire TXLINKACTIVEREQ_P0,
+    input wire TXLINKACTIVEACK_P0,
+    input wire TXLINKACTIVEREQ_P1,
+    input wire TXLINKACTIVEACK_P1,
 
-        RXFLITV_E,
-        RXFLITV_W,
-        RXFLITV_N,
-        RXFLITV_S,
-        RXFLITV_P0,
-        RXFLITV_P1,
+    input wire RXFLITV_E,
+    input wire RXFLITV_W,
+    input wire RXFLITV_N,
+    input wire RXFLITV_S,
+    input wire RXFLITV_P0,
+    input wire RXFLITV_P1,
 
-        RXFLIT_E,
-        RXFLIT_W,
-        RXFLIT_N,
-        RXFLIT_S,
-        RXFLIT_P0,
-        RXFLIT_P1,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_E,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_W,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_N,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_S,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_P0,
+    input wire [FLIT_WIDTH-1:0] RXFLIT_P1,
 
-        RXLCRDV_E,
-        RXLCRDV_W,
-        RXLCRDV_N,
-        RXLCRDV_S,
-        RXLCRDV_P0,
-        RXLCRDV_P1,
+    output wire RXLCRDV_E,
+    output wire RXLCRDV_W,
+    output wire RXLCRDV_N,
+    output wire RXLCRDV_S,
+    output wire RXLCRDV_P0,
+    output wire RXLCRDV_P1,
 
-        TXFLITV_E,
-        TXFLITV_W,
-        TXFLITV_N,
-        TXFLITV_S,
-        TXFLITV_P0,
-        TXFLITV_P1,
+    output wire TXFLITV_E,
+    output wire TXFLITV_W,
+    output wire TXFLITV_N,
+    output wire TXFLITV_S,
+    output wire TXFLITV_P0,
+    output wire TXFLITV_P1,
 
-        TXFLIT_E,
-        TXFLIT_W,
-        TXFLIT_N,
-        TXFLIT_S,
-        TXFLIT_P0,
-        TXFLIT_P1,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_E,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_W,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_N,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_S,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_P0,
+    output wire [FLIT_WIDTH-1:0] TXFLIT_P1,
 
-        TXLCRDV_E,
-        TXLCRDV_W,
-        TXLCRDV_N,
-        TXLCRDV_S,
-        TXLCRDV_P0,
-        TXLCRDV_P1
+    input wire TXLCRDV_E,
+    input wire TXLCRDV_W,
+    input wire TXLCRDV_N,
+    input wire TXLCRDV_S,
+    input wire TXLCRDV_P0,
+    input wire TXLCRDV_P1
     );
-
     localparam LCRD_MAX_NUM = ($pow(2, LCRD_NUM_WIDTH) - 1);
     localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM;
     localparam RX_MAX_ENTRY = 2'h2;
@@ -87,9 +87,8 @@ module chi_xp_channel #(
     localparam XP_INTF_P0 = 4;
     localparam XP_INTF_P1 = 5;
     localparam XP_INTF_MAX = 6;
-
-    // CHI E.b Sec 16.1: NodeID_Width is 7-11, and the three routing fields have to
     // fit inside it.
+    // CHI E.b Sec 16.1: NodeID_Width is 7-11, and the three routing fields have to
     initial begin
         if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
             $fatal(1, "chi_xp_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
@@ -98,58 +97,6 @@ module chi_xp_channel #(
             $fatal(1, "chi_xp_channel: port(1)+Y(%0d)+X(%0d) exceeds CHIE_NID_WIDTH_PARAM=%0d",
                    XP_YID_WIDTH, XP_XID_WIDTH, CHIE_NID_WIDTH_PARAM);
     end
-
-    input wire clk;
-    input wire rst;
-    input wire [XP_XID_WIDTH-1:0] my_xid;
-    input wire [XP_YID_WIDTH-1:0] my_yid;
-
-    input wire TXLINKACTIVEREQ_P0;
-    input wire TXLINKACTIVEACK_P0;
-    input wire TXLINKACTIVEREQ_P1;
-    input wire TXLINKACTIVEACK_P1;
-
-    input wire RXFLITV_E;
-    input wire RXFLITV_W;
-    input wire RXFLITV_N;
-    input wire RXFLITV_S;
-    input wire RXFLITV_P0;
-    input wire RXFLITV_P1;
-
-    input wire [FLIT_WIDTH-1:0] RXFLIT_E;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_W;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_N;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_S;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P0;
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P1;
-
-    output wire RXLCRDV_E;
-    output wire RXLCRDV_W;
-    output wire RXLCRDV_N;
-    output wire RXLCRDV_S;
-    output wire RXLCRDV_P0;
-    output wire RXLCRDV_P1;
-
-    output wire TXFLITV_E;
-    output wire TXFLITV_W;
-    output wire TXFLITV_N;
-    output wire TXFLITV_S;
-    output wire TXFLITV_P0;
-    output wire TXFLITV_P1;
-
-    output wire [FLIT_WIDTH-1:0] TXFLIT_E;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_W;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_N;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_S;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P0;
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P1;
-
-    input wire TXLCRDV_E;
-    input wire TXLCRDV_W;
-    input wire TXLCRDV_N;
-    input wire TXLCRDV_S;
-    input wire TXLCRDV_P0;
-    input wire TXLCRDV_P1;
 
     wire [XP_INTF_MAX-1:0] rxactive_run;
     logic [XP_INTF_MAX-1:0] rxactive_run_q;

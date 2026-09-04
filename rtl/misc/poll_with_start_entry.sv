@@ -18,18 +18,14 @@ module poll_with_start_entry
     #(
          parameter ENTRIES_NUM = -1
      )
-     (
-         entry_vec,
-         start_entry,
-         entry_ptr_sel,
-         found
-     );
+    (
     //input
-    input wire [ENTRIES_NUM-1:0]  entry_vec;
-    input wire [ENTRIES_NUM-1:0]  start_entry;
+    input wire [ENTRIES_NUM-1:0] entry_vec,
+    input wire [ENTRIES_NUM-1:0] start_entry,
     //output
-    output wire [ENTRIES_NUM-1:0] entry_ptr_sel;
-    output wire                 found;
+    output wire [ENTRIES_NUM-1:0] entry_ptr_sel,
+    output wire found
+    );
 
     //internal signals
     wire [ENTRIES_NUM-1:0]    upper_mask;

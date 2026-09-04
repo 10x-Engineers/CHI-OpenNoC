@@ -19,37 +19,24 @@ module poll_function #(
         // MODE
         // 0: always start finding entry from LSB.
         // 1: start finding entry from previous selected entry.
-        parameter POLL_MODE = 1
+        parameter POLL_MODE = 1,
+        localparam POLL_ENTRIES_WIDTH = (POLL_ENTRIES_NUM == 1)? 1 : $clog2(POLL_ENTRIES_NUM)
     )
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs
-        entry_vec,
-        upd,
-
-        //outputs
-        found,
-        sel_entry,
-        sel_index
-    );
-    //local parameters
-    localparam POLL_ENTRIES_WIDTH = (POLL_ENTRIES_NUM == 1)? 1 : $clog2(POLL_ENTRIES_NUM);
-
     //global inputs
-    input  wire                          clk;
-    input  wire                          rst;
+    input wire clk,
+    input wire rst,
 
     //inputs
-    input  wire  [POLL_ENTRIES_NUM-1:0]  entry_vec;
-    input  wire                          upd;
+    input wire  [POLL_ENTRIES_NUM-1:0] entry_vec,
+    input wire upd,
 
     //outputs
-    output wire                          found;
-    output wire [POLL_ENTRIES_NUM-1:0]   sel_entry;
-    output wire [POLL_ENTRIES_WIDTH-1:0] sel_index;
+    output wire found,
+    output wire [POLL_ENTRIES_NUM-1:0] sel_entry,
+    output wire [POLL_ENTRIES_WIDTH-1:0] sel_index
+    );
+    //local parameters
 
     //internal wire
     wire [POLL_ENTRIES_NUM-1:0]          nxt_entry_mask;

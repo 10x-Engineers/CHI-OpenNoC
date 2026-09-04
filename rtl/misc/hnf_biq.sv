@@ -19,45 +19,28 @@
 module hnf_biq #(
         parameter BIQ_WIDTH = -1,
         parameter BIQ_DEPTH = -1
-    ) (
-        //global inputs
-        clk,
-        rst,
+    )
+    (
+    //global inputs
+    input wire clk,
+    input wire rst,
 
-        //main inputs
-        push,
-        pop,
-        addr_in,
-        find,
-        find_addr,
+    //main inputs
+    input wire push,
+    input wire pop,
+    input wire [BIQ_WIDTH-1:0] addr_in,
+    input wire find,
+    input wire [BIQ_WIDTH-1:0] find_addr,
 
-        //main outputs
-        match,
-        addr_out,
-        biq_full,
-        biq_empty,
-        biq_pfull
+    //main outputs
+    output wire match,
+    output wire [BIQ_WIDTH-1:0] addr_out,
+    output wire biq_full,
+    output wire biq_empty,
+    output wire biq_pfull
     );
     //local parameter
     localparam BIQ_PTR_WIDTH = $clog2(BIQ_DEPTH)+1;
-
-    //global inputs
-    input wire                  clk;
-    input wire                  rst;
-
-    //main inputs
-    input wire                  push;
-    input wire                  pop;
-    input wire [BIQ_WIDTH-1:0]  addr_in;
-    input wire                  find;
-    input wire [BIQ_WIDTH-1:0]  find_addr;
-
-    //main outputs
-    output wire                 match;
-    output wire [BIQ_WIDTH-1:0] addr_out;
-    output wire                 biq_full;
-    output wire                 biq_empty;
-    output wire                 biq_pfull;
 
     //internal regs
     wire                        biq_push_con;
