@@ -99,7 +99,7 @@ module hnf_link_rxreq_parse `HNF_PARAM
     assign li_mshr_rxreq_qos_s0        = (rxreqflitv == 1'b1)? rxreqflit.qos       :'0;
     assign li_mshr_rxreq_srcid_s0      = (rxreqflitv == 1'b1)? rxreqflit.srcid     :'0;
     assign li_mshr_rxreq_txnid_s0      = (rxreqflitv == 1'b1)? rxreqflit.txnid     :'0;
-    assign li_mshr_rxreq_opcode_s0     = (rxreqflitv == 1'b1)? opennoc_hnf_pkg::hnf_serviced_as(rxreqflit.opcode)
+    assign li_mshr_rxreq_opcode_s0     = (rxreqflitv == 1'b1)? rxreqflit.opcode
                                                               :(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? chie_pkg::REQ_SNOOPFILTEREVICT : chie_pkg::REQ_REQLCRDRETURN;
     assign li_mshr_rxreq_stash_sep_s0  = (rxreqflitv == 1'b1) & opennoc_hnf_pkg::hnf_serviced_as_stash_sep(rxreqflit.opcode);
     assign li_mshr_rxreq_size_s0       = (rxreqflitv == 1'b1)? rxreqflit.size      :chie_pkg::SIZE_1B;
