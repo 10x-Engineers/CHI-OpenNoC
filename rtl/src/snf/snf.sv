@@ -99,8 +99,10 @@ module snf `SNF_PARAM
     wire                                        rxreq_alloc_en_s0;
     chie_pkg::req_flit_s                        rxreq_alloc_flit_s0;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]          mshr_entry_idx_alloc_s0;
-    wire                                        qos_txrsp_retryack_valid_s1;snf_pkg::retry_ackq_s           qos_txrsp_retryack_fifo_s1;
-    wire                                        qos_txrsp_pcrdgnt_valid_s2;snf_pkg::pcrdgrantq_s           qos_txrsp_pcrdgnt_fifo_s2;
+    wire                                        qos_txrsp_retryack_valid_s1;
+    chie_pkg::retry_ackq_s           qos_txrsp_retryack_fifo_s1;
+    wire                                        qos_txrsp_pcrdgnt_valid_s2;
+    chie_pkg::pcrdgrantq_s           qos_txrsp_pcrdgnt_fifo_s2;
     wire                                        txrsp_valid_sx;
     logic [3:0]         txrsp_qos_sx;
     logic [chie_pkg::NID_WIDTH-1:0]       txrsp_tgtid_sx;

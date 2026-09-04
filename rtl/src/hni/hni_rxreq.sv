@@ -23,52 +23,34 @@
 
 module hni_rxreq `HNI_PARAM
     (
-        clk,
-        rst,
-
-        rxreqflitv,
-        rxreqflit,
-        rxreqflitpend,
-
-        rxreq_retry_enable_s0,
-
-        txrsp_retryack_won_s1,
-
-        rxreq_lcrdv,
-        rxcrd_en,
-        rxreq_crd_cnt_full,
-
-        rxreq_valid_s0,
-        rxreqflit_s0
-    );
-
     //global inputs
-    input wire                         clk;
-    input wire                         rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from link
-    input wire                         rxreqflitv;
-    input wire [`CHIE_REQ_FLIT_RANGE]  rxreqflit;
-    input wire                         rxreqflitpend;
+    input wire rxreqflitv,
+    input chie_pkg::req_flit_s rxreqflit,
+    input wire rxreqflitpend,
 
     //inputs from hni_qos
-    input wire                         rxreq_retry_enable_s0;
+    input wire rxreq_retry_enable_s0,
 
     //inputs from hni_txrsp
-    input wire                         txrsp_retryack_won_s1;
+    input wire txrsp_retryack_won_s1,
 
     //outputs to link
-    output wire                        rxreq_lcrdv;
+    output wire rxreq_lcrdv,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input  wire                        rxcrd_en;
+    input wire rxcrd_en,
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    output wire                        rxreq_crd_cnt_full;
+    output wire rxreq_crd_cnt_full,
 
     //outputs to hni_qos
-    output wire                        rxreq_valid_s0;
-    output wire [`CHIE_REQ_FLIT_RANGE] rxreqflit_s0;
+    output wire rxreq_valid_s0,
+    output chie_pkg::req_flit_s rxreqflit_s0
+    );
 
     //internal reg signals
     logic                                             rxreqflitv_en_q;
@@ -99,7 +81,7 @@ module hni_rxreq `HNI_PARAM
 
     //rxreqflit decode
     assign rxreq_valid_s0    = (rxreqflitv == 1'b1);
-    assign rxreqflit_s0      = (rxreqflitv == 1'b1) ? rxreqflit : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+    assign rxreqflit_s0      = (rxreqflitv == 1'b1) ? rxreqflit : '0;
 
     //rxreq L-credit
     assign req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;

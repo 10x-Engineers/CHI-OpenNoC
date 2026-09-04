@@ -23,147 +23,80 @@
 
 module hni_data_buffer `HNI_PARAM 
     (
-        clk,
-        rst,
-
-        rxdat_valid_s0,
-        rxdatflit_s0,
-
-        rxreq_dbf_en_s0,
-        rxreq_dbf_axid_s0,
-        rxreq_dbf_entry_idx_s0,
-        rxreq_dbf_wr_s0,   //write txn
-        rxreq_dbf_wrzero_s0,
-        rxreq_dbf_addr_s0,
-        rxreq_dbf_device_s0,
-        rxreq_dbf_size_s0,
-        rxreq_dbf_axlen_s0,
-
-        mshr_retired_valid_sx,
-        mshr_retired_idx_sx,
-
-        mshr_wdat_en_sx,    //send data to axi slave enable
-        mshr_wdat_entry_idx_sx,
-
-        mshr_rdat_en_sx,
-        mshr_rdat_entry_idx_sx,
-
-        mshr_txdat_en_sx,   //mshr allow dbf send data to chi xp
-        mshr_txdat_tgtid_sx,
-        mshr_txdat_txnid_sx,
-        mshr_txdat_opcode_sx,
-        mshr_txdat_resp_sx,
-        mshr_txdat_resperr_sx,
-        mshr_txdat_be_ovr_en_sx,
-        mshr_txdat_be_ovr_sx,
-        mshr_txdat_dbid_sx,
-        mshr_txdat_dataid_sx,
-        mshr_txdat_tracetag_sx,
-
-        txdat_dbf_rdy_s1,
-        txdat_dbf_won_sx,
-
-        dbf_rxdat_valid_s0,
-        dbf_rxdat_txnid_s0,
-        dbf_rxdat_opcode_s0,
-        dbf_rxdat_dataid_s0,
-
-        dbf_rvalid_sx,
-        dbf_rvalid_entry_idx_sx,
-        dbf_cdmask_sx,
-        w_last,
-
-        dbf_txdat_valid_sx,
-        txdat_flit,
-        mshr_txdat_won_sx,
-
-        rid,
-        rdata,
-        rresp,
-        rlast,
-        rvalid,
-        rready,
-
-        wdata,
-        wstrb,
-        wlast,
-        wvalid,
-        wready
-    );
-
     //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
     //input from hni_rxdat
-    input wire                                      rxdat_valid_s0;
-    input wire [`CHIE_DAT_FLIT_RANGE]               rxdatflit_s0;
+    input wire rxdat_valid_s0,
+    input chie_pkg::dat_flit_s rxdatflit_s0,
 
     //inputs from hni_mshr
-    input wire                                      rxreq_dbf_en_s0;
-    input wire [`HNI_AXI4_AXID_WIDTH-1:0]           rxreq_dbf_axid_s0; //slave id
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]        rxreq_dbf_entry_idx_s0; //allocate entry idx
-    input wire                                      rxreq_dbf_wr_s0;   //write txn or read txn
-    input wire                                      rxreq_dbf_wrzero_s0;
-    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]      rxreq_dbf_addr_s0;
-    input wire                                      rxreq_dbf_device_s0;
-    input wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]      rxreq_dbf_size_s0;//rxdata/txdata size
-    input wire [`AXI4_AWLEN_WIDTH-1:0]              rxreq_dbf_axlen_s0;
+    input wire rxreq_dbf_en_s0,
+    input wire [`HNI_AXI4_AXID_WIDTH-1:0] rxreq_dbf_axid_s0,  //slave id
+    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] rxreq_dbf_entry_idx_s0,  //allocate entry idx
+    input wire rxreq_dbf_wr_s0,  //write txn or read txn
+    input wire rxreq_dbf_wrzero_s0,
+    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s0,
+    input wire rxreq_dbf_device_s0,
+    input chie_pkg::size_e rxreq_dbf_size_s0,  //rxdata/txdata size
+    input wire [`AXI4_AWLEN_WIDTH-1:0] rxreq_dbf_axlen_s0,
 
-    input wire                                      mshr_retired_valid_sx;
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]        mshr_retired_idx_sx;
+    input wire mshr_retired_valid_sx,
+    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
 
-    input wire                                      mshr_wdat_en_sx;    //send data to axi slave enable
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]        mshr_wdat_entry_idx_sx;
+    input wire mshr_wdat_en_sx,  //send data to axi slave enable
+    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_wdat_entry_idx_sx,
 
-    input wire                                      mshr_rdat_en_sx;   //rdat:mshr allow dbf receive data from AXI rdata
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]        mshr_rdat_entry_idx_sx;
+    input wire mshr_rdat_en_sx,  //rdat:mshr allow dbf receive data from AXI rdata
+    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_rdat_entry_idx_sx,
 
-    input wire                                      mshr_txdat_en_sx;   //txdat:mshr allow dbf send data to chi xp
-    input wire [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]     mshr_txdat_tgtid_sx;
-    input wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]     mshr_txdat_txnid_sx;
-    input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]    mshr_txdat_opcode_sx;
-    input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]      mshr_txdat_resp_sx; 
-    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]   mshr_txdat_resperr_sx;
-    input wire                                      mshr_txdat_be_ovr_en_sx;
-    input wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]        mshr_txdat_be_ovr_sx;
-    input wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]      mshr_txdat_dbid_sx; 
-    input wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]    mshr_txdat_dataid_sx;
-    input wire [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]  mshr_txdat_tracetag_sx;
+    input wire mshr_txdat_en_sx,  //txdat:mshr allow dbf send data to chi xp
+    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx,
+    input wire [11:0] mshr_txdat_txnid_sx,
+    input chie_pkg::dat_opcode_e mshr_txdat_opcode_sx,
+    input chie_pkg::resp_state_e mshr_txdat_resp_sx,
+    input chie_pkg::resp_err_e mshr_txdat_resperr_sx,
+    input wire mshr_txdat_be_ovr_en_sx,
+    input wire [chie_pkg::BE_WIDTH-1:0] mshr_txdat_be_ovr_sx,
+    input wire [11:0] mshr_txdat_dbid_sx,
+    input wire [1:0] mshr_txdat_dataid_sx,
+    input wire mshr_txdat_tracetag_sx,
 
     //input from hni_txdat
-    input wire                                      txdat_dbf_rdy_s1; //txdat:handshake between txdat and dbf
-    input wire                                      txdat_dbf_won_sx;
+    input wire txdat_dbf_rdy_s1,  //txdat:handshake between txdat and dbf
+    input wire txdat_dbf_won_sx,
 
     //outputs to hni_mshr
-    output wire                                     dbf_rxdat_valid_s0;
-    output wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]    dbf_rxdat_txnid_s0;
-    output wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]   dbf_rxdat_opcode_s0;
-    output wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   dbf_rxdat_dataid_s0; 
+    output wire dbf_rxdat_valid_s0,
+    output wire [11:0] dbf_rxdat_txnid_s0,
+    output chie_pkg::dat_opcode_e dbf_rxdat_opcode_s0,
+    output wire [1:0] dbf_rxdat_dataid_s0,
 
-    output wire                                     dbf_rvalid_sx;
-    output logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]        dbf_rvalid_entry_idx_sx;
-    output wire [3:0]                               dbf_cdmask_sx;
-    output wire                                     mshr_txdat_won_sx;
-    output wire                                     w_last;
+    output wire dbf_rvalid_sx,
+    output logic [`HNI_MSHR_ENTRIES_WIDTH-1:0] dbf_rvalid_entry_idx_sx,
+    output wire [3:0] dbf_cdmask_sx,
+    output wire mshr_txdat_won_sx,
+    output wire w_last,
 
     //output to hni_txdat
-    output wire                                     dbf_txdat_valid_sx;//txdat:handshake between txdat and dbf
-    output logic  [`CHIE_DAT_FLIT_RANGE]              txdat_flit; //txdat
+    output wire dbf_txdat_valid_sx,  //txdat:handshake between txdat and dbf
+    output chie_pkg::dat_flit_s txdat_flit,  //txdat
 
     //inout with axi slaves
-    input  wire [10:0]                              rid;
-    input  wire [`AXI4_RDATA_WIDTH-1:0]             rdata;
-    input  wire [1:0]                               rresp;
-    input  wire                                     rlast;
-    input  wire                                     rvalid;
-    output wire                                     rready;
+    input wire [10:0] rid,
+    input wire [`AXI4_RDATA_WIDTH-1:0] rdata,
+    input wire [1:0] rresp,
+    input wire rlast,
+    input wire rvalid,
+    output wire rready,
 
-    output logic [`AXI4_WDATA_WIDTH-1:0]              wdata;
-    output logic [`AXI4_WSTRB_WIDTH-1:0]              wstrb;
-    output logic                                      wlast;
-    output wire                                     wvalid;
-    input  wire                                     wready;
+    output logic [`AXI4_WDATA_WIDTH-1:0] wdata,
+    output logic [`AXI4_WSTRB_WIDTH-1:0] wstrb,
+    output logic wlast,
+    output wire wvalid,
+    input wire wready
+    );
 
     //internal signals
     logic [`HNI_MASK_WL_RANGE]                 dbf_wlmask_s0;
@@ -173,7 +106,7 @@ module hni_data_buffer `HNI_PARAM
     logic [`HNI_MASK_WL_RANGE]                 dbf_wr_wlmask_q[0:`HNI_MSHR_ENTRIES_NUM-1]; 
     logic [1:0]                                rxreq_alloc_ccid_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`HNI_AXI4_AXID_WIDTH-1:0]           rxreq_alloc_axid_q[0:`HNI_MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]      rxreq_alloc_size_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    chie_pkg::size_e      rxreq_alloc_size_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]          rready_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]          rready_rst_q;
     logic [1:0]                                rresp_q[0:`HNI_MSHR_ENTRIES_NUM-1];
@@ -181,25 +114,25 @@ module hni_data_buffer `HNI_PARAM
     logic [`AXI4_RDATA_WIDTH*4-1:0]            rdata_receive;
     logic [10:0]                               axid_current;
     logic [`HNI_MASK_CD_RANGE]                 rd_cdmask_current;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]    dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]      dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::DATA_WIDTH*2-1:0]    dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::BE_WIDTH*2-1:0]      dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic                                      dbf_rvalid_q;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]      mshr_txdat_data_sx;
-    logic [`CHIE_DAT_FLIT_BE_WIDTH-1:0]        mshr_txdat_be_sx;
-    logic [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]    mshr_txdat_dataid_q;
-    logic [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]      mshr_txdat_ccid_sx;
+    logic [chie_pkg::DATA_WIDTH-1:0]      mshr_txdat_data_sx;
+    logic [chie_pkg::BE_WIDTH-1:0]        mshr_txdat_be_sx;
+    logic [1:0]    mshr_txdat_dataid_q;
+    logic [1:0]      mshr_txdat_ccid_sx;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]          wvalid_q;
-    logic [`CHIE_DAT_FLIT_DATA_WIDTH*2-1:0]    wdata_current;
-    logic [`CHIE_DAT_FLIT_BE_WIDTH*2-1:0]      wstrb_current;
+    logic [chie_pkg::DATA_WIDTH*2-1:0]    wdata_current;
+    logic [chie_pkg::BE_WIDTH*2-1:0]      wstrb_current;
     logic [`HNI_MASK_CD_RANGE]                 wr_cdmask_current;
     logic [`HNI_MASK_WL_RANGE]                 wr_wlmask_current;
 
     wire                                     rxdatflit_valid_s0;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]    rxdat_txnid_s0;
-    wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]   rxdat_opcode_s0;
-    wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]       rxdat_be_s0;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   rxdat_dataid_s0;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]     rxdat_data_s0;
+    wire [11:0]    rxdat_txnid_s0;
+    chie_pkg::dat_opcode_e   rxdat_opcode_s0;
+    wire [chie_pkg::BE_WIDTH-1:0]       rxdat_be_s0;
+    wire [1:0]   rxdat_dataid_s0;
+    wire [chie_pkg::DATA_WIDTH-1:0]     rxdat_data_s0;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]       rxdat_entry_idx_s0;
     wire                                     align_256b_ccid_01_len_1;
     wire                                     align_256b_ccid_11_len_1;
@@ -212,11 +145,11 @@ module hni_data_buffer `HNI_PARAM
 
     //rxdat decode
     assign rxdatflit_valid_s0  = rxdat_valid_s0;
-    assign rxdat_txnid_s0  = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_TXNID_RANGE]  : {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
-    assign rxdat_opcode_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_OPCODE_RANGE] : {`CHIE_DAT_FLIT_OPCODE_WIDTH{1'b0}};//NONCOPYBACKWRDATA/NCBWRDATACOMPACK
-    assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_BE_RANGE]     : {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
-    assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_DATAID_RANGE] : {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
-    assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0[`CHIE_DAT_FLIT_DATA_RANGE]   : {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
+    assign rxdat_txnid_s0  = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.txnid  : '0;
+    assign rxdat_opcode_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.opcode : chie_pkg::DAT_DATLCRDRETURN;//NONCOPYBACKWRDATA/NCBWRDATACOMPACK
+    assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.be     : '0;
+    assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.dataid : '0;
+    assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.data   : '0;
 
     assign rxdat_entry_idx_s0  = rxdat_txnid_s0[`HNI_MSHR_ENTRIES_WIDTH-1:0];
 
@@ -428,7 +361,7 @@ module hni_data_buffer `HNI_PARAM
                 if(rst)begin
                     rxreq_alloc_axid_q[i]     <= {`HNI_AXI4_AXID_WIDTH{1'b0}};
                     rxreq_alloc_ccid_q[i]     <= 2'b0;
-                    rxreq_alloc_size_q[i]     <= 3'b0;
+                    rxreq_alloc_size_q[i]     <= chie_pkg::SIZE_1B;
                 end
                 else if(rxreq_dbf_en_s0 && i == rxreq_dbf_entry_idx_s0)begin
                     rxreq_alloc_axid_q[i]     <= rxreq_dbf_axid_s0;
@@ -438,7 +371,7 @@ module hni_data_buffer `HNI_PARAM
                 else if(mshr_retired_valid_sx && i == mshr_retired_idx_sx)begin
                     rxreq_alloc_axid_q[i]     <= {`HNI_AXI4_AXID_WIDTH{1'b0}};
                     rxreq_alloc_ccid_q[i]     <= 2'b0;
-                    rxreq_alloc_size_q[i]     <= 3'b0;
+                    rxreq_alloc_size_q[i]     <= chie_pkg::SIZE_1B;
                 end
             end
 
@@ -550,28 +483,28 @@ module hni_data_buffer `HNI_PARAM
         for(i = 0;i<`HNI_MSHR_ENTRIES_NUM;i = i+1) begin:dbf_receive_data_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if(rst)begin
-                    dbf_data_q[i] <= {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
-                    dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}};
+                    dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                    dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b0}};
                 end
                 else begin
                     if (mshr_retired_valid_sx && i == mshr_retired_idx_sx) begin//entry retired
-                        dbf_data_q[i] <= {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}};
+                        dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                        dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b0}};
                     end
                     // Table 4-39 (p.4-219): a Write Zero has no WriteData response, so
                     // its payload is sourced here -- zeros with every byte enable set.
                     else if (rxreq_dbf_en_s0 && rxreq_dbf_wrzero_s0 && (i == rxreq_dbf_entry_idx_s0)) begin
-                        dbf_data_q[i] <= {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]   <= {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b1}};
+                        dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                        dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b1}};
                     end
                     else if (rxdat_valid_s0 && rxreq_dbf_wr_q[i] && (i == rxdat_entry_idx_s0))begin
                         if(rxdat_dataid_s0 == 2'b00)begin
-                            dbf_data_q[i][`CHIE_DAT_FLIT_DATA_WIDTH-1:0] <= rxdat_data_s0[`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
-                            dbf_be_q[i][`CHIE_DAT_FLIT_BE_WIDTH-1:0]     <= rxdat_be_s0[`CHIE_DAT_FLIT_BE_WIDTH-1:0] | dbf_be_q[i][`CHIE_DAT_FLIT_BE_WIDTH-1:0];
+                            dbf_data_q[i][chie_pkg::DATA_WIDTH-1:0] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
+                            dbf_be_q[i][chie_pkg::BE_WIDTH-1:0]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH-1:0];
                         end
                         else if(rxdat_dataid_s0 == 2'b10)begin
-                            dbf_data_q[i][`CHIE_DAT_FLIT_DATA_WIDTH*2-1:`CHIE_DAT_FLIT_DATA_WIDTH] <= rxdat_data_s0[`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
-                            dbf_be_q[i][`CHIE_DAT_FLIT_BE_WIDTH*2-1:`CHIE_DAT_FLIT_BE_WIDTH]     <= rxdat_be_s0[`CHIE_DAT_FLIT_BE_WIDTH-1:0] | dbf_be_q[i][`CHIE_DAT_FLIT_BE_WIDTH*2-1:`CHIE_DAT_FLIT_BE_WIDTH];
+                            dbf_data_q[i][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
+                            dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH];
                         end
                     end
                     else if(rvalid && rready && rready_q[i] && (rid == rxreq_alloc_axid_q[i]))begin
@@ -608,20 +541,20 @@ module hni_data_buffer `HNI_PARAM
     assign txdat_entry_idx_sx = mshr_txdat_dbid_sx[`HNI_MSHR_ENTRIES_WIDTH-1:0];
 
     always_comb begin:txdat_data_and_be_comb_logic
-        mshr_txdat_data_sx   = {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
-        mshr_txdat_be_sx     = {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
+        mshr_txdat_data_sx   = '0;
+        mshr_txdat_be_sx     = '0;
         mshr_txdat_ccid_sx  = 2'b0;
         if(mshr_txdat_en_sx && txdat_dbf_rdy_s1)begin
             for (int entry = 0;entry<`HNI_MSHR_ENTRIES_NUM;entry = entry+1) begin:txdata
                 if(entry[`HNI_MSHR_ENTRIES_WIDTH-1:0] == txdat_entry_idx_sx)begin
                     mshr_txdat_ccid_sx = rxreq_alloc_ccid_q[entry];
                     if(mshr_txdat_dataid_sx == 2'b00)begin
-                        mshr_txdat_data_sx   = dbf_data_q[entry][`CHIE_DAT_FLIT_DATA_WIDTH-1:0];
-                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
+                        mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH-1:0];
+                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
                     end
                     else if(mshr_txdat_dataid_sx == 2'b10)begin
-                        mshr_txdat_data_sx   = dbf_data_q[entry][`CHIE_DAT_FLIT_DATA_WIDTH*2-1:`CHIE_DAT_FLIT_DATA_WIDTH];
-                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {`CHIE_DAT_FLIT_BE_WIDTH{1'b1}};
+                        mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH];
+                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
                     end
                 end
             end
@@ -633,28 +566,28 @@ module hni_data_buffer `HNI_PARAM
         // RSVDC, DataCheck and Poison are the fields this node never sources.
         // Defaulting the whole flit to zero covers them at any configured width;
         // the assignments below override every field that does carry a value.
-        txdat_flit = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+        txdat_flit = '0;
 
-        txdat_flit[`CHIE_DAT_FLIT_QOS_RANGE]       = {`CHIE_DAT_FLIT_QOS_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_TGTID_RANGE]     = mshr_txdat_tgtid_sx;
-        txdat_flit[`CHIE_DAT_FLIT_SRCID_RANGE]     = `HNI0_ID;
-        txdat_flit[`CHIE_DAT_FLIT_TXNID_RANGE]     = mshr_txdat_txnid_sx;
-        txdat_flit[`CHIE_DAT_FLIT_HOMENID_RANGE]   = (mshr_txdat_opcode_sx == `CHIE_COMPDATA)?`HNI0_ID : {`CHIE_DAT_FLIT_HOMENID_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_OPCODE_RANGE]    = mshr_txdat_opcode_sx;
-        txdat_flit[`CHIE_DAT_FLIT_RESPERR_RANGE]   = rresp_q[txdat_entry_idx_sx][1] ? `CHIE_RESP_ERR_NON_DATA
+        txdat_flit.qos       = '0;
+        txdat_flit.tgtid     = mshr_txdat_tgtid_sx;
+        txdat_flit.srcid     = `HNI0_ID;
+        txdat_flit.txnid     = mshr_txdat_txnid_sx;
+        txdat_flit.homenid   = (mshr_txdat_opcode_sx == chie_pkg::DAT_COMPDATA)?`HNI0_ID : '0;
+        txdat_flit.opcode    = mshr_txdat_opcode_sx;
+        txdat_flit.resperr   = rresp_q[txdat_entry_idx_sx][1] ? chie_pkg::RESP_ERR_NON_DATA
                                                                                     : mshr_txdat_resperr_sx;
-        txdat_flit[`CHIE_DAT_FLIT_RESP_RANGE]      = mshr_txdat_resp_sx;
-        txdat_flit[`CHIE_DAT_FLIT_FWDSTATE_RANGE]  = {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_CBUSY_RANGE]     = {`CHIE_DAT_FLIT_CBUSY_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_DBID_RANGE]      = mshr_txdat_dbid_sx;
-        txdat_flit[`CHIE_DAT_FLIT_CCID_RANGE]      = mshr_txdat_ccid_sx;
-        txdat_flit[`CHIE_DAT_FLIT_DATAID_RANGE]    = mshr_txdat_dataid_sx;
-        txdat_flit[`CHIE_DAT_FLIT_TAGOP_RANGE]     = {`CHIE_DAT_FLIT_TAGOP_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_TAG_RANGE]       = {`CHIE_DAT_FLIT_TAG_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_TU_RANGE]        = {`CHIE_DAT_FLIT_TU_WIDTH{1'b0}};
-        txdat_flit[`CHIE_DAT_FLIT_TRACETAG_RANGE]  = mshr_txdat_tracetag_sx;
-        txdat_flit[`CHIE_DAT_FLIT_BE_RANGE]        = mshr_txdat_be_sx;
-        txdat_flit[`CHIE_DAT_FLIT_DATA_RANGE]      = mshr_txdat_data_sx;
+        txdat_flit.resp      = mshr_txdat_resp_sx;
+        txdat_flit.datasource.fwdstate  = '0;
+        txdat_flit.cbusy     = '0;
+        txdat_flit.dbid      = mshr_txdat_dbid_sx;
+        txdat_flit.ccid      = mshr_txdat_ccid_sx;
+        txdat_flit.dataid    = mshr_txdat_dataid_sx;
+        txdat_flit.tagop     = '0;
+        txdat_flit.tag       = '0;
+        txdat_flit.tu        = '0;
+        txdat_flit.tracetag  = mshr_txdat_tracetag_sx;
+        txdat_flit.be        = mshr_txdat_be_sx;
+        txdat_flit.data      = mshr_txdat_data_sx;
     end
 
     //from txdat
@@ -681,8 +614,8 @@ module hni_data_buffer `HNI_PARAM
     always_comb begin: current_wr_mask_wdata_wstrb_comb_logic
         wr_cdmask_current = {`HNI_MASK_CD_WIDTH{1'b0}};
         wr_wlmask_current = {`HNI_MASK_WL_WIDTH{1'b0}};
-        wdata_current = {`CHIE_DAT_FLIT_DATA_WIDTH*2{1'b0}};
-        wstrb_current = {`CHIE_DAT_FLIT_BE_WIDTH*2{1'b0}};
+        wdata_current = {chie_pkg::DATA_WIDTH*2{1'b0}};
+        wstrb_current = {chie_pkg::BE_WIDTH*2{1'b0}};
         for (int entry =0; entry<`HNI_MSHR_ENTRIES_NUM; entry = entry+1)begin
             if (wvalid_q[entry])begin
                 wr_cdmask_current = dbf_wr_cdmask_q[entry];

@@ -308,6 +308,32 @@ package chie_pkg;
     logic [3:0]                 qos;
   } dat_flit_s;
 
+  // ---------------------------------------------------------------------------
+  // Retry-mechanism payloads. Not flits: these are what a node's QoS block hands
+  // its TXRSP block through a width-parameterised sync_fifo. They live here
+  // rather than per node because every node that implements SS2.11 retry queues
+  // exactly these fields, and did so through its own copy of one running-sum
+  // macro set.
+  // ---------------------------------------------------------------------------
+
+  // What a retried request has to keep so its RetryAck can be built later
+  // (SS2.11 p.2-145: the PCrdType granted must match the one retried under).
+  typedef struct packed {
+    logic [3:0]           pcrdtype;
+    logic                 trace;
+    logic [3:0]           qos;
+    logic [11:0]          txnid;
+    logic [NID_WIDTH-1:0] srcid;
+  } retry_ackq_s;
+
+  // A PCrdGrant binds to no transaction (SS2.6.5 p.2-112 sets its TxnID to zero),
+  // so the queue carries only who to grant to and under which credit type.
+  typedef struct packed {
+    logic [3:0]           pcrdtype;
+    logic [3:0]           qos;
+    logic [NID_WIDTH-1:0] srcid;
+  } pcrdgrantq_s;
+
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);
   parameter int RSP_FLIT_WIDTH = $bits(rsp_flit_s);
   parameter int DAT_FLIT_WIDTH = $bits(dat_flit_s);
