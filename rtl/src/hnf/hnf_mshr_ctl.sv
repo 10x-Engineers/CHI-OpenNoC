@@ -2148,8 +2148,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_l3_evict_sx7[entry]);
             // Sec 4.5.1 (p.4-199) lets a Subordinate combine Comp with the DBID grant,
             // so a Comp can arrive before the Home has sent a byte. Sec 2.5.2 (p.2-87,
-            // MUST) keeps the TxnID taken until the write is really done: Comp received
-            // AND the write data off the data buffer.
+            // MUST) keeps the TxnID taken until the write is really done.
             assign mshr_mem_wr_busy_clr_sx[entry]    = (mshr_get_comp_s1_q[entry] & (~mshr_sn_data_busy_sx_q[entry]));
             assign mshr_mem_rd_rdy_set_sx[entry]     = (mshr_alloc_memrd_s1[entry] && txreq_mshr_bypass_lost_s1) ||
                    (mshr_l3_memrd_sx7[entry]) ||
@@ -2933,10 +2932,9 @@ module hnf_mshr_ctl `HNF_PARAM
     endgenerate
 
     assign mshr_txreq_qos_sx1         = (mshr_qos_s1_q[mshr_txreq_entry_idx_sx1]);
-    // Which flit this entry is sending is the READY bit that won arbitration, never
-    // the busy bit: mem_rd_busy is cleared by completion events (a CompAck, a
-    // ReadReceipt) that can land between "TXREQ pending" and "TXREQ wins", and the
-    // read would then leave the Home as a WriteNoSnpFull it never sends data for.
+    // The flit this entry sends follows the READY bit that won arbitration:
+    // mem_rd_busy clears on completion events that can land between TXREQ pending
+    // and TXREQ winning.
     assign mshr_txreq_is_rd_sx1       = mshr_mem_rd_rdy_sx_q[mshr_txreq_entry_idx_sx1];
     // Sec 13.10.24 (p.13-430): ReturnNID/ReturnTxnID belong to DMT on the read and
     // to DWT on the write, so each is read on the flit it applies to.
@@ -3214,9 +3212,9 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
         mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
         // Table 9-7 (Sec 9.4.3 p.9-340, MUST): a Write transaction's data packets
-        // carry OK or DERR only. An NDERR is the Completer's verdict on the
-        // access, so it rides out upstream on the Comp (mshr_txrsp_resperr_sx1)
-        // and never on the NonCopyBackWrData the Home sends its Subordinate.
+        // carry OK or DERR only. An NDERR is the Completer's verdict on the access,
+        // so it rides out upstream on the Comp and never on the NonCopyBackWrData
+        // the Home sends its Subordinate.
         mshr_txdat_resperr_sx2 = ~mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NORM_OK :
                                  mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
                                  mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :

@@ -87,7 +87,8 @@ module hni_txrsp `HNI_PARAM
     logic                                 rxreq_excl_s1_q;
     logic                                 rxreq_tracetag_s1_q;
     logic                                 rd_receipt_s1_q;
-    logic                                 wr_compdbid_s1_q;
+    logic                                 wr_grant_s1_q;
+    logic                                 wr_ewa_s1_q;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_entry_idx_alloc_s1_q;
     chie_pkg::rsp_flit_s                  txrspflit_fp_s1;
     chie_pkg::rsp_flit_s                  txrspflit_retyack_s1;
@@ -105,11 +106,8 @@ module hni_txrsp `HNI_PARAM
     wire                                  rxreq_tracetag_s0;
     wire                                  req_wrnosnp_s0;
     wire                                  rd_receipt_s0;
-    wire                                  wr_compdbid_s0;
-    wire                                  wr_dbidresp_s0;
     wire                                  wr_grant_s0;
     wire                                  rxreq_ewa_s0;
-    logic                                 wr_dbidresp_s1_q;
 
     wire                                  txrsp_fp_valid_s1;
     wire [3:0]                            txrsp_fp_qos_s1;
@@ -163,13 +161,10 @@ module hni_txrsp `HNI_PARAM
 
     //fp write grant
     // Sec 2.9.3 (p.2-126): a write completion may come "from an intermediate point
-    // in the interconnect, such as a Home Node" only with EWA asserted. The
-    // combined CompDBIDResp IS the grant that invites the write data, so with EWA
-    // deasserted the grant goes out bare and hni_mshr releases the Comp on the
-    // endpoint's own response.
-    assign wr_grant_s0          = req_wrnosnp_s0 && rxreq_alloc_en_s0; //&&(rxreq_excl_s0 == 1||(rxreq_order_s0 != 2'b0))
-    assign wr_compdbid_s0       = wr_grant_s0 && rxreq_ewa_s0;
-    assign wr_dbidresp_s0       = wr_grant_s0 && (~rxreq_ewa_s0);
+    // in the interconnect, such as a Home Node" only with EWA asserted, so the
+    // combined CompDBIDResp grant is elected on EWA alone -- the same election
+    // hni_mshr makes for the entry that does not take this path.
+    assign wr_grant_s0          = req_wrnosnp_s0 && rxreq_alloc_en_s0;
 
     //fp s1 stage
     always_ff @(posedge clk or posedge rst)begin :pass_qos
@@ -213,18 +208,18 @@ module hni_txrsp `HNI_PARAM
             rd_receipt_s1_q <= rd_receipt_s0;
     end
 
-    always_ff @(posedge clk or posedge rst) begin:pass_wr_compdbid
+    always_ff @(posedge clk or posedge rst) begin:pass_wr_grant
         if (rst)
-            wr_compdbid_s1_q <= 1'b0;
+            wr_grant_s1_q <= 1'b0;
         else
-            wr_compdbid_s1_q <= wr_compdbid_s0;
+            wr_grant_s1_q <= wr_grant_s0;
     end
 
-    always_ff @(posedge clk or posedge rst) begin:pass_wr_dbidresp
+    always_ff @(posedge clk or posedge rst) begin:pass_wr_ewa
         if (rst)
-            wr_dbidresp_s1_q <= 1'b0;
+            wr_ewa_s1_q <= 1'b0;
         else
-            wr_dbidresp_s1_q <= wr_dbidresp_s0;
+            wr_ewa_s1_q <= rxreq_ewa_s0;
     end
 
     always_ff @(posedge clk or posedge rst) begin:pass_alloc_entry_idx
@@ -235,14 +230,15 @@ module hni_txrsp `HNI_PARAM
     end
 
     //fp output
-    assign txrsp_fp_valid_s1    = (rd_receipt_s1_q||wr_compdbid_s1_q||wr_dbidresp_s1_q) && (~mshr_entry_sleep_s1);
+    assign txrsp_fp_valid_s1    = (rd_receipt_s1_q||wr_grant_s1_q) && (~mshr_entry_sleep_s1);
     assign txrsp_fp_qos_s1      = rxreq_qos_s1_q;
     assign txrsp_fp_tgtid_s1    = rxreq_srcid_s1_q;
     assign txrsp_fp_txnid_s1    = rxreq_txnid_s1_q;
     assign txrsp_fp_opcode_s1   = rd_receipt_s1_q?chie_pkg::RSP_READRECEIPT:
-                                  wr_compdbid_s1_q?chie_pkg::RSP_COMPDBIDRESP:
-                                  wr_dbidresp_s1_q?chie_pkg::RSP_DBIDRESP:chie_pkg::RSP_RSPLCRDRETURN;
-    assign txrsp_fp_resperr_s1  = (wr_compdbid_s1_q&&rxreq_excl_s1_q&&excl_pass_s1)? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;
+                                  wr_grant_s1_q?(wr_ewa_s1_q?chie_pkg::RSP_COMPDBIDRESP
+                                                            :chie_pkg::RSP_DBIDRESP)
+                                               :chie_pkg::RSP_RSPLCRDRETURN;
+    assign txrsp_fp_resperr_s1  = (wr_grant_s1_q&&wr_ewa_s1_q&&rxreq_excl_s1_q&&excl_pass_s1)? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;
     assign txrsp_fp_dbid_s1     = {{(12-`HNI_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     assign txrsp_fp_tracetag_s1 = rxreq_tracetag_s1_q;
 

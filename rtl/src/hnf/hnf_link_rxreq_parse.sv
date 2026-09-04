@@ -97,8 +97,8 @@ module hnf_link_rxreq_parse `HNF_PARAM
 
     //rxreqflit decode
     // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
-    // the Opcode field." It carries no request -- only the L-Credit it returns --
-    // so it is dropped here and only the credit accounting below sees it.
+    // the Opcode field." It carries no request, only the L-Credit it returns, so the
+    // credit accounting below is the only thing that may see it.
     assign rxreq_link_flit_s0          = (rxreqflitv == 1'b1) &&
                                          (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN);
     assign rxreq_flit_valid_s0         = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;

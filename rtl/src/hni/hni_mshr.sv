@@ -172,7 +172,6 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     wrzero_inject_idx_sx;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     errdat_inject_idx_sx;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_en_idx_sx;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txrsp_second_idx_sx;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_second_pend_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_second_sent_q;
     logic [1:0]                             rxreq_ccid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
@@ -233,17 +232,19 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    awvalid_entry_idx_s2_q;
     logic                                  awvalid_sx1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      bresp_ok_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      bresp_rcvd_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]      bresp_err_q;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      bresp_hit_sx;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]      txrsp_comp_enq_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]      txrsp_comp_sent_q;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      txrsp_comp_rdy_sx;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      comp_access_done_sx;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      wr_access_done_sx;
     wire                                   txrsp_third_is_comp_sx;
     wire                                   rxreq_ewa_s0;
     wire                                   rxreq_wrgrant_s0;
     wire                                   rxreq_comp_owed_s0;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    txrsp_comp_idx_sx;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      txrsp_third_vec_sx;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    txrsp_third_idx_sx;
     logic                                  wdat_wait_sx_q;
 
@@ -945,42 +946,35 @@ module hni_mshr `HNI_PARAM
     // Sec 2.3.2 (p.2-59): a Combined Write owes a CMO completion on top of its write
     // completion, and Sec 2.3.2 (p.2-62) permits the combined CompPersist for the
     // *CleanShPerSep forms. Queued behind the first response so their order is kept.
-    // An EWA=0 write owes a Comp here too (rxreq_comp_owed_s1_q), which is why the
-    // two cannot share one pend bit: a Combined Write with EWA deasserted owes both.
+    // An EWA=0 write owes its Comp on this same path, and a Combined Write with EWA
+    // deasserted owes both -- so the two cannot share one pend bit.
     assign txrsp_en3_sx           = (txrsp_third_is_comp_sx | (|txrsp_second_pend_q))
                                  && (~txrsp_en_s1) && (~txrsp_en2_s1);
     assign txrsp_third_is_comp_sx = |txrsp_comp_rdy_sx;
     assign txrsp_opcode3_sx = txrsp_third_is_comp_sx ? chie_pkg::RSP_COMP
-                            : rxreq_cwpersist_s1_q[txrsp_second_idx_sx] ? chie_pkg::RSP_COMPPERSIST
+                            : rxreq_cwpersist_s1_q[txrsp_third_idx_sx] ? chie_pkg::RSP_COMPPERSIST
                             : chie_pkg::RSP_COMPCMO;
 
-    always_comb begin: txrsp_second_idx_comb_logic
-        txrsp_second_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
+    assign txrsp_third_vec_sx = txrsp_third_is_comp_sx ? txrsp_comp_rdy_sx : txrsp_second_pend_q;
+
+    always_comb begin: txrsp_third_idx_comb_logic
+        txrsp_third_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
-            if (txrsp_second_pend_q[m])
-                txrsp_second_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
+            if (txrsp_third_vec_sx[m])
+                txrsp_third_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
         end
     end
-
-    always_comb begin: txrsp_comp_idx_comb_logic
-        txrsp_comp_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
-            if (txrsp_comp_rdy_sx[m])
-                txrsp_comp_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
-        end
-    end
-
-    assign txrsp_third_idx_sx = txrsp_third_is_comp_sx ? txrsp_comp_idx_sx : txrsp_second_idx_sx;
 
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             // The endpoint access this Comp reports on is done: the AXI B response for
             // a real write, or -- for a write Sec 9.4.4 (p.9-342) withholds from memory
             // -- the arrival of its write data, since no AW is ever issued for those.
-            assign comp_access_done_sx[entry] =
-                     ((rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry])
-                      & (bresp_ok_q[entry] | (dbf_rxdat_ok_s2_q[entry] & rxreq_excl_fail_s2_q[entry])))
-                   | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry]);
+            assign wr_access_done_sx[entry]   = (rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry])
+                                              & (bresp_rcvd_q[entry]
+                                                 | (dbf_rxdat_ok_s2_q[entry] & rxreq_excl_fail_s2_q[entry]));
+            assign comp_access_done_sx[entry] = wr_access_done_sx[entry]
+                                              | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry]);
             assign txrsp_comp_rdy_sx[entry] = rxreq_comp_owed_s1_q[entry] & txrsp_sent_q[entry]
                                             & comp_access_done_sx[entry] & (~txrsp_comp_enq_q[entry]);
         end
@@ -1057,7 +1051,7 @@ module hni_mshr `HNI_PARAM
                     txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry];
                 else if (txrsp_en2_s1 && (entry == wakeup_idx_sx))
                     txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry];
-                else if (txrsp_en3_sx && (~txrsp_third_is_comp_sx) && (entry == txrsp_second_idx_sx))
+                else if (txrsp_en3_sx && (~txrsp_third_is_comp_sx) && (entry == txrsp_third_idx_sx))
                     txrsp_second_pend_q[entry] <= 1'b0;
             end
 
@@ -1522,13 +1516,16 @@ module hni_mshr `HNI_PARAM
     //************************************************************************//  
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // One AXI ID is live at one entry at a time: need_to_sleep_s0 parks a
+            // second request on the same axid, and ~sleep_sx_q selects the live one.
+            assign bresp_hit_sx[entry] = bvalid_sx & bready_sx & (~sleep_sx_q[entry])
+                                       & (bid_sx == rxreq_axid_s1_q[entry]);
+
             always_ff @(posedge clk or posedge rst)begin : mshr_B_logic
-                if (rst)
-                    bresp_ok_q[entry] <= 1'b0;
-                else if (retired_entry_sx[entry])
-                    bresp_ok_q[entry] <= 1'b0;
-                else if (bvalid_sx && bready_sx && (~sleep_sx_q[entry]) && (bid_sx == rxreq_axid_s1_q[entry]))
-                    bresp_ok_q[entry] <= 1'b1;
+                if (rst || retired_entry_sx[entry])
+                    bresp_rcvd_q[entry] <= 1'b0;
+                else if (bresp_hit_sx[entry])
+                    bresp_rcvd_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -1539,8 +1536,7 @@ module hni_mshr `HNI_PARAM
             always_ff @(posedge clk or posedge rst)begin : mshr_B_err_logic
                 if (rst || retired_entry_sx[entry])
                     bresp_err_q[entry] <= 1'b0;
-                else if (bvalid_sx && bready_sx && (~sleep_sx_q[entry])
-                         && (bid_sx == rxreq_axid_s1_q[entry]) && bresp_sx[1])
+                else if (bresp_hit_sx[entry] && bresp_sx[1])
                     bresp_err_q[entry] <= 1'b1;
                 else
                     ;
@@ -1616,7 +1612,7 @@ module hni_mshr `HNI_PARAM
             assign retired_entry_sx[entry]  = mshr_entry_valid_sx_q[entry] & (~sleep_sx_q[entry])
                                             & ( rxreq_drop_s1_q[entry]
                                               | ( txrsp_all_sent_sx[entry] & (~(rxreq_expcompack_s1_q[entry] & (~compack_ok_sx[entry])))
-                                                & ( ((rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry]) & (bresp_ok_q[entry] | (dbf_rxdat_ok_s2_q[entry] & rxreq_excl_fail_s2_q[entry])))
+                                                & ( wr_access_done_sx[entry]
                                                   | ((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) & txdat_done_sx[entry])
                                                   | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry] & ((~rxreq_errdat_s1_q[entry]) | txdat_done_sx[entry]))
                                                   | (~(rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry] | rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry] | rxreq_errwr_s1_q[entry]))

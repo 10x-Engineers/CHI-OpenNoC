@@ -79,8 +79,8 @@ module hnf_link_rxdat_parse `HNF_PARAM
 
     //rxdat decode
     // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
-    // the Opcode field." It carries no data -- only the L-Credit it returns -- so
-    // it is dropped here and only the credit accounting below sees it.
+    // the Opcode field." It carries no data, only the L-Credit it returns, so the
+    // credit accounting below is the only thing that may see it.
     assign rxdat_link_flit_s0        = (rxdatflitv == 1'b1) &&
                                        (rxdatflit.opcode == chie_pkg::DAT_DATLCRDRETURN);
     assign li_mshr_rxdat_valid_s0    = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
