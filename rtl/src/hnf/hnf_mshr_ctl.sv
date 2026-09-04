@@ -557,6 +557,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_snpdat_entry_idx_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_dat_entry_idx_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_txreq_entry_idx_sx1;
+    wire                                 mshr_txreq_is_rd_sx1;
+    wire                                 mshr_txreq_fwd_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_txsnp_entry_idx_sx1;
     assign mshr_snpdat_entry_idx_s0 = mshr_snpdat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
     assign mshr_dat_entry_idx_s0    = mshr_dat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
@@ -1759,12 +1761,12 @@ module hnf_mshr_ctl `HNF_PARAM
             always_ff @(posedge clk or posedge rst)begin : mshr_get_compack_s1_q_timing_logic
                 if(rst == 1'b1)
                     mshr_get_compack_s1_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_get_compack_s1_q[entry] <= 1'b0;
                 else if(mshr_rsp_entry_vec_s0[entry] && mshr_getrsp_compack_s0)
                     mshr_get_compack_s1_q[entry] <= 1'b1;
                 else if(mshr_dat_entry_vec_s0[entry] && mshr_getdat_compack_s0)
                     mshr_get_compack_s1_q[entry] <= 1'b1;
-                else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_get_compack_s1_q[entry] <= 1'b0;
                 else
                     ;
             end
@@ -1805,10 +1807,10 @@ module hnf_mshr_ctl `HNF_PARAM
             always_ff @(posedge clk or posedge rst)begin : mshr_get_rd_receipt_s1_q_timing_logic
                 if(rst == 1'b1)
                     mshr_get_rd_receipt_s1_q[entry] <= 1'b0;
-                else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_rd_receipt_s0)
-                    mshr_get_rd_receipt_s1_q[entry] <= 1'b1;
                 else if(mshr_can_retire_entry_sx1[entry])
                     mshr_get_rd_receipt_s1_q[entry] <= 1'b0;
+                else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_rd_receipt_s0)
+                    mshr_get_rd_receipt_s1_q[entry] <= 1'b1;
             end
 
             always_ff @(posedge clk or posedge rst)begin : mshr_pcrdtype_s1_q_timing_logic
@@ -2144,7 +2146,10 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_snp_memwr_s1[entry] & mshr_snpdat_entry_vec_s1_q[entry]) ||
                    (mshr_wup_memwr_s1[entry]) ||
                    (mshr_l3_evict_sx7[entry]);
-            assign mshr_mem_wr_busy_clr_sx[entry]    = (mshr_comp_entry_vec_s1_q[entry]);
+            // Sec 4.5.1 (p.4-199) lets a Subordinate combine Comp with the DBID grant,
+            // so a Comp can arrive before the Home has sent a byte. Sec 2.5.2 (p.2-87,
+            // MUST) keeps the TxnID taken until the write is really done.
+            assign mshr_mem_wr_busy_clr_sx[entry]    = (mshr_get_comp_s1_q[entry] & (~mshr_sn_data_busy_sx_q[entry]));
             assign mshr_mem_rd_rdy_set_sx[entry]     = (mshr_alloc_memrd_s1[entry] && txreq_mshr_bypass_lost_s1) ||
                    (mshr_l3_memrd_sx7[entry]) ||
                    (mshr_snp_memrd_s1[entry]) ||
@@ -2927,13 +2932,21 @@ module hnf_mshr_ctl `HNF_PARAM
     endgenerate
 
     assign mshr_txreq_qos_sx1         = (mshr_qos_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_returnnid_sx1   = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM);
-    assign mshr_txreq_returntxnid_sx1 = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
-    assign mshr_txreq_opcode_sx1      = (mshr_mem_rd_busy_sx_q[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
+    // The flit this entry sends follows the READY bit that won arbitration:
+    // mem_rd_busy clears on completion events that can land between TXREQ pending
+    // and TXREQ winning.
+    assign mshr_txreq_is_rd_sx1       = mshr_mem_rd_rdy_sx_q[mshr_txreq_entry_idx_sx1];
+    // Sec 13.10.24 (p.13-430): ReturnNID/ReturnTxnID belong to DMT on the read and
+    // to DWT on the write, so each is read on the flit it applies to.
+    assign mshr_txreq_fwd_sx1         = mshr_txreq_is_rd_sx1 ? mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1]
+                                                             : mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1];
+    assign mshr_txreq_returnnid_sx1   = (mshr_txreq_fwd_sx1?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM);
+    assign mshr_txreq_returntxnid_sx1 = (mshr_txreq_fwd_sx1?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
+    assign mshr_txreq_opcode_sx1      = (mshr_txreq_is_rd_sx1?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
     assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1)? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
+    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
     // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
     // interconnect due to a Prefetch from Home or an eviction from the System
@@ -3198,9 +3211,14 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_txnid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
         mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
         mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
-        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
+        // Table 9-7 (Sec 9.4.3 p.9-340, MUST): a Write transaction's data packets
+        // carry OK or DERR only. An NDERR is the Completer's verdict on the access,
+        // so it rides out upstream on the Comp and never on the NonCopyBackWrData
+        // the Home sends its Subordinate.
+        mshr_txdat_resperr_sx2 = ~mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NORM_OK :
+                                 mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
                                  mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :
-                                 ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
+                                 ((mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
         mshr_txdat_dbid_sx2    = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, txdat_mshr_rd_idx_sx2};
         // Sec 2.10.6 (p.2-139, MUST): "The CCID field must match the value of
         // Addr[5:4] of the original request."

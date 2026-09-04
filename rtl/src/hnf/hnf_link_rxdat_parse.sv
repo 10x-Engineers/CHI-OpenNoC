@@ -65,6 +65,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     wire                                rxdat_crd_grant_s0;
     wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]  rxdat_crd_cnt_nxt_s0;
     wire                                rxdatcrdv_ns_s0;
+    wire                                rxdat_link_flit_s0;
 
     //main function
     always_ff @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t
@@ -77,21 +78,26 @@ module hnf_link_rxdat_parse `HNF_PARAM
     end
 
     //rxdat decode
-    assign li_mshr_rxdat_valid_s0    = (rxdatflitv == 1'b1);
-    assign li_mshr_rxdat_txnid_s0    = (rxdatflitv == 1'b1)? rxdatflit.txnid    : '0;
-    assign li_mshr_rxdat_opcode_s0   = (rxdatflitv == 1'b1)? rxdatflit.opcode   : chie_pkg::DAT_DATLCRDRETURN;
-    assign li_mshr_rxdat_resp_s0     = (rxdatflitv == 1'b1)? rxdatflit.resp     : chie_pkg::RESP_I;
-    assign li_mshr_rxdat_resperr_s0  = (rxdatflitv == 1'b1)? rxdatflit.resperr  : chie_pkg::RESP_ERR_NORM_OK;
-    assign li_mshr_rxdat_fwdstate_s0 = (rxdatflitv == 1'b1)? rxdatflit.datasource.fwdstate : '0;
-    assign li_mshr_rxdat_dataid_s0   = (rxdatflitv == 1'b1)? rxdatflit.dataid   : '0;
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no data, only the L-Credit it returns, so the
+    // credit accounting below is the only thing that may see it.
+    assign rxdat_link_flit_s0        = (rxdatflitv == 1'b1) &&
+                                       (rxdatflit.opcode == chie_pkg::DAT_DATLCRDRETURN);
+    assign li_mshr_rxdat_valid_s0    = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
+    assign li_mshr_rxdat_txnid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.txnid    : '0;
+    assign li_mshr_rxdat_opcode_s0   = li_mshr_rxdat_valid_s0? rxdatflit.opcode   : chie_pkg::DAT_DATLCRDRETURN;
+    assign li_mshr_rxdat_resp_s0     = li_mshr_rxdat_valid_s0? rxdatflit.resp     : chie_pkg::RESP_I;
+    assign li_mshr_rxdat_resperr_s0  = li_mshr_rxdat_valid_s0? rxdatflit.resperr  : chie_pkg::RESP_ERR_NORM_OK;
+    assign li_mshr_rxdat_fwdstate_s0 = li_mshr_rxdat_valid_s0? rxdatflit.datasource.fwdstate : '0;
+    assign li_mshr_rxdat_dataid_s0   = li_mshr_rxdat_valid_s0? rxdatflit.dataid   : '0;
 
-    assign li_dbf_rxdat_valid_s0     = (rxdatflitv == 1'b1);
-    assign li_dbf_rxdat_txnid_s0_raw = (rxdatflitv == 1'b1)? rxdatflit.txnid    : '0;
+    assign li_dbf_rxdat_valid_s0     = li_mshr_rxdat_valid_s0;
+    assign li_dbf_rxdat_txnid_s0_raw = li_mshr_rxdat_valid_s0? rxdatflit.txnid    : '0;
     assign li_dbf_rxdat_txnid_s0     = li_dbf_rxdat_txnid_s0_raw[`MSHR_ENTRIES_WIDTH-1:0];
-    assign li_dbf_rxdat_opcode_s0    = (rxdatflitv == 1'b1 && ((|rxdatflit.be) || (rxdatflit.opcode == chie_pkg::DAT_COMPDATA)))? rxdatflit.opcode :chie_pkg::DAT_WRITEDATACANCEL;
-    assign li_dbf_rxdat_dataid_s0    = (rxdatflitv == 1'b1)? rxdatflit.dataid   : '0;
-    assign li_dbf_rxdat_be_s0        = (rxdatflitv == 1'b1)? rxdatflit.be       : '0;
-    assign li_dbf_rxdat_data_s0      = (rxdatflitv == 1'b1)? rxdatflit.data     : '0;
+    assign li_dbf_rxdat_opcode_s0    = (li_mshr_rxdat_valid_s0 && ((|rxdatflit.be) || (rxdatflit.opcode == chie_pkg::DAT_COMPDATA)))? rxdatflit.opcode :chie_pkg::DAT_WRITEDATACANCEL;
+    assign li_dbf_rxdat_dataid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.dataid   : '0;
+    assign li_dbf_rxdat_be_s0        = li_mshr_rxdat_valid_s0? rxdatflit.be       : '0;
+    assign li_dbf_rxdat_data_s0      = li_mshr_rxdat_valid_s0? rxdatflit.data     : '0;
 
     //if lcrd is zero
     assign rxdat_crd_cnt_zero = (rxdat_crd_cnt_s1_q == {`HNF_LCRD_DAT_CNT_WIDTH{1'b0}});
@@ -99,10 +105,10 @@ module hnf_link_rxdat_parse `HNF_PARAM
     // A credit returned in the cycle the pool reads empty is re-granted at once.
     // Returns are counted even when rxcrd_en is low, or the pool could never
     // refill for a re-activation after a DEACTIVATE.
-    assign rxdat_crd_grant_s0   = rxcrd_en & ((~rxdat_crd_cnt_zero) | li_mshr_rxdat_valid_s0);
+    assign rxdat_crd_grant_s0   = rxcrd_en & ((~rxdat_crd_cnt_zero) | rxdatflitv);
     assign rxdatcrdv_ns_s0      = rxdat_crd_grant_s0;
-    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_s0 | li_mshr_rxdat_valid_s0;
-    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_s0} + {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, li_mshr_rxdat_valid_s0};
+    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_s0 | rxdatflitv;
+    assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_s0} + {{(`HNF_LCRD_DAT_CNT_WIDTH-1){1'b0}}, rxdatflitv};
     assign rxdat_crd_cnt_full   = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_DAT_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t

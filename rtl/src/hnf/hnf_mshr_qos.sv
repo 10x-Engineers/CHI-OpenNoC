@@ -320,10 +320,6 @@ module hnf_mshr_qos `HNF_PARAM
     // packet and Sec 13.10.13 (p.13-420, MUST) forces its TxnID to zero, so a
     // ReqLCrdReturn is not a transaction and owns no entry; Sec 4.5.1 (p.4-197)
     // gives PCrdReturn and PrefetchTgt no completion, so neither owns one either.
-    // Their AllowRetry is zero or unconstrained (Table A-2 p.A-483), which is what
-    // put them on the static path below, spending slots reserved for the retried
-    // requests that path exists for. Dropped here, as snf_rxreq and hni_mshr
-    // already drop them.
     assign li_req_noalloc_s0        = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN)
                                     | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)
                                     | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT);
