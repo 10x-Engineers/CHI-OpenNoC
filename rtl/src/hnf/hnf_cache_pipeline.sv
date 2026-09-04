@@ -2205,17 +2205,17 @@ module hnf_cache_pipeline `HNF_PARAM
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT))begin
                 end
                 else begin
-                    $fatal("mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
+                    $fatal(1, "mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
                 end
                 //mshr_l3_fill_sx1_q check
                 if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) ||
                     (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
-                    $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
+                    $fatal(1, "mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
                 else if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||
                          (mshr_l3_opcode_sx1_q == chie_pkg::REQ_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_EVICT) ||
                          (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANSHARED) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID)) && mshr_l3_fill_sx1_q == 1'b1)begin
-                    $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
+                    $fatal(1, "mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
                 else begin
                 end
@@ -2223,21 +2223,21 @@ module hnf_cache_pipeline `HNF_PARAM
             if(pipe_req_valid_sx_q[SX2])begin
                 //mshr_l3_rnf_sx1_q check
                 if(!pipe_rnfid_found_sx2)begin
-                    $fatal("mshr_l3_rnf_sx1_q ERROR:  rnf = %h ",pipe_rnf_idx_sx_q[SX2][NID_WIDTH-1:0]);
+                    $fatal(1, "mshr_l3_rnf_sx1_q ERROR:  rnf = %h ",pipe_rnf_idx_sx_q[SX2][NID_WIDTH-1:0]);
                 end
             end
             if(pipe_req_valid_sx_q[SX3])begin
                 //loc_state sf_state check
                 for (i = 0; i < `LOC_WAY_NUM; i = i + 1)begin
                     if({loc_rd_clines_q[`LOC_TAG_STATE_CLEAN+i*`LOC_CLINE_WIDTH],loc_rd_clines_q[`LOC_TAG_STATE_VALID+i*`LOC_CLINE_WIDTH]} == 2'b10)begin
-                        $fatal("loc_rd_clines_q ERROR:  loc state = 2'b10 ");
+                        $fatal(1, "loc_rd_clines_q ERROR:  loc state = 2'b10 ");
                     end
                 end
 
                 for (i = 0; i < `SF_WAY_NUM; i = i + 1)begin
                     for(j = 0; j < `RNF_NUM; j = j + 1)begin
                         if({sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2+1],sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2]} == 2'b10)begin
-                            $fatal("sf_rd_clines_q ERROR:  sf state = 2'b10 ");
+                            $fatal(1, "sf_rd_clines_q ERROR:  sf state = 2'b10 ");
                         end
                     end
                 end
@@ -2254,10 +2254,10 @@ module hnf_cache_pipeline `HNF_PARAM
                         end
                     end
                     if(sf_state_u_count > 'd1)begin
-                        $fatal("sf_rd_clines_q ERROR, Unique state has more than one");
+                        $fatal(1, "sf_rd_clines_q ERROR, Unique state has more than one");
                     end
                     if(sf_state_u_count == 'd1 && sf_state_s_count != 'd0)begin
-                        $fatal("sf_rd_clines_q ERROR, Unique states and Share states coexist");
+                        $fatal(1, "sf_rd_clines_q ERROR, Unique states and Share states coexist");
                     end
                 end
             end
@@ -2270,7 +2270,7 @@ module hnf_cache_pipeline `HNF_PARAM
                         end
                     end
                     if(sf_state_u_count != 'd0)begin
-                        $fatal("sf_rd_clines_q and loc_rd_clines_q ERROR, When l3 hit, Snoop Filter contains Unique state");
+                        $fatal(1, "sf_rd_clines_q and loc_rd_clines_q ERROR, When l3 hit, Snoop Filter contains Unique state");
                     end
                 end
             end

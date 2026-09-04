@@ -18,19 +18,15 @@ module xp_sel_bit_from_vec
     #(
          parameter VEC_WIDTH
      )
-     (
-         in_vec,
-         startx,
-         ptr_dec,
-         found
-     );
-    localparam VEC_LOG2_WIDTH = $clog2(VEC_WIDTH);
+    (
     //input
-    input wire [VEC_WIDTH-1:0]  in_vec;
-    input wire [VEC_WIDTH-1:0]  startx;
+    input wire [VEC_WIDTH-1:0] in_vec,
+    input wire [VEC_WIDTH-1:0] startx,
     //output
-    output wire [VEC_WIDTH-1:0] ptr_dec;
-    output wire                 found;
+    output wire [VEC_WIDTH-1:0] ptr_dec,
+    output wire found
+    );
+    localparam VEC_LOG2_WIDTH = $clog2(VEC_WIDTH);
 
     //internal signals
     wire [VEC_WIDTH-1:0]    upper_mask;

@@ -21,98 +21,53 @@
 
 module hnf_mshr_qos `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //input from hnf_link_txrsp_wrap
-        txrsp_mshr_retryack_won_s1,
-        txrsp_mshr_pcrdgnt_won_s2,
-
-        //input from hnf_link_rxreq_parse
-        li_mshr_rxreq_valid_s0,
-        li_mshr_rxreq_qos_s0,
-        li_mshr_rxreq_srcid_s0,
-        li_mshr_rxreq_txnid_s0,
-        li_mshr_rxreq_opcode_s0,
-        li_mshr_rxreq_allowretry_s0,
-        li_mshr_rxreq_tracetag_s0,
-
-        //input from hnf_mshr_ctl
-        mshr_dbf_retired_valid_sx1_q,
-        mshr_dbf_retired_idx_sx1_q,
-
-        //outputs to hnf_link_txrsp_wrap
-        qos_txrsp_retryack_valid_s1,
-        qos_txrsp_retryack_qos_s1,
-        qos_txrsp_retryack_tgtid_s1,
-        qos_txrsp_retryack_txnid_s1,
-        qos_txrsp_retryack_pcrdtype_s1,
-        qos_txrsp_retryack_tracetag_s1,
-        qos_txrsp_pcrdgnt_valid_s2,
-        qos_txrsp_pcrdgnt_qos_s2,
-        qos_txrsp_pcrdgnt_tgtid_s2,
-        qos_txrsp_pcrdgnt_pcrdtype_s2,
-
-        //outputs to hnf_link_rxreq_parse
-        rxreq_retry_enable_s0,
-        qos_active_sx,
-        qos_seq_pool_full_s0_q,
-
-        //outputs to hnf_mshr_global_monitor,ctl and bypass
-        mshr_alloc_en_s0,
-        mshr_alloc_en_s1_q,
-        mshr_entry_idx_alloc_s0,
-        mshr_entry_idx_alloc_s1_q,
-        mshr_entry_alloc_s1_q
-    );
-
     //inputs
-    input wire                                       clk;
-    input wire                                       rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire                                       txrsp_mshr_retryack_won_s1;
-    input wire                                       txrsp_mshr_pcrdgnt_won_s2;
+    input wire txrsp_mshr_retryack_won_s1,
+    input wire txrsp_mshr_pcrdgnt_won_s2,
 
     //inputs from hnf_link_rxreq_parse
-    input wire                                       li_mshr_rxreq_valid_s0;
-    input wire [3:0]        li_mshr_rxreq_qos_s0;
-    input wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0;
-    input wire [11:0]      li_mshr_rxreq_txnid_s0;
-    input chie_pkg::req_opcode_e     li_mshr_rxreq_opcode_s0;
-    input wire li_mshr_rxreq_allowretry_s0;
-    input wire   li_mshr_rxreq_tracetag_s0;
+    input wire li_mshr_rxreq_valid_s0,
+    input wire [3:0] li_mshr_rxreq_qos_s0,
+    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
+    input wire [11:0] li_mshr_rxreq_txnid_s0,
+    input chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
+    input wire li_mshr_rxreq_allowretry_s0,
+    input wire li_mshr_rxreq_tracetag_s0,
 
     //inputs from hnf_mshr_ctl
-    input wire                                       mshr_dbf_retired_valid_sx1_q;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]             mshr_dbf_retired_idx_sx1_q;
+    input wire mshr_dbf_retired_valid_sx1_q,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_retired_idx_sx1_q,
 
     //outputs to hnf_link_txrsp_wrap
-    output wire                                      qos_txrsp_retryack_valid_s1;
-    output wire [3:0]       qos_txrsp_retryack_qos_s1;
-    output wire [chie_pkg::NID_WIDTH-1:0]     qos_txrsp_retryack_tgtid_s1;
-    output wire [11:0]     qos_txrsp_retryack_txnid_s1;
-    output wire [3:0]  qos_txrsp_retryack_pcrdtype_s1;
-    output wire  qos_txrsp_retryack_tracetag_s1;
-    output wire                                      qos_txrsp_pcrdgnt_valid_s2;
-    output wire [3:0]       qos_txrsp_pcrdgnt_qos_s2;
-    output wire [chie_pkg::NID_WIDTH-1:0]     qos_txrsp_pcrdgnt_tgtid_s2;
-    output wire [3:0]  qos_txrsp_pcrdgnt_pcrdtype_s2;
+    output wire qos_txrsp_retryack_valid_s1,
+    output wire [3:0] qos_txrsp_retryack_qos_s1,
+    output wire [chie_pkg::NID_WIDTH-1:0] qos_txrsp_retryack_tgtid_s1,
+    output wire [11:0] qos_txrsp_retryack_txnid_s1,
+    output wire [3:0] qos_txrsp_retryack_pcrdtype_s1,
+    output wire qos_txrsp_retryack_tracetag_s1,
+    output wire qos_txrsp_pcrdgnt_valid_s2,
+    output wire [3:0] qos_txrsp_pcrdgnt_qos_s2,
+    output wire [chie_pkg::NID_WIDTH-1:0] qos_txrsp_pcrdgnt_tgtid_s2,
+    output wire [3:0] qos_txrsp_pcrdgnt_pcrdtype_s2,
 
     //outputs to hnf_link_rxreq_parse
-    output wire                                      rxreq_retry_enable_s0;
-    output logic                                       qos_seq_pool_full_s0_q;
+    output wire rxreq_retry_enable_s0,
+    output logic qos_seq_pool_full_s0_q,
 
     //outputs to hnf: Protocol layer activity (Sec 14.7)
-    output wire                                      qos_active_sx;
+    output wire qos_active_sx,
 
     //outputs to hnf_mshr_global_monitor,ctl and bypass
-    output wire                                      mshr_alloc_en_s0;
-    output logic                                       mshr_alloc_en_s1_q;
-    output wire [`MSHR_ENTRIES_WIDTH-1:0]            mshr_entry_idx_alloc_s0;
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]            mshr_entry_idx_alloc_s1_q;
-    output logic  [`MSHR_ENTRIES_NUM-1:0]              mshr_entry_alloc_s1_q;
+    output wire mshr_alloc_en_s0,
+    output logic mshr_alloc_en_s1_q,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s1_q,
+    output logic  [`MSHR_ENTRIES_NUM-1:0] mshr_entry_alloc_s1_q
+    );
 
     //internal wire signals
     wire                                             qpc_hhigh_s0;

@@ -56,7 +56,7 @@
 `endif
 
 `ifdef DISPLAY_FATAL
-`define display_fatal(flag,info)              if(!(flag)) $fatal(info);
+`define display_fatal(flag,info)              if(!(flag)) $fatal(1, info);
 `endif
 
 `define CACHE_LINE_WIDTH                   CHIE_DATA_WIDTH_PARAM*2

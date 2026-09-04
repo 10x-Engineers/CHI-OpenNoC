@@ -17,41 +17,26 @@
 module sync_fifo #(
         parameter FIFO_ENTRIES_WIDTH = 32,
         parameter FIFO_ENTRIES_DEPTH = 16,
-        parameter FIFO_BYP_ENABLE    = 1'b0
+        parameter FIFO_BYP_ENABLE    = 1'b0,
+        localparam FIFO_PTR_WIDTH = (FIFO_ENTRIES_DEPTH == 1)? 0 : $clog2(FIFO_ENTRIES_DEPTH)
     )
     (
-        // global inputs
-        clk,
-        rst,
-
-        // inputs
-        push,
-        pop,
-        data_in,
-
-        // outputs
-        data_out,
-        empty,
-        full,
-        count
-    );
-    // localparam
-    localparam FIFO_PTR_WIDTH = (FIFO_ENTRIES_DEPTH == 1)? 0 : $clog2(FIFO_ENTRIES_DEPTH);
-
     // global inputs
-    input  wire                          clk;
-    input  wire                          rst;
+    input wire clk,
+    input wire rst,
 
     // inputs
-    input  wire                          push;
-    input  wire                          pop;
-    input  wire [FIFO_ENTRIES_WIDTH-1:0] data_in;
+    input wire push,
+    input wire pop,
+    input wire [FIFO_ENTRIES_WIDTH-1:0] data_in,
 
     // outputs
-    output wire [FIFO_ENTRIES_WIDTH-1:0] data_out;
-    output wire                          empty;
-    output wire                          full;
-    output logic  [FIFO_PTR_WIDTH:0]       count;
+    output wire [FIFO_ENTRIES_WIDTH-1:0] data_out,
+    output wire empty,
+    output wire full,
+    output logic  [FIFO_PTR_WIDTH:0] count
+    );
+    // localparam
 
     // wire
     wire                                 fifo_byp;
@@ -206,7 +191,7 @@ generate if(FIFO_ENTRIES_DEPTH == 1)begin
                    pop_empty_check1 (
                        .clk   (clk),
                        .rst   (rst),
-                       .cond  (pop & ~push & empty & & FIFO_BYP_ENABLE)
+                       .cond  (pop & ~push & empty & FIFO_BYP_ENABLE)
                    );
 `endif
 

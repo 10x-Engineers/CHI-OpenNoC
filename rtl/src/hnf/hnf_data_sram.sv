@@ -105,32 +105,19 @@ endmodule
 `else
 module hnf_data_sram `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_cache_pipeline
-        l3_index_q,
-        l3_rd_ways_q,
-        l3_wr_data_q,
-        l3_wr_ways_q,
-
-        //outputs to hnf_data_buffer
-        l3_rd_data_q
-    );
-
     //global inputs
-    input wire                                clk;
-    input wire                                rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0]         l3_index_q;
-    input wire [`LOC_WAY_NUM-1:0]             l3_rd_ways_q;
-    input wire [`LOC_WAY_NUM-1:0]             l3_wr_ways_q;
-    input wire [`CACHE_LINE_WIDTH-1:0]        l3_wr_data_q;
+    input wire [`LOC_INDEX_WIDTH-1:0] l3_index_q,
+    input wire [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
+    input wire [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
+    input wire [`CACHE_LINE_WIDTH-1:0] l3_wr_data_q,
 
     //outputs to hnf_cache_pipeline
-    output logic [`CACHE_LINE_WIDTH-1:0]        l3_rd_data_q;
+    output logic [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q
+    );
 
     //internal reg signals
     logic [`CACHE_LINE_WIDTH-1:0]               l3_rd_data;

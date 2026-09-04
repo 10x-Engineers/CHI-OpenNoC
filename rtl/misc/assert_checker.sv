@@ -48,7 +48,7 @@ module assert_checker #(
       0: $display("Assertion info level 0: %s", msg);
       1: $warning("Assertion warning level 1: %s", msg);
       2: $error("Assertion failed level 2: %s", msg);
-      3: $fatal("Assertion failed level 3: %s", msg);
+      3: $fatal(1, "Assertion failed level 3: %s", msg);
       default: $fatal(4, "Unsupported security level: %0d", level);
     endcase
   endfunction
