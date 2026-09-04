@@ -705,6 +705,47 @@ module snf_mshr `SNF_PARAM
     //                            AXI SIGNAL                                  //
     //************************************************************************//
 
+    // The AXI mapping of a request depends only on that request, so it is
+    // decoded once here rather than rebuilt inside each of the N entry slots.
+    // unique: Table 2-16 (SS2.10.5 p.2-137) gives Size seven encodings and they
+    // are mutually exclusive, so the arms are a parallel mux, not a chain.
+    logic [`AXI4_AXADDR_WIDTH-1:0] rxreq_axaddr_s0;
+    logic [`AXI4_ARLEN_WIDTH-1:0]  rxreq_axlen_s0;
+    logic [`AXI4_AWSIZE_WIDTH-1:0] rxreq_axsize_s0;
+
+    always_comb begin : rxreq_axi_map_t
+        unique case (rxreq_size_s0)
+            chie_pkg::SIZE_1B  : rxreq_axaddr_s0 =  rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:0];
+            chie_pkg::SIZE_2B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:1],1'b0};
+            chie_pkg::SIZE_4B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:2],2'b0};
+            chie_pkg::SIZE_8B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:3],3'b0};
+            chie_pkg::SIZE_16B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:4],4'b0};
+            chie_pkg::SIZE_32B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:5],5'b0};
+            chie_pkg::SIZE_64B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],6'b0};
+            default            : rxreq_axaddr_s0 = '0;
+        endcase
+
+        unique case (rxreq_size_s0)
+            chie_pkg::SIZE_1B, chie_pkg::SIZE_2B, chie_pkg::SIZE_4B,
+            chie_pkg::SIZE_8B, chie_pkg::SIZE_16B : begin
+                rxreq_axlen_s0  = '0;
+                rxreq_axsize_s0 = rxreq_size_s0;
+            end
+            chie_pkg::SIZE_32B : begin
+                rxreq_axlen_s0  = (`AXI4_AXDATA_WIDTH == 128) ? 8'd1 : 8'd0;
+                rxreq_axsize_s0 = (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101;
+            end
+            chie_pkg::SIZE_64B : begin
+                rxreq_axlen_s0  = (`AXI4_AXDATA_WIDTH == 128) ? 8'd3 : 8'd1; //4len,2len
+                rxreq_axsize_s0 = (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101; //16B,32B
+            end
+            default : begin
+                rxreq_axlen_s0  = '0;
+                rxreq_axsize_s0 = '0;
+            end
+        endcase
+    end
+
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk or posedge rst) begin
@@ -715,24 +756,7 @@ module snf_mshr `SNF_PARAM
                         rxreq_axaddr_s1_q[entry] <= {`AXI4_AXADDR_WIDTH{1'b0}};
                 end
                 else if (rxreq_alloc_en_s0 && (entry == mshr_entry_idx_alloc_s0))begin
-                    case(rxreq_size_s0)
-                            chie_pkg::SIZE_1B  :
-                                    rxreq_axaddr_s1_q[entry] <= rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:0];
-                            chie_pkg::SIZE_2B  :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:1],1'b0};
-                            chie_pkg::SIZE_4B  :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:2],2'b0};
-                            chie_pkg::SIZE_8B  :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:3],3'b0};
-                            chie_pkg::SIZE_16B :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:4],4'b0};
-                            chie_pkg::SIZE_32B :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:5],5'b0};
-                            chie_pkg::SIZE_64B :
-                                    rxreq_axaddr_s1_q[entry] <= {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],6'b0};
-                            default:
-                                    rxreq_axaddr_s1_q[entry] <= {`AXI4_AXADDR_WIDTH{1'b0}};
-                    endcase
+                    rxreq_axaddr_s1_q[entry] <= rxreq_axaddr_s0;
                 end
                 else begin
                         rxreq_axaddr_s1_q[entry] <= rxreq_axaddr_s1_q[entry];
@@ -762,24 +786,8 @@ module snf_mshr `SNF_PARAM
                     rxreq_axsize_s1_q[entry] <= {`AXI4_AWSIZE_WIDTH{1'b0}};
                 end
                 else if (rxreq_alloc_en_s0 && (entry == mshr_entry_idx_alloc_s0))begin
-                    case(rxreq_size_s0)
-                        chie_pkg::SIZE_1B,chie_pkg::SIZE_2B,chie_pkg::SIZE_4B,chie_pkg::SIZE_8B,chie_pkg::SIZE_16B:begin
-                                rxreq_axlen_s1_q[entry] <= {`AXI4_ARLEN_WIDTH{1'b0}};
-                                rxreq_axsize_s1_q[entry] <= rxreq_size_s0;
-                        end
-                        chie_pkg::SIZE_32B : begin
-                                rxreq_axlen_s1_q[entry] <= (`AXI4_AXDATA_WIDTH == 128) ? 8'd1 : 8'd0;
-                                rxreq_axsize_s1_q[entry] <= (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101;
-                        end
-                        chie_pkg::SIZE_64B : begin
-                                rxreq_axlen_s1_q[entry] <= (`AXI4_AXDATA_WIDTH == 128) ? 8'd3 : 8'd1; //4len,2len
-                                rxreq_axsize_s1_q[entry] <= (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101; //16B,32B
-                        end
-                        default: begin
-                                rxreq_axlen_s1_q[entry] <= {`AXI4_ARLEN_WIDTH{1'b0}};
-                                rxreq_axsize_s1_q[entry] <= {`AXI4_AWSIZE_WIDTH{1'b0}};
-                        end
-                    endcase
+                    rxreq_axlen_s1_q[entry]  <= rxreq_axlen_s0;
+                    rxreq_axsize_s1_q[entry] <= rxreq_axsize_s0;
                 end
             end
         end
