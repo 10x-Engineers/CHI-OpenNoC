@@ -101,6 +101,8 @@ module rni_awctrl `RNI_PARAM
     wire [`RNI_BCVEC_WIDTH-1:0]          awlink_bc_vec_s2_w;
     wire [`RNI_DMASK_WIDTH-1:0]          awlink_dmask_s2_w;
     chie_pkg::size_e                     awlink_size_s2_w;
+    wire                                 awlink_lock_s2_w;
+    logic                                aw_excl_r;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_alloc_ptr_s1_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_rdy_s1_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_v_ns_w;
@@ -201,6 +203,7 @@ module rni_awctrl `RNI_PARAM
     logic [`AXI4_AWLEN_WIDTH-1:0]        awctrl_entry_len_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [`AXI4_AWADDR_WIDTH-1:0]       awctrl_entry_addr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [`AXI4_AWSIZE_WIDTH-1:0]       awctrl_entry_size_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_excl_q;
     logic [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_entry_ctmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [`RNI_DMASK_PD_WIDTH-1:0]      awctrl_entry_pdmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_expcompack_q;
@@ -312,7 +315,7 @@ module rni_awctrl `RNI_PARAM
                    ,.awlink_bc_vec_s2_o           (awlink_bc_vec_s2_w     )
                    ,.awlink_dmask_s2_o            (awlink_dmask_s2_w      )
                    ,.awlink_size_s2_o             (awlink_size_s2_w       )
-                   ,.awlink_lock_s2_o             ()
+                   ,.awlink_lock_s2_o             (awlink_lock_s2_w       )
                );
 
 
@@ -462,6 +465,17 @@ module rni_awctrl `RNI_PARAM
                 else begin
                     if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
                         awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0] <= awlink_size_s2_w[`AXI4_AWSIZE_WIDTH-1:0];
+                    end
+                end
+            end
+
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1)begin
+                    awctrl_entry_excl_q[entry] <= 1'b0;
+                end
+                else begin
+                    if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
+                        awctrl_entry_excl_q[entry] <= awlink_lock_s2_w;
                     end
                 end
             end
@@ -881,6 +895,12 @@ module rni_awctrl `RNI_PARAM
     assign aw_cacheable_w = aw_axcache_r[1] & (|aw_axcache_r[3:2]);
 
     always_comb begin
+        aw_excl_r = 1'b0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+            aw_excl_r = aw_excl_r | (awctrl_entry_req_ptr_q[i] & awctrl_entry_excl_q[i]);
+    end
+
+    always_comb begin
         aw_txreqflit_info_r = '0;
         aw_txreqflit_info_r.tgtid = aw_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         aw_txreqflit_info_r.srcid = RNI_NID_PARAM;
@@ -904,6 +924,9 @@ module rni_awctrl `RNI_PARAM
         aw_txreqflit_info_r.memattr.cacheable = aw_cacheable_w;
         aw_txreqflit_info_r.snpattr = aw_cacheable_w;
         aw_txreqflit_info_r.lpid = '0;
+        // SS13.10.27 (p.13-432, MUST) gives WriteNoSnp the Excl bit and
+        // WriteUnique none; see rni_arctrl.sv for the Cacheable case.
+        aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.size = chie_pkg::size_e'(aw_txreqflit_info_r.size | ({`AXI4_AWSIZE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_size_q[i][`AXI4_AWSIZE_WIDTH-1:0]));

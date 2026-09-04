@@ -1355,11 +1355,13 @@ module hnf_mshr_qos `HNF_PARAM
     // Sec 14.7.1 (p.14-460)'s Protocol layer activity, as snf_qos.v computes it:
     // the tracker's occupancy plus the retry state, which that section counts as
     // in progress "until the associated credit has been supplied and used or
-    // returned". Sec 14.7.4 (p.14-463) makes it orthogonal to the LINKACTIVE
-    // states, so it is never the link handshake.
+    // returned" -- a retry-bank entry with a P-Credit still outstanding, not the
+    // bank entry itself, which records a Requester for good. Sec 14.7.4
+    // (p.14-463) makes it orthogonal to the LINKACTIVE states, so it is never
+    // the link handshake.
     assign qos_active_sx = (|mshr_entry_valid_s1_q)
                          | (|mshr_static_entry_valid_s1_q)
-                         | (|ret_bank_entry_v_s1_q)
+                         | (|(ret_bank_entry_v_s1_q & ~(ret_cnt_hh_zero & ret_cnt_h_zero & ret_cnt_m_zero & ret_cnt_l_zero)))
                          | qos_txrsp_retryack_valid_s1
                          | qos_txrsp_pcrdgnt_valid_s2;
     //-----------------------------------------------------------------------------

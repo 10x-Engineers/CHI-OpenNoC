@@ -62,6 +62,9 @@ module rni_arctrl
     wire [`RNI_BCVEC_WIDTH-1:0]          arlink_bc_vec_s2_w;
     wire [`RNI_DMASK_WIDTH-1:0]          arlink_dmask_s2_w;
     wire [`AXI4_ARSIZE_WIDTH-1:0]        arlink_size_s2_w;
+    wire                                 arlink_lock_s2_w;
+    logic                                ar_excl_r;
+    logic [`AXI4_ARSIZE_WIDTH-1:0]       ar_excl_size_r;
     logic [`AXI4_ARCACHE_WIDTH-1:0]      ar_axcache_r;
     wire                                 ar_device_w;
     wire                                 ar_cacheable_w;
@@ -158,6 +161,7 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_alloc_ptr_s2_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_select_rdy_q;
     logic [`AXI4_ARSIZE_WIDTH-1:0]       arctrl_entry_size_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_excl_q;
     logic [`RNI_DMASK_LS_WIDTH-1:0]      arctrl_entry_lsmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [`RNI_BCVEC_WIDTH-1:0]         arctrl_entry_bcvec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_v_q;
@@ -212,7 +216,7 @@ module rni_arctrl
                    ,.arlink_bc_vec_s2_o            (arlink_bc_vec_s2_w     )
                    ,.arlink_dmask_s2_o             (arlink_dmask_s2_w      )
                    ,.arlink_size_s2_o              (arlink_size_s2_w       )
-                   ,.arlink_lock_s2_o              (                       )
+                   ,.arlink_lock_s2_o              (arlink_lock_s2_w       )
                );
 
     poll_with_start_entry
@@ -334,6 +338,17 @@ module rni_arctrl
                 else begin
                     if(arctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
                         arctrl_entry_size_q[entry][`AXI4_ARSIZE_WIDTH-1:0] <= arlink_size_s2_w[`AXI4_ARSIZE_WIDTH-1:0];
+                    end
+                end
+            end
+
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1)begin
+                    arctrl_entry_excl_q[entry] <= 1'b0;
+                end
+                else begin
+                    if(arctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
+                        arctrl_entry_excl_q[entry] <= arlink_lock_s2_w;
                     end
                 end
             end
@@ -655,6 +670,18 @@ module rni_arctrl
     assign ar_device_w    = ~ar_axcache_r[1];
     assign ar_cacheable_w = ar_axcache_r[1] & (|ar_axcache_r[3:2]);
 
+    // The selected entry's AxLOCK, already reduced by rni_segburst to the bursts
+    // one Exclusive ReadNoSnp can carry, and the Size that request owes SS6.3.3.
+    always_comb begin
+        ar_excl_r = 1'b0;
+        ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] = {`AXI4_ARSIZE_WIDTH{1'b0}};
+        for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
+            ar_excl_r = ar_excl_r | (arctrl_entry_req_ptr_q[i] & arctrl_entry_excl_q[i]);
+            ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] = ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] |
+                ({`AXI4_ARSIZE_WIDTH{arctrl_entry_req_ptr_q[i] & arctrl_entry_excl_q[i]}} & arctrl_entry_size_q[i][`AXI4_ARSIZE_WIDTH-1:0]);
+        end
+    end
+
     // The same Device decode, held per entry rather than for the one currently
     // selected: Table 2-11 (Sec 2.9.4 p.2-129) gives every Device row
     // Order=EndpointOrder, so this is "this entry's request is ordered".
@@ -683,7 +710,12 @@ module rni_arctrl
         ar_txreqflit_info_r.memattr.cacheable = ar_cacheable_w;
         ar_txreqflit_info_r.snpattr = ar_cacheable_w;
         ar_txreqflit_info_r.lpid = '0;
-        ar_txreqflit_info_r.size = chie_pkg::SIZE_64B;
+        // SS13.10.27 (p.13-432, MUST) gives ReadNoSnp the Excl bit and ReadOnce
+        // none, so a Cacheable exclusive access is bridged as a plain read; the
+        // Normal OK it then earns is AXI4 A7.2.3's OKAY from a target that does
+        // not support the exclusive access.
+        ar_txreqflit_info_r.excl.excl = ar_excl_r & ~ar_cacheable_w;
+        ar_txreqflit_info_r.size = ar_excl_r ? chie_pkg::size_e'(ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0]) : chie_pkg::SIZE_64B;
         ar_txreqflit_info_r.expcompack = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].qos);

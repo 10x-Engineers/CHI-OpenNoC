@@ -67,12 +67,12 @@ module hnf_mshr_addr_buffer `HNF_PARAM
     input  wire                                mshr_dbf_retired_valid_sx1_q,               //inputs from hnf_mshr_ctl
 
     //input form qos(not use)
-    input  wire [`MSHR_ENTRIES_NUM-1:0]        mshr_entry_alloc_s1_q,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        mshr_entry_alloc_s1_q
 
-    output logic [`MSHR_ENTRIES_NUM-1:0]       abf_internal_evict_addr_valid_sx_q          //outputs to hnf_mshr_ctl
     );
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] abf_sx_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        abf_can_compare_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        abf_internal_evict_addr_valid_sx_q;
     logic                                li_mshr_rxreq_valid_s1_q;
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s1_q;
     logic                                pipe_mshr_addr_valid_sx3_q;

@@ -104,6 +104,9 @@ module rni_segburst `RNI_PARAM
     wire [3:0]                     chi_bc_middle_w;
     wire [3:0]                     chi_bc_last_w;
     wire                           state_enable_w;
+    wire                           axi_excl_shape_w;
+    wire                           axi_excl_s1_w;
+    logic [2:0]                    chi_size_excl_r;
 
     logic                          axi_new_trans_r;
     logic [`SEGB_STATE_WIDTH-1:0]  state_q;
@@ -185,6 +188,23 @@ module rni_segburst `RNI_PARAM
     assign segburst_lock_s2_o                                      = axi_lock_q;
     assign state_enable_w                                   = ~stall_flag_s1_i & axi_valid_s1_i;
 
+    // CHI E.b SS6.3.3 (p.6-291, MUST): a Non-snoopable Exclusive access is 1..64
+    // bytes, address-aligned to its size, and one LP may not have two Exclusive
+    // transactions outstanding -- so AxLOCK is carried only when the burst is a
+    // power-of-two total the segmenter passes as ONE request, and that request's
+    // Size is the burst's byte count rather than the containing chunk's.
+    assign axi_excl_shape_w = (axi_burst_incr_w | (axi_burst_fix_w & ~|axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0])) &
+                              ~overflow_bit_one_w & ~|axi_bytes_subone_w[`AXI_4KB_WIDTH-1:6] &
+                              ~|(axi_bytes_subone_w[5:0] & (axi_bytes_subone_w[5:0] + 6'd1)) &
+                              ~|(axi_addr_in_s1_i[5:0] & axi_bytes_subone_w[5:0]);
+    assign axi_excl_s1_w    = axi_lock_in_s1_i & axi_excl_shape_w & segburst_done_s1_o & (state_q[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS);
+
+    always_comb begin
+        chi_size_excl_r[3-1:0] = 3'd0;
+        for (int i = 0; i < 6; i = i + 1)
+            chi_size_excl_r[3-1:0] = chi_size_excl_r[3-1:0] + {2'b00, axi_bytes_subone_w[i]};
+    end
+
     always_comb begin
         axi_new_trans_r = 1'b0;
         unique case (state_q[`SEGB_STATE_WIDTH-1:0])
@@ -198,7 +218,7 @@ module rni_segburst `RNI_PARAM
                         wrap_multiline_w ? {2'b00,txn_cnt_multi_wrap_w[5:0]} :
                             {2'b00,txn_cnt_single_wrap_w[5:0]} + 1'b1;
                 chi_size_s1_r[3-1:0] = axi_burst_fix_w ? axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] :
-                    (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) ? chi_size_fastpass_w[3-1:0] :
+                    (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) ? (axi_excl_s1_w ? chi_size_excl_r[3-1:0] : chi_size_fastpass_w[3-1:0]) :
                         chi_size_nonfp_w[3-1:0];
             end
             `SEGB_INCR:begin
@@ -635,8 +655,8 @@ module rni_segburst `RNI_PARAM
             axi_lock_q <= 1'b0;
         end
         else begin
-            if(~stall_flag_s1_i)begin
-                axi_lock_q <= axi_lock_in_s1_i;
+            if(segburst_valid_s1_o)begin
+                axi_lock_q <= axi_excl_s1_w;
             end
         end
     end
