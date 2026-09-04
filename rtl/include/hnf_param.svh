@@ -17,13 +17,13 @@
 `ifndef HNF_PARAM_H
 `define HNF_PARAM_H
 `define HNF_PARAM #( \
-     parameter CHIE_REQ_ADDR_WIDTH_PARAM    = 44,    \
-     parameter CHIE_SNP_ADDR_WIDTH_PARAM    = 41,    \
-     parameter CHIE_NID_WIDTH_PARAM         = 7,     \
-     parameter CHIE_DATA_WIDTH_PARAM        = 256,   \
-     parameter CHIE_BE_WIDTH_PARAM          = 32,    \
-     parameter CHIE_DATACHECK_WIDTH_PARAM   = 32,    \
-     parameter CHIE_POISON_WIDTH_PARAM      = 4,     \
+     parameter CHIE_REQ_ADDR_WIDTH_PARAM    = chie_pkg::REQ_ADDR_WIDTH,    \
+     parameter CHIE_SNP_ADDR_WIDTH_PARAM    = chie_pkg::SNP_ADDR_WIDTH,    \
+     parameter CHIE_NID_WIDTH_PARAM         = chie_pkg::NID_WIDTH,     \
+     parameter CHIE_DATA_WIDTH_PARAM        = chie_pkg::DATA_WIDTH,   \
+     parameter CHIE_BE_WIDTH_PARAM          = chie_pkg::BE_WIDTH,    \
+     parameter CHIE_DATACHECK_WIDTH_PARAM   = chie_pkg::DATACHECK_WIDTH,    \
+     parameter CHIE_POISON_WIDTH_PARAM      = chie_pkg::POISON_WIDTH,     \
      parameter CHIE_REQ_RSVDC_WIDTH_PARAM   = 0,     \
      parameter CHIE_DAT_RSVDC_WIDTH_PARAM   = 0,     \
      parameter HNF_MSHR_RNF_NUM_PARAM       = 4,     \

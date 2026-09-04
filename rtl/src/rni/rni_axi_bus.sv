@@ -19,93 +19,50 @@
 
 module rni_axi_bus `RNI_PARAM
     (
-        // AW Channel0
-        AWID0
-        ,AWADDR0
-        ,AWLEN0
-        ,AWSIZE0
-        ,AWBURST0
-        ,AWLOCK0
-        ,AWCACHE0
-        ,AWPROT0
-        ,AWQOS0
-        ,AWREGION0
-        ,AW_CH_S0
-
-        // W Channel0
-        ,WDATA0
-        ,WSTRB0
-        ,WLAST0
-        ,W_CH_S0
-
-        // B Channel0
-        ,BID0
-        ,BRESP0
-        ,B_CH_S0
-
-        // AR Channel0
-        ,ARID0
-        ,ARADDR0
-        ,ARLEN0
-        ,ARSIZE0
-        ,ARBURST0
-        ,ARLOCK0
-        ,ARCACHE0
-        ,ARPROT0
-        ,ARQOS0
-        ,ARREGION0
-        ,AR_CH_S0
-
-        // R Channel0
-        ,RID0
-        ,RDATA0
-        ,RRESP0
-        ,RLAST0
-        ,R_CH_S0
-    );
     // AW Channel0
-    input  wire [`AXI4_AWID_WIDTH-1:0]     AWID0;
-    input  wire [`AXI4_AWADDR_WIDTH-1:0]   AWADDR0;
-    input  wire [`AXI4_AWLEN_WIDTH-1:0]    AWLEN0;
-    input  wire [`AXI4_AWSIZE_WIDTH-1:0]   AWSIZE0;
-    input  wire [`AXI4_AWBURST_WIDTH-1:0]  AWBURST0;
-    input  wire [`AXI4_AWLOCK_WIDTH-1:0]   AWLOCK0;
-    input  wire [`AXI4_AWCACHE_WIDTH-1:0]  AWCACHE0;
-    input  wire [`AXI4_AWPROT_WIDTH-1:0]   AWPROT0;
-    input  wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS0;
-    input  wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0;
-    output wire [`AXI4_AW_WIDTH-1:0]       AW_CH_S0;
+    input wire [`AXI4_AWID_WIDTH-1:0] AWID0,
+    input wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR0,
+    input wire [`AXI4_AWLEN_WIDTH-1:0] AWLEN0,
+    input wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE0,
+    input wire [`AXI4_AWBURST_WIDTH-1:0] AWBURST0,
+    input wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK0,
+    input wire [`AXI4_AWCACHE_WIDTH-1:0] AWCACHE0,
+    input wire [`AXI4_AWPROT_WIDTH-1:0] AWPROT0,
+    input wire [`AXI4_AWQOS_WIDTH-1:0] AWQOS0,
+    input wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
+    output wire [`AXI4_AW_WIDTH-1:0] AW_CH_S0,
 
     // W Channel0
-    input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0;
-    input  wire [`AXI4_WSTRB_WIDTH-1:0]    WSTRB0;
-    input  wire [`AXI4_WLAST_WIDTH-1:0]    WLAST0;
-    output wire [`AXI4_W_WIDTH-1:0]        W_CH_S0;
+    input wire [`AXI4_WDATA_WIDTH-1:0] WDATA0,
+    input wire [`AXI4_WSTRB_WIDTH-1:0] WSTRB0,
+    input wire [`AXI4_WLAST_WIDTH-1:0] WLAST0,
+    output wire [`AXI4_W_WIDTH-1:0] W_CH_S0,
 
     // B Channel0
-    output wire [`AXI4_BID_WIDTH-1:0]      BID0;
-    output wire [`AXI4_BRESP_WIDTH-1:0]    BRESP0;
-    input  wire [`AXI4_B_WIDTH-1:0]        B_CH_S0;
+    output wire [`AXI4_BID_WIDTH-1:0] BID0,
+    output wire [`AXI4_BRESP_WIDTH-1:0] BRESP0,
+    input wire [`AXI4_B_WIDTH-1:0] B_CH_S0,
 
     // AR Channel0
-    input  wire [`AXI4_ARID_WIDTH-1:0]     ARID0;
-    input  wire [`AXI4_ARADDR_WIDTH-1:0]   ARADDR0;
-    input  wire [`AXI4_ARLEN_WIDTH-1:0]    ARLEN0;
-    input  wire [`AXI4_ARSIZE_WIDTH-1:0]   ARSIZE0;
-    input  wire [`AXI4_ARBURST_WIDTH-1:0]  ARBURST0;
-    input  wire [`AXI4_ARLOCK_WIDTH-1:0]   ARLOCK0;
-    input  wire [`AXI4_ARCACHE_WIDTH-1:0]  ARCACHE0;
-    input  wire [`AXI4_ARPROT_WIDTH-1:0]   ARPROT0;
-    input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0;
-    input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0;
-    output wire [`AXI4_AR_WIDTH-1:0]       AR_CH_S0;
+    input wire [`AXI4_ARID_WIDTH-1:0] ARID0,
+    input wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR0,
+    input wire [`AXI4_ARLEN_WIDTH-1:0] ARLEN0,
+    input wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE0,
+    input wire [`AXI4_ARBURST_WIDTH-1:0] ARBURST0,
+    input wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK0,
+    input wire [`AXI4_ARCACHE_WIDTH-1:0] ARCACHE0,
+    input wire [`AXI4_ARPROT_WIDTH-1:0] ARPROT0,
+    input wire [`AXI4_ARQOS_WIDTH-1:0] ARQOS0,
+    input wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
+    output wire [`AXI4_AR_WIDTH-1:0] AR_CH_S0,
 
     // R Channel0
-    output wire [`AXI4_RID_WIDTH-1:0]      RID0;
-    output wire [`AXI4_RDATA_WIDTH-1:0]    RDATA0;
-    output wire [`AXI4_RRESP_WIDTH-1:0]    RRESP0;
-    output wire [`AXI4_RLAST_WIDTH-1:0]    RLAST0;
-    input  wire [`AXI4_R_WIDTH-1:0]        R_CH_S0;
+    output wire [`AXI4_RID_WIDTH-1:0] RID0,
+    output wire [`AXI4_RDATA_WIDTH-1:0] RDATA0,
+    output wire [`AXI4_RRESP_WIDTH-1:0] RRESP0,
+    output wire [`AXI4_RLAST_WIDTH-1:0] RLAST0,
+    input wire [`AXI4_R_WIDTH-1:0] R_CH_S0
+    );
 
     // main function
     assign AW_CH_S0[`AXI4_AWID_RANGE]        = AWID0;

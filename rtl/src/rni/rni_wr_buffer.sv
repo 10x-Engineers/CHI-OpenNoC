@@ -21,115 +21,62 @@
 
 module rni_wr_buffer `RNI_PARAM
     (
-        // global input
-        clk_i
-        ,rst_i
-
-        // Aw_Ctl Interface
-        // AW new request allocate
-        ,aw_alloc_valid_s2_i
-        ,aw_alloc_entry_s2_i
-        ,aw_ctmask_s2_i
-        ,aw_pdmask_s2_i
-        ,aw_bc_vec_s2_i
-
-        // AW request deallocate
-        ,awctrl_dealloc_entry_i
-
-        // AW misc
-        ,wb_req_fifo_pfull_d1_o
-        ,wb_req_done_d3_o
-        ,wb_req_entry_d3_o
-
-        // AW txdatflit fields
-        ,wb_not_busy_d1_o
-        ,txdat_rdy_v_d2_q_i
-        ,txdat_rdy_entry_d2_q_i
-        ,txdat_qos_d2_i
-        ,txdat_compack_d2_i
-        ,txdat_dbid_d2_i
-        ,txdat_tgtid_d2_i
-        ,txdat_ccid_d2_i
-        ,txdat_ctmask_d2_q_i
-        ,wb_txdat_not_busy_d2_o
-
-        // B response fields
-        ,wb_brsp_fifo_pop_d3_o
-        ,brsp_rdy_v_d2_i
-        ,brsp_last_v_d2_q_i
-        ,brsp_axid_d2_i
-        ,brsp_resperr_d2_i
-
-        // W Channel Interface
-        ,W_CH_S0
-        ,WVALID0
-        ,WREADY0
-
-        // B Channel Interface
-        ,B_CH_S0
-        ,BVALID0
-        ,BREADY0
-
-        // Link Ctl Interface
-        ,wb_txdatflit_d3_o
-        ,wb_txdatflitv_d3_o
-        ,wb_txdatflit_sent_d3_i
-    );
     // local parameter
 
     // global input
-    input  wire                                                     clk_i;
-    input  wire                                                     rst_i;
+    input wire clk_i,
+    input wire rst_i,
 
     // Aw_Ctl Interface
     // request allocate
-    input  wire                                                     aw_alloc_valid_s2_i;
-    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                      aw_alloc_entry_s2_i;
-    input  wire [`RNI_DMASK_CT_WIDTH-1:0]                           aw_ctmask_s2_i;
-    input  wire [`RNI_DMASK_PD_WIDTH-1:0]                           aw_pdmask_s2_i;
-    input  wire [`RNI_BCVEC_WIDTH-1:0]                              aw_bc_vec_s2_i;
+    input wire aw_alloc_valid_s2_i,
+    input wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] aw_alloc_entry_s2_i,
+    input wire [`RNI_DMASK_CT_WIDTH-1:0] aw_ctmask_s2_i,
+    input wire [`RNI_DMASK_PD_WIDTH-1:0] aw_pdmask_s2_i,
+    input wire [`RNI_BCVEC_WIDTH-1:0] aw_bc_vec_s2_i,
 
     // request deallocate
-    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                      awctrl_dealloc_entry_i;
+    input wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_dealloc_entry_i,
 
     // misc
-    output wire                                                     wb_req_fifo_pfull_d1_o;
-    output wire                                                     wb_req_done_d3_o;
-    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                      wb_req_entry_d3_o;
+    output wire wb_req_fifo_pfull_d1_o,
+    output wire wb_req_done_d3_o,
+    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_req_entry_d3_o,
 
     // txdatflit request
-    output wire                                                     wb_not_busy_d1_o;
-    input  wire                                                     txdat_rdy_v_d2_q_i;
-    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                      txdat_rdy_entry_d2_q_i;
-    input  wire [`CHIE_DAT_FLIT_QOS_WIDTH-1:0]                      txdat_qos_d2_i;
-    input  wire                                                     txdat_compack_d2_i;
-    input  wire [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]                     txdat_dbid_d2_i;
-    input  wire [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]                    txdat_tgtid_d2_i;
-    input  wire [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]                     txdat_ccid_d2_i;
-    input  wire [`RNI_DMASK_CT_WIDTH-1:0]                           txdat_ctmask_d2_q_i;
-    output wire                                                     wb_txdat_not_busy_d2_o;
+    output wire wb_not_busy_d1_o,
+    input wire txdat_rdy_v_d2_q_i,
+    input wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_rdy_entry_d2_q_i,
+    input wire [3:0] txdat_qos_d2_i,
+    input wire txdat_compack_d2_i,
+    input wire [11:0] txdat_dbid_d2_i,
+    input wire [chie_pkg::NID_WIDTH-1:0] txdat_tgtid_d2_i,
+    input wire [1:0] txdat_ccid_d2_i,
+    input wire [`RNI_DMASK_CT_WIDTH-1:0] txdat_ctmask_d2_q_i,
+    output wire wb_txdat_not_busy_d2_o,
 
     // B response request
-    output wire                                                     wb_brsp_fifo_pop_d3_o;
-    input  wire                                                     brsp_rdy_v_d2_i;
-    input  wire                                                     brsp_last_v_d2_q_i;
-    input  wire [`AXI4_BID_WIDTH-1:0]                               brsp_axid_d2_i;
-    input  wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]                  brsp_resperr_d2_i;
+    output wire wb_brsp_fifo_pop_d3_o,
+    input wire brsp_rdy_v_d2_i,
+    input wire brsp_last_v_d2_q_i,
+    input wire [`AXI4_BID_WIDTH-1:0] brsp_axid_d2_i,
+    input chie_pkg::resp_err_e brsp_resperr_d2_i,
 
     // W Channel Interface
-    input  wire [`AXI4_W_WIDTH-1:0]                                 W_CH_S0;
-    input  wire                                                     WVALID0;
-    output wire                                                     WREADY0;
+    input wire [`AXI4_W_WIDTH-1:0] W_CH_S0,
+    input wire WVALID0,
+    output wire WREADY0,
 
     // B Channel Interface
-    output wire [`AXI4_B_WIDTH-1:0]                                 B_CH_S0;
-    output wire                                                     BVALID0;
-    input  wire                                                     BREADY0;
+    output wire [`AXI4_B_WIDTH-1:0] B_CH_S0,
+    output wire BVALID0,
+    input wire BREADY0,
 
     // Link Ctl Interface
-    output logic  [`CHIE_DAT_FLIT_WIDTH-1:0]                          wb_txdatflit_d3_o;
-    output wire                                                     wb_txdatflitv_d3_o;
-    input  wire                                                     wb_txdatflit_sent_d3_i;
+    output chie_pkg::dat_flit_s wb_txdatflit_d3_o,
+    output wire wb_txdatflitv_d3_o,
+    input wire wb_txdatflit_sent_d3_i
+    );
 
     // wire
     wire                                                            wd_fifo_push_d0_w;
@@ -162,7 +109,7 @@ module rni_wr_buffer `RNI_PARAM
     wire [`BRSP_FIFO_ENTRIES_WIDTH-1:0]                             brsp_fifo_out_d3_w;
     wire                                                            brsp_fifo_empty_w;
     wire                                        brsp_seg_pop_w;
-    logic [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]      brsp_seg_resperr_q;
+    chie_pkg::resp_err_e      brsp_seg_resperr_q;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]                             wr_entry_d1_w;
     wire [`WR_BUFFER_DATA_BANK_NUM-1:0]                             wr_bank_d1_w;
     wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]           wr_wstrb_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
@@ -170,13 +117,13 @@ module rni_wr_buffer `RNI_PARAM
     wire [`WR_BUFFER_DATA_BANK_NUM-1:0]                             w_strb_entry_bank_upd_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     wire                                                            txdat_info_flop_en_d2_w;
     wire [`RNI_DMASK_CT_WIDTH/2-1:0]                                txdat_ctmask_d3_w;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]                            txdat_data_d3_w;
-    wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]                              txdat_be_d3_w;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                           txdatflit_txnid_d3_w;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]                          txdatflit_dataid_d3_w;
-    wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]                              txdatflit_be_d3_w;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]                            txdatflit_data_d3_w;
-    wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]                          txdatflit_opcode_d3_w;
+    wire [chie_pkg::DATA_WIDTH-1:0]                            txdat_data_d3_w;
+    wire [chie_pkg::BE_WIDTH-1:0]                              txdat_be_d3_w;
+    wire [11:0]                           txdatflit_txnid_d3_w;
+    wire [1:0]                          txdatflit_dataid_d3_w;
+    wire [chie_pkg::BE_WIDTH-1:0]                              txdatflit_be_d3_w;
+    wire [chie_pkg::DATA_WIDTH-1:0]                            txdatflit_data_d3_w;
+    chie_pkg::dat_opcode_e                          txdatflit_opcode_d3_w;
     wire                                                            txdat_busy_d2_w;
     wire                                                            wb_busy_d1_w;
 
@@ -185,15 +132,15 @@ module rni_wr_buffer `RNI_PARAM
     logic  [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0]  w_data_d2_q[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     logic  [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0]  txdat_data_d2_r;
     logic  [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]           txdat_be_d2_r;
-    logic  [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                           txdat_rdy_idx_d2_r;
-    logic  [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                           txdat_rdy_idx_d3_q;
+    logic  [11:0]                           txdat_rdy_idx_d2_r;
+    logic  [11:0]                           txdat_rdy_idx_d3_q;
     logic  [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0]  txdat_data_d3_q;
     logic  [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]           txdat_be_d3_q;
-    logic  [`CHIE_DAT_FLIT_QOS_WIDTH-1:0]                             txdat_qos_d3_q;
+    logic  [3:0]                             txdat_qos_d3_q;
     logic                                                             txdat_compack_d3_q;
-    logic  [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]                            txdat_dbid_d3_q;
-    logic  [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]                           txdat_tgtid_d3_q;
-    logic  [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]                            txdat_ccid_d3_q;
+    logic  [11:0]                            txdat_dbid_d3_q;
+    logic  [chie_pkg::NID_WIDTH-1:0]                           txdat_tgtid_d3_q;
+    logic  [1:0]                            txdat_ccid_d3_q;
     logic  [`RNI_DMASK_CT_WIDTH-1:0]                                  txdat_ctmask_d3_q;
     logic                                                             txdat_rdy_v_d3_q;
 
@@ -368,10 +315,10 @@ module rni_wr_buffer `RNI_PARAM
 
     // get index(TxnID) from ready entry vec
     always_comb begin
-        txdat_rdy_idx_d2_r = {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
+        txdat_rdy_idx_d2_r = '0;
         for (int i = 0; i < RNI_AW_ENTRIES_NUM_PARAM; i = i + 1)
             if (txdat_rdy_entry_d2_q_i[i])
-                txdat_rdy_idx_d2_r = i[`CHIE_DAT_FLIT_TXNID_WIDTH-1:0];
+                txdat_rdy_idx_d2_r = i[11:0];
             else
                 txdat_rdy_idx_d2_r = txdat_rdy_idx_d2_r;
     end
@@ -428,21 +375,21 @@ module rni_wr_buffer `RNI_PARAM
     // select high 256 bits or low 256 bits
     assign txdat_ctmask_d3_w = {(|txdat_ctmask_d3_q[3:2]), (|txdat_ctmask_d3_q[1:0])};
 
-    assign txdat_data_d3_w = {`CHIE_DAT_FLIT_DATA_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_data_d3_q[`CHIE_DAT_FLIT_DATA_WIDTH-1:0] |
-           {`CHIE_DAT_FLIT_DATA_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_data_d3_q[(`CHIE_DAT_FLIT_DATA_WIDTH*2)-1:`CHIE_DAT_FLIT_DATA_WIDTH];
+    assign txdat_data_d3_w = {chie_pkg::DATA_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_data_d3_q[chie_pkg::DATA_WIDTH-1:0] |
+           {chie_pkg::DATA_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_data_d3_q[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
 
-    assign txdat_be_d3_w = {`CHIE_DAT_FLIT_BE_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_be_d3_q[`CHIE_DAT_FLIT_BE_WIDTH-1:0] |
-           {`CHIE_DAT_FLIT_BE_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_be_d3_q[(`CHIE_DAT_FLIT_BE_WIDTH*2)-1:`CHIE_DAT_FLIT_BE_WIDTH];
+    assign txdat_be_d3_w = {chie_pkg::BE_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_be_d3_q[chie_pkg::BE_WIDTH-1:0] |
+           {chie_pkg::BE_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_be_d3_q[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
 
     ////////////////////////////////////////////////////////
     // pack txdatflit and Dispatch
     ////////////////////////////////////////////////////////
 
     // txdatflit TxnID
-    assign txdatflit_txnid_d3_w[`CHIE_DAT_FLIT_TXNID_WIDTH-2:0] = txdat_rdy_idx_d3_q[`CHIE_DAT_FLIT_TXNID_WIDTH-2:0];
+    assign txdatflit_txnid_d3_w[12-2:0] = txdat_rdy_idx_d3_q[12-2:0];
 
     // write entry TxnID[MSB] = 1'b1, read entry TxnID[MSB] = 1'b0
-    assign txdatflit_txnid_d3_w[`CHIE_DAT_FLIT_TXNID_WIDTH-1]   = 1'b1;
+    assign txdatflit_txnid_d3_w[12-1]   = 1'b1;
 
     // txdatflit DataID
     assign txdatflit_dataid_d3_w = ({2{txdat_ctmask_d3_w[0]}} & 2'b00) |
@@ -453,35 +400,28 @@ module rni_wr_buffer `RNI_PARAM
 
     // txdatflit Data
     generate
-        for (byt = 0; byt < `CHIE_DAT_FLIT_BE_WIDTH; byt = byt + 1)begin
+        for (byt = 0; byt < chie_pkg::BE_WIDTH; byt = byt + 1)begin
             assign txdatflit_data_d3_w[(8*byt) +: 8] = ({8{txdatflit_be_d3_w[byt]}} & txdat_data_d3_w[(8*byt) +: 8]);
         end
     endgenerate
 
-    generate
-        if(CHIE_DAT_RSVDC_WIDTH_PARAM != 0)begin
-            always_comb begin
-                wb_txdatflit_d3_o[`CHIE_DAT_FLIT_RSVDC_RANGE] = {`CHIE_DAT_FLIT_RSVDC_WIDTH{1'b0}};
-            end
-        end
-    endgenerate
 
 
     // txdatflit Opcode
-    assign txdatflit_opcode_d3_w[`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0] = txdat_compack_d3_q? `CHIE_NCBWRDATACOMPACK : `CHIE_NONCOPYBACKWRDATA;
+    assign txdatflit_opcode_d3_w[4-1:0] = txdat_compack_d3_q? chie_pkg::DAT_NCBWRDATACOMPACK : chie_pkg::DAT_NONCOPYBACKWRDATA;
 
     always_comb begin
-        wb_txdatflit_d3_o                                 = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_QOS_RANGE]       = txdat_qos_d3_q;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_TGTID_RANGE]     = txdat_tgtid_d3_q;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_SRCID_RANGE]     = RNI_NID_PARAM;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_TXNID_RANGE]     = txdat_dbid_d3_q;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_OPCODE_RANGE]    = txdatflit_opcode_d3_w;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_DBID_RANGE]      = txdatflit_txnid_d3_w;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_CCID_RANGE]      = txdat_ccid_d3_q;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_DATAID_RANGE]    = txdatflit_dataid_d3_w;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_BE_RANGE]        = txdatflit_be_d3_w;
-        wb_txdatflit_d3_o[`CHIE_DAT_FLIT_DATA_RANGE]      = txdatflit_data_d3_w;
+        wb_txdatflit_d3_o                                 = '0;
+        wb_txdatflit_d3_o.qos       = txdat_qos_d3_q;
+        wb_txdatflit_d3_o.tgtid     = txdat_tgtid_d3_q;
+        wb_txdatflit_d3_o.srcid     = RNI_NID_PARAM;
+        wb_txdatflit_d3_o.txnid     = txdat_dbid_d3_q;
+        wb_txdatflit_d3_o.opcode    = txdatflit_opcode_d3_w;
+        wb_txdatflit_d3_o.dbid      = txdatflit_txnid_d3_w;
+        wb_txdatflit_d3_o.ccid      = txdat_ccid_d3_q;
+        wb_txdatflit_d3_o.dataid    = txdatflit_dataid_d3_w;
+        wb_txdatflit_d3_o.be        = txdatflit_be_d3_w;
+        wb_txdatflit_d3_o.data      = txdatflit_data_d3_w;
     end
 
     // txdatflit valid
@@ -521,18 +461,18 @@ module rni_wr_buffer `RNI_PARAM
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
-            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+            brsp_seg_resperr_q[2-1:0] <= '0;
         end
         else if (BVALID0 & BREADY0)begin
-            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
+            brsp_seg_resperr_q[2-1:0] <= '0;
         end
         else if (brsp_seg_pop_w)begin
-            brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] <= brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0] | brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE];
+            brsp_seg_resperr_q[2-1:0] <= brsp_seg_resperr_q[2-1:0] | brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE];
         end
     end
 
     assign B_CH_S0[`AXI4_BID_RANGE]   = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? brsp_fifo_out_d3_w[`BRSP_FIFO_AXID_RANGE] : 0;
-    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? (brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE] | brsp_seg_resperr_q[`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]) : 0;
+    assign B_CH_S0[`AXI4_BRESP_RANGE] = brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE]? (brsp_fifo_out_d3_w[`BRSP_FIFO_RESPERR_RANGE] | brsp_seg_resperr_q[2-1:0]) : 0;
 
     assign BVALID0 = ~brsp_fifo_empty_w & brsp_fifo_out_d3_w[`BRSP_FIFO_LAST_RANGE];
 

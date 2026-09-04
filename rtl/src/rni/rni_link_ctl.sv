@@ -21,117 +21,62 @@
 
 module rni_link_ctl `RNI_PARAM
     (
-        // global inputs
-        clk_i
-        ,rst_i
-
-        // link handshake
-        ,TXLINKACTIVEREQ
-        ,TXLINKACTIVEACK
-        ,RXLINKACTIVEREQ
-        ,RXLINKACTIVEACK
-
-        // CHI Interface
-        ,RXRSPFLITPEND
-        ,RXRSPFLITV
-        ,RXRSPFLIT
-        ,RXRSPLCRDV
-        ,RXDATFLITPEND
-        ,RXDATFLITV
-        ,RXDATFLIT
-        ,RXDATLCRDV
-        ,TXDATFLITPEND
-        ,TXDATFLITV
-        ,TXDATFLIT
-        ,TXDATLCRDV
-        ,TXRSPFLITPEND
-        ,TXRSPFLITV
-        ,TXRSPFLIT
-        ,TXRSPLCRDV
-        ,TXREQFLITPEND
-        ,TXREQFLITV
-        ,TXREQFLIT
-        ,TXREQLCRDV
-
-        // input from rni_wr_buffer
-        ,wb_txdatflit_d3_i
-        ,wb_txdatflitv_d3_i
-        ,wb_txdatflit_sent_d3_o
-
-        // input from rni_ar_ctl
-        ,ar_txreqflit_s4_i
-        ,ar_txreqflitv_s4_i
-        ,ar_txreqflit_sent_s4_o
-
-        // input from rni_aw_ctl
-        ,aw_txrspflit_d0_i
-        ,aw_txrspflitv_d0_i
-        ,aw_txrspflit_sent_d0_o
-        ,aw_txreqflit_s4_i
-        ,aw_txreqflitv_s4_i
-        ,aw_txreqflit_sent_s4_o
-
-        // outputs to rni_ar_ctl/rni_aw_ctl/rni_rd_buffer/rni_misc
-        ,rxrspflitv_d1_o
-        ,rxrspflit_d1_q_o
-        ,rxdatflitv_d1_o
-        ,rxdatflit_d1_q_o
-    );
     // global inputs
-    input  wire                            clk_i;
-    input  wire                            rst_i;
+    input wire clk_i,
+    input wire rst_i,
 
     // link handshake
-    output wire                            TXLINKACTIVEREQ;
-    input  wire                            TXLINKACTIVEACK;
-    input  wire                            RXLINKACTIVEREQ;
-    output wire                            RXLINKACTIVEACK;
+    output wire TXLINKACTIVEREQ,
+    input wire TXLINKACTIVEACK,
+    input wire RXLINKACTIVEREQ,
+    output wire RXLINKACTIVEACK,
 
     // CHI Interface
-    input  wire                            RXRSPFLITPEND;
-    input  wire                            RXRSPFLITV;
-    input  wire [`CHIE_RSP_FLIT_RANGE]     RXRSPFLIT;
-    output logic                             RXRSPLCRDV;
-    input  wire                            RXDATFLITPEND;
-    input  wire                            RXDATFLITV;
-    input  wire [`CHIE_DAT_FLIT_RANGE]     RXDATFLIT;
-    output logic                             RXDATLCRDV;
-    output wire                            TXDATFLITPEND;
-    output wire                            TXDATFLITV;
-    output wire [`CHIE_DAT_FLIT_RANGE]     TXDATFLIT;
-    input  wire                            TXDATLCRDV;
-    output wire                            TXRSPFLITPEND;
-    output wire                            TXRSPFLITV;
-    output wire [`CHIE_RSP_FLIT_RANGE]     TXRSPFLIT;
-    input  wire                            TXRSPLCRDV;
-    output wire                            TXREQFLITPEND;
-    output wire                            TXREQFLITV;
-    output wire [`CHIE_REQ_FLIT_RANGE]     TXREQFLIT;
-    input  wire                            TXREQLCRDV;
+    input wire RXRSPFLITPEND,
+    input wire RXRSPFLITV,
+    input chie_pkg::rsp_flit_s RXRSPFLIT,
+    output logic RXRSPLCRDV,
+    input wire RXDATFLITPEND,
+    input wire RXDATFLITV,
+    input chie_pkg::dat_flit_s RXDATFLIT,
+    output logic RXDATLCRDV,
+    output wire TXDATFLITPEND,
+    output wire TXDATFLITV,
+    output chie_pkg::dat_flit_s TXDATFLIT,
+    input wire TXDATLCRDV,
+    output wire TXRSPFLITPEND,
+    output wire TXRSPFLITV,
+    output chie_pkg::rsp_flit_s TXRSPFLIT,
+    input wire TXRSPLCRDV,
+    output wire TXREQFLITPEND,
+    output wire TXREQFLITV,
+    output chie_pkg::req_flit_s TXREQFLIT,
+    input wire TXREQLCRDV,
 
     // rni_wr_buffer Interface
-    input  wire [`CHIE_DAT_FLIT_WIDTH-1:0] wb_txdatflit_d3_i;
-    input  wire                            wb_txdatflitv_d3_i;
-    output wire                            wb_txdatflit_sent_d3_o;
+    input chie_pkg::dat_flit_s wb_txdatflit_d3_i,
+    input wire wb_txdatflitv_d3_i,
+    output wire wb_txdatflit_sent_d3_o,
 
     // rni_ar_ctl Interface
-    input  wire [`CHIE_REQ_FLIT_WIDTH-1:0] ar_txreqflit_s4_i;
-    input  wire                            ar_txreqflitv_s4_i;
-    output wire                            ar_txreqflit_sent_s4_o;
+    input chie_pkg::req_flit_s ar_txreqflit_s4_i,
+    input wire ar_txreqflitv_s4_i,
+    output wire ar_txreqflit_sent_s4_o,
 
     // rni_aw_ctl Interface
-    input  wire [`CHIE_RSP_FLIT_WIDTH-1:0] aw_txrspflit_d0_i;
-    input  wire                            aw_txrspflitv_d0_i;
-    output wire                            aw_txrspflit_sent_d0_o;
-    input  wire [`CHIE_REQ_FLIT_WIDTH-1:0] aw_txreqflit_s4_i;
-    input  wire                            aw_txreqflitv_s4_i;
-    output wire                            aw_txreqflit_sent_s4_o;
+    input chie_pkg::rsp_flit_s aw_txrspflit_d0_i,
+    input wire aw_txrspflitv_d0_i,
+    output wire aw_txrspflit_sent_d0_o,
+    input chie_pkg::req_flit_s aw_txreqflit_s4_i,
+    input wire aw_txreqflitv_s4_i,
+    output wire aw_txreqflit_sent_s4_o,
 
     // outputs to rni_ar_ctl/rni_aw_ctl/rni_rd_buffer/rni_misc
-    output wire                            rxrspflitv_d1_o;
-    output logic  [`CHIE_RSP_FLIT_RANGE]     rxrspflit_d1_q_o;
-    output wire                            rxdatflitv_d1_o;
-    output logic  [`CHIE_DAT_FLIT_RANGE]     rxdatflit_d1_q_o;
+    output wire rxrspflitv_d1_o,
+    output chie_pkg::rsp_flit_s rxrspflit_d1_q_o,
+    output wire rxdatflitv_d1_o,
+    output chie_pkg::dat_flit_s rxdatflit_d1_q_o
+    );
 
     // internal wire
     wire                                   rxrsplcrdv_d1_w;
@@ -143,20 +88,17 @@ module rni_link_ctl `RNI_PARAM
     wire                                   txdat_lcrd_avail_d3_w;
     wire                                   txrsp_lcrd_avail_d0_w;
     wire                                   txreq_lcrd_avail_s4_w;
-    wire                                   txdatflitv_en_w;
-    wire [`CHIE_DAT_FLIT_RANGE]            txdatflit_d3_w;
+    wire                                   txdatflitv_en_w;chie_pkg::dat_flit_s            txdatflit_d3_w;
     wire                                   ax_txrspflitv_d0_w;
     wire                                   ax_txrspflit_upd_d0_w;
     wire                                   ax_txrspflit_sel_d0_w;
     wire                                   ax_txrspflit_sent_d0_w;
-    wire                                   txrspflitv_en_w;
-    wire [`CHIE_RSP_FLIT_RANGE]            txrspflit_d0_w;
+    wire                                   txrspflitv_en_w;chie_pkg::rsp_flit_s            txrspflit_d0_w;
     wire [1:0]                             ax_txreqflitv_s4_w;
     wire                                   ax_txreqflit_upd_s4_w;
     wire [1:0]                             ax_txreqflit_sel_s4_w;
     wire                                   ax_txreqflit_sent_s4_w;
-    wire                                   txreqflitv_en_w;
-    wire [`CHIE_REQ_FLIT_RANGE]            txreqflit_s4_w;
+    wire                                   txreqflitv_en_w;chie_pkg::req_flit_s            txreqflit_s4_w;
     wire [`LL_STATE_WIDTH-1:0]             txlink_state;
     wire [`LL_STATE_WIDTH-1:0]             rxlink_state;
     wire                                   txflit_avail;
@@ -175,15 +117,9 @@ module rni_link_ctl `RNI_PARAM
     logic                                    rxrspflitv_d1_q;
     logic                                    rxdatflitpend_d1_q;
     logic                                    rxdatflitv_d1_q;
-    logic                                    txdatflitv_d4_q;
-    logic  [`CHIE_DAT_FLIT_RANGE]            txdatflit_d4_q;
-    logic                                    txrspflitv_d1_q;
-    logic  [`CHIE_RSP_FLIT_RANGE]            txrspflit_d1_q;
-    logic                                    txreqflitv_s5_q;
-    logic  [`CHIE_REQ_FLIT_RANGE]            txreqflit_s5_q;
-    logic  [`CHIE_DAT_FLIT_RANGE]            txdatflit_lcrd_d4;
-    logic  [`CHIE_RSP_FLIT_RANGE]            txrspflit_lcrd_d4;
-    logic  [`CHIE_REQ_FLIT_RANGE]            txreqflit_lcrd_d4;
+    logic                                    txdatflitv_d4_q;chie_pkg::dat_flit_s            txdatflit_d4_q;
+    logic                                    txrspflitv_d1_q;chie_pkg::rsp_flit_s            txrspflit_d1_q;
+    logic                                    txreqflitv_s5_q;chie_pkg::req_flit_s            txreqflit_s5_q;chie_pkg::dat_flit_s            txdatflit_lcrd_d4;chie_pkg::rsp_flit_s            txrspflit_lcrd_d4;chie_pkg::req_flit_s            txreqflit_lcrd_d4;
 
     // local parameter
     localparam XP_LCRD_NUM_PARAM = 15;
@@ -228,11 +164,11 @@ module rni_link_ctl `RNI_PARAM
 
     always_comb begin
         if(rst_i == 1'b1)begin
-            txdatflit_lcrd_d4[`CHIE_DAT_FLIT_WIDTH-1:0] = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit_lcrd_d4 = '0;
         end
         else begin
-            txdatflit_lcrd_d4[`CHIE_DAT_FLIT_OPCODE_MSB:`CHIE_DAT_FLIT_OPCODE_LSB] = `CHIE_DATLCRDRETURN;
-            txdatflit_lcrd_d4[`CHIE_DAT_FLIT_SRCID_MSB:`CHIE_DAT_FLIT_SRCID_LSB]  = RNI_NID_PARAM;
+            txdatflit_lcrd_d4.opcode = chie_pkg::DAT_DATLCRDRETURN;
+            txdatflit_lcrd_d4.srcid  = RNI_NID_PARAM;
         end
     end
 
@@ -240,11 +176,11 @@ module rni_link_ctl `RNI_PARAM
 
     always_comb begin
         if(rst_i == 1'b1)begin
-            txrspflit_lcrd_d4 = {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflit_lcrd_d4 = '0;
         end
         else begin
-            txrspflit_lcrd_d4[`CHIE_RSP_FLIT_OPCODE_RANGE] = `CHIE_RSPLCRDRETURN;
-            txrspflit_lcrd_d4[`CHIE_RSP_FLIT_SRCID_RANGE]  = RNI_NID_PARAM;
+            txrspflit_lcrd_d4.opcode = chie_pkg::RSP_RSPLCRDRETURN;
+            txrspflit_lcrd_d4.srcid  = RNI_NID_PARAM;
         end
     end
 
@@ -252,11 +188,11 @@ module rni_link_ctl `RNI_PARAM
 
     always_comb begin
         if(rst_i == 1'b1)begin
-            txreqflit_lcrd_d4 = {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+            txreqflit_lcrd_d4 = '0;
         end
         else begin
-            txreqflit_lcrd_d4[`CHIE_REQ_FLIT_OPCODE_RANGE] = `CHIE_REQLCRDRETURN;
-            txreqflit_lcrd_d4[`CHIE_REQ_FLIT_SRCID_RANGE]  = RNI_NID_PARAM;
+            txreqflit_lcrd_d4.opcode = chie_pkg::REQ_REQLCRDRETURN;
+            txreqflit_lcrd_d4.srcid  = RNI_NID_PARAM;
         end
     end
 
@@ -282,12 +218,12 @@ module rni_link_ctl `RNI_PARAM
             rxrspflitv_d1_q <= RXRSPFLITV;
     end
 
-    assign rxrspflitv_d1_o = rxrspflitv_d1_q & (rxrspflit_d1_q_o[`CHIE_RSP_FLIT_OPCODE_RANGE] != `CHIE_RSPLCRDRETURN);
+    assign rxrspflitv_d1_o = rxrspflitv_d1_q & (rxrspflit_d1_q_o.opcode != chie_pkg::RSP_RSPLCRDRETURN);
 
     // RXRSPFLITPEND is used when LINKFLITPEND_EN assert on
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
-            rxrspflit_d1_q_o <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            rxrspflit_d1_q_o <= '0;
 `ifdef LINKFLITPEND_EN
 
         else if (rxrspflitpend_d1_q == 1'b1 && RXRSPFLITV == 1'b1)
@@ -342,12 +278,12 @@ module rni_link_ctl `RNI_PARAM
             rxdatflitv_d1_q <= RXDATFLITV;
     end
 
-    assign rxdatflitv_d1_o = rxdatflitv_d1_q & (rxdatflit_d1_q_o[`CHIE_DAT_FLIT_OPCODE_RANGE] != `CHIE_DATLCRDRETURN);
+    assign rxdatflitv_d1_o = rxdatflitv_d1_q & (rxdatflit_d1_q_o.opcode != chie_pkg::DAT_DATLCRDRETURN);
 
     // RXDATFLITPEND is used when LINKFLITPEND_EN assert on
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
-            rxdatflit_d1_q_o <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            rxdatflit_d1_q_o <= '0;
 `ifdef LINKFLITPEND_EN
 
         else if (rxdatflitpend_d1_q == 1'b1 && RXDATFLITV == 1'b1)
@@ -417,7 +353,7 @@ module rni_link_ctl `RNI_PARAM
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
-            txdatflit_d4_q <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit_d4_q <= '0;
         else if (wb_txdatflit_sent_d3_o == 1'b1)
             txdatflit_d4_q <= txdatflit_d3_w;
     end
@@ -473,11 +409,11 @@ module rni_link_ctl `RNI_PARAM
 
     assign TXRSPFLITV = txrspflitv_d1_q;
 
-    assign txrspflit_d0_w = txrspflit_lcrd_v? txrspflit_lcrd_d4 : ({`CHIE_RSP_FLIT_WIDTH{ax_txrspflit_sel_d0_w}} & aw_txrspflit_d0_i);
+    assign txrspflit_d0_w = txrspflit_lcrd_v? txrspflit_lcrd_d4 : ({chie_pkg::RSP_FLIT_WIDTH{ax_txrspflit_sel_d0_w}} & aw_txrspflit_d0_i);
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
-            txrspflit_d1_q <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflit_d1_q <= '0;
         else if (ax_txrspflit_sent_d0_w == 1'b1)
             txrspflit_d1_q <= txrspflit_d0_w;
     end
@@ -534,12 +470,12 @@ module rni_link_ctl `RNI_PARAM
 
     assign TXREQFLITV = txreqflitv_s5_q;
 
-    assign txreqflit_s4_w = txreqflit_lcrd_v? txreqflit_lcrd_d4 : (({`CHIE_REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[0]}} & ar_txreqflit_s4_i) |
-            ({`CHIE_REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[1]}} & aw_txreqflit_s4_i));
+    assign txreqflit_s4_w = txreqflit_lcrd_v? txreqflit_lcrd_d4 : (({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[0]}} & ar_txreqflit_s4_i) |
+            ({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[1]}} & aw_txreqflit_s4_i));
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
-            txreqflit_s5_q <= {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+            txreqflit_s5_q <= '0;
         else if (ax_txreqflit_sent_s4_w == 1'b1)
             txreqflit_s5_q <= txreqflit_s4_w;
     end

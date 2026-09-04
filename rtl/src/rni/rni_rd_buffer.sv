@@ -24,65 +24,39 @@
 
 module rni_rd_buffer `RNI_PARAM
     (
-        //global port
-        clk_i
-        ,rst_i
-
-        //from rni_link_ctl
-        ,rxdatflitv_d1_i
-        ,rxdatflit_d1_i
-
-        //to rni_arctrl
-        ,rxdatflitv_d1_o
-        ,rxdatflit_txnid_d1_o
-        ,rxdatflit_dataid_d1_o
-        ,rp_fifo_acpt_d4_o
-
-        //from rni_arctrl
-        ,arctrl_rb_valid_d4_i
-        ,arctrl_rb_idx_d4_i
-        ,arctrl_rb_ctmask_d4_i
-        ,arctrl_rb_rlast_d4_i
-        ,arctrl_rb_rid_d4_i
-        ,arctrl_rb_bc_d4_i
-
-        //to rni_axi_bus
-        ,R_CH_S0
-        ,RVALID0
-        ,RREADY0
-    );
     //global port
-    input  wire                                     clk_i;
-    input  wire                                     rst_i;
+    input wire clk_i,
+    input wire rst_i,
 
     //from rni_link_ctl
-    input  wire                                     rxdatflitv_d1_i;
-    input  wire [`CHIE_DAT_FLIT_WIDTH-1:0]          rxdatflit_d1_i;
+    input wire rxdatflitv_d1_i,
+    input chie_pkg::dat_flit_s rxdatflit_d1_i,
 
     //to rni_arctrl
-    output wire                                     rxdatflitv_d1_o;
-    output wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]    rxdatflit_txnid_d1_o;
-    output wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   rxdatflit_dataid_d1_o;
-    output wire                                     rp_fifo_acpt_d4_o;
+    output wire rxdatflitv_d1_o,
+    output wire [11:0] rxdatflit_txnid_d1_o,
+    output wire [1:0] rxdatflit_dataid_d1_o,
+    output wire rp_fifo_acpt_d4_o,
 
     //from rni_arctrl
-    input  wire                                     arctrl_rb_valid_d4_i;
-    input  wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]       arctrl_rb_idx_d4_i;
-    input  wire [`RNI_DMASK_CT_WIDTH-1:0]           arctrl_rb_ctmask_d4_i;
-    input  wire                                     arctrl_rb_rlast_d4_i;
-    input  wire [`AXI4_RID_WIDTH-1:0]               arctrl_rb_rid_d4_i;
-    input  wire [`RNI_BC_WIDTH-1:0]                 arctrl_rb_bc_d4_i;
+    input wire arctrl_rb_valid_d4_i,
+    input wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] arctrl_rb_idx_d4_i,
+    input wire [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rb_ctmask_d4_i,
+    input wire arctrl_rb_rlast_d4_i,
+    input wire [`AXI4_RID_WIDTH-1:0] arctrl_rb_rid_d4_i,
+    input wire [`RNI_BC_WIDTH-1:0] arctrl_rb_bc_d4_i,
 
     //to rni_axi_bus
-    output wire [`AXI4_R_WIDTH-1:0]                 R_CH_S0;
-    output wire                                     RVALID0;
-    input  wire                                     RREADY0;
+    output wire [`AXI4_R_WIDTH-1:0] R_CH_S0,
+    output wire RVALID0,
+    input wire RREADY0
+    );
 
     //wire
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]           txnid_d1_w;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]          dataid_d1_w;
-    wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]            data_d1_w;
-    wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]         resperr_d1_w;
+    wire [11:0]           txnid_d1_w;
+    wire [1:0]          dataid_d1_w;
+    wire [chie_pkg::DATA_WIDTH-1:0]            data_d1_w;
+    chie_pkg::resp_err_e         resperr_d1_w;
     wire                                            rdata_last_d4_w;
     wire [`AXI4_RID_WIDTH-1:0]                      rdata_rid_d4_w;
     wire [`RNI_BC_WIDTH-1:0]                        rdata_bc_d4_w;
@@ -114,7 +88,7 @@ module rni_rd_buffer `RNI_PARAM
     wire [`RNI_RD_BANK_NUM-1:0]                     data_bank_vec_d4_w;
     wire [`RNI_DMASK_CT_WIDTH-1:0]                  data_bank_ctmask_d4_w;
     wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              data_bank_idx_d4_w [`RNI_RD_BANK_NUM-1:0];
-    wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]         data_bank_resperr_d4_w [`RNI_RD_BANK_NUM-1:0];
+    chie_pkg::resp_err_e         data_bank_resperr_d4_w [`RNI_RD_BANK_NUM-1:0];
     wire [`RNI_RD_BANK_NUM-1:0]                     resperr_bank_wren_d2_w [RNI_AR_ENTRIES_NUM_PARAM-1:0];
     wire [`AXI4_RDATA_WIDTH-1:0]                    rdata_128_d4_w [`RNI_RD_BANK_NUM-1:0];
     wire [`AXI4_RDATA_WIDTH-1:0]                    rdata_256_d4_w [(`RNI_RD_BANK_NUM/2)-1:0];
@@ -143,21 +117,21 @@ module rni_rd_buffer `RNI_PARAM
 
     //reg
     logic                                             rxdatflitv_d2_q;
-    logic  [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]          dataid_d2_q;
-    logic  [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]            data_d2_q;
-    logic  [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]           txnid_d2_q;
-    logic  [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]         resperr_d2_q;
-    logic  [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]         resperr_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
+    logic  [1:0]          dataid_d2_q;
+    logic  [chie_pkg::DATA_WIDTH-1:0]            data_d2_q;
+    logic  [11:0]           txnid_d2_q;
+    chie_pkg::resp_err_e         resperr_d2_q;
+    chie_pkg::resp_err_e         resperr_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
     logic  [`RNI_BC_WIDTH-1:0]                        bcount_q;
 
     genvar bank;
     genvar entry;
 
     //rxdatflit decode
-    assign txnid_d1_w   = rxdatflit_d1_i [`CHIE_DAT_FLIT_TXNID_RANGE];
-    assign dataid_d1_w  = rxdatflit_d1_i [`CHIE_DAT_FLIT_DATAID_RANGE];
-    assign data_d1_w    = rxdatflit_d1_i [`CHIE_DAT_FLIT_DATA_RANGE];
-    assign resperr_d1_w = rxdatflit_d1_i [`CHIE_DAT_FLIT_RESPERR_RANGE];
+    assign txnid_d1_w   = rxdatflit_d1_i.txnid;
+    assign dataid_d1_w  = rxdatflit_d1_i.dataid;
+    assign data_d1_w    = rxdatflit_d1_i.data;
+    assign resperr_d1_w = rxdatflit_d1_i.resperr;
 
     //arctrl request decode
     assign rdata_rid_d4_w  = arctrl_rb_rid_d4_i;
@@ -280,7 +254,7 @@ generate for (entry=0; entry<RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1)begin
             assign data_bank_vec_d4_w[bank]     = arctrl_rb_valid_d4_i & rp_fifo_avail_d4_w & arctrl_rb_ctmask_d4_i[bank];
             assign data_bank_ctmask_d4_w[bank]  = data_bank_vec_d4_w[bank]? arctrl_rb_ctmask_d4_i[bank] : 0;
             assign data_bank_idx_d4_w[bank]     = data_bank_vec_d4_w[bank]? arctrl_rb_idx_d4_i : 0;
-            assign data_bank_resperr_d4_w[bank] = data_bank_vec_d4_w[bank]? resperr_bank_d3_q[arctrl_rb_idx_d4_i][bank] : 0;
+            assign data_bank_resperr_d4_w[bank] = data_bank_vec_d4_w[bank]? resperr_bank_d3_q[arctrl_rb_idx_d4_i][bank] : chie_pkg::RESP_ERR_NORM_OK;
         end
     endgenerate
 
@@ -482,8 +456,8 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                        // SS2.3.1 Fig 2-2 gives a read two completion shapes and the
                        // Home elects which, so DataSepResp is as legal on RXDAT as
                        // CompData -- Table B-4 (p.B-496) lists both to an RN-I.
-                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_OPCODE_RANGE] != `CHIE_COMPDATA)
-                                               & (rxdatflit_d1_i[`CHIE_DAT_FLIT_OPCODE_RANGE] != `CHIE_DATASEPRESP))
+                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i.opcode != chie_pkg::DAT_COMPDATA)
+                                               & (rxdatflit_d1_i.opcode != chie_pkg::DAT_DATASEPRESP))
                    );
 
     assert_checker #(
@@ -492,7 +466,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    rxdatflit_tgtid_check (
                        .clk   (clk_i),
                        .rst   (rst_i),
-                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_TGTID_RANGE] !== RNI_NID_PARAM))
+                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i.tgtid !== RNI_NID_PARAM))
                    );
 
     assert_checker #(
@@ -501,7 +475,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    rxdatflit_data_error_check (
                        .clk   (clk_i),
                        .rst   (rst_i),
-                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_RESPERR_RANGE] == 2'b10))
+                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i.resperr == 2'b10))
                    );
 
     assert_checker #(
@@ -510,7 +484,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    rxdatflit_non_data_error_check (
                        .clk   (clk_i),
                        .rst   (rst_i),
-                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i[`CHIE_DAT_FLIT_RESPERR_RANGE] == 2'b11))
+                       .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i.resperr == 2'b11))
                    );
 `endif
 endmodule

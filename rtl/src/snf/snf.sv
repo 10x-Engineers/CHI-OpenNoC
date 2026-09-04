@@ -493,4 +493,11 @@ module snf `SNF_PARAM
             .bvalid_sx(BVALID),
             .bready_sx(BREADY)
         );
+    // chie_pkg's flit layout has no RSVDC field; this refuses a build that
+    // declares one rather than silently shifting every field.
+    chie_flit_rsvdc_check #(
+        .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
+        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM)
+    ) u_chie_flit_rsvdc_check ();
+
 endmodule

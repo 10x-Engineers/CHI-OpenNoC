@@ -22,41 +22,24 @@
 
 module rni_arlink
     `RNI_PARAM
-        (
-            clk_i
-            ,rst_i
+    (
+    input wire clk_i,
+    input wire rst_i,
 
-            ,ARVALID
-            ,AR_CH_S0
-            ,alloc_busy_s1_i
+    input wire ARVALID,
+    input wire [`AXI4_AR_WIDTH-1:0] AR_CH_S0,
+    input wire alloc_busy_s1_i,
 
-            ,ARREADY
-            ,arlink_arbus_s1_o
+    output wire ARREADY,
+    output wire [`AXI4_AR_WIDTH-1:0] arlink_arbus_s1_o,
 
-            ,arlink_valid_s1_o
-            ,arlink_addr_s1_o
-            ,arlink_bc_vec_s2_o
-            ,arlink_dmask_s2_o
-            ,arlink_size_s2_o
-            ,arlink_lock_s2_o
-        );
-
-    input  wire                                 clk_i;
-    input  wire                                 rst_i;
-
-    input  wire                                 ARVALID;
-    input  wire [`AXI4_AR_WIDTH-1:0]            AR_CH_S0;
-    input  wire                                 alloc_busy_s1_i;
-
-    output wire                                 ARREADY;
-    output wire [`AXI4_AR_WIDTH-1:0]            arlink_arbus_s1_o;
-
-    output wire                                 arlink_valid_s1_o;
-    output wire [`AXI4_ARADDR_WIDTH-1:0]        arlink_addr_s1_o;
-    output wire [`RNI_BCVEC_WIDTH-1:0]          arlink_bc_vec_s2_o;
-    output wire [`RNI_DMASK_WIDTH-1:0]          arlink_dmask_s2_o;
-    output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] arlink_size_s2_o;
-    output wire                                 arlink_lock_s2_o;
+    output wire arlink_valid_s1_o,
+    output wire [`AXI4_ARADDR_WIDTH-1:0] arlink_addr_s1_o,
+    output wire [`RNI_BCVEC_WIDTH-1:0] arlink_bc_vec_s2_o,
+    output wire [`RNI_DMASK_WIDTH-1:0] arlink_dmask_s2_o,
+    output chie_pkg::size_e arlink_size_s2_o,
+    output wire arlink_lock_s2_o
+    );
 
 
     wire                           segburst_done_s1_w;

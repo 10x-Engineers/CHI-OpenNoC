@@ -21,38 +21,22 @@
 
 module rni_bcount_ctl
     (
-        // global input
-        clk,
-        rst,
-
-        // input
-        rq_valid,
-        wd_valid,
-        bcount_vec,
-        ctmask,
-        pdmask,
-
-        // output
-        fdmask,
-        bk_done,
-        rq_done
-    );
-
     // global input
-    input  wire                 clk;
-    input  wire                 rst;
+    input wire clk,
+    input wire rst,
 
     // input
-    input  wire                 rq_valid;
-    input  wire                 wd_valid;
-    input  wire [16-1:0]        bcount_vec;
-    input  wire [4-1:0]         ctmask;
-    input  wire [4-1:0]         pdmask;
+    input wire rq_valid,
+    input wire wd_valid,
+    input wire [16-1:0] bcount_vec,
+    input wire [4-1:0] ctmask,
+    input wire [4-1:0] pdmask,
 
     // output
-    output wire [4-1:0]         fdmask;
-    output wire                 bk_done;
-    output wire                 rq_done;
+    output wire [4-1:0] fdmask,
+    output wire bk_done,
+    output wire rq_done
+    );
 
     // wire
     wire [4-1:0]                fdmask_nxt;

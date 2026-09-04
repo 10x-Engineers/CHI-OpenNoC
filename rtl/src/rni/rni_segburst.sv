@@ -33,60 +33,34 @@
 
 module rni_segburst `RNI_PARAM
     (
-
-        // Global inputs
-        clk_i
-        ,rst_i
-        /////////////////////////////////////////////////////////////
-        // Inputs
-        /////////////////////////////////////////////////////////////
-        ,axi_valid_s1_i
-        ,axi_addr_in_s1_i
-        ,axi_len_in_s1_i
-        ,axi_size_in_s1_i
-        ,axi_burst_s1_i
-        ,axi_lock_in_s1_i
-        ,stall_flag_s1_i
-
-        /////////////////////////////////////////////////////////////
-        // Outputs
-        /////////////////////////////////////////////////////////////
-        ,segburst_valid_s1_o
-        ,segburst_addr_s1_o
-        ,segburst_done_s1_o
-        ,segburst_bc_vec_s2_o
-        ,segburst_dmask_s2_o
-        ,segburst_size_s2_o
-        ,segburst_lock_s2_o
-    );
-
     // Global inputs
-    input wire           clk_i;
-    input wire           rst_i ;
+    input wire clk_i,
+    input wire rst_i,
 
     // Strap inputs
 
     /////////////////////////////////////////////////////////////
     // Inputs
     /////////////////////////////////////////////////////////////
-    input wire                              axi_valid_s1_i;
-    input wire  [`AXI4_AWADDR_WIDTH-1:0]    axi_addr_in_s1_i;
-    input wire  [`AXI4_AWLEN_WIDTH-1:0]     axi_len_in_s1_i;
-    input wire  [`AXI4_AWSIZE_WIDTH-1:0]    axi_size_in_s1_i;
-    input wire  [`AXI4_AWBURST_WIDTH-1:0]   axi_burst_s1_i;
-    input wire                              axi_lock_in_s1_i;
-    input wire                              stall_flag_s1_i;
+    input wire axi_valid_s1_i,
+    input wire  [`AXI4_AWADDR_WIDTH-1:0] axi_addr_in_s1_i,
+    input wire  [`AXI4_AWLEN_WIDTH-1:0] axi_len_in_s1_i,
+    input wire  [`AXI4_AWSIZE_WIDTH-1:0] axi_size_in_s1_i,
+    input wire  [`AXI4_AWBURST_WIDTH-1:0] axi_burst_s1_i,
+    input wire axi_lock_in_s1_i,
+    input wire stall_flag_s1_i,
 
     /////////////////////////////////////////////////////////////
     // Outputs
     /////////////////////////////////////////////////////////////
-    output logic                                      segburst_valid_s1_o;
-    output logic [`AXI4_AWADDR_WIDTH-1:0]             segburst_addr_s1_o;
-    output logic                                      segburst_done_s1_o;
-    output logic [`RNI_BCVEC_WIDTH-1:0]               segburst_bc_vec_s2_o;
-    output wire [`RNI_DMASK_WIDTH-1:0]              segburst_dmask_s2_o;
-    output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]     segburst_size_s2_o;
-    output wire                                     segburst_lock_s2_o;
+    output logic segburst_valid_s1_o,
+    output logic [`AXI4_AWADDR_WIDTH-1:0] segburst_addr_s1_o,
+    output logic segburst_done_s1_o,
+    output logic [`RNI_BCVEC_WIDTH-1:0] segburst_bc_vec_s2_o,
+    output wire [`RNI_DMASK_WIDTH-1:0] segburst_dmask_s2_o,
+    output chie_pkg::size_e segburst_size_s2_o,
+    output wire segburst_lock_s2_o
+    );
 
 
     //#
@@ -122,11 +96,11 @@ module rni_segburst `RNI_PARAM
     wire                                        overflow_bit_four_w;
     wire                                        overflow_bit_five_w;
     wire [`AXI_4KB_WIDTH-1:0]                   axi_last_trans_addr_w;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_fastpass_w;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_nonfp_w;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_s1_w;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_first_s1_w;
-    wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_second_s1_w;
+    chie_pkg::size_e        chi_size_fastpass_w;
+    chie_pkg::size_e        chi_size_nonfp_w;
+    chie_pkg::size_e        chi_size_sl_wrap_s1_w;
+    chie_pkg::size_e        chi_size_sl_wrap_first_s1_w;
+    chie_pkg::size_e        chi_size_sl_wrap_second_s1_w;
     wire [3:0]                                  chi_bc_first_w;
     wire [3:0]                                  chi_bc_middle_w;
     wire [3:0]                                  chi_bc_last_w;
@@ -136,23 +110,23 @@ module rni_segburst `RNI_PARAM
     logic  [`SEGB_STATE_WIDTH-1:0]                state_q;
     logic  [`SEGB_STATE_WIDTH-1:0]                state_nxt_r;
     logic  [7:0]                                  txn_cnt_s1_r;
-    logic  [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_s1_r;
+    chie_pkg::size_e        chi_size_s1_r;
     logic  [7:0]                                  txn_cnt_q;
     logic  [`AXI4_AWADDR_WIDTH-1:0]               axi_addr_in_q;
     logic  [`AXI4_AWADDR_WIDTH-1:0]               axi_addr_q;
     logic  [`AXI4_AWADDR_WIDTH-1:0]               addr_boundary_wrap_q;
     logic  [`AXI4_AWADDR_WIDTH-1:0]               addr_multiline_wrap_final_q;
     logic  [`AXI_4KB_WIDTH-1:0]                   axi_last_trans_addr_q;
-    logic  [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_q;
-    logic  [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_first_q;
-    logic  [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_sl_wrap_second_q;
+    chie_pkg::size_e        chi_size_sl_wrap_q;
+    chie_pkg::size_e        chi_size_sl_wrap_first_q;
+    chie_pkg::size_e        chi_size_sl_wrap_second_q;
     logic  [`RNI_DMASK_WIDTH-1:0]                 segburst_dmask_q;
     logic  [3:0]                                  chi_ct_vec_s1_r;
     logic  [3:0]                                  chi_pd_vec_s1_r;
     logic  [3:0]                                  chi_ls_vec_s1_r;
     logic  [`RNI_BCVEC_WIDTH-1:0]                 chi_bc_vec_s1_r;
     logic  [`RNI_DMASK_WIDTH-1:0]                 segburst_dmask_s1_r;
-    logic  [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]        chi_size_q;
+    chie_pkg::size_e        chi_size_q;
     logic                                         axi_lock_q;
 
     assign axi_burst_fix_w       = ~|axi_burst_s1_i[`AXI4_AWBURST_WIDTH-1:0];
@@ -197,18 +171,18 @@ module rni_segburst `RNI_PARAM
 
     assign {overflow_bit_five_w,axi_last_trans_addr_w[`AXI_4KB_WIDTH-1:0]} = axi_addr_align_w[`AXI_4KB_WIDTH-1:0] + ({1'b0,axi_len_mul_size_w[`AXI_4KB_WIDTH-1:0]});
     //The size of fastpass/segb_singleline_wrap is only 16B and 64B
-    assign chi_size_fastpass_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]            = (axi_last_trans_addr_w[5:4] == axi_addr_align_w[5:4]) ? 3'b100 : ((axi_last_trans_addr_w[5] == axi_addr_align_w[5]) ? 3'b101 : 3'b110);
-    assign chi_size_nonfp_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]               = axi_addr_align_w[5:4] == 2'b11 ? 3'b100 : (axi_addr_align_w[5:4] == 2'b10) ? 3'b101 : 3'b110;
-    assign chi_size_sl_wrap_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]          = (axi_len_mul_size_w[5:4] == 2'b00) ? 3'b100 : (axi_len_mul_size_w[5:4] == 2'b01) ? 3'b101 : 3'b110;
-    assign chi_size_sl_wrap_first_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]    = (chi_addr_sl_wrap_first_tail_w[5:4] == axi_addr_align_w[5:4]) ? 3'b100 : ((chi_addr_sl_wrap_first_tail_w[5] == axi_addr_align_w[5]) ? 3'b101 :3'b110);
-    assign chi_size_sl_wrap_second_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]   = (chi_addr_sl_wrap_second_tail_w[5:4] == addr_boundary_wrap_s1_w[5:4]) ? 3'b100 : ((chi_addr_sl_wrap_second_tail_w[5] == addr_boundary_wrap_s1_w[5]) ? 3'b101 : 3'b110);
+    assign chi_size_fastpass_w[3-1:0]            = (axi_last_trans_addr_w[5:4] == axi_addr_align_w[5:4]) ? 3'b100 : ((axi_last_trans_addr_w[5] == axi_addr_align_w[5]) ? 3'b101 : 3'b110);
+    assign chi_size_nonfp_w[3-1:0]               = axi_addr_align_w[5:4] == 2'b11 ? 3'b100 : (axi_addr_align_w[5:4] == 2'b10) ? 3'b101 : 3'b110;
+    assign chi_size_sl_wrap_s1_w[3-1:0]          = (axi_len_mul_size_w[5:4] == 2'b00) ? 3'b100 : (axi_len_mul_size_w[5:4] == 2'b01) ? 3'b101 : 3'b110;
+    assign chi_size_sl_wrap_first_s1_w[3-1:0]    = (chi_addr_sl_wrap_first_tail_w[5:4] == axi_addr_align_w[5:4]) ? 3'b100 : ((chi_addr_sl_wrap_first_tail_w[5] == axi_addr_align_w[5]) ? 3'b101 :3'b110);
+    assign chi_size_sl_wrap_second_s1_w[3-1:0]   = (chi_addr_sl_wrap_second_tail_w[5:4] == addr_boundary_wrap_s1_w[5:4]) ? 3'b100 : ((chi_addr_sl_wrap_second_tail_w[5] == addr_boundary_wrap_s1_w[5]) ? 3'b101 : 3'b110);
 
     assign chi_bc_first_w[3:0]            = (~axi_addr_align_w[3:0]) >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
     assign chi_bc_middle_w[3:0]           = 4'b1111 >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
     assign chi_bc_last_w[3:0]             = (addr_plus_bytes_w[3:0]) >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
 
     assign segburst_dmask_s2_o[`RNI_DMASK_WIDTH-1:0]          = segburst_dmask_q[`RNI_DMASK_WIDTH-1:0];
-    assign segburst_size_s2_o[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]       = chi_size_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+    assign segburst_size_s2_o[3-1:0]       = chi_size_q[3-1:0];
     assign segburst_lock_s2_o                                      = axi_lock_q;
     assign state_enable_w                                   = ~stall_flag_s1_i & axi_valid_s1_i;
 
@@ -224,16 +198,16 @@ module rni_segburst `RNI_PARAM
                     axi_burst_incr_w ? {2'b00,cacheline_cnt_incr_w[5:0]} :
                         wrap_multiline_w ? {2'b00,txn_cnt_multi_wrap_w[5:0]} :
                             {2'b00,txn_cnt_single_wrap_w[5:0]} + 1'b1;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = axi_burst_fix_w ? axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] :
-                    (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) ? chi_size_fastpass_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] :
-                        chi_size_nonfp_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_s1_r[3-1:0] = axi_burst_fix_w ? axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] :
+                    (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) ? chi_size_fastpass_w[3-1:0] :
+                        chi_size_nonfp_w[3-1:0];
             end
             `SEGB_INCR:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i;
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = ({{`SEGB_CACHE_OFFSET{1'b0}}, axi_addr_q[`AXI4_AWADDR_WIDTH-1:`SEGB_CACHE_OFFSET]} + 1'b1) << `SEGB_CACHE_OFFSET;
                 segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
                 txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = ((txn_cnt_q[7:0]-1'b1) != 0) ? 3'b110 : (axi_last_trans_addr_q[5:4] == 2'b00) ? 3'b100 : (axi_last_trans_addr_q[5:4] == 2'b01) ? 3'b101 : 3'b110;
+                chi_size_s1_r[3-1:0] = ((txn_cnt_q[7:0]-1'b1) != 0) ? 3'b110 : (axi_last_trans_addr_q[5:4] == 2'b00) ? 3'b100 : (axi_last_trans_addr_q[5:4] == 2'b01) ? 3'b101 : 3'b110;
             end
             `SEGB_MULTILINE_WRAP:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i;
@@ -242,35 +216,35 @@ module rni_segburst `RNI_PARAM
 
                 segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
                 txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = ((txn_cnt_q[7:0]-1'b1) != 0) ? 3'b110 : (axi_last_trans_addr_q[5:4] == 2'b00) ? 3'b100 : (axi_last_trans_addr_q[5:4] == 2'b01) ? 3'b101 : 3'b110;
+                chi_size_s1_r[3-1:0] = ((txn_cnt_q[7:0]-1'b1) != 0) ? 3'b110 : (axi_last_trans_addr_q[5:4] == 2'b00) ? 3'b100 : (axi_last_trans_addr_q[5:4] == 2'b01) ? 3'b101 : 3'b110;
             end
             `SEGB_SINGLELINE_WRAP:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i & ((txn_cnt_q[7:0]-1'b1) == 0);
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = axi_addr_q[`AXI4_AWADDR_WIDTH-1:0];
                 segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
                 txn_cnt_s1_r[7:0] = ((txn_cnt_q[7:0]-1'b1) == 0) ? txn_cnt_q[7:0] - 1'b1 : txn_cnt_q[7:0];
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = chi_size_sl_wrap_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_s1_r[3-1:0] = chi_size_sl_wrap_q[3-1:0];
             end
             `SEGB_SINGLELINE_WRAP_FIRST_PART:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i;
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = axi_addr_q[`AXI4_AWADDR_WIDTH-1:0];
                 segburst_done_s1_o = 1'b0;
                 txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = chi_size_sl_wrap_first_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_s1_r[3-1:0] = chi_size_sl_wrap_first_q[3-1:0];
             end
             `SEGB_SINGLELINE_WRAP_SECOND_PART:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i;
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = addr_boundary_wrap_q[`AXI4_AWADDR_WIDTH-1:0];
                 segburst_done_s1_o = segburst_valid_s1_o & ~stall_flag_s1_i;
                 txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = chi_size_sl_wrap_second_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_s1_r[3-1:0] = chi_size_sl_wrap_second_q[3-1:0];
             end
             default: begin
                 segburst_valid_s1_o = 1'bX;
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = {`AXI4_AWADDR_WIDTH{1'bX}};
                 segburst_done_s1_o = 1'bX;
                 txn_cnt_s1_r[7:0] = 8'bX;
-                chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] = {`CHIE_REQ_FLIT_SIZE_WIDTH{1'bX}};
+                chi_size_s1_r[3-1:0] = {3{1'bX}};
             end
         endcase
     end
@@ -714,31 +688,31 @@ module rni_segburst `RNI_PARAM
 
     always_ff @(posedge clk_i or posedge rst_i ) begin
         if (rst_i == 1'b1)begin
-            chi_size_sl_wrap_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= {`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+            chi_size_sl_wrap_q[3-1:0] <= '0;
         end
         else begin
             if(axi_new_trans_r)begin
-                chi_size_sl_wrap_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= chi_size_sl_wrap_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_sl_wrap_q[3-1:0] <= chi_size_sl_wrap_s1_w[3-1:0];
             end
         end
     end
     always_ff @(posedge clk_i or posedge rst_i ) begin
         if (rst_i == 1'b1)begin
-            chi_size_sl_wrap_first_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= {`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+            chi_size_sl_wrap_first_q[3-1:0] <= '0;
         end
         else begin
             if(axi_new_trans_r)begin
-                chi_size_sl_wrap_first_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= chi_size_sl_wrap_first_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_sl_wrap_first_q[3-1:0] <= chi_size_sl_wrap_first_s1_w[3-1:0];
             end
         end
     end
     always_ff @(posedge clk_i or posedge rst_i ) begin
         if (rst_i == 1'b1)begin
-            chi_size_sl_wrap_second_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= {`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+            chi_size_sl_wrap_second_q[3-1:0] <= '0;
         end
         else begin
             if(axi_new_trans_r)begin
-                chi_size_sl_wrap_second_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= chi_size_sl_wrap_second_s1_w[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_sl_wrap_second_q[3-1:0] <= chi_size_sl_wrap_second_s1_w[3-1:0];
             end
         end
     end
@@ -767,11 +741,11 @@ module rni_segburst `RNI_PARAM
 
     always_ff @(posedge clk_i or posedge rst_i ) begin
         if (rst_i == 1'b1)begin
-            chi_size_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= {`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+            chi_size_q[3-1:0] <= '0;
         end
         else begin
             if(segburst_valid_s1_o)begin
-                chi_size_q[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0] <= chi_size_s1_r[`CHIE_REQ_FLIT_SIZE_WIDTH-1:0];
+                chi_size_q[3-1:0] <= chi_size_s1_r[3-1:0];
             end
         end
     end

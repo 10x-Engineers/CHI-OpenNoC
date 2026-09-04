@@ -37,6 +37,7 @@ package chie_pkg;
   parameter int BE_WIDTH        = DATA_WIDTH / 8;    // one byte enable per data byte
   parameter int DATACHECK_WIDTH = DATA_WIDTH / 8;    // SS9.6: one odd-parity bit per byte
   parameter int POISON_WIDTH    = DATA_WIDTH / 64;   // SS9.5: one bit per 8-byte chunk
+  parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
 
