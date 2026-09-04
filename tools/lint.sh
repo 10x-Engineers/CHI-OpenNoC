@@ -67,7 +67,9 @@ for n in "${NODES[@]}"; do
   # chie_pkg.sv is listed rather than left to -Iinclude: Verilator resolves a
   # missing *module* from the include path by filename, but not a package.
   out=$(verilator --lint-only -Wno-fatal --top-module "$n" \
-          -Iinclude -Imisc -I"src/$n" include/chie_pkg.sv include/snf_pkg.sv src/"$n"/*.sv 2>&1)
+          -Iinclude -Imisc -I"src/$n" include/chie_pkg.sv \
+          $([ -f "include/opennoc_${n}_pkg.sv" ] && echo "include/opennoc_${n}_pkg.sv") \
+          misc/chie_flit_rsvdc_check.sv src/"$n"/*.sv 2>&1)
   echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
 
   if echo "$out" | grep -q "^%Error"; then

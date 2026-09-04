@@ -16,60 +16,41 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
 
 module hni_txdat `HNI_PARAM
     (
-        clk,
-        rst,
-
-        txdat_lcrdv,
-        lcrd_return_en,
-        txlink_run,
-        txdat_flit_avail,
-
-        dbf_txdat_valid_sx,
-        txdat_flit,
-
-        txdatflitv,
-        txdatflit,
-        txdatflitpend,
-
-        txdat_dbf_rdy_s1,
-        txdat_dbf_won_sx
-    );
-
     //global inputs
-    input wire                                    clk;
-    input wire                                    rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hni_link
-    input wire                                    txdat_lcrdv;
+    input wire txdat_lcrdv,
     // CHI E.b Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Transmitter must
     // return credits using Protocol flits or L-Credit return flits" -- an all-zero
     // flit, whose Opcode field is that channel's LCrdReturn (SS13.11 p.13-442).
-    input wire                                    lcrd_return_en;
+    input wire lcrd_return_en,
     // Table 14-3 (p.14-451, MUST): no flit is sent outside the RUN state.
-    input wire                                    txlink_run;
+    input wire txlink_run,
     // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
     // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
-    output wire                                   txdat_flit_avail;
+    output wire txdat_flit_avail,
 
     //inputs from hni_data_buffer
-    input wire                                    dbf_txdat_valid_sx;
-    input wire [`CHIE_DAT_FLIT_RANGE]             txdat_flit;
+    input wire dbf_txdat_valid_sx,
+    input chie_pkg::dat_flit_s txdat_flit,
 
     //outputs to hni_link
-    output logic                                    txdatflitv;
-    output logic  [`CHIE_DAT_FLIT_RANGE]            txdatflit;
-    output wire                                   txdatflitpend;
+    output logic txdatflitv,
+    output chie_pkg::dat_flit_s txdatflit,
+    output wire txdatflitpend,
 
     //outputs to hni_dbf
-    output  wire                                  txdat_dbf_rdy_s1;
-    output  wire                                  txdat_dbf_won_sx;
+    output wire txdat_dbf_rdy_s1,
+    output wire txdat_dbf_won_sx
+    );
     //internal reg signals
     logic [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]           txdat_crd_cnt_q;
     logic [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]           dat_crd_cnt_ns_s0;
@@ -106,12 +87,12 @@ module hni_txdat `HNI_PARAM
     //txdatflit sending logic
     always_ff @(posedge clk or posedge rst) begin: txdatflit_logic_t
         if(rst == 1'b1)begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b0;
             txdat_dbf_won_q <= 1'b0;
         end
         else if(txdat_lcrd_rtn_sx == 1'b1)begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b1;
             txdat_dbf_won_q <= 1'b0;
         end
@@ -121,7 +102,7 @@ module hni_txdat `HNI_PARAM
             txdat_dbf_won_q <= 1'b1;
         end
         else begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b0;
             txdat_dbf_won_q <= 1'b0;
         end

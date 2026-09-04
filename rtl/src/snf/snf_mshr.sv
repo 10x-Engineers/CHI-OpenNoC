@@ -17,7 +17,6 @@
 *    Guo Bing <guobing@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "snf_defines.svh"
 `include "snf_param.svh"

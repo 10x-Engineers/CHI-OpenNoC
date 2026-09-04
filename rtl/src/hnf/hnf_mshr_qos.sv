@@ -16,7 +16,6 @@
 *    Chunyan Lin <linchunyan@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
@@ -78,12 +77,12 @@ module hnf_mshr_qos `HNF_PARAM
 
     //inputs from hnf_link_rxreq_parse
     input wire                                       li_mshr_rxreq_valid_s0;
-    input wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]        li_mshr_rxreq_qos_s0;
-    input wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0;
-    input wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]      li_mshr_rxreq_txnid_s0;
-    input wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]     li_mshr_rxreq_opcode_s0;
-    input wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0] li_mshr_rxreq_allowretry_s0;
-    input wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]   li_mshr_rxreq_tracetag_s0;
+    input wire [3:0]        li_mshr_rxreq_qos_s0;
+    input wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0;
+    input wire [11:0]      li_mshr_rxreq_txnid_s0;
+    input chie_pkg::req_opcode_e     li_mshr_rxreq_opcode_s0;
+    input wire li_mshr_rxreq_allowretry_s0;
+    input wire   li_mshr_rxreq_tracetag_s0;
 
     //inputs from hnf_mshr_ctl
     input wire                                       mshr_dbf_retired_valid_sx1_q;
@@ -91,15 +90,15 @@ module hnf_mshr_qos `HNF_PARAM
 
     //outputs to hnf_link_txrsp_wrap
     output wire                                      qos_txrsp_retryack_valid_s1;
-    output wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]       qos_txrsp_retryack_qos_s1;
-    output wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]     qos_txrsp_retryack_tgtid_s1;
-    output wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]     qos_txrsp_retryack_txnid_s1;
-    output wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]  qos_txrsp_retryack_pcrdtype_s1;
-    output wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]  qos_txrsp_retryack_tracetag_s1;
+    output wire [3:0]       qos_txrsp_retryack_qos_s1;
+    output wire [chie_pkg::NID_WIDTH-1:0]     qos_txrsp_retryack_tgtid_s1;
+    output wire [11:0]     qos_txrsp_retryack_txnid_s1;
+    output wire [3:0]  qos_txrsp_retryack_pcrdtype_s1;
+    output wire  qos_txrsp_retryack_tracetag_s1;
     output wire                                      qos_txrsp_pcrdgnt_valid_s2;
-    output wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]       qos_txrsp_pcrdgnt_qos_s2;
-    output wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]     qos_txrsp_pcrdgnt_tgtid_s2;
-    output wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]  qos_txrsp_pcrdgnt_pcrdtype_s2;
+    output wire [3:0]       qos_txrsp_pcrdgnt_qos_s2;
+    output wire [chie_pkg::NID_WIDTH-1:0]     qos_txrsp_pcrdgnt_tgtid_s2;
+    output wire [3:0]  qos_txrsp_pcrdgnt_pcrdtype_s2;
 
     //outputs to hnf_link_rxreq_parse
     output wire                                      rxreq_retry_enable_s0;
@@ -133,7 +132,7 @@ module hnf_mshr_qos `HNF_PARAM
     wire                                             li_req_static_avail_s0;
     wire                                             li_req_noalloc_s0;
     wire                                             li_req_dyn_alloc_fail_s0;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]         li_mshr_rxreq_pcrdtype_s0;
+    wire [3:0]         li_mshr_rxreq_pcrdtype_s0;
     wire                                             mshr_dyn_or_seq_alloc_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                     mshr_dyn_entry_idx_avail_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                     mshr_static_entry_idx_avail_s0;
@@ -188,9 +187,9 @@ module hnf_mshr_qos `HNF_PARAM
     wire [`QOS_CLASS_WIDTH-1:0]                      qos_class_pool_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                     qos_class_pool_flop_en_s1;
     wire                                             mark_mshr_static_sx1;
-    wire [`RETRY_ACKQ_DATA_RANGE]                    retry_ackq_datain_s0;
+    chie_pkg::retry_ackq_s                    retry_ackq_datain_s0;
     wire                                             hnf_pcrdtype_enable_sx;
-    wire [`PCRDGRANTQ_DATA_RANGE]                    pcrdgrant_fifo_datain_s2;
+    chie_pkg::pcrdgrantq_s                    pcrdgrant_fifo_datain_s2;
     wire [`RET_BANK_ENTRIES_NUM-1:0]                 ret_bank_srcid_match_vec_s0;
     wire                                             ret_bank_alloc_en_s0;
     wire [`RET_BANK_ENTRIES_NUM-1:0]                 ret_bank_entry_v_s0;
@@ -257,14 +256,14 @@ module hnf_mshr_qos `HNF_PARAM
     wire [`RET_BANK_ENTRIES_NUM-1:0]                 ret_cnt_m_dec_ptr_s1;
     wire [`RET_BANK_ENTRIES_NUM-1:0]                 ret_cnt_l_dec_ptr_s1;
     wire                                             pcrdgnt_req_enable_s1;
-    wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]            pcrdgnt_srcid_s2;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]              pcrdgnt_qos_s2;
-    wire [`RETRY_ACKQ_DATA_RANGE]                    retry_ack_fifo_dataout_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]            pcrdgnt_srcid_s2;
+    wire [3:0]              pcrdgnt_qos_s2;
+    chie_pkg::retry_ackq_s                    retry_ack_fifo_dataout_s1;
     wire                                             retry_ack_fifo_empty;
     wire                                             retry_ack_fifo_full;
     wire                                             retry_ack_fifo_push;
     wire                                             retry_ack_fifo_pop;
-    wire [`PCRDGRANTQ_DATA_RANGE]                    pcrdgrant_fifo_dataout_s2;
+    chie_pkg::pcrdgrantq_s                    pcrdgrant_fifo_dataout_s2;
     wire                                             pcrdgrant_fifo_empty;
     wire                                             pcrdgrant_fifo_full;
     wire                                             pcrdgrant_fifo_push;
@@ -296,8 +295,8 @@ module hnf_mshr_qos `HNF_PARAM
     logic [`QOS_CLASS_WIDTH-1:0]                       qos_class_pool_s2_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`QOS_CLASS_WIDTH-1:0]                       qos_class_pool_s1_q;
     logic                                              mshr_dyn_or_seq_alloc_s1_q;
-    logic [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]          pcrdgnt_pcrdtype_s2;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             ret_bank_srcid_s1_q[0:`RET_BANK_ENTRIES_NUM-1];
+    logic [3:0]          pcrdgnt_pcrdtype_s2;
+    logic [chie_pkg::NID_WIDTH-1:0]             ret_bank_srcid_s1_q[0:`RET_BANK_ENTRIES_NUM-1];
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_bank_entry_v_s1_q;
     logic [`RET_BANK_ENTRIES_WIDTH-1:0]                ret_bank_entry_idx_s1_q;
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_bank_entry_ptr_s0;
@@ -320,19 +319,19 @@ module hnf_mshr_qos `HNF_PARAM
     logic [`MAX_WAIT_CNT_WIDTH-1:0]                    h_wait_cnt_ns;
     logic [`MAX_WAIT_CNT_WIDTH-1:0]                    m_wait_cnt_ns;
     logic [`MAX_WAIT_CNT_WIDTH-1:0]                    l_wait_cnt_ns;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             hh_pcrdgrant_srcid_s1;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             h_pcrdgrant_srcid_s1;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             m_pcrdgrant_srcid_s1;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             l_pcrdgrant_srcid_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]             hh_pcrdgrant_srcid_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]             h_pcrdgrant_srcid_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]             m_pcrdgrant_srcid_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]             l_pcrdgrant_srcid_s1;
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_cnt_hh_dec_ptr_s2_q;
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_cnt_h_dec_ptr_s2_q;
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_cnt_m_dec_ptr_s2_q;
     logic [`RET_BANK_ENTRIES_NUM-1:0]                  ret_cnt_l_dec_ptr_s2_q;
     logic                                              pcrdgnt_req_enable_s2_q;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             hh_pcrdgrant_srcid_s2_q;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             h_pcrdgrant_srcid_s2_q;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             m_pcrdgrant_srcid_s2_q;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             l_pcrdgrant_srcid_s2_q;
+    logic [chie_pkg::NID_WIDTH-1:0]             hh_pcrdgrant_srcid_s2_q;
+    logic [chie_pkg::NID_WIDTH-1:0]             h_pcrdgrant_srcid_s2_q;
+    logic [chie_pkg::NID_WIDTH-1:0]             m_pcrdgrant_srcid_s2_q;
+    logic [chie_pkg::NID_WIDTH-1:0]             l_pcrdgrant_srcid_s2_q;
 
     //qos_hhigh_decode
     assign qpc_hhigh_s0 = (li_mshr_rxreq_qos_s0 >= `QOS_HHIGH_MIN)?1'b1:1'b0;
@@ -370,14 +369,14 @@ module hnf_mshr_qos `HNF_PARAM
     // put them on the static path below, spending slots reserved for the retried
     // requests that path exists for. Dropped here, as snf_rxreq and hni_mshr
     // already drop them.
-    assign li_req_noalloc_s0        = (li_mshr_rxreq_opcode_s0 == `CHIE_REQLCRDRETURN)
-                                    | (li_mshr_rxreq_opcode_s0 == `CHIE_PCRDRETURN)
-                                    | (li_mshr_rxreq_opcode_s0 == `CHIE_PREFETCHTGT);
+    assign li_req_noalloc_s0        = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN)
+                                    | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)
+                                    | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT);
 
     assign li_req_dyn_s0            = li_mshr_rxreq_valid_s0 & li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
     assign li_req_static_s0         = li_mshr_rxreq_valid_s0 & ~li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
 
-    assign li_req_dyn_alloc_s0      = li_req_dyn_s0 & li_req_qos_can_alloc_s0 & (li_mshr_rxreq_opcode_s0 != `SF_EVICT);
+    assign li_req_dyn_alloc_s0      = li_req_dyn_s0 & li_req_qos_can_alloc_s0 & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_SNOOPFILTEREVICT);
     assign li_req_dyn_alloc_fail_s0 = li_req_dyn_s0 & ~li_req_qos_can_alloc_s0;
 
     // The static path has an occupancy check for the same reason the dynamic one
@@ -385,9 +384,9 @@ module hnf_mshr_qos `HNF_PARAM
     // through to its initial 0 and hnf_mshr_ctl's mshr_can_alloc_entry_s0 -- which
     // compares the index, not the pointer -- allocates entry 0 over its occupant.
     assign li_req_static_avail_s0   = |mshr_static_entry_idx_ptr_s0;
-    assign li_req_static_alloc_s0   = li_req_static_s0 & li_req_static_avail_s0 & !(li_mshr_rxreq_opcode_s0 == `SF_EVICT);
+    assign li_req_static_alloc_s0   = li_req_static_s0 & li_req_static_avail_s0 & !(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT);
 
-    assign li_seq_alloc_s0          = li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == `SF_EVICT) && qos_seq_pool_avail_s0;
+    assign li_seq_alloc_s0          = li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT) && qos_seq_pool_avail_s0;
 
     //qos allocate enable
     assign mshr_alloc_en_s0         = li_req_dyn_alloc_s0 | li_req_static_alloc_s0 | li_seq_alloc_s0;
@@ -777,17 +776,17 @@ module hnf_mshr_qos `HNF_PARAM
     assign li_mshr_rxreq_pcrdtype_s0[1] = (qpc_hhigh_s0 | qpc_high_s0) & hnf_pcrdtype_enable_sx;
 
     //retry_ack_fifo flit assamble
-    assign retry_ackq_datain_s0[`RETRY_ACKQ_SRCID_RANGE]    = li_mshr_rxreq_srcid_s0;
-    assign retry_ackq_datain_s0[`RETRY_ACKQ_TXNID_RANGE]    = li_mshr_rxreq_txnid_s0;
-    assign retry_ackq_datain_s0[`RETRY_ACKQ_QOS_RANGE]      = li_mshr_rxreq_qos_s0;
-    assign retry_ackq_datain_s0[`RETRY_ACKQ_TRACE_RANGE]    = li_mshr_rxreq_tracetag_s0;
-    assign retry_ackq_datain_s0[`RETRY_ACKQ_PCRDTYPE_RANGE] = { 2'b0, li_mshr_rxreq_pcrdtype_s0[1:0]};
+    assign retry_ackq_datain_s0.srcid    = li_mshr_rxreq_srcid_s0;
+    assign retry_ackq_datain_s0.txnid    = li_mshr_rxreq_txnid_s0;
+    assign retry_ackq_datain_s0.qos      = li_mshr_rxreq_qos_s0;
+    assign retry_ackq_datain_s0.trace    = li_mshr_rxreq_tracetag_s0;
+    assign retry_ackq_datain_s0.pcrdtype = { 2'b0, li_mshr_rxreq_pcrdtype_s0[1:0]};
 
     assign retry_ack_fifo_push = rxreq_retry_enable_s0 & (~retry_ack_fifo_full | (retry_ack_fifo_full & txrsp_mshr_retryack_won_s1));
     assign retry_ack_fifo_pop  = txrsp_mshr_retryack_won_s1 & ~retry_ack_fifo_empty;
 
     sync_fifo #(
-                 .FIFO_ENTRIES_WIDTH (`RETRY_ACKQ_DATA_WIDTH    ),
+                 .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::retry_ackq_s)    ),
                  .FIFO_ENTRIES_DEPTH (`RETRY_ACKQ_DATA_DEPTH    ),
                  .FIFO_BYP_ENABLE    ( 1'b0                     )
              )retry_ack_fifo(
@@ -804,11 +803,11 @@ module hnf_mshr_qos `HNF_PARAM
 
     //retry_ack_fifo flit disassamble
     assign qos_txrsp_retryack_valid_s1    = ~retry_ack_fifo_empty;
-    assign qos_txrsp_retryack_qos_s1      = retry_ack_fifo_dataout_s1[`RETRY_ACKQ_QOS_RANGE];
-    assign qos_txrsp_retryack_tgtid_s1    = retry_ack_fifo_dataout_s1[`RETRY_ACKQ_SRCID_RANGE];
-    assign qos_txrsp_retryack_txnid_s1    = retry_ack_fifo_dataout_s1[`RETRY_ACKQ_TXNID_RANGE];
-    assign qos_txrsp_retryack_pcrdtype_s1 = retry_ack_fifo_dataout_s1[`RETRY_ACKQ_PCRDTYPE_RANGE];
-    assign qos_txrsp_retryack_tracetag_s1 = retry_ack_fifo_dataout_s1[`RETRY_ACKQ_TRACE_RANGE];
+    assign qos_txrsp_retryack_qos_s1      = retry_ack_fifo_dataout_s1.qos;
+    assign qos_txrsp_retryack_tgtid_s1    = retry_ack_fifo_dataout_s1.srcid;
+    assign qos_txrsp_retryack_txnid_s1    = retry_ack_fifo_dataout_s1.txnid;
+    assign qos_txrsp_retryack_pcrdtype_s1 = retry_ack_fifo_dataout_s1.pcrdtype;
+    assign qos_txrsp_retryack_tracetag_s1 = retry_ack_fifo_dataout_s1.trace;
 
     //retry bank logic
     //retry bank srcid match logic
@@ -1233,14 +1232,14 @@ module hnf_mshr_qos `HNF_PARAM
 
     always_comb begin: hhigh_pcrdgrant_srcid_comb_logic
         integer i;
-        hh_pcrdgrant_srcid_s1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        hh_pcrdgrant_srcid_s1 = '0;
         for (i=0; i<`RET_BANK_ENTRIES_NUM; i=i+1)
-            hh_pcrdgrant_srcid_s1 = hh_pcrdgrant_srcid_s1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_hh_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
+            hh_pcrdgrant_srcid_s1 = hh_pcrdgrant_srcid_s1 | ({chie_pkg::NID_WIDTH{ret_cnt_hh_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     always_ff @(posedge clk or posedge rst) begin: update_hhigh_pcrdgrant_srcid_timing_logic
         if (rst == 1'b1)
-            hh_pcrdgrant_srcid_s2_q <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+            hh_pcrdgrant_srcid_s2_q <= '0;
         else if (mshr_dbf_retired_valid_sx1_q == 1'b1)
             hh_pcrdgrant_srcid_s2_q <= hh_pcrdgrant_srcid_s1;
         else
@@ -1270,14 +1269,14 @@ module hnf_mshr_qos `HNF_PARAM
 
     always_comb begin: high_pcrdgrant_srcid_comb_logic
         integer i;
-        h_pcrdgrant_srcid_s1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        h_pcrdgrant_srcid_s1 = '0;
         for (i=0; i<`RET_BANK_ENTRIES_NUM; i=i+1)
-            h_pcrdgrant_srcid_s1 = h_pcrdgrant_srcid_s1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_h_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
+            h_pcrdgrant_srcid_s1 = h_pcrdgrant_srcid_s1 | ({chie_pkg::NID_WIDTH{ret_cnt_h_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     always_ff @(posedge clk or posedge rst) begin: update_high_pcrdgrant_srcid_timing_logic
         if (rst == 1'b1)
-            h_pcrdgrant_srcid_s2_q <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+            h_pcrdgrant_srcid_s2_q <= '0;
         else if (mshr_dbf_retired_valid_sx1_q == 1'b1)
             h_pcrdgrant_srcid_s2_q <= h_pcrdgrant_srcid_s1;
         else
@@ -1307,14 +1306,14 @@ module hnf_mshr_qos `HNF_PARAM
 
     always_comb begin: med_pcrdgrant_srcid_comb_logic
         integer i;
-        m_pcrdgrant_srcid_s1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        m_pcrdgrant_srcid_s1 = '0;
         for (i=0; i<`RET_BANK_ENTRIES_NUM; i=i+1)
-            m_pcrdgrant_srcid_s1 = m_pcrdgrant_srcid_s1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_m_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
+            m_pcrdgrant_srcid_s1 = m_pcrdgrant_srcid_s1 | ({chie_pkg::NID_WIDTH{ret_cnt_m_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     always_ff @(posedge clk or posedge rst) begin: update_med_pcrdgrant_srcid_timing_logic
         if (rst == 1'b1)
-            m_pcrdgrant_srcid_s2_q <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+            m_pcrdgrant_srcid_s2_q <= '0;
         else if (mshr_dbf_retired_valid_sx1_q == 1'b1)
             m_pcrdgrant_srcid_s2_q <= m_pcrdgrant_srcid_s1;
         else
@@ -1344,14 +1343,14 @@ module hnf_mshr_qos `HNF_PARAM
 
     always_comb begin: low_pcrdgrant_srcid_comb_logic
         integer i;
-        l_pcrdgrant_srcid_s1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        l_pcrdgrant_srcid_s1 = '0;
         for (i=0; i<`RET_BANK_ENTRIES_NUM; i=i+1)
-            l_pcrdgrant_srcid_s1 = l_pcrdgrant_srcid_s1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_l_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
+            l_pcrdgrant_srcid_s1 = l_pcrdgrant_srcid_s1 | ({chie_pkg::NID_WIDTH{ret_cnt_l_dec_ptr_s1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     always_ff @(posedge clk or posedge rst) begin: update_low_pcrdgrant_srcid_timing_logic
         if (rst == 1'b1)
-            l_pcrdgrant_srcid_s2_q <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+            l_pcrdgrant_srcid_s2_q <= '0;
         else if (mshr_dbf_retired_valid_sx1_q == 1'b1)
             l_pcrdgrant_srcid_s2_q <= l_pcrdgrant_srcid_s1;
         else
@@ -1359,34 +1358,34 @@ module hnf_mshr_qos `HNF_PARAM
     end
 
     //arbitrate pcrdgrant srcid
-    assign pcrdgnt_srcid_s2 = ({`CHIE_REQ_FLIT_SRCID_WIDTH{hh_present_win_s2_q}} & hh_pcrdgrant_srcid_s2_q) |
-           ({`CHIE_REQ_FLIT_SRCID_WIDTH{h_present_win_s2_q}}  & h_pcrdgrant_srcid_s2_q)  |
-           ({`CHIE_REQ_FLIT_SRCID_WIDTH{m_present_win_s2_q}}  & m_pcrdgrant_srcid_s2_q)  |
-           ({`CHIE_REQ_FLIT_SRCID_WIDTH{l_present_win_s2_q}}  & l_pcrdgrant_srcid_s2_q)  ;
+    assign pcrdgnt_srcid_s2 = ({chie_pkg::NID_WIDTH{hh_present_win_s2_q}} & hh_pcrdgrant_srcid_s2_q) |
+           ({chie_pkg::NID_WIDTH{h_present_win_s2_q}}  & h_pcrdgrant_srcid_s2_q)  |
+           ({chie_pkg::NID_WIDTH{m_present_win_s2_q}}  & m_pcrdgrant_srcid_s2_q)  |
+           ({chie_pkg::NID_WIDTH{l_present_win_s2_q}}  & l_pcrdgrant_srcid_s2_q)  ;
 
     //arbitrate pcrdgrant qos
-    assign pcrdgnt_qos_s2 = ({`CHIE_REQ_FLIT_QOS_WIDTH{hh_present_win_s2_q}} & `CHIE_REQ_FLIT_QOS_WIDTH'hf) |
-           ({`CHIE_REQ_FLIT_QOS_WIDTH{h_present_win_s2_q}}  & `CHIE_REQ_FLIT_QOS_WIDTH'hd) |
-           ({`CHIE_REQ_FLIT_QOS_WIDTH{m_present_win_s2_q}}  & `CHIE_REQ_FLIT_QOS_WIDTH'h9) |
-           ({`CHIE_REQ_FLIT_QOS_WIDTH{l_present_win_s2_q}}  & `CHIE_REQ_FLIT_QOS_WIDTH'h0) ;
+    assign pcrdgnt_qos_s2 = ({4{hh_present_win_s2_q}} & 4'hf) |
+           ({4{h_present_win_s2_q}}  & 4'hd) |
+           ({4{m_present_win_s2_q}}  & 4'h9) |
+           ({4{l_present_win_s2_q}}  & 4'h0) ;
 
     //generate pcrdgrant pcrdtype
     always_comb begin
-        pcrdgnt_pcrdtype_s2    = {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
+        pcrdgnt_pcrdtype_s2    = '0;
         pcrdgnt_pcrdtype_s2[0] = hh_present_win_s2_q | m_present_win_s2_q;
         pcrdgnt_pcrdtype_s2[1] = hh_present_win_s2_q | h_present_win_s2_q;
     end
 
     //encode pcrdgrant part fields to fifo
-    assign pcrdgrant_fifo_datain_s2[`PCRDGRANTQ_SRCID_RANGE]    = pcrdgnt_srcid_s2;
-    assign pcrdgrant_fifo_datain_s2[`PCRDGRANTQ_QOS_RANGE]      = pcrdgnt_qos_s2;
-    assign pcrdgrant_fifo_datain_s2[`PCRDGRANTQ_PCRDTYPE_RANGE] = pcrdgnt_pcrdtype_s2;
+    assign pcrdgrant_fifo_datain_s2.srcid    = pcrdgnt_srcid_s2;
+    assign pcrdgrant_fifo_datain_s2.qos      = pcrdgnt_qos_s2;
+    assign pcrdgrant_fifo_datain_s2.pcrdtype = pcrdgnt_pcrdtype_s2;
 
     assign pcrdgrant_fifo_push = pcrdgnt_req_enable_s2_q & (~pcrdgrant_fifo_full | (pcrdgrant_fifo_full & txrsp_mshr_pcrdgnt_won_s2));
     assign pcrdgrant_fifo_pop  = txrsp_mshr_pcrdgnt_won_s2 & ~pcrdgrant_fifo_empty;
 
     sync_fifo #(
-                 .FIFO_ENTRIES_WIDTH (`PCRDGRANTQ_DATA_WIDTH ),
+                 .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::pcrdgrantq_s) ),
                  .FIFO_ENTRIES_DEPTH (`PCRDGRANTQ_DATA_DEPTH ),
                  .FIFO_BYP_ENABLE    ( 1'b0                  )
              )pcrdgrant_fifo(
@@ -1403,9 +1402,9 @@ module hnf_mshr_qos `HNF_PARAM
 
     //decode pcrdgrant part fields from fifo
     assign qos_txrsp_pcrdgnt_valid_s2    = ~pcrdgrant_fifo_empty;
-    assign qos_txrsp_pcrdgnt_qos_s2      = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_QOS_RANGE];
-    assign qos_txrsp_pcrdgnt_tgtid_s2    = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_SRCID_RANGE];
-    assign qos_txrsp_pcrdgnt_pcrdtype_s2 = pcrdgrant_fifo_dataout_s2[`PCRDGRANTQ_PCRDTYPE_RANGE];
+    assign qos_txrsp_pcrdgnt_qos_s2      = pcrdgrant_fifo_dataout_s2.qos;
+    assign qos_txrsp_pcrdgnt_tgtid_s2    = pcrdgrant_fifo_dataout_s2.srcid;
+    assign qos_txrsp_pcrdgnt_pcrdtype_s2 = pcrdgrant_fifo_dataout_s2.pcrdtype;
 
     // Sec 14.7.1 (p.14-460)'s Protocol layer activity, as snf_qos.v computes it:
     // the tracker's occupancy plus the retry state, which that section counts as
@@ -1456,7 +1455,7 @@ module hnf_mshr_qos `HNF_PARAM
                   end
 
                   always_ff @(posedge clk)begin
-                      `display_fatal(!(li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == `SF_EVICT) && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
+                      `display_fatal(!(li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT) && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
                       `display_fatal(!(mshr_dbf_retired_valid_sx1_q&&(!mshr_entry_valid_s1_q[mshr_dbf_retired_idx_sx1_q])),"Fatal info: A invalid mshr entry is retiring\n");
                       `display_fatal(!(mshr_alloc_en_s0&&(mshr_entry_valid_s1_q[mshr_entry_idx_alloc_s0])),"Fatal info: A valid mshr entry is repeat enqueuing\n");
                   end

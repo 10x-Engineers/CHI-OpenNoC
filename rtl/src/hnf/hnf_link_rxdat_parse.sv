@@ -14,76 +14,44 @@
 *    Li Zhao <lizhao@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_link_rxdat_parse `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_link
-        rxdatflitv,
-        rxdatflit,
-        rxdatflitpend,
-        rxcrd_en,
-        rxdat_crd_cnt_full,
-
-        //outputs to hnf_link
-        rxdat_lcrdv,
-
-        //outputs to hnf_mshr
-        li_mshr_rxdat_valid_s0,
-        li_mshr_rxdat_txnid_s0,
-        li_mshr_rxdat_opcode_s0,
-        li_mshr_rxdat_resp_s0,
-        li_mshr_rxdat_resperr_s0,
-        li_mshr_rxdat_fwdstate_s0,
-        li_mshr_rxdat_dataid_s0,
-
-        //outputs to hnf_data_buffer
-        li_dbf_rxdat_valid_s0,
-        li_dbf_rxdat_txnid_s0,
-        li_dbf_rxdat_opcode_s0,
-        li_dbf_rxdat_dataid_s0,
-        li_dbf_rxdat_be_s0,
-        li_dbf_rxdat_data_s0
-    );
-
     //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_link
-    input wire                                      rxdatflitv;
-    input wire [`CHIE_DAT_FLIT_RANGE]               rxdatflit;
-    input wire                                      rxdatflitpend;
+    input wire rxdatflitv,
+    input chie_pkg::dat_flit_s rxdatflit,
+    input wire rxdatflitpend,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire                                      rxcrd_en;
-    output wire                                     rxdat_crd_cnt_full;
+    input wire rxcrd_en,
+    output wire rxdat_crd_cnt_full,
 
     //outputs to hnf_link
-    output wire                                     rxdat_lcrdv;
+    output wire rxdat_lcrdv,
 
     //outputs to hnf_mshr
-    output wire                                     li_mshr_rxdat_valid_s0;
-    output wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]    li_mshr_rxdat_txnid_s0;
-    output wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]   li_mshr_rxdat_opcode_s0;
-    output wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]     li_mshr_rxdat_resp_s0;
-    output wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]  li_mshr_rxdat_resperr_s0;
-    output wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0] li_mshr_rxdat_fwdstate_s0;
-    output wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   li_mshr_rxdat_dataid_s0;
+    output wire li_mshr_rxdat_valid_s0,
+    output wire [11:0] li_mshr_rxdat_txnid_s0,
+    output chie_pkg::dat_opcode_e li_mshr_rxdat_opcode_s0,
+    output chie_pkg::resp_state_e li_mshr_rxdat_resp_s0,
+    output chie_pkg::resp_err_e li_mshr_rxdat_resperr_s0,
+    output wire [3:0] li_mshr_rxdat_fwdstate_s0,
+    output wire [1:0] li_mshr_rxdat_dataid_s0,
 
     //outputs to hnf_data_buffer
-    output wire                                     li_dbf_rxdat_valid_s0;
-    output wire [`MSHR_ENTRIES_WIDTH-1:0]           li_dbf_rxdat_txnid_s0;
-    output wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]   li_dbf_rxdat_opcode_s0;
-    output wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]   li_dbf_rxdat_dataid_s0;
-    output wire [`CHIE_DAT_FLIT_BE_WIDTH-1:0]       li_dbf_rxdat_be_s0;
-    output wire [`CHIE_DAT_FLIT_DATA_WIDTH-1:0]     li_dbf_rxdat_data_s0;
+    output wire li_dbf_rxdat_valid_s0,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0] li_dbf_rxdat_txnid_s0,
+    output chie_pkg::dat_opcode_e li_dbf_rxdat_opcode_s0,
+    output wire [1:0] li_dbf_rxdat_dataid_s0,
+    output wire [chie_pkg::BE_WIDTH-1:0] li_dbf_rxdat_be_s0,
+    output wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0
+    );
 
     //internal reg signals
     logic                                             rxdatflitv_en_q;
@@ -91,7 +59,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     logic                                             rxdatcrdv_s1_q;
 
     //internal wire signals
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]           li_dbf_rxdat_txnid_s0_raw;
+    wire [11:0]           li_dbf_rxdat_txnid_s0_raw;
     wire                                            rxdat_crd_cnt_zero;
     wire                                            rxdat_crd_cnt_upd_s0;
     wire                                            rxdat_crd_grant_s0;
@@ -110,20 +78,20 @@ module hnf_link_rxdat_parse `HNF_PARAM
 
     //rxdat decode
     assign li_mshr_rxdat_valid_s0    = (rxdatflitv == 1'b1);
-    assign li_mshr_rxdat_txnid_s0    = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_TXNID_RANGE]    : {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
-    assign li_mshr_rxdat_opcode_s0   = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE]   : {`CHIE_DAT_FLIT_OPCODE_WIDTH{1'b0}};
-    assign li_mshr_rxdat_resp_s0     = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_RESP_RANGE]     : {`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
-    assign li_mshr_rxdat_resperr_s0  = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_RESPERR_RANGE]  : {`CHIE_DAT_FLIT_RESPERR_WIDTH{1'b0}};
-    assign li_mshr_rxdat_fwdstate_s0 = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_FWDSTATE_RANGE] : {`CHIE_DAT_FLIT_FWDSTATE_WIDTH{1'b0}};
-    assign li_mshr_rxdat_dataid_s0   = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_DATAID_RANGE]   : {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
+    assign li_mshr_rxdat_txnid_s0    = (rxdatflitv == 1'b1)? rxdatflit.txnid    : '0;
+    assign li_mshr_rxdat_opcode_s0   = (rxdatflitv == 1'b1)? rxdatflit.opcode   : chie_pkg::DAT_DATLCRDRETURN;
+    assign li_mshr_rxdat_resp_s0     = (rxdatflitv == 1'b1)? rxdatflit.resp     : chie_pkg::RESP_I;
+    assign li_mshr_rxdat_resperr_s0  = (rxdatflitv == 1'b1)? rxdatflit.resperr  : chie_pkg::RESP_ERR_NORM_OK;
+    assign li_mshr_rxdat_fwdstate_s0 = (rxdatflitv == 1'b1)? rxdatflit.datasource.fwdstate : '0;
+    assign li_mshr_rxdat_dataid_s0   = (rxdatflitv == 1'b1)? rxdatflit.dataid   : '0;
 
     assign li_dbf_rxdat_valid_s0     = (rxdatflitv == 1'b1);
-    assign li_dbf_rxdat_txnid_s0_raw = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_TXNID_RANGE]    : {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
+    assign li_dbf_rxdat_txnid_s0_raw = (rxdatflitv == 1'b1)? rxdatflit.txnid    : '0;
     assign li_dbf_rxdat_txnid_s0     = li_dbf_rxdat_txnid_s0_raw[`MSHR_ENTRIES_WIDTH-1:0];
-    assign li_dbf_rxdat_opcode_s0    = (rxdatflitv == 1'b1 && ((|rxdatflit[`CHIE_DAT_FLIT_BE_RANGE]) || (rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE] == `CHIE_COMPDATA)))? rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE] :`CHIE_WRITEDATACANCEL;
-    assign li_dbf_rxdat_dataid_s0    = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_DATAID_RANGE]   : {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
-    assign li_dbf_rxdat_be_s0        = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_BE_RANGE]       : {`CHIE_DAT_FLIT_BE_WIDTH{1'b0}};
-    assign li_dbf_rxdat_data_s0      = (rxdatflitv == 1'b1)? rxdatflit[`CHIE_DAT_FLIT_DATA_RANGE]     : {`CHIE_DAT_FLIT_DATA_WIDTH{1'b0}};
+    assign li_dbf_rxdat_opcode_s0    = (rxdatflitv == 1'b1 && ((|rxdatflit.be) || (rxdatflit.opcode == chie_pkg::DAT_COMPDATA)))? rxdatflit.opcode :chie_pkg::DAT_WRITEDATACANCEL;
+    assign li_dbf_rxdat_dataid_s0    = (rxdatflitv == 1'b1)? rxdatflit.dataid   : '0;
+    assign li_dbf_rxdat_be_s0        = (rxdatflitv == 1'b1)? rxdatflit.be       : '0;
+    assign li_dbf_rxdat_data_s0      = (rxdatflitv == 1'b1)? rxdatflit.data     : '0;
 
     //if lcrd is zero
     assign rxdat_crd_cnt_zero = (rxdat_crd_cnt_s1_q == {`HNF_LCRD_DAT_CNT_WIDTH{1'b0}});
@@ -158,7 +126,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
 `ifdef DISPLAY_INFO
     always_ff @(posedge clk)begin
         if(rxdatflitv)begin
-            `display_info($sformatf("HNF RXDAT received a flit\n opcode: %h\n srcid: %h\n txnid: %h\n resp: %h\n fwdstate: %h\n dataid: %h\n be: %h\n data: %h\n Time: %0d\n",li_mshr_rxdat_opcode_s0,rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE],li_mshr_rxdat_txnid_s0,li_mshr_rxdat_resp_s0,li_mshr_rxdat_fwdstate_s0,li_mshr_rxdat_dataid_s0,li_dbf_rxdat_be_s0,li_dbf_rxdat_data_s0,$time()));
+            `display_info($sformatf("HNF RXDAT received a flit\n opcode: %h\n srcid: %h\n txnid: %h\n resp: %h\n fwdstate: %h\n dataid: %h\n be: %h\n data: %h\n Time: %0d\n",li_mshr_rxdat_opcode_s0,rxdatflit.srcid,li_mshr_rxdat_txnid_s0,li_mshr_rxdat_resp_s0,li_mshr_rxdat_fwdstate_s0,li_mshr_rxdat_dataid_s0,li_dbf_rxdat_be_s0,li_dbf_rxdat_data_s0,$time()));
         end
     end
 `endif
@@ -167,7 +135,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
     always_comb begin
-        `display_fatal( (!li_mshr_rxdat_valid_s0) || (li_mshr_rxdat_opcode_s0 == `CHIE_DATLCRDRETURN)||(li_mshr_rxdat_opcode_s0 == `CHIE_SNPRESPDATA)||(li_mshr_rxdat_opcode_s0 == `CHIE_COPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == `CHIE_NONCOPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == `CHIE_COMPDATA)||(li_mshr_rxdat_opcode_s0 == `CHIE_SNPRESPDATAFWDED)||(li_mshr_rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL)||(li_mshr_rxdat_opcode_s0 == `CHIE_NCBWRDATACOMPACK),$sformatf("Fatal info: RXDAT received a unsupported flit with opcode: %h",li_mshr_rxdat_opcode_s0));
+        `display_fatal( (!li_mshr_rxdat_valid_s0) || (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_DATLCRDRETURN)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK),$sformatf("Fatal info: RXDAT received a unsupported flit with opcode: %h",li_mshr_rxdat_opcode_s0));
     end
 `endif
 

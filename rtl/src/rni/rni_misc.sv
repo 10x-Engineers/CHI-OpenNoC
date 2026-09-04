@@ -17,59 +17,38 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni_misc `RNI_PARAM
     (
-        // global inputs
-        clk_i
-        ,rst_i
-
-        // rni_link_ctl Interface
-        ,rxrspflitv_d1_i
-        ,rxrspflit_d1_q_i
-
-        // rni_aw_ctl Interface
-        ,pcrdgnt_pkt_v_d2_o
-        ,pcrdgnt_pkt_d2_o
-        ,ar_pcrdgnt_l_present_d3_i
-        ,ar_pcrdgnt_h_present_d3_i
-        ,aw_pcrdgnt_l_present_d3_i
-        ,aw_pcrdgnt_h_present_d3_i
-        ,ar_pcrdgnt_l_win_d3_o
-        ,ar_pcrdgnt_h_win_d3_o
-        ,aw_pcrdgnt_l_win_d3_o
-        ,aw_pcrdgnt_h_win_d3_o
-    );
-
     // global inputs
-    input  wire                              clk_i;
-    input  wire                              rst_i;
+    input wire clk_i,
+    input wire rst_i,
 
     // rni_link_ctl Interface
-    input  wire                              rxrspflitv_d1_i;
-    input  wire [`CHIE_RSP_FLIT_WIDTH-1:0]   rxrspflit_d1_q_i;
+    input wire rxrspflitv_d1_i,
+    input chie_pkg::rsp_flit_s rxrspflit_d1_q_i,
 
     // rni_aw_ctl Interface
-    output wire                              pcrdgnt_pkt_v_d2_o;
-    output wire [`PCRDGRANT_PKT_WIDTH-1:0]   pcrdgnt_pkt_d2_o;
-    input  wire                              ar_pcrdgnt_l_present_d3_i;
-    input  wire                              ar_pcrdgnt_h_present_d3_i;
-    input  wire                              aw_pcrdgnt_l_present_d3_i;
-    input  wire                              aw_pcrdgnt_h_present_d3_i;
-    output wire                              ar_pcrdgnt_l_win_d3_o;
-    output wire                              ar_pcrdgnt_h_win_d3_o;
-    output wire                              aw_pcrdgnt_l_win_d3_o;
-    output wire                              aw_pcrdgnt_h_win_d3_o;
+    output wire pcrdgnt_pkt_v_d2_o,
+    output opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_o,
+    input wire ar_pcrdgnt_l_present_d3_i,
+    input wire ar_pcrdgnt_h_present_d3_i,
+    input wire aw_pcrdgnt_l_present_d3_i,
+    input wire aw_pcrdgnt_h_present_d3_i,
+    output wire ar_pcrdgnt_l_win_d3_o,
+    output wire ar_pcrdgnt_h_win_d3_o,
+    output wire aw_pcrdgnt_l_win_d3_o,
+    output wire aw_pcrdgnt_h_win_d3_o
+    );
 
     //wire
     wire                                     pcrdgnt_fifo_push_d1_w;
     wire                                     pcrdgnt_fifo_pop_d3_w;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] pcrdgnt_pcrdtype_d1_w;
-    wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]    pcrdgnt_srcid_d1_w;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]    pcrdgnt_tgtid_d1_w;
-    wire [`PCRDGRANT_PKT_WIDTH-1:0]          pcrdgnt_fifo_in_d1_w;
-    wire [`PCRDGRANT_PKT_WIDTH-1:0]          pcrdgnt_fifo_out_d2_w;
+    wire [3:0] pcrdgnt_pcrdtype_d1_w;
+    wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_srcid_d1_w;
+    wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_tgtid_d1_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_in_d1_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_out_d2_w;
     wire                                     pcrdgnt_fifo_empty_d2_w;
     wire                                     nxt_h_pcrdgnt_ptr_w;
     wire                                     nxt_l_pcrdgnt_ptr_w;
@@ -87,15 +66,15 @@ module rni_misc `RNI_PARAM
 
     //local param
     localparam FIFO_ENTRIES_DEPTH = 32;
-    localparam FIFO_ENTRIES_WIDTH = `PCRDGRANT_PKT_WIDTH;
+    localparam FIFO_ENTRIES_WIDTH = $bits(opennoc_rni_pkg::pcrdgrant_pkt_s);
     localparam L_DISABLE_H_EN     = 1'b0;
 
     //main function
-    assign pcrdgnt_fifo_push_d1_w = rxrspflitv_d1_i & (rxrspflit_d1_q_i[`CHIE_RSP_FLIT_OPCODE_RANGE] == `CHIE_PCRDGRANT);
+    assign pcrdgnt_fifo_push_d1_w = rxrspflitv_d1_i & (rxrspflit_d1_q_i.opcode == chie_pkg::RSP_PCRDGRANT);
     assign pcrdgnt_fifo_pop_d3_w  = (ar_pcrdgnt_l_present_d3_i | ar_pcrdgnt_h_present_d3_i | aw_pcrdgnt_l_present_d3_i | aw_pcrdgnt_h_present_d3_i);
-    assign pcrdgnt_pcrdtype_d1_w  = rxrspflit_d1_q_i[`CHIE_RSP_FLIT_PCRDTYPE_RANGE];
-    assign pcrdgnt_srcid_d1_w     = rxrspflit_d1_q_i[`CHIE_RSP_FLIT_SRCID_RANGE];
-    assign pcrdgnt_tgtid_d1_w     = rxrspflit_d1_q_i[`CHIE_RSP_FLIT_TGTID_RANGE];
+    assign pcrdgnt_pcrdtype_d1_w  = rxrspflit_d1_q_i.pcrdtype;
+    assign pcrdgnt_srcid_d1_w     = rxrspflit_d1_q_i.srcid;
+    assign pcrdgnt_tgtid_d1_w     = rxrspflit_d1_q_i.tgtid;
     assign pcrdgnt_fifo_in_d1_w   = {pcrdgnt_pcrdtype_d1_w,pcrdgnt_srcid_d1_w,pcrdgnt_tgtid_d1_w};
 
     sync_fifo #(

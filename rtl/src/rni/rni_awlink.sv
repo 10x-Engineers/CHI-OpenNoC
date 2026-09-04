@@ -17,71 +17,40 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 module rni_awlink `RNI_PARAM
     (
-        ///////////////////////////////////////////////////////////////
-        // Inputs
-        ///////////////////////////////////////////////////////////////
-
-        // Global inputs
-        clk_i,
-        rst_i,
-
-        // AMBA4
-        AWVALID,
-        AWBUS,
-        stall_flag_s1_i,
-
-        ///////////////////////////////////////////////////////////////
-        // Outputs
-        ///////////////////////////////////////////////////////////////
-        AWREADY,
-        awlink_awvalid_s1_o,
-        awlink_awbus_s1_o,
-
-        awlink_len_s1_o,
-        awlink_valid_s1_o,
-        awlink_addr_s1_o,
-        awlink_done_s1_o,
-        awlink_bc_vec_s2_o,
-        awlink_dmask_s2_o,
-        awlink_size_s2_o,
-        awlink_lock_s2_o
-    );
-
-
     ///////////////////////////////////////////////////////////////
     // Inputs
     ///////////////////////////////////////////////////////////////
 
     // Global inputs
-    input wire                                  clk_i;
-    input wire                                  rst_i;
+    input wire clk_i,
+    input wire rst_i,
 
     // AMBA4 xface
-    input wire                                  AWVALID;
-    input wire  [`AXI4_AW_WIDTH-1:0]            AWBUS;
-    input wire                                  stall_flag_s1_i;
+    input wire AWVALID,
+    input wire  [`AXI4_AW_WIDTH-1:0] AWBUS,
+    input wire stall_flag_s1_i,
 
 
     ///////////////////////////////////////////////////////////////
     // Outputs
     ///////////////////////////////////////////////////////////////
-    output wire                                     AWREADY;
+    output wire AWREADY,
 
-    output wire                                     awlink_awvalid_s1_o;
-    output wire [`AXI4_AW_WIDTH-1:0]                awlink_awbus_s1_o;
+    output wire awlink_awvalid_s1_o,
+    output wire [`AXI4_AW_WIDTH-1:0] awlink_awbus_s1_o,
 
-    output wire  [`AXI4_AWLEN_WIDTH-1:0]            awlink_len_s1_o;
-    output wire                                     awlink_valid_s1_o;
-    output wire [`AXI4_AWADDR_WIDTH-1:0]            awlink_addr_s1_o;
-    output wire                                     awlink_done_s1_o;
-    output wire [`RNI_BCVEC_WIDTH-1:0]              awlink_bc_vec_s2_o;
-    output wire [`RNI_DMASK_WIDTH-1:0]              awlink_dmask_s2_o;
-    output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]     awlink_size_s2_o;
-    output wire                                     awlink_lock_s2_o;
+    output wire  [`AXI4_AWLEN_WIDTH-1:0] awlink_len_s1_o,
+    output wire awlink_valid_s1_o,
+    output wire [`AXI4_AWADDR_WIDTH-1:0] awlink_addr_s1_o,
+    output wire awlink_done_s1_o,
+    output wire [`RNI_BCVEC_WIDTH-1:0] awlink_bc_vec_s2_o,
+    output wire [`RNI_DMASK_WIDTH-1:0] awlink_dmask_s2_o,
+    output chie_pkg::size_e awlink_size_s2_o,
+    output wire awlink_lock_s2_o
+    );
 
     wire [`AW_FIFO_CNT_WIDTH-1:0]       aw_fifo_count;
     wire                                awready_w;

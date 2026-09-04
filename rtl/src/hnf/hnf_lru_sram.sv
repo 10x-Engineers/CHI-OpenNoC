@@ -14,38 +14,24 @@
 *    Ziqing Li <liziqing@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 `ifndef FPGA_MEMORY
 module hnf_lru_sram `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_cache_pipeline
-        lru_index_q,
-        lru_rd_en_q,
-        lru_wr_en_q,
-        lru_wr_data_q,
-
-        //outputs to hnf_cache_pipeline
-        lru_rd_data_q
-    );
-
     //global inputs
-    input wire                              clk;
-    input wire                              rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0]       lru_index_q;
-    input wire                              lru_rd_en_q;
-    input wire                              lru_wr_en_q;
-    input wire [`LRU_CLINE_WIDTH-1:0]       lru_wr_data_q;
+    input wire [`LOC_INDEX_WIDTH-1:0] lru_index_q,
+    input wire lru_rd_en_q,
+    input wire lru_wr_en_q,
+    input wire [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
 
     //outputs to hnf_cache_pipeline
-    output logic [`LRU_CLINE_WIDTH-1:0]       lru_rd_data_q;
+    output logic [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q
+    );
 
     //internal signals
     wire [`LRU_CLINE_WIDTH-1:0]             lru_rd_data;

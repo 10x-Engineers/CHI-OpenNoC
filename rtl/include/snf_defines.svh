@@ -20,18 +20,10 @@
 `ifndef SNF_DEFINES
 `define SNF_DEFINES
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 
 //////////////////////////////////////////////////////////////////////////S
 // CHIE size constants
-`define SNF_CHIE_SIZE1B                    3'h0
-`define SNF_CHIE_SIZE2B                    3'h1
-`define SNF_CHIE_SIZE4B                    3'h2
-`define SNF_CHIE_SIZE8B                    3'h3
-`define SNF_CHIE_SIZE16B                   3'h4
-`define SNF_CHIE_SIZE32B                   3'h5
-`define SNF_CHIE_SIZE64B                   3'h6
 
 `define SNF_MSHR_ENTRIES_NUM               SNF_MSHR_ENTRIES_NUM_PARAM
 `define SNF_MSHR_ENTRIES_WIDTH             ((SNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(SNF_MSHR_ENTRIES_NUM_PARAM) : 1)

@@ -24,341 +24,183 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_mshr_ctl `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs related to request handling from hnf_link_rxreq_parse
-        li_mshr_rxreq_valid_s0,
-        li_mshr_rxreq_qos_s0,
-        li_mshr_rxreq_srcid_s0,
-        li_mshr_rxreq_txnid_s0,
-        li_mshr_rxreq_opcode_s0,
-        li_mshr_rxreq_size_s0,
-        li_mshr_rxreq_addr_s0,
-        li_mshr_rxreq_ns_s0,
-        li_mshr_rxreq_allowretry_s0,
-        li_mshr_rxreq_order_s0,
-        li_mshr_rxreq_pcrdtype_s0,
-        li_mshr_rxreq_memattr_s0,
-        li_mshr_rxreq_lpid_s0,
-        li_mshr_rxreq_excl_s0,
-        li_mshr_rxreq_expcompack_s0,
-        li_mshr_rxreq_tracetag_s0,
-
-        //inputs related to data handling from hnf_link_rxreq_parse
-        li_mshr_rxdat_valid_s0,
-        li_mshr_rxdat_txnid_s0,
-        li_mshr_rxdat_opcode_s0,
-        li_mshr_rxdat_resp_s0,
-        li_mshr_rxdat_resperr_s0,
-        li_mshr_rxdat_fwdstate_s0,
-        li_mshr_rxdat_dataid_s0,
-
-        //inputs related to response handling from hnf_link_rxreq_parse
-        li_mshr_rxrsp_valid_s0,
-        li_mshr_rxrsp_srcid_s0,
-        li_mshr_rxrsp_txnid_s0,
-        li_mshr_rxrsp_opcode_s0,
-        li_mshr_rxrsp_resp_s0,
-        li_mshr_rxrsp_resperr_s0,
-        li_mshr_rxrsp_fwdstate_s0,
-        li_mshr_rxrsp_dbid_s0,
-        li_mshr_rxrsp_pcrdtype_s0,
-
-        //inputs from hnf_mshr_global_monitor
-        excl_pass_s1,
-        excl_fail_s1,
-
-        //inputs from hnf_mshr_bypass
-        txreq_mshr_bypass_lost_s1,
-        txrsp_mshr_bypass_lost_s1,
-
-        //inputs from hnf_mshr_qos
-        mshr_alloc_en_s0,
-        mshr_alloc_en_s1_q,
-        mshr_entry_idx_alloc_s0,
-        mshr_entry_idx_alloc_s1_q,
-
-        //inputs from hnf_mshr_addr_buffer
-        rxreq_cam_hazard_s1_q,
-        rxreq_cam_hazard_entry_s1_q,
-        mshr_l3_hazard_valid_sx3_q,
-        mshr_mem_busy_sx,
-        abf_internal_evict_addr_valid_sx_q,
-        pipe_cam_hazard_entry_sx3_q,
-        pipe_sleep_entry_sx3_q,
-
-        //inputs from hnf_link_rxreq_wrap
-        txreq_mshr_won_sx1,
-
-        //inputs from hnf_link_rxrsp_wrap
-        txrsp_mshr_won_sx1,
-
-        //inputs from hnf_link_txsnp_wrap
-        txsnp_mshr_busy_sx1,
-
-        //inputs from hnf_link_txdat_wrap
-        txdat_mshr_busy_sx,
-        txdat_mshr_rd_idx_sx2,
-        txdat_mshr_clr_dbf_busy_valid_sx3,
-        txdat_mshr_clr_dbf_busy_idx_sx3,
-
-        //inputs from hnf_cache_pipeline
-        l3_opcode_sx7_q,
-        l3_mshr_entry_sx7_q,
-        l3_memrd_sx7_q,
-        l3_hit_sx7_q,
-        l3_sfhit_sx7_q,
-        l3_pipeval_sx7_q,
-        l3_mshr_wr_op_sx7_q,
-        l3_snpdirect_sx7_q,
-        l3_snpbrd_sx7_q,
-        l3_snp_bit_sx7_q,
-        l3_replay_sx7_q,
-        l3_hit_d_sx7_q,
-        l3_evict_sx7_q,
-
-        //outputs to hnf_data_buffer
-        mshr_dbf_rd_idx_sx1_q,
-        mshr_dbf_rd_valid_sx1_q,
-        mshr_dbf_err_fill_idx_sx1_q,
-        mshr_dbf_err_fill_valid_sx1_q,
-        mshr_dbf_retired_idx_sx1_q,
-        mshr_dbf_retired_valid_sx1_q,
-
-        //outputs to hnf_link_txreq_wrap
-        mshr_txreq_valid_sx1_q,
-        mshr_txreq_qos_sx1,
-        mshr_txreq_txnid_sx1_q,
-        mshr_txreq_returnnid_sx1,
-        mshr_txreq_returntxnid_sx1,
-        mshr_txreq_opcode_sx1,
-        mshr_txreq_size_sx1,
-        mshr_txreq_ns_sx1,
-        mshr_txreq_allowretry_sx1,
-        mshr_txreq_order_sx1,
-        mshr_txreq_pcrdtype_sx1,
-        mshr_txreq_memattr_sx1,
-        mshr_txreq_dodwt_sx1,
-        mshr_txreq_tracetag_sx1,
-
-        //outputs to hnf_link_txrsp_wrap
-        mshr_txrsp_valid_sx1_q,
-        mshr_txrsp_qos_sx1,
-        mshr_txrsp_tgtid_sx1,
-        mshr_txrsp_txnid_sx1_q,
-        mshr_txrsp_opcode_sx1,
-        mshr_txrsp_resperr_sx1,
-        mshr_txrsp_resp_sx1,
-        mshr_txrsp_dbid_sx1,
-        mshr_txrsp_tracetag_sx1,
-
-        //outputs to hnf_link_txsnp_wrap
-        mshr_txsnp_valid_sx1_q,
-        mshr_txsnp_qos_sx1,
-        mshr_txsnp_txnid_sx1_q,
-        mshr_txsnp_fwdnid_sx1,
-        mshr_txsnp_fwdtxnid_sx1,
-        mshr_txsnp_opcode_sx1,
-        mshr_txsnp_ns_sx1,
-        mshr_txsnp_rettosrc_sx1,
-        mshr_txsnp_tracetag_sx1,
-        mshr_txsnp_rn_vec_sx1,
-
-        //outputs to hnf_link_txdat_wrap
-        mshr_txdat_tgtid_sx2,
-        mshr_txdat_txnid_sx2,
-        mshr_txdat_opcode_sx2,
-        mshr_txdat_resp_sx2,
-        mshr_txdat_resperr_sx2,
-        mshr_txdat_dbid_sx2,
-        mshr_txdat_ccid_sx2,
-        mshr_txdat_tracetag_sx2,
-
-        //outputs to hnf_cache_pipeline
-        mshr_l3_fill_sx1_q,
-        mshr_l3_rnf_sx1_q,
-        mshr_l3_seq_retire_sx1_q,
-        mshr_l3_opcode_sx1_q,
-        mshr_l3_req_en_sx1_q,
-        mshr_l3_entry_idx_sx1_q,
-        mshr_l3_fill_dirty_sx1_q
-    );
-
     //global inputs
-    input wire                                                       clk;
-    input wire                                                       rst;
+    input wire clk,
+    input wire rst,
 
     //inputs related to request handling from hnf_link_rxreq_parse
-    input wire                                                       li_mshr_rxreq_valid_s0;
-    input wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]                        li_mshr_rxreq_qos_s0;
-    input wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]                      li_mshr_rxreq_srcid_s0;
-    input wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]                      li_mshr_rxreq_txnid_s0;
-    input wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]                     li_mshr_rxreq_opcode_s0;
-    input wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]                       li_mshr_rxreq_size_s0;
-    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]                       li_mshr_rxreq_addr_s0;
-    input wire [`CHIE_REQ_FLIT_NS_WIDTH-1:0]                         li_mshr_rxreq_ns_s0;
-    input wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0]                 li_mshr_rxreq_allowretry_s0;
-    input wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]                      li_mshr_rxreq_order_s0;
-    input wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]                   li_mshr_rxreq_pcrdtype_s0;
-    input wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]                    li_mshr_rxreq_memattr_s0;
-    input wire [`CHIE_REQ_FLIT_LPID_WIDTH-1:0]                       li_mshr_rxreq_lpid_s0;
-    input wire [`CHIE_REQ_FLIT_EXCL_WIDTH-1:0]                       li_mshr_rxreq_excl_s0;
-    input wire [`CHIE_REQ_FLIT_EXPCOMPACK_WIDTH-1:0]                 li_mshr_rxreq_expcompack_s0;
-    input wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]                   li_mshr_rxreq_tracetag_s0;
+    input wire li_mshr_rxreq_valid_s0,
+    input wire [3:0] li_mshr_rxreq_qos_s0,
+    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
+    input wire [11:0] li_mshr_rxreq_txnid_s0,
+    input chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
+    input chie_pkg::size_e li_mshr_rxreq_size_s0,
+    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
+    input wire li_mshr_rxreq_ns_s0,
+    input wire li_mshr_rxreq_allowretry_s0,
+    input chie_pkg::order_e li_mshr_rxreq_order_s0,
+    input wire [3:0] li_mshr_rxreq_pcrdtype_s0,
+    input chie_pkg::memattr_s li_mshr_rxreq_memattr_s0,
+    input wire [7:0] li_mshr_rxreq_lpid_s0,
+    input wire li_mshr_rxreq_excl_s0,
+    input wire li_mshr_rxreq_expcompack_s0,
+    input wire li_mshr_rxreq_tracetag_s0,
 
     //inputs related to data handling from hnf_link_rxreq_parse
-    input wire                                                       li_mshr_rxdat_valid_s0;
-    input wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                      li_mshr_rxdat_txnid_s0;
-    input wire [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]                     li_mshr_rxdat_opcode_s0;
-    input wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]                       li_mshr_rxdat_resp_s0;
-    input wire [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]                    li_mshr_rxdat_resperr_s0;
-    input wire [`CHIE_DAT_FLIT_FWDSTATE_WIDTH-1:0]                   li_mshr_rxdat_fwdstate_s0;
-    input wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]                     li_mshr_rxdat_dataid_s0;
+    input wire li_mshr_rxdat_valid_s0,
+    input wire [11:0] li_mshr_rxdat_txnid_s0,
+    input chie_pkg::dat_opcode_e li_mshr_rxdat_opcode_s0,
+    input chie_pkg::resp_state_e li_mshr_rxdat_resp_s0,
+    input chie_pkg::resp_err_e li_mshr_rxdat_resperr_s0,
+    input wire [3:0] li_mshr_rxdat_fwdstate_s0,
+    input wire [1:0] li_mshr_rxdat_dataid_s0,
 
     //inputs related to response handling from hnf_link_rxreq_parse
-    input wire                                                       li_mshr_rxrsp_valid_s0;
-    input wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]                      li_mshr_rxrsp_srcid_s0;
-    input wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]                      li_mshr_rxrsp_txnid_s0;
-    input wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]                     li_mshr_rxrsp_opcode_s0;
-    input wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]                       li_mshr_rxrsp_resp_s0;
-    input wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]                    li_mshr_rxrsp_resperr_s0;
-    input wire [`CHIE_RSP_FLIT_FWDSTATE_WIDTH-1:0]                   li_mshr_rxrsp_fwdstate_s0;
-    input wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]                       li_mshr_rxrsp_dbid_s0;
-    input wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]                   li_mshr_rxrsp_pcrdtype_s0;
+    input wire li_mshr_rxrsp_valid_s0,
+    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxrsp_srcid_s0,
+    input wire [11:0] li_mshr_rxrsp_txnid_s0,
+    input chie_pkg::rsp_opcode_e li_mshr_rxrsp_opcode_s0,
+    input chie_pkg::resp_state_e li_mshr_rxrsp_resp_s0,
+    input chie_pkg::resp_err_e li_mshr_rxrsp_resperr_s0,
+    input wire [2:0] li_mshr_rxrsp_fwdstate_s0,
+    input wire [11:0] li_mshr_rxrsp_dbid_s0,
+    input wire [3:0] li_mshr_rxrsp_pcrdtype_s0,
 
     //inputs from hnf_mshr_global_monitor
-    input wire                                                       excl_pass_s1;
-    input wire                                                       excl_fail_s1;
+    input wire excl_pass_s1,
+    input wire excl_fail_s1,
 
     //inputs from hnf_mshr_bypass
-    input wire                                                       txreq_mshr_bypass_lost_s1;
-    input wire                                                       txrsp_mshr_bypass_lost_s1;
+    input wire txreq_mshr_bypass_lost_s1,
+    input wire txrsp_mshr_bypass_lost_s1,
 
     //inputs from hnf_mshr_qos
-    input wire                                                       mshr_alloc_en_s0;
-    input wire                                                       mshr_alloc_en_s1_q;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]                             mshr_entry_idx_alloc_s0;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]                             mshr_entry_idx_alloc_s1_q;
+    input wire mshr_alloc_en_s0,
+    input wire mshr_alloc_en_s1_q,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s1_q,
 
     //inputs from hnf_mshr_addr_buffer
-    input wire                                                       rxreq_cam_hazard_s1_q;
-    input wire [`MSHR_ENTRIES_NUM-1:0]                               rxreq_cam_hazard_entry_s1_q;
-    input wire                                                       mshr_l3_hazard_valid_sx3_q;
-    input wire [`MSHR_ENTRIES_NUM-1:0]                               pipe_cam_hazard_entry_sx3_q;
-    input wire [`MSHR_ENTRIES_NUM-1:0]                               pipe_sleep_entry_sx3_q;
+    input wire rxreq_cam_hazard_s1_q,
+    input wire [`MSHR_ENTRIES_NUM-1:0] rxreq_cam_hazard_entry_s1_q,
+    input wire mshr_l3_hazard_valid_sx3_q,
+    input wire [`MSHR_ENTRIES_NUM-1:0] pipe_cam_hazard_entry_sx3_q,
+    input wire [`MSHR_ENTRIES_NUM-1:0] pipe_sleep_entry_sx3_q,
 
     //inputs from hnf_link_txreq_wrap
-    input wire                                                       txreq_mshr_won_sx1;
+    input wire txreq_mshr_won_sx1,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire                                                       txrsp_mshr_won_sx1;
+    input wire txrsp_mshr_won_sx1,
 
     //inputs from hnf_link_txsnp_wrap
-    input wire                                                       txsnp_mshr_busy_sx1;
+    input wire txsnp_mshr_busy_sx1,
 
     //inputs from hnf_link_txdat_wrap
-    input wire                                                       txdat_mshr_busy_sx;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]                             txdat_mshr_rd_idx_sx2;
-    input wire                                                       txdat_mshr_clr_dbf_busy_valid_sx3;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]                             txdat_mshr_clr_dbf_busy_idx_sx3;
+    input wire txdat_mshr_busy_sx,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_rd_idx_sx2,
+    input wire txdat_mshr_clr_dbf_busy_valid_sx3,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_clr_dbf_busy_idx_sx3,
 
     //inputs from hnf_cache_pipeline
-    input wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]                     l3_opcode_sx7_q;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]                             l3_mshr_entry_sx7_q;
-    input wire                                                       l3_memrd_sx7_q;
-    input wire                                                       l3_hit_sx7_q;
-    input wire                                                       l3_sfhit_sx7_q;
-    input wire                                                       l3_pipeval_sx7_q;
-    input wire                                                       l3_mshr_wr_op_sx7_q;
-    input wire                                                       l3_snpdirect_sx7_q;
-    input wire                                                       l3_snpbrd_sx7_q;
-    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0]                          l3_snp_bit_sx7_q;
-    input wire                                                       l3_replay_sx7_q;
-    input wire                                                       l3_hit_d_sx7_q;
-    input wire                                                       l3_evict_sx7_q;
+    input chie_pkg::req_opcode_e l3_opcode_sx7_q,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] l3_mshr_entry_sx7_q,
+    input wire l3_memrd_sx7_q,
+    input wire l3_hit_sx7_q,
+    input wire l3_sfhit_sx7_q,
+    input wire l3_pipeval_sx7_q,
+    input wire l3_mshr_wr_op_sx7_q,
+    input wire l3_snpdirect_sx7_q,
+    input wire l3_snpbrd_sx7_q,
+    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0] l3_snp_bit_sx7_q,
+    input wire l3_replay_sx7_q,
+    input wire l3_hit_d_sx7_q,
+    input wire l3_evict_sx7_q,
 
     //outputs to hnf_data_buffer
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_rd_idx_sx1_q;
-    output logic                                                       mshr_dbf_rd_valid_sx1_q;
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_rd_idx_sx1_q,
+    output logic mshr_dbf_rd_valid_sx1_q,
     // Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data packets, so
     // the buffer is stamped present for an entry no fill will ever reach.
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_err_fill_idx_sx1_q;
-    output logic                                                       mshr_dbf_err_fill_valid_sx1_q;
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_dbf_retired_idx_sx1_q;
-    output logic                                                       mshr_dbf_retired_valid_sx1_q;
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_err_fill_idx_sx1_q,
+    output logic mshr_dbf_err_fill_valid_sx1_q,
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_retired_idx_sx1_q,
+    output logic mshr_dbf_retired_valid_sx1_q,
 
     //outputs to hnf_link_txreq_wrap
-    output logic                                                       mshr_txreq_valid_sx1_q;
-    output wire  [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]                      mshr_txreq_qos_sx1;
-    output logic  [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]                     mshr_txreq_txnid_sx1_q;
-    output wire [`CHIE_REQ_FLIT_RETURNNID_WIDTH-1:0]                 mshr_txreq_returnnid_sx1;
-    output wire [`CHIE_REQ_FLIT_RETURNTXNID_WIDTH-1:0]               mshr_txreq_returntxnid_sx1;
-    output wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]                    mshr_txreq_opcode_sx1;
-    output wire [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]                      mshr_txreq_size_sx1;
-    output wire [`CHIE_REQ_FLIT_NS_WIDTH-1:0]                        mshr_txreq_ns_sx1;
-    output wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0]                mshr_txreq_allowretry_sx1;
-    output wire [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]                     mshr_txreq_order_sx1;
-    output wire [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]                  mshr_txreq_pcrdtype_sx1;
-    output wire [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]                   mshr_txreq_memattr_sx1;
-    output wire [`CHIE_REQ_FLIT_DODWT_WIDTH-1:0]                     mshr_txreq_dodwt_sx1;
-    output wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]                  mshr_txreq_tracetag_sx1;
+    output logic mshr_txreq_valid_sx1_q,
+    output wire  [3:0] mshr_txreq_qos_sx1,
+    output logic  [11:0] mshr_txreq_txnid_sx1_q,
+    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txreq_returnnid_sx1,
+    output wire [12-1:0] mshr_txreq_returntxnid_sx1,
+    output chie_pkg::req_opcode_e mshr_txreq_opcode_sx1,
+    output chie_pkg::size_e mshr_txreq_size_sx1,
+    output wire mshr_txreq_ns_sx1,
+    output wire mshr_txreq_allowretry_sx1,
+    output chie_pkg::order_e mshr_txreq_order_sx1,
+    output wire [3:0] mshr_txreq_pcrdtype_sx1,
+    output chie_pkg::memattr_s mshr_txreq_memattr_sx1,
+    output wire mshr_txreq_dodwt_sx1,
+    output wire mshr_txreq_tracetag_sx1,
 
     //outputs to hnf_link_txrsp_wrap
-    output logic                                                       mshr_txrsp_valid_sx1_q;
-    output wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]                       mshr_txrsp_qos_sx1;
-    output wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]                     mshr_txrsp_tgtid_sx1;
-    output logic  [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]                     mshr_txrsp_txnid_sx1_q;
-    output wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]                    mshr_txrsp_opcode_sx1;
-    output wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]                   mshr_txrsp_resperr_sx1;
-    output wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]                      mshr_txrsp_resp_sx1;
-    output wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]                      mshr_txrsp_dbid_sx1;
-    output wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0]                  mshr_txrsp_tracetag_sx1;
+    output logic mshr_txrsp_valid_sx1_q,
+    output wire [3:0] mshr_txrsp_qos_sx1,
+    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txrsp_tgtid_sx1,
+    output logic  [11:0] mshr_txrsp_txnid_sx1_q,
+    output chie_pkg::rsp_opcode_e mshr_txrsp_opcode_sx1,
+    output chie_pkg::resp_err_e mshr_txrsp_resperr_sx1,
+    output chie_pkg::resp_state_e mshr_txrsp_resp_sx1,
+    output wire [11:0] mshr_txrsp_dbid_sx1,
+    output wire mshr_txrsp_tracetag_sx1,
 
     //outputs to hnf_link_txsnp_wrap
-    output logic                                                       mshr_txsnp_valid_sx1_q;
-    output wire [`CHIE_SNP_FLIT_QOS_WIDTH-1:0]                       mshr_txsnp_qos_sx1;
-    output logic  [`CHIE_SNP_FLIT_TXNID_WIDTH-1:0]                     mshr_txsnp_txnid_sx1_q;
-    output wire [`CHIE_SNP_FLIT_FWDNID_WIDTH-1:0]                    mshr_txsnp_fwdnid_sx1;
-    output wire [`CHIE_SNP_FLIT_FWDTXNID_WIDTH-1:0]                  mshr_txsnp_fwdtxnid_sx1;
-    output wire [`CHIE_SNP_FLIT_OPCODE_WIDTH-1:0]                    mshr_txsnp_opcode_sx1;
-    output wire [`CHIE_SNP_FLIT_NS_WIDTH-1:0]                        mshr_txsnp_ns_sx1;
-    output wire [`CHIE_SNP_FLIT_RETTOSRC_WIDTH-1:0]                  mshr_txsnp_rettosrc_sx1;
-    output wire [`CHIE_SNP_FLIT_TRACETAG_WIDTH-1:0]                  mshr_txsnp_tracetag_sx1;
-    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]                         mshr_txsnp_rn_vec_sx1;
+    output logic mshr_txsnp_valid_sx1_q,
+    output wire [3:0] mshr_txsnp_qos_sx1,
+    output logic  [11:0] mshr_txsnp_txnid_sx1_q,
+    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txsnp_fwdnid_sx1,
+    output wire [11:0] mshr_txsnp_fwdtxnid_sx1,
+    output chie_pkg::snp_opcode_e mshr_txsnp_opcode_sx1,
+    output wire mshr_txsnp_ns_sx1,
+    output wire mshr_txsnp_rettosrc_sx1,
+    output wire mshr_txsnp_tracetag_sx1,
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0] mshr_txsnp_rn_vec_sx1,
 
     //outputs to hnf_link_txdat_wrap
-    output logic  [`CHIE_DAT_FLIT_TGTID_WIDTH-1:0]                     mshr_txdat_tgtid_sx2;
-    output logic  [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]                     mshr_txdat_txnid_sx2;
-    output logic  [`CHIE_DAT_FLIT_OPCODE_WIDTH-1:0]                    mshr_txdat_opcode_sx2;
-    output logic  [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]                      mshr_txdat_resp_sx2;
-    output logic  [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]                   mshr_txdat_resperr_sx2;
-    output logic  [`CHIE_DAT_FLIT_DBID_WIDTH-1:0]                      mshr_txdat_dbid_sx2;
-    output logic  [`CHIE_DAT_FLIT_CCID_WIDTH-1:0]                      mshr_txdat_ccid_sx2;
-    output logic  [`CHIE_DAT_FLIT_TRACETAG_WIDTH-1:0]                  mshr_txdat_tracetag_sx2;
+    output logic  [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx2,
+    output logic  [11:0] mshr_txdat_txnid_sx2,
+    output chie_pkg::dat_opcode_e mshr_txdat_opcode_sx2,
+    output chie_pkg::resp_state_e mshr_txdat_resp_sx2,
+    output chie_pkg::resp_err_e mshr_txdat_resperr_sx2,
+    output logic  [11:0] mshr_txdat_dbid_sx2,
+    output logic  [1:0] mshr_txdat_ccid_sx2,
+    output logic mshr_txdat_tracetag_sx2,
 
     //outputs to hnf_cache_pipeline
-    output logic                                                       mshr_l3_fill_sx1_q;
-    output logic  [CHIE_NID_WIDTH_PARAM-1:0]                           mshr_l3_rnf_sx1_q;
-    output logic                                                       mshr_l3_seq_retire_sx1_q;
-    output logic  [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]                    mshr_l3_opcode_sx1_q;
-    output logic                                                       mshr_l3_req_en_sx1_q;
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0]                            mshr_l3_entry_idx_sx1_q;
-    output logic                                                       mshr_l3_fill_dirty_sx1_q;
+    output logic mshr_l3_fill_sx1_q,
+    output logic  [CHIE_NID_WIDTH_PARAM-1:0] mshr_l3_rnf_sx1_q,
+    output logic mshr_l3_seq_retire_sx1_q,
+    output chie_pkg::req_opcode_e mshr_l3_opcode_sx1_q,
+    output logic mshr_l3_req_en_sx1_q,
+    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_l3_entry_idx_sx1_q,
+    output logic mshr_l3_fill_dirty_sx1_q,
 
+
+
+    output wire [`MSHR_ENTRIES_NUM-1:0] mshr_mem_busy_sx,  //outputs to hnf_mshr_addr_buffer
+    input wire [`MSHR_ENTRIES_NUM-1:0] abf_internal_evict_addr_valid_sx_q  //inputs from hnf_mshr_addr_buffer
+    );
     //internal signals
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_entry_valid_sx_q;
-    // One bit per sleeper, not one successor index: an entry that owes a victim
-    // writeback blocks every request to that line, and a single slot would lose
-    // every sleeper but the last -- unrecoverably, since sleep_sx_q is cleared
     // only through this structure.
+    // every sleeper but the last -- unrecoverably, since sleep_sx_q is cleared
+    // writeback blocks every request to that line, and a single slot would lose
+    // One bit per sleeper, not one successor index: an entry that owes a victim
     logic [`MSHR_ENTRIES_NUM-1:0]                 need_to_wakeup_vec_sx_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 sleep_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_can_alloc_entry_s1_q;
@@ -387,18 +229,18 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_errgrant_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_fail_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_sn_order_s1_q;
-    logic [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0]       mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]          mshr_qos_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_MEMATTR_WIDTH-1:0]      mshr_memattr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]        mshr_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]        mshr_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::req_opcode_e       mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [3:0]          mshr_qos_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::memattr_s      mshr_memattr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]        mshr_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]        mshr_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_s1_q;
-    logic [`CHIE_REQ_FLIT_SIZE_WIDTH-1:0]         mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]         mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]     mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_DAT_FLIT_RESPERR_WIDTH-1:0]      mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_NS_WIDTH-1:0]           mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_REQ_FLIT_ORDER_WIDTH-1:0]        mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::size_e         mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]         mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic     mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::resp_err_e      mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic           mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::order_e        mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_compack_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dwt_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3dat_sn_sx8_q;
@@ -408,9 +250,9 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`RNF_NUM-1:0]                          mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snpdirect_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]                mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_SNP_FLIT_OPCODE_WIDTH-1:0]       mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::snp_opcode_e       mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retosrc_sx8_q;
-    logic [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]         mshr_l3_resp_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::resp_state_e         mshr_l3_resp_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snprsp_entry_vec_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wuf_neednosnp_vec_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snpdat_entry_vec_s1_q;
@@ -437,7 +279,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_retry_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retry_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_resent_s1_q;
-    logic [`CHIE_REQ_FLIT_PCRDTYPE_WIDTH-1:0]     mshr_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [3:0]     mshr_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_pcrdtype_cnt_s1_q[0:`MSHR_PCRDTYPE_NUMS-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dmt_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dct_sx8_q;
@@ -461,7 +303,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_comp_rdy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_comp_busy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_compack_busy_sx_q;
-    logic [`CHIE_SNP_FLIT_OPCODE_WIDTH-1:0]       mshr_snpcode_sx7;
+    chie_pkg::snp_opcode_e       mshr_snpcode_sx7;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshrageq_v_sx2_q;
     logic [`MSHR_ENTRIES_WIDTH-1:0]               mshrageq_mshr_idx_sx2_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshrageq_alloc_entry_ptr_sx1;
@@ -477,8 +319,8 @@ module hnf_mshr_ctl `HNF_PARAM
     logic                                         found_pipe_cam_hazard_idx;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_d_sx8_q;
-    logic [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_txrsp_idx_sx1_q;
     logic                                         mshr_retire_busy_sx1_q;
     logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_retire_min_idx_sx;
@@ -512,7 +354,6 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]                 txreq_wrap_other_ptr_vector;
     logic                                         mshr_retry_ageq_sel_success;
     logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retry_rdy_entry_s1_q;
-
     wire                                        op_rdnosnp;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_clr_sx1;
@@ -648,14 +489,14 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                        mshr_snprsp_s0;
     wire                                        mshr_snprspfwd_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snprsp_entry_vec_s0;
-    wire [`CHIE_SNP_FLIT_TXNID_WIDTH-1:0]       mshr_snprsp_entry_s0;
+    wire [11:0]       mshr_snprsp_entry_s0;
     wire                                        mshr_snprsp_v_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snprsp_getone_s0;
     wire                                        mshr_snpdat_s0;
     wire                                        mshr_snpdatfwd_s0;
     wire                                        mshr_snpdat_v_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snpdat_entry_vec_s0;
-    wire [`CHIE_SNP_FLIT_TXNID_WIDTH-1:0]       mshr_snpdat_entry_s0;
+    wire [11:0]       mshr_snpdat_entry_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snpdat_gettwo_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_d_set_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_d_clr_s1;
@@ -665,12 +506,12 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_set_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_clr_s1;
     wire                                        mshr_snp_d_s0;
-    wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]      mshr_snpdatid_s0;
+    wire [1:0]      mshr_snpdatid_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3dat_rn_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3dat_sn_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_evict_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dat_entry_vec_s0;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]       mshr_dat_entry_s0;
+    wire [11:0]       mshr_dat_entry_s0;
     wire                                        mshr_dat_v_s0;
     wire                                        mshr_mem_dat_s0;
     wire                                        mshr_rn_dat_s0;
@@ -684,12 +525,12 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                        mshr_rn_dat_get_i_s0;
     wire                                        mshr_rn_dat_get_uc_s0;
     wire                                        mshr_rn_dat_get_sc_s0;
-    wire [`CHIE_DAT_FLIT_RESP_WIDTH-1:0]        mshr_data_state_s0;
+    chie_pkg::resp_state_e        mshr_data_state_s0;
     wire                                        mshr_rn_dat_get_d_s0;
     wire                                        mshr_rsp_v_s0;
     wire                                        mshr_getrsp_compack_s0;
     wire                                        mshr_getdat_compack_s0;
-    wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]       mshr_rsp_entry_s0;
+    wire [11:0]       mshr_rsp_entry_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rsp_entry_vec_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retosrc_entry_vec_sx8;
     wire                                        mshr_get_dbid_s0;
@@ -699,14 +540,13 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                        mshr_retry_alloc_s0;
     wire                                        mshr_get_pcrd_s0;
     wire                                        mshr_pcrd_alloc_s0;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]    mshr_pcrd_type_get_s0;
+    wire [3:0]    mshr_pcrd_type_get_s0;
     wire [`MSHR_PCRDTYPE_NUMS-1:0]              mshr_pcrdtype_cnt_upd_s1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_pcrdtype_cnt_s1[0:`MSHR_PCRDTYPE_NUMS-1];
     wire                                        mshr_l3_dmt_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_dmt_s1;
-
-    // Sec 13.10.5 (p.13-427) makes TxnID 12 bits; an MSHR index is
     // `MSHR_ENTRIES_WIDTH. Named once here rather than truncated at every use.
+    // Sec 13.10.5 (p.13-427) makes TxnID 12 bits; an MSHR index is
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_snpdat_entry_idx_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dat_entry_idx_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_txreq_entry_idx_sx1;
@@ -777,8 +617,6 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txsnp_rdy_clr_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_rdy_sx;
-    output wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mem_busy_sx;//outputs to hnf_mshr_addr_buffer
-    input wire [`MSHR_ENTRIES_NUM-1:0]          abf_internal_evict_addr_valid_sx_q;//inputs from hnf_mshr_addr_buffer
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txreq_rdy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_datbuf_busy_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rdy_sx;
@@ -828,7 +666,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //************************************************************************//
 
-    assign op_rdnosnp              = (li_mshr_rxreq_opcode_s0 == `CHIE_READNOSNP);
+    assign op_rdnosnp              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
     assign mshr_rdnosnp_set_s0     = {`MSHR_ENTRIES_NUM{op_rdnosnp}} & mshr_can_alloc_entry_s0;
     assign mshr_rdnosnp_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_rdnosnp_upd_sx     = mshr_rdnosnp_set_s0 | mshr_rdnosnp_clr_sx1;
@@ -847,7 +685,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_ro              = (li_mshr_rxreq_opcode_s0 == `CHIE_READONCE);
+    assign op_ro              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE);
     assign mshr_ro_set_s0     = {`MSHR_ENTRIES_NUM{op_ro}} & mshr_can_alloc_entry_s0;
     assign mshr_ro_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_ro_upd_sx     = mshr_ro_set_s0 | mshr_ro_clr_sx1;
@@ -866,7 +704,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_rdnosd              = (li_mshr_rxreq_opcode_s0 == `CHIE_READNOTSHAREDDIRTY);
+    assign op_rdnosd              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY);
     assign mshr_rdnosd_set_s0     = {`MSHR_ENTRIES_NUM{op_rdnosd}} & mshr_can_alloc_entry_s0;
     assign mshr_rdnosd_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_rdnosd_upd_sx     = mshr_rdnosd_set_s0 | mshr_rdnosd_clr_sx1;
@@ -885,7 +723,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_ru              = (li_mshr_rxreq_opcode_s0 == `CHIE_READUNIQUE);
+    assign op_ru              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE);
     assign mshr_ru_set_s0     = {`MSHR_ENTRIES_NUM{op_ru}} & mshr_can_alloc_entry_s0;
     assign mshr_ru_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_ru_upd_sx     = mshr_ru_set_s0 | mshr_ru_clr_sx1;
@@ -904,7 +742,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_rc              = (li_mshr_rxreq_opcode_s0 == `CHIE_READCLEAN);
+    assign op_rc              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN);
     assign mshr_rc_set_s0     = {`MSHR_ENTRIES_NUM{op_rc}} & mshr_can_alloc_entry_s0;
     assign mshr_rc_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_rc_upd_sx     = mshr_rc_set_s0 | mshr_rc_clr_sx1;
@@ -923,7 +761,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wrnosnpf             = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULL);
+    assign op_wrnosnpf             = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL);
     assign op_wrnosnp              = op_wrnosnpf | op_wrnosnpp;
     assign mshr_wrnosnp_set_s0     = {`MSHR_ENTRIES_NUM{op_wrnosnp}} & mshr_can_alloc_entry_s0;
     assign mshr_wrnosnp_clr_sx1    = mshr_can_retire_entry_sx1;
@@ -943,7 +781,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wrnosnpp             = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTL);
+    assign op_wrnosnpp             = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
     assign mshr_wrnosnpp_set_s0     = {`MSHR_ENTRIES_NUM{op_wrnosnpp}} & mshr_can_alloc_entry_s0;
     assign mshr_wrnosnpp_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_wrnosnpp_upd_sx     = mshr_wrnosnpp_set_s0 | mshr_wrnosnpp_clr_sx1;
@@ -962,7 +800,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wuf             = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULL);
+    assign op_wuf             = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL);
     assign mshr_wuf_set_s0     = {`MSHR_ENTRIES_NUM{op_wuf}} & mshr_can_alloc_entry_s0;
     assign mshr_wuf_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_wuf_upd_sx     = mshr_wuf_set_s0 | mshr_wuf_clr_sx1;
@@ -981,7 +819,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wup              = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTL);
+    assign op_wup              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL);
     assign mshr_wup_set_s0     = {`MSHR_ENTRIES_NUM{op_wup}} & mshr_can_alloc_entry_s0;
     assign mshr_wup_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_wup_upd_sx     = mshr_wup_set_s0 | mshr_wup_clr_sx1;
@@ -1019,7 +857,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wb              = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULL);
+    assign op_wb              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL);
     assign mshr_wb_set_s0     = {`MSHR_ENTRIES_NUM{op_wb}} & mshr_can_alloc_entry_s0;
     assign mshr_wb_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_wb_upd_sx     = mshr_wb_set_s0 | mshr_wb_clr_sx1;
@@ -1038,7 +876,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_wc              = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITECLEANFULL);
+    assign op_wc              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL);
     assign mshr_wc_set_s0     = {`MSHR_ENTRIES_NUM{op_wc}} & mshr_can_alloc_entry_s0;
     assign mshr_wc_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_wc_upd_sx     = mshr_wc_set_s0 | mshr_wc_clr_sx1;
@@ -1062,8 +900,8 @@ module hnf_mshr_ctl `HNF_PARAM
     // the Home electing to cache the line. Sec 4.2.3 (p.4-177) makes LikelyShared
     // the initial UC/SC distinction, which changes nothing the Home does with the
     // data; Table 4-24 (p.4-195) gives the CopyBack row no snoop, as for its twin.
-    assign op_we              = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEEVICTFULL)
-                              | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEEVICTOREVICT);
+    assign op_we              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)
+                              | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
     assign mshr_we_set_s0     = {`MSHR_ENTRIES_NUM{op_we}} & mshr_can_alloc_entry_s0;
     assign mshr_we_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_we_upd_sx     = mshr_we_set_s0 | mshr_we_clr_sx1;
@@ -1082,7 +920,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_mu              = (li_mshr_rxreq_opcode_s0 == `CHIE_MAKEUNIQUE);
+    assign op_mu              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_MAKEUNIQUE);
     assign mshr_mu_set_s0     = {`MSHR_ENTRIES_NUM{op_mu}} & mshr_can_alloc_entry_s0;
     assign mshr_mu_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_mu_upd_sx     = mshr_mu_set_s0 | mshr_mu_clr_sx1;
@@ -1101,7 +939,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_cu              = (li_mshr_rxreq_opcode_s0 == `CHIE_CLEANUNIQUE);
+    assign op_cu              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_CLEANUNIQUE);
     assign mshr_cu_set_s0     = {`MSHR_ENTRIES_NUM{op_cu}} & mshr_can_alloc_entry_s0;
     assign mshr_cu_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_cu_upd_sx     = mshr_cu_set_s0 | mshr_cu_clr_sx1;
@@ -1120,7 +958,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_evi              = (li_mshr_rxreq_opcode_s0 == `CHIE_EVICT);
+    assign op_evi              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_EVICT);
     assign mshr_evi_set_s0     = {`MSHR_ENTRIES_NUM{op_evi}} & mshr_can_alloc_entry_s0;
     assign mshr_evi_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_evi_upd_sx     = mshr_evi_set_s0 | mshr_evi_clr_sx1;
@@ -1139,7 +977,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_cs              = (li_mshr_rxreq_opcode_s0 == `CHIE_CLEANSHARED);
+    assign op_cs              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHARED);
     assign mshr_cs_set_s0     = {`MSHR_ENTRIES_NUM{op_cs}} & mshr_can_alloc_entry_s0;
     assign mshr_cs_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_cs_upd_sx     = mshr_cs_set_s0 | mshr_cs_clr_sx1;
@@ -1158,7 +996,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_ci              = (li_mshr_rxreq_opcode_s0 == `CHIE_CLEANINVALID);
+    assign op_ci              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_CLEANINVALID);
     assign mshr_ci_set_s0     = {`MSHR_ENTRIES_NUM{op_ci}} & mshr_can_alloc_entry_s0;
     assign mshr_ci_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_ci_upd_sx     = mshr_ci_set_s0 | mshr_ci_clr_sx1;
@@ -1177,7 +1015,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_seq              = (li_mshr_rxreq_opcode_s0 == `CHIE_SNOOPFILTEREVICT);
+    assign op_seq              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT);
     assign mshr_seq_set_s0     = {`MSHR_ENTRIES_NUM{op_seq}} & mshr_can_alloc_entry_s0;
     assign mshr_seq_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_seq_upd_sx     = mshr_seq_set_s0 | mshr_seq_clr_sx1;
@@ -1203,52 +1041,52 @@ module hnf_mshr_ctl `HNF_PARAM
     // transaction type that is not supported", with Sec 9.4.4's (p.9-342, MUST)
     // transaction structure intact -- so the class carries its shape (grant, write
     // data, read data) as well as its NDERR.
-    assign op_drop      = (li_mshr_rxreq_opcode_s0 == `CHIE_PREFETCHTGT)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_PCRDRETURN)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_REQLCRDRETURN);
+    assign op_drop      = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN);
     assign op_serviced  = op_rdnosnp | op_ro | op_rdnosd | op_ru | op_rc
                         | op_wrnosnp | op_wu | op_wb | op_wc | op_we
                         | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq;
     assign op_err       = li_mshr_rxreq_valid_s0 & ~(op_serviced | op_drop);
     // Table 4-6 (p.4-168) / Table 4-8 (p.4-171): a read is completed by CompData, so
     // the error rides on the data response (Table 9-2 p.9-337).
-    assign op_errrd     = op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_READSHARED)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READNOSNPSEP)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READONCECLEANINVALID)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READONCEMAKEINVALID)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_READPREFERUNIQUE)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_MAKEREADUNIQUE));
+    assign op_errrd     = op_err & ((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READSHARED)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCECLEANINVALID)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCEMAKEINVALID)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_MAKEREADUNIQUE));
     // Table 4-17 (p.4-182)'s Combined Writes, enumerated rather than taken as an
     // opcode range: the gaps inside that range are RESERVED, and a reserved opcode
     // answered write-shaped would wait for data no Requester owes it.
-    assign op_cw     = (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANINV)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANINV)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANINV)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITECLEANFULLCLEANSH)
-                        | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITECLEANFULLCLEANSHPERSEP);
+    assign op_cw     = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANINV)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSH)
+                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
     // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
     // a DBID and consume their write data before completing.
-    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_WRITEBACKPTL)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEFULLSTASH)
-                                  | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEPTLSTASH)
-                                  | ((li_mshr_rxreq_opcode_s0 >= `CHIE_ATOMICSTORE_ADD)
-                                   & (li_mshr_rxreq_opcode_s0 <= `CHIE_ATOMICCOMPARE))
+    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
+                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
+                                  | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
+                                   & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
                                   | op_cw);
     // Table 4-39 (p.4-219) gives a Write Zero no WriteData response but still a DBID,
     // so it joins the errored writes in owing a CompDBIDResp without owing data.
     assign op_errgrant  = op_errwrdat
-                        | (op_err & ((li_mshr_rxreq_opcode_s0 == `CHIE_WRITEUNIQUEZERO)
-                                   | (li_mshr_rxreq_opcode_s0 == `CHIE_WRITENOSNPZERO)));
+                        | (op_err & ((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO)
+                                   | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)));
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
@@ -1287,13 +1125,13 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_req_set_s0      = mshr_can_alloc_entry_s0;
     assign mshr_req_clr_sx1     = mshr_can_retire_entry_sx1;
     assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
-    assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == `CHIE_READNOSNP | li_mshr_rxreq_opcode_s0 == `CHIE_READONCE) && (!li_mshr_rxreq_expcompack_s0);
+    assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk)begin : mshr_qos_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_qos_s1_q[entry] <= {`CHIE_REQ_FLIT_QOS_WIDTH{1'b0}};
+                    mshr_qos_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_qos_s1_q[entry] <= li_mshr_rxreq_qos_s0;
                 else
@@ -1302,7 +1140,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_srcid_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_srcid_s1_q[entry] <= {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+                    mshr_srcid_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_srcid_s1_q[entry] <= li_mshr_rxreq_srcid_s0;
                 else
@@ -1311,7 +1149,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_txnid_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_txnid_s1_q[entry] <= {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
+                    mshr_txnid_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_txnid_s1_q[entry] <= li_mshr_rxreq_txnid_s0;
                 else
@@ -1320,7 +1158,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_opcode_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_opcode_s1_q[entry] <= {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}};
+                    mshr_opcode_s1_q[entry] <= chie_pkg::REQ_REQLCRDRETURN;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_opcode_s1_q[entry] <= li_mshr_rxreq_opcode_s0;
                 else
@@ -1329,7 +1167,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_size_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_size_s1_q[entry] <= {`CHIE_REQ_FLIT_SIZE_WIDTH{1'b0}};
+                    mshr_size_s1_q[entry] <= chie_pkg::SIZE_1B;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_size_s1_q[entry] <= li_mshr_rxreq_size_s0;
                 else
@@ -1338,7 +1176,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_addr_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_addr_s1_q[entry] <= {`CHIE_REQ_FLIT_ADDR_WIDTH{1'b0}};
+                    mshr_addr_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_addr_s1_q[entry] <= li_mshr_rxreq_addr_s0;
                 else
@@ -1350,7 +1188,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // packet or spawned packet generated in response to the received packet".
             always_ff @(posedge clk)begin : mshr_tracetag_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_tracetag_s1_q[entry] <= {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
+                    mshr_tracetag_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_tracetag_s1_q[entry] <= li_mshr_rxreq_tracetag_s0;
                 else
@@ -1362,9 +1200,9 @@ module hnf_mshr_ctl `HNF_PARAM
             // inbound flit reported it until the entry retires.
             always_ff @(posedge clk or posedge rst)begin : mshr_dn_resperr_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_dn_resperr_s1_q[entry] <= `CHIE_RESP_ERR_NORM_OK;
+                    mshr_dn_resperr_s1_q[entry] <= chie_pkg::RESP_ERR_NORM_OK;
                 else if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_dn_resperr_s1_q[entry] <= `CHIE_RESP_ERR_NORM_OK;
+                    mshr_dn_resperr_s1_q[entry] <= chie_pkg::RESP_ERR_NORM_OK;
                 else if(mshr_rsp_entry_vec_s0[entry] && li_mshr_rxrsp_resperr_s0[1])
                     mshr_dn_resperr_s1_q[entry] <= li_mshr_rxrsp_resperr_s0;
                 else if(mshr_dat_entry_vec_s0[entry] && li_mshr_rxdat_resperr_s0[1])
@@ -1384,7 +1222,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_order_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_order_s1_q[entry] <= {`CHIE_REQ_FLIT_ORDER_WIDTH{1'b0}};
+                    mshr_order_s1_q[entry] <= chie_pkg::ORDER_NONE;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_order_s1_q[entry] <= li_mshr_rxreq_order_s0;
                 else
@@ -1393,7 +1231,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_memattr_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_memattr_s1_q[entry] <= {`CHIE_REQ_FLIT_MEMATTR_WIDTH{1'b0}};
+                    mshr_memattr_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_memattr_s1_q[entry] <= li_mshr_rxreq_memattr_s0;
                 else
@@ -1464,8 +1302,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     //snprsp decode
-    assign mshr_snprsp_s0       = (li_mshr_rxrsp_opcode_s0 == `CHIE_SNPRESP);
-    assign mshr_snprspfwd_s0    = (li_mshr_rxrsp_opcode_s0 == `CHIE_SNPRESPFWDED);
+    assign mshr_snprsp_s0       = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESP);
+    assign mshr_snprspfwd_s0    = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESPFWDED);
     assign mshr_snprsp_v_s0     = li_mshr_rxrsp_valid_s0 & (mshr_snprsp_s0 | mshr_snprspfwd_s0);
     assign mshr_snprsp_entry_s0 = li_mshr_rxrsp_txnid_s0;
 
@@ -1484,10 +1322,10 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     //snpdat decode
-    assign mshr_snpdat_s0       = (li_mshr_rxdat_opcode_s0 == `CHIE_SNPRESPDATA);
-    assign mshr_snpdatfwd_s0    = (li_mshr_rxdat_opcode_s0 == `CHIE_SNPRESPDATAFWDED);
+    assign mshr_snpdat_s0       = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA);
+    assign mshr_snpdatfwd_s0    = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED);
     assign mshr_snpdat_v_s0     = li_mshr_rxdat_valid_s0 & (mshr_snpdat_s0 | mshr_snpdatfwd_s0);
-    assign mshr_snp_d_s0        = li_mshr_rxdat_resp_s0[`CHIE_DAT_FLIT_RESP_WIDTH-1];
+    assign mshr_snp_d_s0        = li_mshr_rxdat_resp_s0[3-1];
     assign mshr_snpdat_entry_s0 = li_mshr_rxdat_txnid_s0;
     assign mshr_snpdatid_s0     = li_mshr_rxdat_dataid_s0;
     assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & ((mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][1] == 1'b1 & mshr_snpdatid_s0 == 2'b00) | (mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][0] == 1'b1 & mshr_snpdatid_s0 == 2'b10));
@@ -1647,21 +1485,21 @@ module hnf_mshr_ctl `HNF_PARAM
 
     assign mshr_dat_v_s0           = li_mshr_rxdat_valid_s0;
     assign mshr_dat_entry_s0       = li_mshr_rxdat_txnid_s0;
-    assign mshr_getdat_compack_s0  = (li_mshr_rxdat_opcode_s0 == `CHIE_NCBWRDATACOMPACK);
-    assign mshr_mem_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_COMPDATA);
-    assign mshr_cb_dat_s0          = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_COPYBACKWRDATA);
-    assign mshr_ncb_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_NCBWRDATACOMPACK | li_mshr_rxdat_opcode_s0 == `CHIE_NONCOPYBACKWRDATA);
+    assign mshr_getdat_compack_s0  = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK);
+    assign mshr_mem_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA);
+    assign mshr_cb_dat_s0          = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA);
+    assign mshr_ncb_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK | li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA);
     assign mshr_rn_dat_s0          = mshr_cb_dat_s0 | mshr_ncb_dat_s0 | mshr_datcancel_s0;
     assign mshr_rn_dat_getall_s0   = (mshr_dat_rngetone_s1_q[mshr_dat_entry_idx_s0] | mshr_size_s1_q[mshr_dat_entry_idx_s0] != 3'b110) & mshr_rn_dat_s0;
-    assign mshr_datcancel_s0       = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == `CHIE_WRITEDATACANCEL);
+    assign mshr_datcancel_s0       = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL);
     assign mshr_set_stop_cb_s0     = mshr_rn_dat_s0 & ((mshr_rn_dat_get_i_sc_s0 & (mshr_wb_s1_q[mshr_dat_entry_idx_s0] | mshr_we_s1_q[mshr_dat_entry_idx_s0])) |
             ((mshr_rn_dat_get_i_sc_s0 | mshr_rn_dat_get_uc_s0) & mshr_wc_s1_q[mshr_dat_entry_idx_s0]) |
             (mshr_wb_s1_q[mshr_dat_entry_idx_s0] & ~mshr_memattr_s1_q[mshr_dat_entry_idx_s0][3:3] & mshr_rn_dat_get_uc_s0));
-    assign mshr_data_state_s0      = li_mshr_rxdat_valid_s0? li_mshr_rxdat_resp_s0:{`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
-    assign mshr_rn_dat_get_i_s0    = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_I);
-    assign mshr_rn_dat_get_uc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_UC);
-    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_UD_PD)) | (mshr_ncb_dat_s0 & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_memattr_s1_q[mshr_dat_entry_idx_s0][3:3]);
-    assign mshr_rn_dat_get_sc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == `CHIE_WRDATA_RESP_SC);
+    assign mshr_data_state_s0      = li_mshr_rxdat_valid_s0? li_mshr_rxdat_resp_s0:chie_pkg::RESP_I;
+    assign mshr_rn_dat_get_i_s0    = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_I);
+    assign mshr_rn_dat_get_uc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_UD);
+    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_PD)) | (mshr_ncb_dat_s0 & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_memattr_s1_q[mshr_dat_entry_idx_s0][3:3]);
+    assign mshr_rn_dat_get_sc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_SC);
     assign mshr_rn_dat_get_i_sc_s0 = mshr_rn_dat_get_i_s0 | mshr_rn_dat_get_sc_s0;
 
     generate
@@ -1795,12 +1633,12 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_pcrd_type_get_s0 = li_mshr_rxrsp_pcrdtype_s0;
 
     //opcode decode
-    assign mshr_getrsp_compack_s0 = (li_mshr_rxrsp_opcode_s0 == `CHIE_COMPACK);
-    assign mshr_get_dbid_s0       = (li_mshr_rxrsp_opcode_s0 == `CHIE_COMPDBIDRESP | li_mshr_rxrsp_opcode_s0 == `CHIE_DBIDRESP);
-    assign mshr_get_comp_s0       = (li_mshr_rxrsp_opcode_s0 == `CHIE_COMPDBIDRESP | li_mshr_rxrsp_opcode_s0 == `CHIE_COMP);
-    assign mshr_get_rd_receipt_s0 = (li_mshr_rxrsp_opcode_s0 == `CHIE_READRECEIPT);
-    assign mshr_get_retry_s0      = (li_mshr_rxrsp_opcode_s0 == `CHIE_RETRYACK);
-    assign mshr_get_pcrd_s0       = (li_mshr_rxrsp_opcode_s0 == `CHIE_PCRDGRANT);
+    assign mshr_getrsp_compack_s0 = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPACK);
+    assign mshr_get_dbid_s0       = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPDBIDRESP | li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_DBIDRESP);
+    assign mshr_get_comp_s0       = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPDBIDRESP | li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMP);
+    assign mshr_get_rd_receipt_s0 = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_READRECEIPT);
+    assign mshr_get_retry_s0      = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RETRYACK);
+    assign mshr_get_pcrd_s0       = (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_PCRDGRANT);
     assign mshr_retry_alloc_s0    = mshr_rsp_v_s0 & mshr_get_retry_s0;
     assign mshr_pcrd_alloc_s0     = mshr_rsp_v_s0 & mshr_get_pcrd_s0;
 
@@ -1905,11 +1743,11 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk or posedge rst)begin : mshr_dbid_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+                    mshr_dbid_s1_q[entry] <= '0;
                 else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_dbid_s0)
                     mshr_dbid_s1_q[entry] <= li_mshr_rxrsp_dbid_s0;
                 else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+                    mshr_dbid_s1_q[entry] <= '0;
             end
 
             // Under DWT the Subordinate grants the buffer, and Table 13-21
@@ -1920,11 +1758,11 @@ module hnf_mshr_ctl `HNF_PARAM
             // place the Home can learn the value its own Comp must echo.
             always_ff @(posedge clk or posedge rst)begin : mshr_dwt_dbid_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_dwt_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+                    mshr_dwt_dbid_s1_q[entry] <= '0;
                 else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_comp_s0 && mshr_dwt_s2_q[entry])
                     mshr_dwt_dbid_s1_q[entry] <= li_mshr_rxrsp_dbid_s0;
                 else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_dwt_dbid_s1_q[entry] <= {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
+                    mshr_dwt_dbid_s1_q[entry] <= '0;
             end
 
             always_ff @(posedge clk or posedge rst)begin : mshr_get_rd_receipt_s1_q_timing_logic
@@ -1938,7 +1776,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk or posedge rst)begin : mshr_pcrdtype_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_pcrdtype_s1_q[entry] <= {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
+                    mshr_pcrdtype_s1_q[entry] <= '0;
                 else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_retry_s0)
                     mshr_pcrdtype_s1_q[entry] <= mshr_pcrd_type_get_s0;
                 else
@@ -1980,7 +1818,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
     assign mshr_l3_val_sx7  = l3_pipeval_sx7_q & !l3_replay_sx7_q;
     assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) & ~((mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b10) | (mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b11) &
-            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == `CHIE_READUNIQUE | l3_opcode_sx7_q == `CHIE_READCLEAN | l3_opcode_sx7_q == `CHIE_READNOTSHAREDDIRTY);
+            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY);
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
@@ -2136,11 +1974,11 @@ module hnf_mshr_ctl `HNF_PARAM
 
             always_ff @(posedge clk)begin : mshr_snpcode_sx8_q_timing_logic
                 if(mshr_can_retire_entry_sx1[entry])
-                    mshr_snpcode_sx8_q[entry] <= {`CHIE_SNP_FLIT_OPCODE_WIDTH{1'b0}};
+                    mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPLCRDRETURN;
                 else if(mshr_l3_entry_vec_sx7[entry])
                     mshr_snpcode_sx8_q[entry] <= mshr_snpcode_sx7;
                 else if(mshr_seq_s1_q[entry])
-                    mshr_snpcode_sx8_q[entry] <= `CHIE_SNPCLEANINVALID;
+                    mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPCLEANINVALID;
                 else
                     ;
             end
@@ -2149,32 +1987,32 @@ module hnf_mshr_ctl `HNF_PARAM
 
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)
-            `CHIE_READONCE           :
-                mshr_snpcode_sx7 = `CHIE_SNPONCE;
+            chie_pkg::REQ_READONCE           :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPONCE;
             // Table 4-24 (Sec 4.4.2 p.4-194) gives ReadUnique the snoop SnpUnique, and
             // Sec 4.4.2 (p.4-196) permits replacing an Invalidating snoop only by
             // SnpUnique or SnpCleanInvalid. SnpMakeInvalid is not reachable from a
             // read: Sec 2.3.9 (p.2-84) allows it only SnpResp, so a Snoopee holding
             // the line Dirty would discard it and the L3 copy would be served stale.
-            `CHIE_READUNIQUE         :
-                mshr_snpcode_sx7 = `CHIE_SNPUNIQUE;
-            `CHIE_READNOTSHAREDDIRTY :
-                mshr_snpcode_sx7 = `CHIE_SNPNOTSHAREDDIRTY;
-            `CHIE_READCLEAN          :
-                mshr_snpcode_sx7 = `CHIE_SNPCLEAN;
-            `CHIE_WRITEUNIQUEPTL     :
-                mshr_snpcode_sx7 = `CHIE_SNPUNIQUE;
-            `CHIE_WRITEUNIQUEFULL    :
-                mshr_snpcode_sx7 = `CHIE_SNPMAKEINVALID;
-            `CHIE_CLEANSHARED        :
-                mshr_snpcode_sx7 = `CHIE_SNPCLEANSHARED;
-            `CHIE_CLEANUNIQUE        :
-                mshr_snpcode_sx7 = `CHIE_SNPCLEANINVALID;
-            `CHIE_CLEANINVALID       :
-                mshr_snpcode_sx7 = `CHIE_SNPCLEANINVALID;
-            `CHIE_MAKEUNIQUE         :
-                mshr_snpcode_sx7 = `CHIE_SNPMAKEINVALID;
-            default mshr_snpcode_sx7 = {`CHIE_SNP_FLIT_OPCODE_WIDTH{1'b0}};
+            chie_pkg::REQ_READUNIQUE         :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPUNIQUE;
+            chie_pkg::REQ_READNOTSHAREDDIRTY :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPNOTSHAREDDIRTY;
+            chie_pkg::REQ_READCLEAN          :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEAN;
+            chie_pkg::REQ_WRITEUNIQUEPTL     :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPUNIQUE;
+            chie_pkg::REQ_WRITEUNIQUEFULL    :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPMAKEINVALID;
+            chie_pkg::REQ_CLEANSHARED        :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEANSHARED;
+            chie_pkg::REQ_CLEANUNIQUE        :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEANINVALID;
+            chie_pkg::REQ_CLEANINVALID       :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEANINVALID;
+            chie_pkg::REQ_MAKEUNIQUE         :
+                mshr_snpcode_sx7 = chie_pkg::SNP_SNPMAKEINVALID;
+            default mshr_snpcode_sx7 = chie_pkg::SNP_SNPLCRDRETURN;
         endcase
     end
 
@@ -2184,21 +2022,21 @@ module hnf_mshr_ctl `HNF_PARAM
                 entry=entry+1) begin
             always_ff @(posedge clk or posedge rst)begin : mshr_l3_resp_sx8_q_timing_logic
                 if(rst == 1'b1)begin
-                    mshr_l3_resp_sx8_q[entry] <= {`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
+                    mshr_l3_resp_sx8_q[entry] <= chie_pkg::RESP_I;
                 end
                 else if(mshr_can_retire_entry_sx1[entry])begin
-                    mshr_l3_resp_sx8_q[entry] <= {`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}};
+                    mshr_l3_resp_sx8_q[entry] <= chie_pkg::RESP_I;
                 end
                 else if(mshr_l3_entry_vec_sx7[entry])begin
                     case(l3_opcode_sx7_q)
-                        `CHIE_READUNIQUE          :
-                            mshr_l3_resp_sx8_q[entry] <= l3_hit_d_sx7_q? `CHIE_COMP_RESP_UD_PD:`CHIE_COMP_RESP_UC;
-                        `CHIE_READCLEAN           :
-                            mshr_l3_resp_sx8_q[entry] <= ((!l3_sfhit_sx7_q & !(l3_hit_d_sx7_q & l3_hit_sx7_q))||((l3_hit_d_sx7_q & l3_hit_sx7_q) & !l3_sfhit_sx7_q))? `CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_SC;
-                        `CHIE_READNOTSHAREDDIRTY  :
-                            mshr_l3_resp_sx8_q[entry] <= (!l3_sfhit_sx7_q & l3_hit_d_sx7_q)? `CHIE_COMP_RESP_UD_PD: (!l3_sfhit_sx7_q & !l3_hit_d_sx7_q)? `CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_SC;
+                        chie_pkg::REQ_READUNIQUE          :
+                            mshr_l3_resp_sx8_q[entry] <= l3_hit_d_sx7_q? chie_pkg::RESP_UC_PD:chie_pkg::RESP_UC_UD;
+                        chie_pkg::REQ_READCLEAN           :
+                            mshr_l3_resp_sx8_q[entry] <= ((!l3_sfhit_sx7_q & !(l3_hit_d_sx7_q & l3_hit_sx7_q))||((l3_hit_d_sx7_q & l3_hit_sx7_q) & !l3_sfhit_sx7_q))? chie_pkg::RESP_UC_UD:chie_pkg::RESP_SC;
+                        chie_pkg::REQ_READNOTSHAREDDIRTY  :
+                            mshr_l3_resp_sx8_q[entry] <= (!l3_sfhit_sx7_q & l3_hit_d_sx7_q)? chie_pkg::RESP_UC_PD: (!l3_sfhit_sx7_q & !l3_hit_d_sx7_q)? chie_pkg::RESP_UC_UD:chie_pkg::RESP_SC;
                         default:
-                            mshr_l3_resp_sx8_q[entry] <= `CHIE_COMP_RESP_I;
+                            mshr_l3_resp_sx8_q[entry] <= chie_pkg::RESP_I;
                     endcase
                 end
                 else
@@ -2216,14 +2054,14 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_l3_entry_vec_sx7[entry] = mshr_l3_val_sx7 & (l3_mshr_entry_sx7_q == entry);
             assign mshr_clr_l3busy_sx7[entry]   = mshr_l3_entry_vec_sx7[entry];
             assign mshr_l3_rd_l3fill_sx7[entry] = mshr_l3_entry_vec_sx7[entry] & ((!l3_hit_sx7_q & l3_sfhit_sx7_q & (mshr_rdnosd_s1_q[entry] | mshr_rc_s1_q[entry])));
-            assign mshr_neednosnp_sx7[entry]    = mshr_l3_entry_vec_sx7[entry] & l3_rd_busy_s2_q[entry] & ((!l3_snpdirect_sx7_q & ~l3_snpbrd_sx7_q) | (l3_hit_sx7_q & (l3_opcode_sx7_q == `CHIE_READONCE | l3_opcode_sx7_q == `CHIE_READCLEAN | l3_opcode_sx7_q == `CHIE_READNOTSHAREDDIRTY)));
-            assign mshr_needsnp_sx7[entry]      = mshr_l3_entry_vec_sx7[entry] & (l3_snpdirect_sx7_q | l3_snpbrd_sx7_q) & ~(l3_hit_sx7_q & (l3_opcode_sx7_q == `CHIE_READONCE | l3_opcode_sx7_q == `CHIE_READCLEAN | l3_opcode_sx7_q == `CHIE_READNOTSHAREDDIRTY));
-            assign mshr_l3_memrd_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_memrd_sx7_q & (l3_opcode_sx7_q != `CHIE_WRITEUNIQUEPTL)) | (l3_memrd_sx7_q & (l3_opcode_sx7_q == `CHIE_WRITEUNIQUEPTL) & mshr_memattr_s1_q[entry][3] & (~l3_hit_sx7_q) & (~l3_sfhit_sx7_q)));
+            assign mshr_neednosnp_sx7[entry]    = mshr_l3_entry_vec_sx7[entry] & l3_rd_busy_s2_q[entry] & ((!l3_snpdirect_sx7_q & ~l3_snpbrd_sx7_q) | (l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY)));
+            assign mshr_needsnp_sx7[entry]      = mshr_l3_entry_vec_sx7[entry] & (l3_snpdirect_sx7_q | l3_snpbrd_sx7_q) & ~(l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY));
+            assign mshr_l3_memrd_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_memrd_sx7_q & (l3_opcode_sx7_q != chie_pkg::REQ_WRITEUNIQUEPTL)) | (l3_memrd_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & mshr_memattr_s1_q[entry][3] & (~l3_hit_sx7_q) & (~l3_sfhit_sx7_q)));
             assign mshr_l3_evict_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_evict_sx7_q;
-            assign mshr_l3_memwr_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_hit_d_sx7_q & (l3_opcode_sx7_q == `CHIE_CLEANSHARED | l3_opcode_sx7_q == `CHIE_CLEANINVALID | l3_opcode_sx7_q == `CHIE_CLEANUNIQUE | (!l3_sfhit_sx7_q & l3_opcode_sx7_q == `CHIE_READCLEAN))) |
-                    ((l3_opcode_sx7_q == `CHIE_WRITEUNIQUEPTL) & ~mshr_memattr_s1_q[entry][3] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]));
-            assign mshr_l3dat_rn_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_hit_sx7_q & (l3_opcode_sx7_q == `CHIE_READONCE | l3_opcode_sx7_q == `CHIE_READCLEAN | l3_opcode_sx7_q == `CHIE_READNOTSHAREDDIRTY | l3_opcode_sx7_q == `CHIE_READUNIQUE);
-            assign mshr_l3dat_sn_sx7[entry]     = (mshr_l3_entry_vec_sx7[entry] & l3_hit_d_sx7_q & (l3_opcode_sx7_q == `CHIE_CLEANUNIQUE | l3_opcode_sx7_q == `CHIE_CLEANSHARED | l3_opcode_sx7_q == `CHIE_CLEANINVALID | (l3_opcode_sx7_q == `CHIE_READCLEAN & !l3_sfhit_sx7_q))) | (l3_evict_sx7_q & mshr_l3_entry_vec_sx7[entry]);
+            assign mshr_l3_memwr_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_hit_d_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_CLEANSHARED | l3_opcode_sx7_q == chie_pkg::REQ_CLEANINVALID | l3_opcode_sx7_q == chie_pkg::REQ_CLEANUNIQUE | (!l3_sfhit_sx7_q & l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN))) |
+                    ((l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & ~mshr_memattr_s1_q[entry][3] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]));
+            assign mshr_l3dat_rn_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY | l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE);
+            assign mshr_l3dat_sn_sx7[entry]     = (mshr_l3_entry_vec_sx7[entry] & l3_hit_d_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_CLEANUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_CLEANSHARED | l3_opcode_sx7_q == chie_pkg::REQ_CLEANINVALID | (l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN & !l3_sfhit_sx7_q))) | (l3_evict_sx7_q & mshr_l3_entry_vec_sx7[entry]);
         end
     endgenerate
 
@@ -2341,7 +2179,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // Sec 2.3.2's (p.2-55) CompDBIDResp alternative, whose CopyBackWrData is
             // the implicit CompAck, so waiting on one would never retire the entry.
             assign mshr_compack_busy_set_sx[entry]   = (mshr_can_alloc_entry_s0[entry] & li_mshr_rxreq_expcompack_s0
-                                                        & (li_mshr_rxreq_opcode_s0 != `CHIE_WRITEEVICTOREVICT));
+                                                        & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_WRITEEVICTOREVICT));
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
                    (mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
@@ -3037,19 +2875,19 @@ module hnf_mshr_ctl `HNF_PARAM
     always_ff @(posedge clk or posedge rst)begin : mshr_txreq_timing_logic
         if(rst == 1'b1)begin
             mshr_txreq_valid_sx1_q     <= 1'b0;
-            mshr_txreq_txnid_sx1_q     <= {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txreq_txnid_sx1_q     <= '0;
         end
         else if(txreq_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
             mshr_txreq_valid_sx1_q     <= 1'b1;
-            mshr_txreq_txnid_sx1_q     <= {{(`CHIE_REQ_FLIT_TXNID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, mshrageq_mshr_idx_sx2_q[0]};
+            mshr_txreq_txnid_sx1_q     <= {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshrageq_mshr_idx_sx2_q[0]};
         end
         else if(txreq_wrap_other_ptr[txreq_wrap_other_idx])begin
             mshr_txreq_valid_sx1_q     <= 1'b1;
-            mshr_txreq_txnid_sx1_q     <= {{(`CHIE_REQ_FLIT_TXNID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, txreq_wrap_other_idx};
+            mshr_txreq_txnid_sx1_q     <= {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, txreq_wrap_other_idx};
         end
         else if(txreq_mshr_won_sx1 && mshr_txreq_valid_sx1_q)begin
             mshr_txreq_valid_sx1_q     <= 1'b0;
-            mshr_txreq_txnid_sx1_q     <= {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txreq_txnid_sx1_q     <= '0;
         end
     end
 
@@ -3065,18 +2903,18 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_qos_sx1         = (mshr_qos_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_returnnid_sx1   = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM);
     assign mshr_txreq_returntxnid_sx1 = ((mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1])?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
-    assign mshr_txreq_opcode_sx1      = (mshr_mem_rd_busy_sx_q[mshr_txreq_entry_idx_sx1]?`CHIE_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1])?`CHIE_WRITENOSNPPTL:`CHIE_WRITENOSNPFULL);
-    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]))? 3'b110 : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_opcode_sx1      = (mshr_mem_rd_busy_sx_q[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
+    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?1:0);
+    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
     // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
     // interconnect due to a Prefetch from Home or an eviction from the System
     // cache" carries EWA, Cacheable and Allocate all 1 and Device 0.
     // mshr_seq_s1_q = snoop-filter evict; abf_internal_evict_addr_valid_sx_q =
     // SLC victim.
-    assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | abf_internal_evict_addr_valid_sx_q[mshr_txreq_entry_idx_sx1]) ? `CHIE_REQ_FLIT_MEMATTR_WIDTH'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | abf_internal_evict_addr_valid_sx_q[mshr_txreq_entry_idx_sx1]) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 
@@ -3113,7 +2951,7 @@ module hnf_mshr_ctl `HNF_PARAM
     always_ff @(posedge clk or posedge rst)begin : mshr_txrsp_timing_logic
         if(rst == 1'b1) begin
             mshr_txrsp_valid_sx1_q  <= 1'b0;
-            mshr_txrsp_txnid_sx1_q  <= {`CHIE_RSP_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txrsp_txnid_sx1_q  <= '0;
             mshr_txrsp_idx_sx1_q    <= {`MSHR_ENTRIES_WIDTH{1'b0}};
         end
         else if(txrsp_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
@@ -3128,7 +2966,7 @@ module hnf_mshr_ctl `HNF_PARAM
         end
         else if(txrsp_mshr_won_sx1 && mshr_txrsp_valid_sx1_q)begin
             mshr_txrsp_valid_sx1_q  <= 1'b0;
-            mshr_txrsp_txnid_sx1_q  <= {`CHIE_RSP_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txrsp_txnid_sx1_q  <= '0;
             mshr_txrsp_idx_sx1_q    <= {`MSHR_ENTRIES_WIDTH{1'b0}};
         end
     end
@@ -3144,19 +2982,19 @@ module hnf_mshr_ctl `HNF_PARAM
 
     assign mshr_txrsp_qos_sx1      = (mshr_qos_s1_q[mshr_txrsp_idx_sx1_q]);
     assign mshr_txrsp_tgtid_sx1    = (mshr_srcid_s1_q[mshr_txrsp_idx_sx1_q]);
-    assign mshr_txrsp_opcode_sx1   = (mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?`CHIE_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?`CHIE_COMP:`CHIE_DBIDRESP);
+    assign mshr_txrsp_opcode_sx1   = (mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMP:chie_pkg::RSP_DBIDRESP);
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
     // Table A-8 (p.A-488) gives ReadReceipt and DBIDResp a RespErr of 0, so a
     // status -- a Subordinate's included -- rides out on the Comp that follows,
     // never on the buffer grant or the request-accepted acknowledgement.
-    assign mshr_txrsp_resperr_sx1  = ((mshr_txrsp_opcode_sx1 == `CHIE_READRECEIPT) ||
-                                      (mshr_txrsp_opcode_sx1 == `CHIE_DBIDRESP)) ? `CHIE_RESP_ERR_NORM_OK :
-                                     mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? `CHIE_RESP_ERR_NON_DATA :
+    assign mshr_txrsp_resperr_sx1  = ((mshr_txrsp_opcode_sx1 == chie_pkg::RSP_READRECEIPT) ||
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_DBIDRESP)) ? chie_pkg::RESP_ERR_NORM_OK :
+                                     mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_ERR_NON_DATA :
                                      mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
-                                     (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? 2'b01:2'b00);
-    assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?`CHIE_COMP_RESP_UC:`CHIE_COMP_RESP_I);
+                                     (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
+    assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
     // same DBID field value in the Comp and DBIDResp or DBIDRespOrd message." The
@@ -3164,7 +3002,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // it never did, so the Comp echoes the DBID the Subordinate granted.
     assign mshr_txrsp_dbid_sx1     = mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
                                    ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]
-                                   : {{(`CHIE_RSP_FLIT_DBID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_txrsp_idx_sx1_q};
+                                   : {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_txrsp_idx_sx1_q};
     assign mshr_txrsp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txrsp_idx_sx1_q];
 
     //************************************************************************//
@@ -3200,19 +3038,19 @@ module hnf_mshr_ctl `HNF_PARAM
     always_ff @(posedge clk or posedge rst)begin : mshr_txsnp_timing_logic
         if(rst == 1'b1)begin
             mshr_txsnp_valid_sx1_q  <= 1'b0;
-            mshr_txsnp_txnid_sx1_q  <= {`CHIE_SNP_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txsnp_txnid_sx1_q  <= '0;
         end
         else if(txsnp_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
             mshr_txsnp_valid_sx1_q  <= 1'b1;
-            mshr_txsnp_txnid_sx1_q  <= {{(`CHIE_SNP_FLIT_TXNID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, mshrageq_mshr_idx_sx2_q[0]};
+            mshr_txsnp_txnid_sx1_q  <= {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshrageq_mshr_idx_sx2_q[0]};
         end
         else if(txsnp_wrap_other_ptr[txsnp_wrap_other_idx])begin
             mshr_txsnp_valid_sx1_q  <= 1'b1;
-            mshr_txsnp_txnid_sx1_q  <= {{(`CHIE_SNP_FLIT_TXNID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, txsnp_wrap_other_idx};
+            mshr_txsnp_txnid_sx1_q  <= {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, txsnp_wrap_other_idx};
         end
         else if(~txsnp_mshr_busy_sx1 && mshr_txsnp_valid_sx1_q)begin
             mshr_txsnp_valid_sx1_q  <= 1'b0;
-            mshr_txsnp_txnid_sx1_q  <= {`CHIE_SNP_FLIT_TXNID_WIDTH{1'b0}};
+            mshr_txsnp_txnid_sx1_q  <= '0;
         end
     end
 
@@ -3226,9 +3064,9 @@ module hnf_mshr_ctl `HNF_PARAM
     endgenerate
 
     assign mshr_txsnp_qos_sx1      = (mshr_qos_s1_q[mshr_txsnp_entry_idx_sx1]);
-    assign mshr_txsnp_fwdnid_sx1   = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_srcid_s1_q[mshr_txsnp_entry_idx_sx1]) : {`CHIE_SNP_FLIT_FWDNID_WIDTH{1'b0}};
-    assign mshr_txsnp_fwdtxnid_sx1 = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_txnid_s1_q[mshr_txsnp_entry_idx_sx1]) : {`CHIE_SNP_FLIT_FWDTXNID_WIDTH{1'b0}};
-    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]?mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]+16:mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_fwdnid_sx1   = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_srcid_s1_q[mshr_txsnp_entry_idx_sx1]) : '0;
+    assign mshr_txsnp_fwdtxnid_sx1 = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_txnid_s1_q[mshr_txsnp_entry_idx_sx1]) : '0;
+    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]?chie_pkg::snp_opcode_e'(mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1] + 5'h10):mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_entry_idx_sx1];
@@ -3277,7 +3115,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_req_en_sx1_q     <= 1'b0;
             mshr_l3_fill_sx1_q       <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
-            mshr_l3_opcode_sx1_q     <= {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}};
+            mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end
@@ -3309,7 +3147,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_req_en_sx1_q     <= 1'b0;
             mshr_l3_fill_sx1_q       <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
-            mshr_l3_opcode_sx1_q     <= {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}};
+            mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end
@@ -3333,12 +3171,12 @@ module hnf_mshr_ctl `HNF_PARAM
     always_comb begin
         mshr_txdat_tgtid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2]:SNF_NID_PARAM);
         mshr_txdat_txnid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
-        mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?`CHIE_COMPDATA:`CHIE_NONCOPYBACKWRDATA);
-        mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?`CHIE_COMP_RESP_UD_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):{`CHIE_DAT_FLIT_RESP_WIDTH{1'b0}});
-        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? `CHIE_RESP_ERR_NON_DATA :
+        mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
+        mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
+        mshr_txdat_resperr_sx2 = mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
                                  mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :
-                                 ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? 2'b01:2'b00);
-        mshr_txdat_dbid_sx2    = {{(`CHIE_DAT_FLIT_DBID_WIDTH-`MSHR_ENTRIES_WIDTH){1'b0}}, txdat_mshr_rd_idx_sx2};
+                                 ((mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] & mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
+        mshr_txdat_dbid_sx2    = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, txdat_mshr_rd_idx_sx2};
         // Sec 2.10.6 (p.2-139, MUST): "The CCID field must match the value of
         // Addr[5:4] of the original request."
         mshr_txdat_ccid_sx2    = mshr_addr_s1_q[txdat_mshr_rd_idx_sx2][5:4];

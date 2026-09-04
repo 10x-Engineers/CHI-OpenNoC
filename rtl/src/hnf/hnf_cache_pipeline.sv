@@ -19,96 +19,98 @@
 *    Li Zhao <lizhao@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_cache_pipeline `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
+    //global inputs
+    input wire clk,
+    input wire rst,
 
-        //inputs from hnf_mshr_ctl
-        mshr_l3_req_en_sx1_q,
-        mshr_l3_addr_sx1,
-        mshr_l3_entry_idx_sx1_q,
-        mshr_l3_fill_sx1_q,
-        mshr_l3_opcode_sx1_q,
-        mshr_l3_rnf_sx1_q,
-        mshr_l3_fill_dirty_sx1_q,
-        mshr_l3_seq_retire_sx1_q,
+    //inputs from hnf_mshr_ctl
+    input wire mshr_l3_req_en_sx1_q,
+    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_l3_addr_sx1,
+    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_l3_entry_idx_sx1_q,
+    input wire mshr_l3_fill_sx1_q,
+    input chie_pkg::req_opcode_e mshr_l3_opcode_sx1_q,
+    input wire [CHIE_NID_WIDTH_PARAM-1:0] mshr_l3_rnf_sx1_q,
+    input wire mshr_l3_fill_dirty_sx1_q,
+    input wire mshr_l3_seq_retire_sx1_q,
 
-        //inputs from hnf_tag_sram
-        loc_rd_clines_q,
+    //inputs from hnf_tag_sram
+    input wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q,
 
-        //inputs from hnf_sf_sram
-        sf_rd_clines_q,
+    //inputs from hnf_sf_sram
+    input wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] sf_rd_clines_q,
 
-        //inputs from hnf_lru_sram
-        lru_rd_data_q,
+    //inputs from hnf_lru_sram
+    input wire [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q,
 
-        //inputs from hnf_mshr_addr_buffer
-        mshr_l3_hazard_valid_sx3_q,
-        mshr_evict_hazard_sx5,
+    //inputs from hnf_mshr_addr_buffer
+    input wire mshr_l3_hazard_valid_sx3_q,
+    input wire mshr_evict_hazard_sx5,
 
-        //outputs to hnf_tag_sram
-        loc_index_q,
-        loc_rd_en_q,
-        loc_wr_ways_q,
-        loc_wr_cline_q,
+    //outputs to hnf_tag_sram
+    output logic [`LOC_INDEX_WIDTH-1:0] loc_index_q,
+    output logic loc_rd_en_q,
+    output logic [`LOC_WAY_NUM-1:0] loc_wr_ways_q,
+    output logic [`LOC_CLINE_WIDTH-1:0] loc_wr_cline_q,
 
-        //outputs to hnf_sf_sram
-        sf_index_q,
-        sf_rd_en_q,
-        sf_wr_ways_q,
-        sf_wr_cline_q,
+    //outputs to hnf_sf_sram
+    output logic [`SF_INDEX_WIDTH-1:0] sf_index_q,
+    output logic sf_rd_en_q,
+    output logic [`SF_WAY_NUM-1:0] sf_wr_ways_q,
+    output logic [`SF_CLINE_WIDTH-1:0] sf_wr_cline_q,
 
-        //outputs to hnf_data_sram
-        l3_index_q,
-        l3_rd_ways_q,
-        l3_wr_ways_q,
+    //outputs to hnf_data_sram
+    output logic [`LOC_INDEX_WIDTH-1:0] l3_index_q,
+    output logic [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
+    output logic [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
 
-        //outputs to hnf_lru_sram
-        lru_index_q,
-        lru_rd_en_q,
-        lru_wr_en_q,
-        lru_wr_data_q,
+    //outputs to hnf_lru_sram
+    output logic [`LOC_INDEX_WIDTH-1:0] lru_index_q,
+    output logic lru_rd_en_q,
+    output logic lru_wr_en_q,
+    output logic [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
 
-        //outputs to hnf_mshr_addr_buffer
-        pipe_mshr_addr_sx5_q,
-        pipe_mshr_addr_valid_sx5_q,
-        pipe_mshr_addr_idx_sx5_q,
-        pipe_evict_cam_addr_sx4,
-        pipe_evict_cam_valid_sx4,
-        pipe_evict_cam_idx_sx4,
-        l3_evict_addr_sx7_q,
+    //outputs to hnf_mshr_addr_buffer
+    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] pipe_mshr_addr_sx5_q,
+    output logic pipe_mshr_addr_valid_sx5_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_mshr_addr_idx_sx5_q,
+    output wire [chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4,
+    output wire pipe_evict_cam_valid_sx4,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0] pipe_evict_cam_idx_sx4,
 
-        //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
-        l3_evict_sx7_q,
-        l3_mshr_entry_sx7_q,
+    //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
+    output logic l3_evict_sx7_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0] l3_mshr_entry_sx7_q,
 
-        //outputs to hnf_mshr_ctl
-        biq_req_valid_s0_q,
-        biq_req_addr_s0_q,
-        l3_pipeval_sx7_q,
-        l3_opcode_sx7_q,
-        l3_memrd_sx7_q,
-        l3_hit_sx7_q,
-        l3_hit_dirty_sx7_q,
-        l3_sfhit_sx7_q,
-        l3_snpdirect_sx7_q,
-        l3_snpbrd_sx7_q,
-        l3_snp_bit_sx7_q,
-        l3_replay_sx7_q,
-        l3_mshr_wr_op_sx7_q,
+    //outputs to hnf_link_rxreq_wrap
+    output wire biq_req_valid_s0_q,
+    output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
 
-        //outputs to hnf_data_buffer
-        pipe_dbf_wr_valid_sx9_q,
-        pipe_dbf_wr_idx_sx9_q,
-        pipe_dbf_rd_idx_valid_sx6_q,
-        pipe_dbf_rd_idx_sx6_q
+    //outputs to hnf_mshr_ctl
+    output logic l3_pipeval_sx7_q,
+    output chie_pkg::req_opcode_e l3_opcode_sx7_q,
+    output logic l3_memrd_sx7_q,
+    output logic l3_hit_sx7_q,
+    output logic l3_hit_dirty_sx7_q,
+    output logic l3_sfhit_sx7_q,
+    output logic l3_snpdirect_sx7_q,
+    output logic l3_snpbrd_sx7_q,
+    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0] l3_snp_bit_sx7_q,
+    output logic l3_replay_sx7_q,
+    output logic l3_mshr_wr_op_sx7_q,
+    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] l3_evict_addr_sx7_q,
+
+    //outputs to hnf_data_buffer
+    output logic pipe_dbf_wr_valid_sx9_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_wr_idx_sx9_q,
+    output logic pipe_dbf_rd_idx_valid_sx6_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_rd_idx_sx6_q
     );
+
     //local param
     localparam CPL_HZD_ENTRY  = 4;
     localparam CPL_HZD_WIDTH  = $clog2(CPL_HZD_ENTRY);
@@ -120,98 +122,12 @@ module hnf_cache_pipeline `HNF_PARAM
     localparam SX6            = (SX5 + 1);
     localparam SX7            = (SX6 + 1);
     localparam CPL_STAGE      = (SX7);
-    localparam ADDR_WIDTH     = `CHIE_REQ_FLIT_ADDR_WIDTH;
-    localparam OPCODE_WIDTH   = `CHIE_REQ_FLIT_OPCODE_WIDTH;
+    localparam ADDR_WIDTH     = chie_pkg::REQ_ADDR_WIDTH;
+    localparam OPCODE_WIDTH   = 7;
     localparam NID_WIDTH      = CHIE_NID_WIDTH_PARAM;
     localparam BIQ_NUM        = 8;
     localparam BIQ_NUM_WIDTH  = $clog2(BIQ_NUM);
     localparam BIQ_DATA_WIDTH = ADDR_WIDTH;
-
-    //global inputs
-    input wire                                   clk;
-    input wire                                   rst;
-
-    //inputs from hnf_mshr_ctl
-    input wire                                   mshr_l3_req_en_sx1_q;
-    input wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]   mshr_l3_addr_sx1;
-    input wire [`MSHR_ENTRIES_WIDTH-1:0]         mshr_l3_entry_idx_sx1_q;
-    input wire                                   mshr_l3_fill_sx1_q;
-    input wire [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0] mshr_l3_opcode_sx1_q;
-    input wire [CHIE_NID_WIDTH_PARAM-1:0]        mshr_l3_rnf_sx1_q;
-    input wire                                   mshr_l3_fill_dirty_sx1_q;
-    input wire                                   mshr_l3_seq_retire_sx1_q;
-
-    //inputs from hnf_tag_sram
-    input wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q;
-
-    //inputs from hnf_sf_sram
-    input wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]   sf_rd_clines_q;
-
-    //inputs from hnf_lru_sram
-    input wire [`LRU_CLINE_WIDTH-1:0]            lru_rd_data_q;
-
-    //inputs from hnf_mshr_addr_buffer
-    input wire                                   mshr_l3_hazard_valid_sx3_q;
-    input wire                                   mshr_evict_hazard_sx5;
-
-    //outputs to hnf_tag_sram
-    output logic [`LOC_INDEX_WIDTH-1:0]            loc_index_q;
-    output logic                                   loc_rd_en_q;
-    output logic [`LOC_WAY_NUM-1:0]                loc_wr_ways_q;
-    output logic [`LOC_CLINE_WIDTH-1:0]            loc_wr_cline_q;
-
-    //outputs to hnf_sf_sram
-    output logic [`SF_INDEX_WIDTH-1:0]             sf_index_q;
-    output logic                                   sf_rd_en_q;
-    output logic [`SF_WAY_NUM-1:0]                 sf_wr_ways_q;
-    output logic [`SF_CLINE_WIDTH-1:0]             sf_wr_cline_q;
-
-    //outputs to hnf_data_sram
-    output logic [`LOC_INDEX_WIDTH-1:0]            l3_index_q;
-    output logic [`LOC_WAY_NUM-1:0]                l3_rd_ways_q;
-    output logic [`LOC_WAY_NUM-1:0]                l3_wr_ways_q;
-
-    //outputs to hnf_lru_sram
-    output logic [`LOC_INDEX_WIDTH-1:0]            lru_index_q;
-    output logic                                   lru_rd_en_q;
-    output logic                                   lru_wr_en_q;
-    output logic [`LRU_CLINE_WIDTH-1:0]            lru_wr_data_q;
-
-    //outputs to hnf_mshr_addr_buffer
-    output logic [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]   pipe_mshr_addr_sx5_q;
-    output logic                                   pipe_mshr_addr_valid_sx5_q;
-    output logic [`MSHR_ENTRIES_WIDTH-1:0]         pipe_mshr_addr_idx_sx5_q;
-    output wire [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4;
-    output wire                                  pipe_evict_cam_valid_sx4;
-    output wire [`MSHR_ENTRIES_WIDTH-1:0]        pipe_evict_cam_idx_sx4;
-
-    //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
-    output logic                                   l3_evict_sx7_q;
-    output logic [`MSHR_ENTRIES_WIDTH-1:0]         l3_mshr_entry_sx7_q;
-
-    //outputs to hnf_link_rxreq_wrap
-    output wire                                  biq_req_valid_s0_q;
-    output wire [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0]  biq_req_addr_s0_q;
-
-    //outputs to hnf_mshr_ctl
-    output logic                                   l3_pipeval_sx7_q;
-    output logic [`CHIE_REQ_FLIT_OPCODE_WIDTH-1:0] l3_opcode_sx7_q;
-    output logic                                   l3_memrd_sx7_q;
-    output logic                                   l3_hit_sx7_q;
-    output logic                                   l3_hit_dirty_sx7_q;
-    output logic                                   l3_sfhit_sx7_q;
-    output logic                                   l3_snpdirect_sx7_q;
-    output logic                                   l3_snpbrd_sx7_q;
-    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]      l3_snp_bit_sx7_q;
-    output logic                                   l3_replay_sx7_q;
-    output logic                                   l3_mshr_wr_op_sx7_q;
-    output logic [ADDR_WIDTH-1:0]                  l3_evict_addr_sx7_q;
-
-    //outputs to hnf_data_buffer
-    output logic                                   pipe_dbf_wr_valid_sx9_q;
-    output logic [`MSHR_ENTRIES_WIDTH-1:0]         pipe_dbf_wr_idx_sx9_q;
-    output logic                                   pipe_dbf_rd_idx_valid_sx6_q;
-    output logic [`MSHR_ENTRIES_WIDTH-1:0]         pipe_dbf_rd_idx_sx6_q;
 
     //internal variables
     genvar gi;
@@ -223,7 +139,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // CPL every stage keep all MSHR info
     /////////////////////////////////////////////////////////////
     //===========================================================
-    logic [OPCODE_WIDTH-1:0]                 pipe_opcode_sx_q[CPL_STAGE-1:0];
+    chie_pkg::req_opcode_e                 pipe_opcode_sx_q[CPL_STAGE-1:0];
     logic [ADDR_WIDTH-1:0]                   pipe_addr_sx_q[CPL_STAGE-1:0];
     logic [NID_WIDTH-1:0]                    pipe_rnf_idx_sx_q[CPL_STAGE-1:0];
     logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_idx_sx_q[CPL_STAGE-1:0];
@@ -237,7 +153,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // Stage SX1 signals
     /////////////////////////////////////////////////////////////
     //===========================================================
-    wire [OPCODE_WIDTH-1:0]                 pipe_opcode_sx1;
+    chie_pkg::req_opcode_e                 pipe_opcode_sx1;
     wire [ADDR_WIDTH-1:0]                   pipe_addr_sx1;
     wire [NID_WIDTH-1:0]                    pipe_rnf_idx_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_idx_sx1;
@@ -282,7 +198,7 @@ module hnf_cache_pipeline `HNF_PARAM
     logic                                     pipe_wrap_wr_sx3_q;
 
     // Prepare decode stage for SX4
-    wire [OPCODE_WIDTH-1:0]                 pipe_opcode_sx3;
+    chie_pkg::req_opcode_e                 pipe_opcode_sx3;
     wire                                    op_rdonce_sx3;
     wire                                    op_rdnsd_sx3;
     wire                                    op_rdclean_sx3;
@@ -612,7 +528,7 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_req_bypass_sx1     = ~cpl_internal_wr_sx6_q & mshr_l3_req_en_sx1_q;
     assign pipe_mshr_req_valid_sx1 = pipe_req_bypass_sx1;
     assign pipe_req_valid_sx[SX1]  = pipe_mshr_req_valid_sx1;
-    assign pipe_opcode_sx1         = pipe_req_bypass_sx1 ? mshr_l3_opcode_sx1_q     : {OPCODE_WIDTH{1'b0}};
+    assign pipe_opcode_sx1         = pipe_req_bypass_sx1 ? mshr_l3_opcode_sx1_q     : chie_pkg::REQ_REQLCRDRETURN;
     assign pipe_addr_sx1           = pipe_req_bypass_sx1 ? mshr_l3_addr_sx1         : {ADDR_WIDTH{1'b0}};
     assign pipe_mshr_idx_sx1       = pipe_req_bypass_sx1 ? mshr_l3_entry_idx_sx1_q  : {`MSHR_ENTRIES_WIDTH{1'b0}};
     assign pipe_rnf_idx_sx1        = pipe_req_bypass_sx1 ? mshr_l3_rnf_sx1_q        : {NID_WIDTH{1'b0}};
@@ -631,7 +547,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
-            pipe_opcode_sx_q[SX2]     <= {OPCODE_WIDTH{1'b0}};
+            pipe_opcode_sx_q[SX2]     <= chie_pkg::REQ_REQLCRDRETURN;
             pipe_addr_sx_q[SX2]       <= {ADDR_WIDTH{1'b0}};
             pipe_rnf_idx_sx_q[SX2]    <= {NID_WIDTH{1'b0}};
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
@@ -655,7 +571,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx1;
         end
         else begin
-            pipe_opcode_sx_q[SX2]     <= {OPCODE_WIDTH{1'b0}};
+            pipe_opcode_sx_q[SX2]     <= chie_pkg::REQ_REQLCRDRETURN;
             pipe_addr_sx_q[SX2]       <= {ADDR_WIDTH{1'b0}};
             pipe_rnf_idx_sx_q[SX2]    <= {NID_WIDTH{1'b0}};
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
@@ -785,7 +701,7 @@ module hnf_cache_pipeline `HNF_PARAM
             always_ff @(posedge clk or posedge rst)begin
                 if (rst == 1'b1)begin
                     pipe_req_valid_sx_q[gi]  <= 1'b0;
-                    pipe_opcode_sx_q[gi]     <= {OPCODE_WIDTH{1'b0}};
+                    pipe_opcode_sx_q[gi]     <= chie_pkg::REQ_REQLCRDRETURN;
                     pipe_addr_sx_q[gi]       <= {ADDR_WIDTH{1'b0}};
                     pipe_rnf_idx_sx_q[gi]    <= {NID_WIDTH{1'b0}};
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
@@ -794,7 +710,7 @@ module hnf_cache_pipeline `HNF_PARAM
                 end
                 else if (pipe_req_valid_sx[gi-1] == 1'b1)begin
                     pipe_req_valid_sx_q[gi]  <= pipe_req_valid_sx[gi-1];
-                    pipe_opcode_sx_q[gi]     <= pipe_opcode_sx_q[gi-1][OPCODE_WIDTH-1:0];
+                    pipe_opcode_sx_q[gi]     <= pipe_opcode_sx_q[gi-1];
                     pipe_addr_sx_q[gi]       <= pipe_addr_sx_q[gi-1][ADDR_WIDTH-1:0];
                     pipe_rnf_idx_sx_q[gi]    <= pipe_rnf_idx_sx_q[gi-1][NID_WIDTH-1:0];
                     pipe_mshr_idx_sx_q[gi]   <= pipe_mshr_idx_sx_q[gi-1][`MSHR_ENTRIES_WIDTH-1:0];
@@ -802,7 +718,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_fill_dirty_sx_q[gi] <= pipe_fill_dirty_sx_q[gi-1];
                 end
                 else begin
-                    pipe_opcode_sx_q[gi]     <= {OPCODE_WIDTH{1'b0}};
+                    pipe_opcode_sx_q[gi]     <= chie_pkg::REQ_REQLCRDRETURN;
                     pipe_addr_sx_q[gi]       <= {ADDR_WIDTH{1'b0}};
                     pipe_rnf_idx_sx_q[gi]    <= {NID_WIDTH{1'b0}};
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
@@ -875,22 +791,22 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_opcode_sx3 = pipe_opcode_sx_q[SX3][OPCODE_WIDTH-1:
-            0] & {OPCODE_WIDTH{pipe_req_valid_sx[SX3]}};
-    assign op_rdonce_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_READONCE);
-    assign op_rdnsd_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_READNOTSHAREDDIRTY);
-    assign op_rdclean_sx3  = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_READCLEAN);
-    assign op_rdunique_sx3 = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_READUNIQUE);
-    assign op_wufull_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEUNIQUEFULL);
-    assign op_wuptl_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEUNIQUEPTL);
-    assign op_wbfull_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEBACKFULL);
-    assign op_wevict_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEEVICTFULL)
-                           | (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEEVICTOREVICT);
-    assign op_dl_cu_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_CLEANUNIQUE);
-    assign op_dl_mu_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_MAKEUNIQUE);
-    assign op_dl_evict_sx3 = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_EVICT);
-    assign op_cmo_cs_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_CLEANSHARED);
-    assign op_cmo_ci_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_CLEANINVALID);
+    assign pipe_opcode_sx3 = pipe_req_valid_sx[SX3] ? pipe_opcode_sx_q[SX3]
+                                                    : chie_pkg::REQ_REQLCRDRETURN;
+    assign op_rdonce_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_READONCE);
+    assign op_rdnsd_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_READNOTSHAREDDIRTY);
+    assign op_rdclean_sx3  = (pipe_opcode_sx3 == chie_pkg::REQ_READCLEAN);
+    assign op_rdunique_sx3 = (pipe_opcode_sx3 == chie_pkg::REQ_READUNIQUE);
+    assign op_wufull_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEUNIQUEFULL);
+    assign op_wuptl_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEUNIQUEPTL);
+    assign op_wbfull_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEBACKFULL);
+    assign op_wevict_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEEVICTFULL)
+                           | (pipe_opcode_sx3 == chie_pkg::REQ_WRITEEVICTOREVICT);
+    assign op_dl_cu_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_CLEANUNIQUE);
+    assign op_dl_mu_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_MAKEUNIQUE);
+    assign op_dl_evict_sx3 = (pipe_opcode_sx3 == chie_pkg::REQ_EVICT);
+    assign op_cmo_cs_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_CLEANSHARED);
+    assign op_cmo_ci_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_CLEANINVALID);
 
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
@@ -1731,7 +1647,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_tag_wr_sx5 = !(biq_hit & ((pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0] == `CHIE_READNOTSHAREDDIRTY) | (pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0] == `CHIE_READCLEAN))
+    assign pipe_tag_wr_sx5 = !(biq_hit & ((pipe_opcode_sx_q[SX5] == chie_pkg::REQ_READNOTSHAREDDIRTY) | (pipe_opcode_sx_q[SX5] == chie_pkg::REQ_READCLEAN))
                                & ~pipe_sf_other_hit_sx5_q & pipe_tag_hit_sx5_q) & pipe_tag_wr_sx5_q;
 
     // LRU state
@@ -1827,7 +1743,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     assign biq_req_valid_s0_q  = ~biq_fifo_empty;
     assign biq_find_valid_sx5  = ~pipe_sf_hit_sx5_q && pipe_req_valid_sx[SX5];
-    assign biq_hit = biq_hit_raw & ( (pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READONCE)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READUNIQUE)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READCLEAN)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_WRITEUNIQUEFULL)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_WRITEUNIQUEPTL)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_CLEANUNIQUE)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_MAKEUNIQUE)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_CLEANSHARED)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_CLEANINVALID) );
+    assign biq_hit = biq_hit_raw & ( (pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEFULL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEPTL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_MAKEUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANSHARED)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANINVALID) );
 
     hnf_biq #(
                 .BIQ_WIDTH (BIQ_DATA_WIDTH           ),
@@ -2052,12 +1968,12 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
     //outputs cpl result to mshr
-    assign pipe_biq_hit_cancel_brd_sx5 = pipe_tag_hit_sx5_q & ((pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READONCE)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0]==`CHIE_READCLEAN));
+    assign pipe_biq_hit_cancel_brd_sx5 = pipe_tag_hit_sx5_q & ((pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN));
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
             l3_pipeval_sx7_q    <= 1'b0;
             l3_mshr_entry_sx7_q <= {`MSHR_ENTRIES_WIDTH{1'b0}};
-            l3_opcode_sx7_q     <= {OPCODE_WIDTH{1'b0}};
+            l3_opcode_sx7_q     <= chie_pkg::REQ_REQLCRDRETURN;
             l3_memrd_sx7_q      <= 1'b0;
             l3_hit_sx7_q        <= 1'b0;
             l3_hit_dirty_sx7_q  <= 1'b0;
@@ -2072,7 +1988,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
         else if(pipe_fill_sx_q[SX5])begin
             l3_pipeval_sx7_q    <= pipe_req_valid_sx_q[SX5];
-            l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0];
+            l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5];
             l3_mshr_entry_sx7_q <= pipe_mshr_idx_sx_q[SX5][`MSHR_ENTRIES_WIDTH-1:0];
             l3_memrd_sx7_q      <= 1'b0;
             l3_hit_sx7_q        <= 1'b0;
@@ -2088,7 +2004,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
         else begin
             l3_pipeval_sx7_q    <= pipe_req_valid_sx_q[SX5];
-            l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5][OPCODE_WIDTH-1:0];
+            l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5];
             l3_mshr_entry_sx7_q <= pipe_mshr_idx_sx_q[SX5][`MSHR_ENTRIES_WIDTH-1:0];
             l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit);
             l3_hit_sx7_q        <= pipe_tag_hit_sx5_q;
@@ -2282,23 +2198,23 @@ module hnf_cache_pipeline `HNF_PARAM
             #1;
             if(mshr_l3_req_en_sx1_q)begin
                 //mshr_l3_opcode_sx1_q check
-                if((mshr_l3_opcode_sx1_q == `CHIE_READONCE) || (mshr_l3_opcode_sx1_q == `CHIE_READCLEAN) || (mshr_l3_opcode_sx1_q == `CHIE_READNOTSHAREDDIRTY) ||
-                        (mshr_l3_opcode_sx1_q == `CHIE_READUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEUNIQUEFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEUNIQUEPTL) ||
-                        (mshr_l3_opcode_sx1_q == `CHIE_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTFULL) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANUNIQUE) ||
-                        (mshr_l3_opcode_sx1_q == `CHIE_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_EVICT) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANSHARED) ||
-                        (mshr_l3_opcode_sx1_q == `CHIE_CLEANINVALID) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTOREVICT))begin
+                if((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READONCE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READCLEAN) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READNOTSHAREDDIRTY) ||
+                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEPTL) ||
+                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||
+                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_EVICT) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANSHARED) ||
+                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT))begin
                 end
                 else begin
                     $fatal("mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
                 end
                 //mshr_l3_fill_sx1_q check
-                if(((mshr_l3_opcode_sx1_q == `CHIE_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTFULL) ||
-                    (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
+                if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) ||
+                    (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
                     $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
-                else if(((mshr_l3_opcode_sx1_q == `CHIE_READUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANUNIQUE) ||
-                         (mshr_l3_opcode_sx1_q == `CHIE_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_EVICT) ||
-                         (mshr_l3_opcode_sx1_q == `CHIE_CLEANSHARED) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANINVALID)) && mshr_l3_fill_sx1_q == 1'b1)begin
+                else if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||
+                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_EVICT) ||
+                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANSHARED) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID)) && mshr_l3_fill_sx1_q == 1'b1)begin
                     $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
                 else begin

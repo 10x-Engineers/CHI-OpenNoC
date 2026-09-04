@@ -14,74 +14,42 @@
 *    Jianhong Zhang <zhangjianhong@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module hnf_link_txsnp_wrap `HNF_PARAM
     (
-        //global inputs
-        clk,
-        rst,
-
-        //inputs from hnf_link
-        txsnp_lcrdv,
-        lcrd_return_en,
-        txlink_run,
-        txsnp_flit_avail,
-
-        //inputs from hnf_mshr_ctl
-        mshr_txsnp_valid_sx1_q,
-        mshr_txsnp_qos_sx1,
-        mshr_txsnp_txnid_sx1_q,
-        mshr_txsnp_fwdnid_sx1,
-        mshr_txsnp_fwdtxnid_sx1,
-        mshr_txsnp_opcode_sx1,
-        mshr_txsnp_addr_sx1,
-        mshr_txsnp_ns_sx1,
-        mshr_txsnp_rettosrc_sx1,
-        mshr_txsnp_tracetag_sx1,
-        mshr_txsnp_rn_vec_sx1,
-
-        //outputs to hnf_link
-        txsnpflitv,
-        txsnpflit,
-        txsnpflitpend,
-
-        //outputs to hnf_mshr_ctl
-        txsnp_mshr_busy_sx1
-    );
-
     //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hnf_link
-    input wire                                      txsnp_lcrdv;
-    input wire                                      lcrd_return_en;
-    input wire                                      txlink_run;
-    output wire                                     txsnp_flit_avail;
+    input wire txsnp_lcrdv,
+    input wire lcrd_return_en,
+    input wire txlink_run,
+    output wire txsnp_flit_avail,
 
     //inputs from hnf_mshr_ctl
-    input wire                                      mshr_txsnp_valid_sx1_q;
-    input wire [`CHIE_SNP_FLIT_QOS_WIDTH-1:0]       mshr_txsnp_qos_sx1;
-    input wire [`CHIE_SNP_FLIT_TXNID_WIDTH-1:0]     mshr_txsnp_txnid_sx1_q;
-    input wire [`CHIE_SNP_FLIT_FWDNID_WIDTH-1:0]    mshr_txsnp_fwdnid_sx1;
-    input wire [`CHIE_SNP_FLIT_FWDTXNID_WIDTH-1:0]  mshr_txsnp_fwdtxnid_sx1;
-    input wire [`CHIE_SNP_FLIT_OPCODE_WIDTH-1:0]    mshr_txsnp_opcode_sx1;
-    input wire [`CHIE_SNP_FLIT_ADDR_WIDTH-1:0]      mshr_txsnp_addr_sx1;
-    input wire [`CHIE_SNP_FLIT_NS_WIDTH-1:0]        mshr_txsnp_ns_sx1;
-    input wire [`CHIE_SNP_FLIT_RETTOSRC_WIDTH-1:0]  mshr_txsnp_rettosrc_sx1;
-    input wire [`CHIE_SNP_FLIT_TRACETAG_WIDTH-1:0]  mshr_txsnp_tracetag_sx1;
-    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0]         mshr_txsnp_rn_vec_sx1;
+    input wire mshr_txsnp_valid_sx1_q,
+    input wire [3:0] mshr_txsnp_qos_sx1,
+    input wire [11:0] mshr_txsnp_txnid_sx1_q,
+    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txsnp_fwdnid_sx1,
+    input wire [11:0] mshr_txsnp_fwdtxnid_sx1,
+    input chie_pkg::snp_opcode_e mshr_txsnp_opcode_sx1,
+    input wire [chie_pkg::SNP_ADDR_WIDTH-1:0] mshr_txsnp_addr_sx1,
+    input wire mshr_txsnp_ns_sx1,
+    input wire mshr_txsnp_rettosrc_sx1,
+    input wire mshr_txsnp_tracetag_sx1,
+    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0] mshr_txsnp_rn_vec_sx1,
 
     //outputs to hnf_link
-    output logic                                      txsnpflitv;
-    output logic  [`HNF_SNP_FLIT_RANGE]               txsnpflit;
-    output wire                                     txsnpflitpend;
+    output logic txsnpflitv,
+    output opennoc_hnf_pkg::snp_routed_s txsnpflit,
+    output wire txsnpflitpend,
 
     //outputs to hnf_mshr_ctl
-    output wire                                     txsnp_mshr_busy_sx1;
+    output wire txsnp_mshr_busy_sx1
+    );
 
     //internal reg signals
     logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0]             txsnp_crd_cnt_q;
@@ -90,9 +58,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     logic [HNF_MSHR_RNF_NUM_PARAM-1:0]                tgt_vec;
     logic [HNF_MSHR_RNF_NUM_PARAM-1:0]                tgt_vec_q;
     logic                                             clr_1st;
-    logic [`HNF_SNP_FLIT_RANGE]                       txsnpflit_s0_q;
+    opennoc_hnf_pkg::snp_routed_s                       txsnpflit_s0_q;
     logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0]             snp_crd_cnt_ns_s0;
-    logic [`HNF_SNP_FLIT_RANGE]                       txsnpflit_s0;
+    opennoc_hnf_pkg::snp_routed_s                       txsnpflit_s0;
     logic                                             found_rn_vec;
     logic [`RNF_WIDTH-1:0]                            found_rn_vec_num;
     logic                                             found_tgt_vec;
@@ -181,29 +149,29 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     // select from new request and old request(snoop count > 1)
     always_comb begin: txsnpflit_s0_logic_c
-        txsnpflit_s0 = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? txsnpflit_s0_q : {`HNF_SNP_FLIT_WIDTH{1'b0}};
+        txsnpflit_s0 = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? txsnpflit_s0_q : '0;
         if(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})begin
-            txsnpflit_s0[`CHIE_SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:`CHIE_SNP_FLIT_WIDTH] = rnid_list_array[found_tgt_vec_num];
+            txsnpflit_s0.tgtid = rnid_list_array[found_tgt_vec_num];
             // Sec 4.9 (p.4-240, MUST): "Home must only set RetToSrc on the Snoop
             // request to a single Request Node." Only the first snoopee of the
             // fan-out is built below; every re-drive here clears the bit.
-            txsnpflit_s0[`CHIE_SNP_FLIT_RETTOSRC_RANGE] = 1'b0;
+            txsnpflit_s0.flit.rettosrc = 1'b0;
         end
         else if(mshr_txsnp_valid_sx1_q == 1'b1 & txsnp_mshr_busy_sx1 == 1'b0)begin
             //MSHR txsnpflit wrap
-            txsnpflit_s0[`CHIE_SNP_FLIT_QOS_RANGE]          = mshr_txsnp_qos_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_SRCID_RANGE]        = HNF_NID_PARAM[`CHIE_SNP_FLIT_SRCID_WIDTH-1:0];
-            txsnpflit_s0[`CHIE_SNP_FLIT_TXNID_RANGE]        = mshr_txsnp_txnid_sx1_q;
-            txsnpflit_s0[`CHIE_SNP_FLIT_FWDNID_RANGE]       = mshr_txsnp_fwdnid_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_FWDTXNID_RANGE]     = mshr_txsnp_fwdtxnid_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_OPCODE_RANGE]       = mshr_txsnp_opcode_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_ADDR_RANGE]         = mshr_txsnp_addr_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_NS_RANGE]           = mshr_txsnp_ns_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_DONOTGOTOSD_RANGE]  = {`CHIE_SNP_FLIT_DONOTGOTOSD_WIDTH{1'b1}};
-            txsnpflit_s0[`CHIE_SNP_FLIT_RETTOSRC_RANGE]     = mshr_txsnp_rettosrc_sx1;
-            txsnpflit_s0[`CHIE_SNP_FLIT_TRACETAG_RANGE]     = mshr_txsnp_tracetag_sx1;
+            txsnpflit_s0.flit.qos          = mshr_txsnp_qos_sx1;
+            txsnpflit_s0.flit.srcid        = HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
+            txsnpflit_s0.flit.txnid        = mshr_txsnp_txnid_sx1_q;
+            txsnpflit_s0.flit.fwdnid       = mshr_txsnp_fwdnid_sx1;
+            txsnpflit_s0.flit.fwdtxnid     = mshr_txsnp_fwdtxnid_sx1;
+            txsnpflit_s0.flit.opcode       = mshr_txsnp_opcode_sx1;
+            txsnpflit_s0.flit.addr         = mshr_txsnp_addr_sx1;
+            txsnpflit_s0.flit.ns           = mshr_txsnp_ns_sx1;
+            txsnpflit_s0.flit.donotgotosd  = {1{1'b1}};
+            txsnpflit_s0.flit.rettosrc     = mshr_txsnp_rettosrc_sx1;
+            txsnpflit_s0.flit.tracetag     = mshr_txsnp_tracetag_sx1;
             //configure tgtid in txsnpflit
-            txsnpflit_s0[`CHIE_SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:`CHIE_SNP_FLIT_WIDTH] = rnid_list_array[found_rn_vec_num];
+            txsnpflit_s0.tgtid = rnid_list_array[found_rn_vec_num];
         end
     end
 
@@ -212,7 +180,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     //preserve flit if snoopee count > 1
     always_ff @(posedge clk or posedge rst) begin: txsnpflit_s0_q_logic_t
         if(rst == 1'b1)
-            txsnpflit_s0_q <= {`HNF_SNP_FLIT_WIDTH{1'b0}};
+            txsnpflit_s0_q <= '0;
         else if(txsnp_cnt_tmp > {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1})
             txsnpflit_s0_q <= txsnpflit_s0;
         else
@@ -273,11 +241,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     always_ff @(posedge clk or posedge rst) begin: txsnpflit_logic_t
         if(rst == 1'b1)begin
-            txsnpflit  <= {`HNF_SNP_FLIT_WIDTH{1'b0}};
+            txsnpflit  <= '0;
             txsnpflitv <= 1'b0;
         end
         else if(txsnp_lcrd_rtn_sx == 1'b1)begin
-            txsnpflit  <= {`HNF_SNP_FLIT_WIDTH{1'b0}};
+            txsnpflit  <= '0;
             txsnpflitv <= 1'b1;
         end
         else if((txsnpflitv_s0 == 1'b1) & (txsnp_crd_avail_s1 == 1'b1))begin
@@ -324,7 +292,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 `ifdef DISPLAY_INFO
     always_ff @(posedge clk)begin
         if(txsnpflitv)begin
-            `display_info($sformatf("HNF TXSNP send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n fwdnid: %h\n fwdtxnid: %h\n addr: %h\n rettosrc: %h\n Time: %0d\n",txsnpflit[`CHIE_SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:`CHIE_SNP_FLIT_WIDTH],txsnpflit[`CHIE_SNP_FLIT_OPCODE_RANGE],txsnpflit[`CHIE_SNP_FLIT_TXNID_RANGE],txsnpflit[`CHIE_SNP_FLIT_FWDNID_RANGE],txsnpflit[`CHIE_SNP_FLIT_FWDTXNID_RANGE],txsnpflit[`CHIE_SNP_FLIT_ADDR_RANGE],txsnpflit[`CHIE_SNP_FLIT_RETTOSRC_RANGE],$time()));
+            `display_info($sformatf("HNF TXSNP send a flit\n tgtid: %h\n opcode: %h\n txnid: %h\n fwdnid: %h\n fwdtxnid: %h\n addr: %h\n rettosrc: %h\n Time: %0d\n",txsnpflit.flit[chie_pkg::SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:chie_pkg::SNP_FLIT_WIDTH],txsnpflit.flit.opcode,txsnpflit.flit.txnid,txsnpflit.flit.fwdnid,txsnpflit.flit.fwdtxnid,txsnpflit.flit.addr,txsnpflit.flit.rettosrc,$time()));
         end
     end
 `endif

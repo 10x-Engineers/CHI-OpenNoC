@@ -16,49 +16,34 @@
 *    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
 
 module hni_rxdat `HNI_PARAM
     (
-        clk,
-        rst,
-
-        rxdatflitv,
-        rxdatflit,
-        rxdatflitpend,
-
-        rxdat_lcrdv,
-        rxcrd_en,
-        rxdat_crd_cnt_full,
-
-        rxdat_valid_s0,
-        rxdatflit_s0
-    );
-
     //global inputs
-    input wire                        clk;
-    input wire                        rst;
+    input wire clk,
+    input wire rst,
 
     //inputs from hni_link
-    input wire                        rxdatflitv;
-    input wire [`CHIE_DAT_FLIT_RANGE] rxdatflit;
-    input wire                        rxdatflitpend;
+    input wire rxdatflitv,
+    input chie_pkg::dat_flit_s rxdatflit,
+    input wire rxdatflitpend,
 
     //outputs to hni_link
-    output wire                       rxdat_lcrdv;
+    output wire rxdat_lcrdv,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input  wire                       rxcrd_en;
+    input wire rxcrd_en,
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    output wire                       rxdat_crd_cnt_full;
+    output wire rxdat_crd_cnt_full,
 
     //outputs to hni_data_buffer
-    output wire                        rxdat_valid_s0;
-    output wire [`CHIE_DAT_FLIT_RANGE] rxdatflit_s0;
+    output wire rxdat_valid_s0,
+    output chie_pkg::dat_flit_s rxdatflit_s0
+    );
 
     //internal reg signals
     logic                                             rxdatflitv_en_q;
@@ -84,7 +69,7 @@ module hni_rxdat `HNI_PARAM
 
     // to dbf
     assign rxdat_valid_s0  = (rxdatflitv == 1'b1);
-    assign rxdatflit_s0    = (rxdatflitv == 1'b1)? rxdatflit : {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+    assign rxdatflit_s0    = (rxdatflitv == 1'b1)? rxdatflit : '0;
     
     assign rxdat_crd_cnt_zero  = (rxdat_crd_cnt_s1_q == {`HNI_LL_DAT_CRD_CNT_WIDTH{1'b0}});
     // A credit returned in the cycle the pool reads empty is re-granted at once.

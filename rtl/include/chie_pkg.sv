@@ -37,6 +37,7 @@ package chie_pkg;
   parameter int BE_WIDTH        = DATA_WIDTH / 8;    // one byte enable per data byte
   parameter int DATACHECK_WIDTH = DATA_WIDTH / 8;    // SS9.6: one odd-parity bit per byte
   parameter int POISON_WIDTH    = DATA_WIDTH / 64;   // SS9.5: one bit per 8-byte chunk
+  parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
 
@@ -156,6 +157,31 @@ package chie_pkg;
     DAT_NCBWRDATACOMPACK  = 4'hc
   } dat_opcode_e;
 
+  typedef enum logic [4:0] {
+    SNP_SNPLCRDRETURN        = 5'h00,
+    SNP_SNPSHARED            = 5'h01,
+    SNP_SNPCLEAN             = 5'h02,
+    SNP_SNPONCE              = 5'h03,
+    SNP_SNPNOTSHAREDDIRTY    = 5'h04,
+    SNP_SNPUNIQUESTASH       = 5'h05,
+    SNP_SNPMAKEINVALIDSTASH  = 5'h06,
+    SNP_SNPUNIQUE            = 5'h07,
+    SNP_SNPCLEANSHARED       = 5'h08,
+    SNP_SNPCLEANINVALID      = 5'h09,
+    SNP_SNPMAKEINVALID       = 5'h0a,
+    SNP_SNPSTASHUNIQUE       = 5'h0b,
+    SNP_SNPSTASHSHARED       = 5'h0c,
+    SNP_SNPDVMOP             = 5'h0d,
+    SNP_SNPQUERY             = 5'h10,
+    SNP_SNPSHAREDFWD         = 5'h11,
+    SNP_SNPCLEANFWD          = 5'h12,
+    SNP_SNPONCEFWD           = 5'h13,
+    SNP_SNPNOTSHAREDDIRTYFWD = 5'h14,
+    SNP_SNPPREFERUNIQUE      = 5'h15,
+    SNP_SNPPREFERUNIQUEFWD   = 5'h16,
+    SNP_SNPUNIQUEFWD         = 5'h17
+  } snp_opcode_e;
+
   // Table 13-31 (SS13.10.32). EX_OK and DATA are the two the macro header left
   // commented out, so a raw literal was the only way to name them.
   typedef enum logic [1:0] {
@@ -165,7 +191,8 @@ package chie_pkg;
     RESP_ERR_NON_DATA = 2'b11
   } resp_err_e;
 
-  // Table 13-30. The Comp and Snp response state spaces share the encoding.
+  // Table 13-30 (SS13.10.32). One field, read two ways: the mnemonics below are
+  // the Snoop-response reading, and a CompData reads 010/110/111 as UC/UD_PD/SD_PD.
   typedef enum logic [2:0] {
     RESP_I     = 3'b000,
     RESP_SC    = 3'b001,
@@ -173,7 +200,8 @@ package chie_pkg;
     RESP_SD    = 3'b011,
     RESP_I_PD  = 3'b100,
     RESP_SC_PD = 3'b101,
-    RESP_UC_PD = 3'b110
+    RESP_UC_PD = 3'b110,
+    RESP_SD_PD = 3'b111
   } resp_state_e;
 
   // Table 2-9 (SS2.8 p.2-119). All four encodings, including the reserved one --
@@ -308,9 +336,62 @@ package chie_pkg;
     logic [3:0]                 qos;
   } dat_flit_s;
 
+  // ---------------------------------------------------------------------------
+  // Retry-mechanism payloads. Not flits: these are what a node's QoS block hands
+  // its TXRSP block through a width-parameterised sync_fifo. They live here
+  // rather than per node because every node that implements SS2.11 retry queues
+  // exactly these fields, and did so through its own copy of one running-sum
+  // macro set.
+  // ---------------------------------------------------------------------------
+
+  // What a retried request has to keep so its RetryAck can be built later
+  // (SS2.11 p.2-145: the PCrdType granted must match the one retried under).
+  typedef struct packed {
+    logic [3:0]           pcrdtype;
+    logic                 trace;
+    logic [3:0]           qos;
+    logic [11:0]          txnid;
+    logic [NID_WIDTH-1:0] srcid;
+  } retry_ackq_s;
+
+  // A PCrdGrant binds to no transaction (SS2.6.5 p.2-112 sets its TxnID to zero),
+  // so the queue carries only who to grant to and under which credit type.
+  typedef struct packed {
+    logic [3:0]           pcrdtype;
+    logic [3:0]           qos;
+    logic [NID_WIDTH-1:0] srcid;
+  } pcrdgrantq_s;
+
+  // SS13.10.11 (p.13-427) overlays StashLPID/StashLPIDValid and VMIDExt on the
+  // FwdTxnID bits.
+  typedef union packed {
+    logic [11:0] fwdtxnid;
+    logic [11:0] vmidext;
+    struct packed {
+      logic [5:0] unused;
+      logic       stashlpidvalid;
+      logic [4:0] stashlpid;
+    } stash;
+  } snp_fwdtxnid_u;
+
+  typedef struct packed {
+    logic                       tracetag;
+    logic                       rettosrc;
+    logic                       donotgotosd;
+    logic                       ns;
+    logic [SNP_ADDR_WIDTH-1:0]  addr;
+    snp_opcode_e                opcode;
+    snp_fwdtxnid_u              fwdtxnid;
+    logic [NID_WIDTH-1:0]       fwdnid;
+    logic [11:0]                txnid;
+    logic [NID_WIDTH-1:0]       srcid;
+    logic [3:0]                 qos;
+  } snp_flit_s;
+
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);
   parameter int RSP_FLIT_WIDTH = $bits(rsp_flit_s);
   parameter int DAT_FLIT_WIDTH = $bits(dat_flit_s);
+  parameter int SNP_FLIT_WIDTH = $bits(snp_flit_s);
 
 endpackage
 

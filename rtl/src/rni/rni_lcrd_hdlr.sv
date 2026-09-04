@@ -19,17 +19,17 @@ module rni_lcrd_hdlr #(
         parameter LCRD_MAX_CNT_VAL  = 4
     )
     (
-        // global inputs
-        clk,
-        rst,
+    // global inputs
+    input wire clk,
+    input wire rst,
 
-        // inputs
-        lcrd_inc,
-        lcrd_dec,
+    // inputs
+    input wire lcrd_inc,
+    input wire lcrd_dec,
 
-        // outputs
-        lcrd_full,
-        lcrd_avail
+    // outputs
+    output wire lcrd_full,
+    output wire lcrd_avail
     );
 
     // local param
@@ -37,18 +37,6 @@ module rni_lcrd_hdlr #(
                                      (LCRD_MAX_CNT_VAL < 4)? 2 :
                                      (LCRD_MAX_CNT_VAL < 8)? 3 :
                                      (LCRD_MAX_CNT_VAL < 16)? 4 : 5);
-
-    // global inputs
-    input  wire clk;
-    input  wire rst;
-
-    // inputs
-    input  wire lcrd_inc;
-    input  wire lcrd_dec;
-
-    // outputs
-    output wire lcrd_full;
-    output wire lcrd_avail;
 
     // internal wire
     wire                         lcrd_cnt_upd_s0;

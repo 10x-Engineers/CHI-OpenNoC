@@ -15,84 +15,45 @@
 */
 
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 `include "rni_defines.svh"
 `include "rni_param.svh"
 
 module rni_arctrl
     `RNI_PARAM
-        (
-            clk_i
-            ,rst_i
+    (
+    input wire clk_i,
+    input wire rst_i,
 
-            // AXI AR0 channel
-            ,AR_CH_S0
-            ,ARVALID0
-            ,ARREADY0
+    input wire [`AXI4_AR_WIDTH-1:0] AR_CH_S0,
+    input wire ARVALID0,
+    output wire ARREADY0,
 
-            // txreq outputs
-            ,arctrl_txreqflitv_s4_o
-            ,arctrl_txreqflit_s4_o
-            ,arctrl_txreqflit_sent_s4_i
+    output wire arctrl_txreqflitv_s4_o,
+    output chie_pkg::req_flit_s arctrl_txreqflit_s4_o,
+    input wire arctrl_txreqflit_sent_s4_i,
 
-            // rxrsp inputs
-            ,rxrspflitv_d1_i
-            ,rxrspflit_d1_i
+    input wire rxdatflitv_d1_i,
+    input wire [11:0] rxdatflit_txnid_d1_i,
+    input wire [1:0] rxdatflit_dataid_d1_i,
 
-            // rxdat inputs
-            ,rxdatflitv_d1_i
-            ,rxdatflit_txnid_d1_i
-            ,rxdatflit_dataid_d1_i
+    input wire rxrspflitv_d1_i,
+    input chie_pkg::rsp_flit_s rxrspflit_d1_i,
 
-            // s0 rdata dispatch
-            ,rp_fifo_acpt_d4_i
-            ,arctrl_rb_valid_d4_o
-            ,arctrl_rb_ctmask_d4_o
-            ,arctrl_rb_rlast_d4_o
-            ,arctrl_rb_rid_d4_o
-            ,arctrl_rb_idx_d4_o
-            ,arctrl_rb_bc_d4_o
+    input wire rp_fifo_acpt_d4_i,
+    output wire arctrl_rb_valid_d4_o,
+    output wire [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rb_ctmask_d4_o,
+    output wire arctrl_rb_rlast_d4_o,
+    output wire [`AXI4_ARID_WIDTH-1:0] arctrl_rb_rid_d4_o,
+    output wire [`RNI_AR_ENTRIES_WIDTH-1:0] arctrl_rb_idx_d4_o,
+    output wire [`RNI_BC_WIDTH-1:0] arctrl_rb_bc_d4_o,
 
-            ,pcrdgnt_pkt_v_d2_i
-            ,pcrdgnt_pkt_d2_i
-            ,arctrl_pcrdgnt_h_present_d3_o
-            ,arctrl_pcrdgnt_l_present_d3_o
-            ,ar_pcrdgnt_h_win_d3_i
-            ,ar_pcrdgnt_l_win_d3_i
-        );
-
-    input  wire                                       clk_i;
-    input  wire                                       rst_i;
-
-    input  wire [`AXI4_AR_WIDTH-1:0]                  AR_CH_S0;
-    input  wire                                       ARVALID0;
-    output wire                                       ARREADY0;
-
-    output wire                                       arctrl_txreqflitv_s4_o;
-    output wire [`CHIE_REQ_FLIT_WIDTH-1:0]            arctrl_txreqflit_s4_o;
-    input  wire                                       arctrl_txreqflit_sent_s4_i;
-
-    input  wire                                       rxdatflitv_d1_i;
-    input  wire [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0]      rxdatflit_txnid_d1_i;
-    input  wire [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0]     rxdatflit_dataid_d1_i;
-
-    input  wire                                       rxrspflitv_d1_i;
-    input  wire [`CHIE_RSP_FLIT_WIDTH-1:0]            rxrspflit_d1_i;
-
-    input  wire                                       rp_fifo_acpt_d4_i;
-    output wire                                       arctrl_rb_valid_d4_o;
-    output wire [`RNI_DMASK_CT_WIDTH-1:0]             arctrl_rb_ctmask_d4_o;
-    output wire                                       arctrl_rb_rlast_d4_o;
-    output wire [`AXI4_ARID_WIDTH-1:0]                arctrl_rb_rid_d4_o;
-    output wire [`RNI_AR_ENTRIES_WIDTH-1:0]           arctrl_rb_idx_d4_o;
-    output wire [`RNI_BC_WIDTH-1:0]                   arctrl_rb_bc_d4_o;
-
-    input  wire                                       pcrdgnt_pkt_v_d2_i;
-    input  wire [`PCRDGRANT_PKT_WIDTH-1:0]            pcrdgnt_pkt_d2_i;
-    output wire                                       arctrl_pcrdgnt_h_present_d3_o;
-    output wire                                       arctrl_pcrdgnt_l_present_d3_o;
-    input  wire                                       ar_pcrdgnt_h_win_d3_i;
-    input  wire                                       ar_pcrdgnt_l_win_d3_i;
+    input wire pcrdgnt_pkt_v_d2_i,
+    input opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_i,
+    output wire arctrl_pcrdgnt_h_present_d3_o,
+    output wire arctrl_pcrdgnt_l_present_d3_o,
+    input wire ar_pcrdgnt_h_win_d3_i,
+    input wire ar_pcrdgnt_l_win_d3_i
+    );
 
     wire alloc_busy_s1_w;
     wire [`AXI4_AR_WIDTH-1:0] arlink_arbus_s1_w;
@@ -133,11 +94,11 @@ module rni_arctrl
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_ptr_ns_w;
     wire arctrl_entry_req_select_success_flag_w;
     wire [CHIE_NID_WIDTH_PARAM-1:0] ar_tx_send_nid_w;
-    wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0] arctrl_entry_rxrsp_tgtid_w;
-    wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0] arctrl_entry_rxrsp_srcid_w;
-    wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0] arctrl_entry_rxrsp_txnid_w;
-    wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] arctrl_entry_rxrsp_opcode_w;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] arctrl_entry_rxrsp_pcrdtype_w;
+    wire [chie_pkg::NID_WIDTH-1:0] arctrl_entry_rxrsp_tgtid_w;
+    wire [chie_pkg::NID_WIDTH-1:0] arctrl_entry_rxrsp_srcid_w;
+    wire [11:0] arctrl_entry_rxrsp_txnid_w;
+    chie_pkg::rsp_opcode_e arctrl_entry_rxrsp_opcode_w;
+    wire [3:0] arctrl_entry_rxrsp_pcrdtype_w;
     wire ar_rxrsp_correct_w;
     wire rxrsp_retryack_recv_flag_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_w;
@@ -172,8 +133,8 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_num_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_sameid_rdata_chain_vec_d2_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_rdata_dep_num_r;
-    logic [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0] ar_txreq_txnid_r;
-    logic [`CHIE_REQ_FLIT_WIDTH-1:0] ar_txreqflit_info_r;
+    logic [11:0] ar_txreq_txnid_r;
+    chie_pkg::req_flit_s ar_txreqflit_info_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rxrsp_ptr_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_rdy_vec_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_rdy_vec_r;
@@ -212,21 +173,21 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_select_vec_q;
     logic arctrl_entry_req_select_retry_flag_q;
     logic ar_txreqflitv_s5_q;
-    logic [`CHIE_REQ_FLIT_WIDTH-1:0] ar_txreqflit_s5_q;
+    chie_pkg::req_flit_s ar_txreqflit_s5_q;
     logic ar_txreqflit_sent_s5_q;
     logic rxrsp_pcrdtype_hi_match_d3_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_recv_vec_d3_q;
     logic rxrsp_pcrdtype_lo_match_d3_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d3_q;
-    logic [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] rxrsp_retryack_pcrdtype_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [3:0] rxrsp_retryack_pcrdtype_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_ordered_pending_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_upd_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_upd_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_q;
     logic rxdat_flitv_q;
-    logic [`CHIE_DAT_FLIT_TXNID_WIDTH-1:0] rxdat_txnid_q;
-    logic [`CHIE_DAT_FLIT_DATAID_WIDTH-1:0] rxdat_dataid_q;
+    logic [11:0] rxdat_txnid_q;
+    logic [1:0] rxdat_dataid_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_start_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_send_q;
     logic [`RNI_DMASK_RV_WIDTH-1:0] arctrl_entry_rvmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
@@ -670,19 +631,12 @@ module rni_arctrl
     assign ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0] = HNF_NID_PARAM;
 
     always_comb begin
-        ar_txreq_txnid_r[`CHIE_REQ_FLIT_TXNID_WIDTH-1:0] = {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
-        ar_txreq_txnid_r[`CHIE_REQ_FLIT_TXNID_WIDTH-1] = 1'b0;
+        ar_txreq_txnid_r[11:0] = '0;
+        ar_txreq_txnid_r[12-1] = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
             ar_txreq_txnid_r[`RNI_AR_ENTRIES_WIDTH-1:0] = ar_txreq_txnid_r[`RNI_AR_ENTRIES_WIDTH-1:0] | ({`RNI_AR_ENTRIES_WIDTH{arctrl_entry_req_ptr_q[i]}} & i[`RNI_AR_ENTRIES_WIDTH-1:0]);
     end
 
-    generate
-        if(CHIE_REQ_RSVDC_WIDTH_PARAM != 0)begin
-            always_comb begin
-                ar_txreqflit_info_r[`CHIE_REQ_FLIT_RSVDC_RANGE] = {`CHIE_REQ_FLIT_RSVDC_WIDTH{1'b0}};
-            end
-        end
-    endgenerate
 
     // AMBA AXI4 (IHI 0022) Table A4-5 names the memory type from AxCACHE:
     // ARCACHE[1] (Modifiable) low is Device, and with it high ARCACHE[3:2] split
@@ -711,38 +665,38 @@ module rni_arctrl
     endgenerate
 
     always_comb begin
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_WIDTH-1:0] = {`CHIE_REQ_FLIT_WIDTH{1'b0}};
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_TGTID_RANGE] = ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_SRCID_RANGE] = RNI_NID_PARAM;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_TXNID_RANGE] = ar_txreq_txnid_r[`CHIE_REQ_FLIT_TXNID_WIDTH-1:0];
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_OPCODE_RANGE] = ar_cacheable_w ? `CHIE_READONCE : `CHIE_READNOSNP;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE] = ~arctrl_entry_req_select_retry_flag_q;
+        ar_txreqflit_info_r = '0;
+        ar_txreqflit_info_r.tgtid = ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
+        ar_txreqflit_info_r.srcid = RNI_NID_PARAM;
+        ar_txreqflit_info_r.txnid = ar_txreq_txnid_r[11:0];
+        ar_txreqflit_info_r.opcode = ar_cacheable_w ? chie_pkg::REQ_READONCE : chie_pkg::REQ_READNOSNP;
+        ar_txreqflit_info_r.allowretry = ~arctrl_entry_req_select_retry_flag_q;
         // Table 2-11's Device rows carry Order=EndpointOrder; every Normal row
         // carries Order[0]=0, and this Requester elects no ordering of its own.
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_ORDER_RANGE] = ar_device_w ? 2'b11 : 2'b00;
+        ar_txreqflit_info_r.order = ar_device_w ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
         // Sec 2.9.2 (p.2-126, MUST): EWA "must be asserted in any Read ... that is
         // not a ReadNoSnp, ReadNoSnpSep, or CMO transaction", which is every
         // ReadOnce this bridge emits; Table 2-11 (p.2-129) gives every Cacheable
         // row EWA=1.
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_EARLYWRACK_RANGE] = ar_cacheable_w | ar_axcache_r[0];
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_DEVICE_RANGE] = ar_device_w;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_CACHEABLE_RANGE] = ar_cacheable_w;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_SNPATTR_RANGE] = ar_cacheable_w;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_LPID_RANGE] = {`CHIE_REQ_FLIT_LPID_WIDTH{1'b0}};
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_SIZE_RANGE] = 3'b110;
-        ar_txreqflit_info_r[`CHIE_REQ_FLIT_EXPCOMPACK_RANGE] = 1'b0;
+        ar_txreqflit_info_r.memattr.early_wr_ack = ar_cacheable_w | ar_axcache_r[0];
+        ar_txreqflit_info_r.memattr.device = ar_device_w;
+        ar_txreqflit_info_r.memattr.cacheable = ar_cacheable_w;
+        ar_txreqflit_info_r.snpattr = ar_cacheable_w;
+        ar_txreqflit_info_r.lpid = '0;
+        ar_txreqflit_info_r.size = chie_pkg::SIZE_64B;
+        ar_txreqflit_info_r.expcompack = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
-            ar_txreqflit_info_r[`CHIE_REQ_FLIT_QOS_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_QOS_RANGE] | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARQOS_RANGE]);
-            ar_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_ADDR_RANGE] | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
-            ar_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] = ~arctrl_entry_req_select_retry_flag_q ? {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}} :
-                               ar_txreqflit_info_r[`CHIE_REQ_FLIT_PCRDTYPE_RANGE] | ({`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]);
+            ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARQOS_RANGE]);
+            ar_txreqflit_info_r.addr = ar_txreqflit_info_r.addr | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
+            ar_txreqflit_info_r.pcrdtype = ~arctrl_entry_req_select_retry_flag_q ? '0 :
+                               ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
             // Table 2-11 gives no non-cacheable row an Allocate value.
-            ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] = ar_txreqflit_info_r[`CHIE_REQ_FLIT_MEMATTR_ALLOCATE_RANGE] | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i][`AXI4_ARCACHE_MSB-1]);
+            ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i][`AXI4_ARCACHE_MSB-1]);
         end
     end
 
     assign arctrl_txreqflitv_s4_o = arctrl_entry_req_select_success_q | (~ar_txreqflit_sent_s5_q & ar_txreqflitv_s5_q);
-    assign arctrl_txreqflit_s4_o[`CHIE_REQ_FLIT_WIDTH-1:0] = (~ar_txreqflit_sent_s5_q & ar_txreqflitv_s5_q) ? ar_txreqflit_s5_q[`CHIE_REQ_FLIT_WIDTH-1:0] : ar_txreqflit_info_r[`CHIE_REQ_FLIT_WIDTH-1:0];
+    assign arctrl_txreqflit_s4_o = (~ar_txreqflit_sent_s5_q & ar_txreqflitv_s5_q) ? ar_txreqflit_s5_q : ar_txreqflit_info_r;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
@@ -755,10 +709,10 @@ module rni_arctrl
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
-            ar_txreqflit_s5_q[`CHIE_REQ_FLIT_WIDTH-1:0] <= {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+            ar_txreqflit_s5_q <= '0;
         end
         else begin
-            ar_txreqflit_s5_q[`CHIE_REQ_FLIT_WIDTH-1:0]<= arctrl_txreqflit_s4_o[`CHIE_REQ_FLIT_WIDTH-1:0];
+            ar_txreqflit_s5_q<= arctrl_txreqflit_s4_o;
         end
     end
 
@@ -774,14 +728,14 @@ module rni_arctrl
     /////////////////////////////////////////////////////////////
     // rxrsp
     /////////////////////////////////////////////////////////////
-    assign arctrl_entry_rxrsp_tgtid_w[`CHIE_RSP_FLIT_TGTID_WIDTH-1:0] = rxrspflit_d1_i[`CHIE_RSP_FLIT_TGTID_RANGE];
-    assign arctrl_entry_rxrsp_srcid_w[`CHIE_RSP_FLIT_SRCID_WIDTH-1:0] = rxrspflit_d1_i[`CHIE_RSP_FLIT_SRCID_RANGE];
-    assign arctrl_entry_rxrsp_txnid_w[`CHIE_RSP_FLIT_TXNID_WIDTH-1:0] = rxrspflit_d1_i[`CHIE_RSP_FLIT_TXNID_RANGE];
-    assign arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] = rxrspflit_d1_i[`CHIE_RSP_FLIT_OPCODE_RANGE];
-    assign arctrl_entry_rxrsp_pcrdtype_w[`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] = rxrspflit_d1_i[`CHIE_RSP_FLIT_PCRDTYPE_RANGE];
+    assign arctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] = rxrspflit_d1_i.tgtid;
+    assign arctrl_entry_rxrsp_srcid_w[chie_pkg::NID_WIDTH-1:0] = rxrspflit_d1_i.srcid;
+    assign arctrl_entry_rxrsp_txnid_w[11:0] = rxrspflit_d1_i.txnid;
+    assign arctrl_entry_rxrsp_opcode_w[5-1:0] = rxrspflit_d1_i.opcode;
+    assign arctrl_entry_rxrsp_pcrdtype_w[3:0] = rxrspflit_d1_i.pcrdtype;
 
-    assign ar_rxrsp_correct_w = rxrspflitv_d1_i & ~arctrl_entry_rxrsp_txnid_w[`CHIE_RSP_FLIT_TXNID_WIDTH-1] & (arctrl_entry_rxrsp_tgtid_w[`CHIE_RSP_FLIT_TGTID_WIDTH-1:0] == RNI_NID_PARAM);
-    assign rxrsp_retryack_recv_flag_w = ar_rxrsp_correct_w & (arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_RETRYACK);
+    assign ar_rxrsp_correct_w = rxrspflitv_d1_i & ~arctrl_entry_rxrsp_txnid_w[12-1] & (arctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] == RNI_NID_PARAM);
+    assign rxrsp_retryack_recv_flag_w = ar_rxrsp_correct_w & (arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
     assign rxrsp_retryack_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_retryack_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_retryack_recv_vec_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | rxrsp_retryack_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
@@ -791,7 +745,7 @@ module rni_arctrl
     // ordered request is actually sent and cleared only by that response or by
     // dealloc -- so a RetryAck'd ordered request keeps blocking the next one,
     // which is Figure 2-34 step 5 (p.2-121).
-    assign rxrsp_ordrsp_recv_flag_w = ar_rxrsp_correct_w & ((arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_READRECEIPT) | (arctrl_entry_rxrsp_opcode_w[`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0] == `CHIE_RESPSEPDATA));
+    assign rxrsp_ordrsp_recv_flag_w = ar_rxrsp_correct_w & ((arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_READRECEIPT) | (arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RESPSEPDATA));
     assign rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_ordrsp_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | ({RNI_AR_ENTRIES_NUM_PARAM{arctrl_entry_req_select_success_flag_w}} & arctrl_entry_req_ptr_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_any_w = |arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
@@ -825,9 +779,9 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:pcrdtype_match
             always_comb begin
                 if(rxrsp_pcrdgrant_recv_flag_w & rxrsp_retryack_recv_vec_q[entry] & ~(rxrsp_pcrdgrant_recv_vec_q[entry] | rxrsp_pcrdgrant_recv_vec_ns_w[entry]))begin
-                    rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_PCRDTYPE_RANGE] == rxrsp_retryack_pcrdtype_q[entry][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_SRCID_RANGE] == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_TGTID_RANGE] == RNI_NID_PARAM) && arctrl_entry_qos_hi_q[entry];
+                    rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i.pcrdtype == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
+                                                (pcrdgnt_pkt_d2_i.srcid == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
+                                                (pcrdgnt_pkt_d2_i.tgtid == RNI_NID_PARAM) && arctrl_entry_qos_hi_q[entry];
                 end
                 else begin
                     rxrsp_pcrdgrant_hi_rdy_vec_r[entry] = 1'b0;
@@ -836,9 +790,9 @@ module rni_arctrl
 
             always_comb begin
                 if(rxrsp_pcrdgrant_recv_flag_w & rxrsp_retryack_recv_vec_q[entry] & ~(rxrsp_pcrdgrant_recv_vec_q[entry] | rxrsp_pcrdgrant_recv_vec_ns_w[entry]))begin
-                    rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_PCRDTYPE_RANGE] == rxrsp_retryack_pcrdtype_q[entry][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_SRCID_RANGE] == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
-                                                (pcrdgnt_pkt_d2_i[`PCRDGRANT_PKT_TGTID_RANGE] == RNI_NID_PARAM) && ~arctrl_entry_qos_hi_q[entry];
+                    rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = (pcrdgnt_pkt_d2_i.pcrdtype == rxrsp_retryack_pcrdtype_q[entry][3:0]) &&
+                                                (pcrdgnt_pkt_d2_i.srcid == ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0]) &&
+                                                (pcrdgnt_pkt_d2_i.tgtid == RNI_NID_PARAM) && ~arctrl_entry_qos_hi_q[entry];
                 end
                 else begin
                     rxrsp_pcrdgrant_lo_rdy_vec_r[entry] = 1'b0;
@@ -910,14 +864,14 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:rxrsp_info
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    rxrsp_retryack_pcrdtype_q[entry][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] <= {`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{1'b0}};
+                    rxrsp_retryack_pcrdtype_q[entry][3:0] <= '0;
                 end
                 else begin
                     if(rxrsp_retryack_recv_vec_w[entry])begin
-                        rxrsp_retryack_pcrdtype_q[entry][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] <= arctrl_entry_rxrsp_pcrdtype_w[`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0];
+                        rxrsp_retryack_pcrdtype_q[entry][3:0] <= arctrl_entry_rxrsp_pcrdtype_w[3:0];
                     end
                     else if(arctrl_entry_dealloc_vec_w[entry])begin
-                        rxrsp_retryack_pcrdtype_q[entry][`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0] <= {`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{1'b0}};
+                        rxrsp_retryack_pcrdtype_q[entry][3:0] <= '0;
                     end
                 end
             end
@@ -1095,19 +1049,19 @@ module rni_arctrl
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
-            rxdat_txnid_q[`CHIE_DAT_FLIT_TXNID_WIDTH-1:0] <= {`CHIE_DAT_FLIT_TXNID_WIDTH{1'b0}};
+            rxdat_txnid_q[11:0] <= '0;
         end
         else begin
-            rxdat_txnid_q[`CHIE_DAT_FLIT_TXNID_WIDTH-1:0] <= rxdatflit_txnid_d1_i[`CHIE_DAT_FLIT_TXNID_WIDTH-1:0];
+            rxdat_txnid_q[11:0] <= rxdatflit_txnid_d1_i[11:0];
         end
     end
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
-            rxdat_dataid_q[`CHIE_DAT_FLIT_DATAID_WIDTH-1:0] <= {`CHIE_DAT_FLIT_DATAID_WIDTH{1'b0}};
+            rxdat_dataid_q[1:0] <= '0;
         end
         else begin
-            rxdat_dataid_q[`CHIE_DAT_FLIT_DATAID_WIDTH-1:0] <= rxdatflit_dataid_d1_i[`CHIE_DAT_FLIT_DATAID_WIDTH-1:0];
+            rxdat_dataid_q[1:0] <= rxdatflit_dataid_d1_i[1:0];
         end
     end
 

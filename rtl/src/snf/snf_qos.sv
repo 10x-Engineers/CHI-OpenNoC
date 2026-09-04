@@ -17,7 +17,6 @@
 *    Guo Bing <guobing@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "snf_defines.svh"
 `include "snf_param.svh"
@@ -41,10 +40,10 @@ module snf_qos `SNF_PARAM
 
     //outputs to TXRSP
         output  wire                               qos_txrsp_retryack_valid_s1,
-        output  snf_pkg::retry_ackq_s              qos_txrsp_retryack_fifo_s1,
+        output  chie_pkg::retry_ackq_s              qos_txrsp_retryack_fifo_s1,
 
         output  wire                               qos_txrsp_pcrdgnt_valid_s2,
-        output  snf_pkg::pcrdgrantq_s              qos_txrsp_pcrdgnt_fifo_s2,
+        output  chie_pkg::pcrdgrantq_s              qos_txrsp_pcrdgnt_fifo_s2,
 
     //outputs to RXREQ
         output  wire                               rxreq_retry_enable_s0,
@@ -113,7 +112,9 @@ module snf_qos `SNF_PARAM
     wire                                             l_retire_can_convert_static_sx;
     wire [`SNF_QOS_CLASS_WIDTH-1:0]                  qos_class_pool_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 qos_class_pool_flop_en_s0;
-    wire                                             mark_mshr_static_sx;snf_pkg::retry_ackq_s                retry_ackq_datain_s0;snf_pkg::pcrdgrantq_s                pcrdgrant_fifo_datain_s1;
+    wire                                             mark_mshr_static_sx;
+    chie_pkg::retry_ackq_s                retry_ackq_datain_s0;
+    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_datain_s1;
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_srcid_match_vec_s0;
     wire                                             ret_bank_alloc_en_s0;
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_entry_v_s0;
@@ -149,11 +150,13 @@ module snf_qos `SNF_PARAM
     wire                                             pcrdgnt_req_enable_s1;
     logic [chie_pkg::NID_WIDTH-1:0]            pcrdgnt_srcid_s1;
     logic [3:0]              pcrdgnt_qos_s1;
-    logic [3:0]         retry_ackq_pcrdtype_s0;snf_pkg::retry_ackq_s                retry_ack_fifo_dataout_s1;
+    logic [3:0]         retry_ackq_pcrdtype_s0;
+    chie_pkg::retry_ackq_s                retry_ack_fifo_dataout_s1;
     wire                                             retry_ack_fifo_empty;
     wire                                             retry_ack_fifo_full;
     wire                                             retry_ack_fifo_push;
-    wire                                             retry_ack_fifo_pop;snf_pkg::pcrdgrantq_s                pcrdgrant_fifo_dataout_s2;
+    wire                                             retry_ack_fifo_pop;
+    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_dataout_s2;
     wire                                             pcrdgrant_fifo_empty;
     wire                                             pcrdgrant_fifo_full;
     wire                                             pcrdgrant_fifo_push;
@@ -526,7 +529,7 @@ module snf_qos `SNF_PARAM
     assign retry_ack_fifo_pop  = txrsp_retryack_won_s1 & ~retry_ack_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH ($bits(snf_pkg::retry_ackq_s)    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::retry_ackq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`SNF_RETRY_ACKQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE(1'b0)
                    )retry_ack_fifo_nobyp(
@@ -832,7 +835,7 @@ module snf_qos `SNF_PARAM
     assign pcrdgrant_fifo_pop  = txrsp_pcrdgnt_won_s2 & ~pcrdgrant_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH ($bits(snf_pkg::pcrdgrantq_s)    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(chie_pkg::pcrdgrantq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`SNF_PCRDGRANTQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE(1'b0)
                    )pcrdgrant_fifo_nobyp(

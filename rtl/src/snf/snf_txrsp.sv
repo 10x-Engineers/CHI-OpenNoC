@@ -17,7 +17,6 @@
 *    Guo Bing <guobing@bosc.ac.cn>
 */
 
-`include "chie_defines.svh"
 `include "axi4_defines.svh"
 `include "snf_defines.svh"
 `include "snf_param.svh"
@@ -34,10 +33,10 @@ module snf_txrsp `SNF_PARAM
         input  wire                            txlink_run,
 
         input  wire                            qos_txrsp_retryack_valid_s1,
-        input snf_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
+        input chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
 
         input  wire                            qos_txrsp_pcrdgnt_valid_s2,
-        input snf_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
+        input chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
 
         //inputs from snf_mshr
         input  wire                                 txrsp_valid_sx,
