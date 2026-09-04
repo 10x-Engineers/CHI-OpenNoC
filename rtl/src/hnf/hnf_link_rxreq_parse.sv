@@ -80,6 +80,8 @@ module hnf_link_rxreq_parse `HNF_PARAM
     wire                                rxreq_crd_cnt_upd_s1;
     wire                                rxreqcrdv_ns_s0;
     wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]  rxreq_crd_cnt_nxt_s1;
+    wire                                rxreq_link_flit_s0;
+    wire                                rxreq_flit_valid_s0;
 
     //main function
 
@@ -94,28 +96,34 @@ module hnf_link_rxreq_parse `HNF_PARAM
     end
 
     //rxreqflit decode
-    assign li_mshr_rxreq_valid_s0      = (rxreqflitv == 1'b1) || (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0);
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no request -- only the L-Credit it returns --
+    // so it is dropped here and only the credit accounting below sees it.
+    assign rxreq_link_flit_s0          = (rxreqflitv == 1'b1) &&
+                                         (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN);
+    assign rxreq_flit_valid_s0         = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;
+    assign li_mshr_rxreq_valid_s0      = rxreq_flit_valid_s0 || (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0);
 
-    assign li_mshr_rxreq_qos_s0        = (rxreqflitv == 1'b1)? rxreqflit.qos       :'0;
-    assign li_mshr_rxreq_srcid_s0      = (rxreqflitv == 1'b1)? rxreqflit.srcid     :'0;
-    assign li_mshr_rxreq_txnid_s0      = (rxreqflitv == 1'b1)? rxreqflit.txnid     :'0;
-    assign li_mshr_rxreq_opcode_s0     = (rxreqflitv == 1'b1)? opennoc_hnf_pkg::hnf_serviced_as(rxreqflit.opcode)
-                                                              :(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? chie_pkg::REQ_SNOOPFILTEREVICT : chie_pkg::REQ_REQLCRDRETURN;
-    assign li_mshr_rxreq_stash_sep_s0  = (rxreqflitv == 1'b1) & opennoc_hnf_pkg::hnf_serviced_as_stash_sep(rxreqflit.opcode);
-    assign li_mshr_rxreq_size_s0       = (rxreqflitv == 1'b1)? rxreqflit.size      :chie_pkg::SIZE_1B;
+    assign li_mshr_rxreq_qos_s0        = rxreq_flit_valid_s0? rxreqflit.qos       :'0;
+    assign li_mshr_rxreq_srcid_s0      = rxreq_flit_valid_s0? rxreqflit.srcid     :'0;
+    assign li_mshr_rxreq_txnid_s0      = rxreq_flit_valid_s0? rxreqflit.txnid     :'0;
+    assign li_mshr_rxreq_opcode_s0     = rxreq_flit_valid_s0? opennoc_hnf_pkg::hnf_serviced_as(rxreqflit.opcode)
+                                                             :(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? chie_pkg::REQ_SNOOPFILTEREVICT : chie_pkg::REQ_REQLCRDRETURN;
+    assign li_mshr_rxreq_stash_sep_s0  = rxreq_flit_valid_s0 & opennoc_hnf_pkg::hnf_serviced_as_stash_sep(rxreqflit.opcode);
+    assign li_mshr_rxreq_size_s0       = rxreq_flit_valid_s0? rxreqflit.size      :chie_pkg::SIZE_1B;
 
-    assign li_mshr_rxreq_addr_s0       = (rxreqflitv == 1'b1)? rxreqflit.addr      :
+    assign li_mshr_rxreq_addr_s0       = rxreq_flit_valid_s0? rxreqflit.addr      :
            (biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0)? biq_req_addr_s0_q:'0;
 
-    assign li_mshr_rxreq_ns_s0         = (rxreqflitv == 1'b1)? rxreqflit.ns        :'0;
-    assign li_mshr_rxreq_allowretry_s0 = (rxreqflitv == 1'b1)? rxreqflit.allowretry:(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? {1{1'b1}} : '0;
-    assign li_mshr_rxreq_order_s0      = (rxreqflitv == 1'b1)? rxreqflit.order     :chie_pkg::ORDER_NONE;
-    assign li_mshr_rxreq_pcrdtype_s0   = (rxreqflitv == 1'b1)? rxreqflit.pcrdtype  :'0;
-    assign li_mshr_rxreq_memattr_s0    = (rxreqflitv == 1'b1)? rxreqflit.memattr   :'0;
-    assign li_mshr_rxreq_lpid_s0       = (rxreqflitv == 1'b1)? rxreqflit.lpid      :'0;
-    assign li_mshr_rxreq_excl_s0       = (rxreqflitv == 1'b1)? rxreqflit.excl      :'0;
-    assign li_mshr_rxreq_expcompack_s0 = (rxreqflitv == 1'b1)? rxreqflit.expcompack:'0;
-    assign li_mshr_rxreq_tracetag_s0   = (rxreqflitv == 1'b1)? rxreqflit.tracetag  :'0;
+    assign li_mshr_rxreq_ns_s0         = rxreq_flit_valid_s0? rxreqflit.ns        :'0;
+    assign li_mshr_rxreq_allowretry_s0 = rxreq_flit_valid_s0? rxreqflit.allowretry:(biq_req_valid_s0_q == 1'b1 && qos_seq_pool_full_s0_q == 1'b0) ? {1{1'b1}} : '0;
+    assign li_mshr_rxreq_order_s0      = rxreq_flit_valid_s0? rxreqflit.order     :chie_pkg::ORDER_NONE;
+    assign li_mshr_rxreq_pcrdtype_s0   = rxreq_flit_valid_s0? rxreqflit.pcrdtype  :'0;
+    assign li_mshr_rxreq_memattr_s0    = rxreq_flit_valid_s0? rxreqflit.memattr   :'0;
+    assign li_mshr_rxreq_lpid_s0       = rxreq_flit_valid_s0? rxreqflit.lpid      :'0;
+    assign li_mshr_rxreq_excl_s0       = rxreq_flit_valid_s0? rxreqflit.excl      :'0;
+    assign li_mshr_rxreq_expcompack_s0 = rxreq_flit_valid_s0? rxreqflit.expcompack:'0;
+    assign li_mshr_rxreq_tracetag_s0   = rxreq_flit_valid_s0? rxreqflit.tracetag  :'0;
 
     //rxreq L-credit
     assign li_req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;
