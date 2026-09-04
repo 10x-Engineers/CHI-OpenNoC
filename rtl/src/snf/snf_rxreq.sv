@@ -24,45 +24,29 @@
 
 module snf_rxreq `SNF_PARAM
     (
-        clk,
-        rst,
-        run_state,
-        rxreqflitv,
-        rxreqflit,
-        rxreqflitpend,
+        //global inputs
+        input  wire                       clk,
+        input  wire                       rst,
+        input  wire                       run_state,
 
-        rxreq_retry_enable_s0,
+        //inputs from link
+        input  wire                       rxreqflitv,
+        input  chie_pkg::req_flit_s       rxreqflit,
+        input  wire                       rxreqflitpend,
 
-        txrsp_retryack_won_s1,
+        //inputs from snf_qos
+        input  wire                       rxreq_retry_enable_s0,
 
-        rxreq_lcrdv,
+        //inputs from snf_txrsp
+        input  wire                       txrsp_retryack_won_s1,
 
-        rxreq_valid_s0,
-        rxreqflit_s0
+        //outputs to link
+        output wire                       rxreq_lcrdv,
+
+        //outputs to snf_qos
+        output wire                       rxreq_valid_s0,
+        output chie_pkg::req_flit_s       rxreqflit_s0
     );
-
-    //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
-    input wire                                      run_state;
-
-    //inputs from link
-    input wire                                      rxreqflitv;
-    input wire [`CHIE_REQ_FLIT_RANGE]               rxreqflit;
-    input wire                                      rxreqflitpend;
-
-    //inputs from snf_qos
-    input wire                                      rxreq_retry_enable_s0;
-
-    //inputs from snf_txrsp
-    input wire                                      txrsp_retryack_won_s1;
-
-    //outputs to link
-    output wire                                     rxreq_lcrdv;
-
-    //outputs to snf_qos
-    output wire                                     rxreq_valid_s0;
-    output wire [`CHIE_REQ_FLIT_RANGE]              rxreqflit_s0;
 
     //internal reg signals
     logic                                             rxreqflitv_en_q;
@@ -97,9 +81,9 @@ module snf_rxreq `SNF_PARAM
     // dropped here rather than allocated a tracker entry, and only the credit
     // accounting below sees it.
     assign rxreq_link_flit_s0 = (rxreqflitv == 1'b1) &&
-           (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == {`CHIE_REQ_FLIT_OPCODE_WIDTH{1'b0}});
+           (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN);
     assign rxreq_valid_s0    = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;
-    assign rxreqflit_s0      = (rxreq_valid_s0 == 1'b1) ? rxreqflit : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+    assign rxreqflit_s0      = (rxreq_valid_s0 == 1'b1) ? rxreqflit : '0;
 
     //rxreq L-credit
     assign req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;
