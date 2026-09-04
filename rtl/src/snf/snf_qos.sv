@@ -56,7 +56,7 @@ module snf_qos `SNF_PARAM
 
     //inputs from RXREQ
     input wire                                       rxreq_valid_s0;
-    input wire [`CHIE_REQ_FLIT_RANGE]                rxreqflit_s0;
+    input  chie_pkg::req_flit_s                      rxreqflit_s0;
 
     //inputs from TXRSP
     input wire                                       txrsp_retryack_won_s1;
@@ -68,29 +68,29 @@ module snf_qos `SNF_PARAM
 
     //outputs to TXRSP
     output wire                                      qos_txrsp_retryack_valid_s1;
-    output wire [`SNF_RETRY_ACKQ_DATA_RANGE]         qos_txrsp_retryack_fifo_s1;
+    output snf_pkg::retry_ackq_s         qos_txrsp_retryack_fifo_s1;
 
     output wire                                      qos_txrsp_pcrdgnt_valid_s2;
-    output wire [`SNF_PCRDGRANTQ_DATA_RANGE]         qos_txrsp_pcrdgnt_fifo_s2;
+    output snf_pkg::pcrdgrantq_s         qos_txrsp_pcrdgnt_fifo_s2;
 
     //outputs to RXREQ
     output wire                                      rxreq_retry_enable_s0;
 
     //outputs to mshr
     output wire                                      rxreq_alloc_en_s0;
-    output wire [`CHIE_REQ_FLIT_RANGE]               rxreq_alloc_flit_s0;
+    output chie_pkg::req_flit_s                      rxreq_alloc_flit_s0;
     output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]        mshr_entry_idx_alloc_s0;
 
     //outputs to the link handshake
     output wire                                      qos_active_sx;
 
     //internal wire signals
-    wire [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]            rxreq_txnid_s0;
-    wire [`CHIE_REQ_FLIT_QOS_WIDTH-1:0]              rxreq_qos_s0;
-    wire [`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH-1:0]       rxreq_allowretry_s0;
-    wire [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]            rxreq_srcid_s0;
-    wire [`CHIE_REQ_FLIT_TRACETAG_WIDTH-1:0]         rxreq_tracetag_s0;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]         rxreq_pcrdtype_s0;
+    logic [11:0]            rxreq_txnid_s0;
+    logic [3:0]              rxreq_qos_s0;
+    logic                                            rxreq_allowretry_s0;
+    logic [chie_pkg::NID_WIDTH-1:0]            rxreq_srcid_s0;
+    logic         rxreq_tracetag_s0;
+    logic [3:0]         rxreq_pcrdtype_s0;
     wire                                             qpc_high_s0;
     wire                                             qpc_low_s0;
     wire                                             req_qos_can_alloc_s0;
@@ -140,9 +140,7 @@ module snf_qos `SNF_PARAM
     wire                                             l_retire_can_convert_static_sx;
     wire [`SNF_QOS_CLASS_WIDTH-1:0]                  qos_class_pool_s0;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]                 qos_class_pool_flop_en_s0;
-    wire                                             mark_mshr_static_sx;
-    wire [`SNF_RETRY_ACKQ_DATA_RANGE]                retry_ackq_datain_s0;
-    wire [`SNF_PCRDGRANTQ_DATA_RANGE]                pcrdgrant_fifo_datain_s1;
+    wire                                             mark_mshr_static_sx;snf_pkg::retry_ackq_s                retry_ackq_datain_s0;snf_pkg::pcrdgrantq_s                pcrdgrant_fifo_datain_s1;
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_srcid_match_vec_s0;
     wire                                             ret_bank_alloc_en_s0;
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_entry_v_s0;
@@ -176,15 +174,13 @@ module snf_qos `SNF_PARAM
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_dec_ptr_sx1;
     wire [`SNF_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_dec_ptr_sx1;
     wire                                             pcrdgnt_req_enable_s1;
-    wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]            pcrdgnt_srcid_s1;
-    wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]              pcrdgnt_qos_s1;
-    wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]         retry_ackq_pcrdtype_s0;
-    wire [`SNF_RETRY_ACKQ_DATA_RANGE]                retry_ack_fifo_dataout_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]            pcrdgnt_srcid_s1;
+    logic [3:0]              pcrdgnt_qos_s1;
+    logic [3:0]         retry_ackq_pcrdtype_s0;snf_pkg::retry_ackq_s                retry_ack_fifo_dataout_s1;
     wire                                             retry_ack_fifo_empty;
     wire                                             retry_ack_fifo_full;
     wire                                             retry_ack_fifo_push;
-    wire                                             retry_ack_fifo_pop;
-    wire [`SNF_PCRDGRANTQ_DATA_RANGE]                pcrdgrant_fifo_dataout_s2;
+    wire                                             retry_ack_fifo_pop;snf_pkg::pcrdgrantq_s                pcrdgrant_fifo_dataout_s2;
     wire                                             pcrdgrant_fifo_empty;
     wire                                             pcrdgrant_fifo_full;
     wire                                             pcrdgrant_fifo_push;
@@ -209,8 +205,8 @@ module snf_qos `SNF_PARAM
     logic [`SNF_QOS_CNT_WIDTH-1:0]                     qos_pool_high_cnt_q;
     logic [`SNF_QOS_CNT_WIDTH-1:0]                     qos_pool_low_cnt_q;
     logic [`SNF_QOS_CLASS_WIDTH-1:0]                   qos_class_pool_s1_q[0:`SNF_MSHR_ENTRIES_NUM-1];
-    logic [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]          pcrdgnt_pcrdtype_s1;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             ret_bank_srcid_s1_q[0:SNF_MSHR_HNF_NUM_PARAM-1];
+    logic [3:0]          pcrdgnt_pcrdtype_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]             ret_bank_srcid_s1_q[0:SNF_MSHR_HNF_NUM_PARAM-1];
     logic [`SNF_RET_BANK_ENTRIES_NUM-1:0]              ret_bank_entry_v_s1_q;
     logic [`SNF_RET_BANK_ENTRIES_WIDTH-1:0]            ret_bank_entry_idx_s1_q;
     logic [`SNF_RET_BANK_ENTRIES_NUM-1:0]              ret_bank_entry_ptr_s0;
@@ -224,18 +220,18 @@ module snf_qos `SNF_PARAM
     logic                                              l_present_win_sx1_q;
     logic [`SNF_MAX_WAIT_CNT_WIDTH-1:0]                l_wait_cnt_q;
     logic [`SNF_MAX_WAIT_CNT_WIDTH-1:0]                l_wait_cnt_ns;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             h_pcrdgrant_srcid_sx1;
-    logic [`CHIE_REQ_FLIT_SRCID_WIDTH-1:0]             l_pcrdgrant_srcid_sx1;
+    logic [chie_pkg::NID_WIDTH-1:0]             h_pcrdgrant_srcid_sx1;
+    logic [chie_pkg::NID_WIDTH-1:0]             l_pcrdgrant_srcid_sx1;
     logic [`SNF_RET_BANK_ENTRIES_NUM-1:0]              h_retry_req_entry_q;
     logic [`SNF_RET_BANK_ENTRIES_NUM-1:0]              l_retry_req_entry_q;
 
     //Rxreq decode
-    assign rxreq_txnid_s0       = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_TXNID_RANGE]      : {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}};
-    assign rxreq_qos_s0         = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_QOS_RANGE]        : {`CHIE_REQ_FLIT_QOS_WIDTH{1'b0}};
-    assign rxreq_allowretry_s0  = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_ALLOWRETRY_RANGE] : {`CHIE_REQ_FLIT_ALLOWRETRY_WIDTH{1'b0}};
-    assign rxreq_srcid_s0       = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_SRCID_RANGE]      : {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
-    assign rxreq_tracetag_s0    = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_TRACETAG_RANGE]   : {`CHIE_REQ_FLIT_TRACETAG_WIDTH{1'b0}};
-    assign rxreq_pcrdtype_s0    = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0[`CHIE_REQ_FLIT_PCRDTYPE_RANGE]   : {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
+    assign rxreq_txnid_s0       = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.txnid      : '0;
+    assign rxreq_qos_s0         = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.qos        : '0;
+    assign rxreq_allowretry_s0  = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.allowretry : 1'b0;
+    assign rxreq_srcid_s0       = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.srcid      : '0;
+    assign rxreq_tracetag_s0    = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.tracetag   : 1'b0;
+    assign rxreq_pcrdtype_s0    = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.pcrdtype   : '0;
 
     //QoS Priority Class:high
     assign qpc_high_s0 = (rxreq_qos_s0 >= `SNF_QOS_HIGH_MIN)?1'b1:1'b0;
@@ -286,7 +282,7 @@ module snf_qos `SNF_PARAM
     assign pool_free_sx    = mshr_dyn_avail_s0 & ~rxreq_alloc_en_s0 & ~mshr_retired_valid_sx;
     assign grant_window_sx = mshr_retired_valid_sx | pool_free_sx;
 
-    assign rxreq_alloc_flit_s0       = (rxreq_alloc_en_s0 == 1'b1) ? rxreqflit_s0 : {`CHIE_REQ_FLIT_WIDTH{1'b0}};
+    assign rxreq_alloc_flit_s0       = (rxreq_alloc_en_s0 == 1'b1) ? rxreqflit_s0 : '0;
 
     always_ff @(posedge clk or posedge rst) begin: update_mshr_alloc_en_timing_logic
         if (rst == 1'b1)
@@ -547,17 +543,17 @@ module snf_qos `SNF_PARAM
     assign retry_ackq_pcrdtype_s0 = { 2'b0, qpc_high_s0, qpc_low_s0};
 
     //retry_ack_fifo flit assamble
-    assign retry_ackq_datain_s0[`SNF_RETRY_ACKQ_SRCID_RANGE]    = rxreq_srcid_s0;
-    assign retry_ackq_datain_s0[`SNF_RETRY_ACKQ_TXNID_RANGE]    = rxreq_txnid_s0;
-    assign retry_ackq_datain_s0[`SNF_RETRY_ACKQ_QOS_RANGE]      = rxreq_qos_s0;
-    assign retry_ackq_datain_s0[`SNF_RETRY_ACKQ_TRACE_RANGE]    = rxreq_tracetag_s0;
-    assign retry_ackq_datain_s0[`SNF_RETRY_ACKQ_PCRDTYPE_RANGE] = retry_ackq_pcrdtype_s0;
+    assign retry_ackq_datain_s0.srcid    = rxreq_srcid_s0;
+    assign retry_ackq_datain_s0.txnid    = rxreq_txnid_s0;
+    assign retry_ackq_datain_s0.qos      = rxreq_qos_s0;
+    assign retry_ackq_datain_s0.trace    = rxreq_tracetag_s0;
+    assign retry_ackq_datain_s0.pcrdtype = retry_ackq_pcrdtype_s0;
 
     assign retry_ack_fifo_push = rxreq_retry_enable_s0 & (~retry_ack_fifo_full | (retry_ack_fifo_full & txrsp_retryack_won_s1));
     assign retry_ack_fifo_pop  = txrsp_retryack_won_s1 & ~retry_ack_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH (`SNF_RETRY_ACKQ_DATA_WIDTH    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(snf_pkg::retry_ackq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`SNF_RETRY_ACKQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE(1'b0)
                    )retry_ack_fifo_nobyp(
@@ -803,9 +799,9 @@ module snf_qos `SNF_PARAM
 
     always_comb begin: high_pcrdgrant_srcid_comb_logic
         integer i;
-        h_pcrdgrant_srcid_sx1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        h_pcrdgrant_srcid_sx1 = {chie_pkg::NID_WIDTH{1'b0}};
         for (i=0; i<`SNF_RET_BANK_ENTRIES_NUM; i=i+1)
-            h_pcrdgrant_srcid_sx1 = h_pcrdgrant_srcid_sx1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_h_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
+            h_pcrdgrant_srcid_sx1 = h_pcrdgrant_srcid_sx1 | ({chie_pkg::NID_WIDTH{ret_cnt_h_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     //l pcrdgrant srcid logic
@@ -834,36 +830,36 @@ module snf_qos `SNF_PARAM
 
     always_comb begin: low_pcrdgrant_srcid_comb_logic
         integer i;
-        l_pcrdgrant_srcid_sx1 = {`CHIE_REQ_FLIT_SRCID_WIDTH{1'b0}};
+        l_pcrdgrant_srcid_sx1 = {chie_pkg::NID_WIDTH{1'b0}};
         for (i=0; i<`SNF_RET_BANK_ENTRIES_NUM; i=i+1)
-            l_pcrdgrant_srcid_sx1 = l_pcrdgrant_srcid_sx1 | ({`CHIE_REQ_FLIT_SRCID_WIDTH{ret_cnt_l_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
+            l_pcrdgrant_srcid_sx1 = l_pcrdgrant_srcid_sx1 | ({chie_pkg::NID_WIDTH{ret_cnt_l_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
     //arbitrate pcrdgrant srcid
-    assign pcrdgnt_srcid_s1 = ({`CHIE_REQ_FLIT_SRCID_WIDTH{h_present_win_sx1_q}}  & h_pcrdgrant_srcid_sx1)  |
-           ({`CHIE_REQ_FLIT_SRCID_WIDTH{l_present_win_sx1_q}}  & l_pcrdgrant_srcid_sx1)  ;
+    assign pcrdgnt_srcid_s1 = ({chie_pkg::NID_WIDTH{h_present_win_sx1_q}}  & h_pcrdgrant_srcid_sx1)  |
+           ({chie_pkg::NID_WIDTH{l_present_win_sx1_q}}  & l_pcrdgrant_srcid_sx1)  ;
 
     //arbitrate pcrdgrant qos
-    assign pcrdgnt_qos_s1 = ({`CHIE_REQ_FLIT_QOS_WIDTH{h_present_win_sx1_q}}  & `CHIE_REQ_FLIT_QOS_WIDTH'hf) |
-           ({`CHIE_REQ_FLIT_QOS_WIDTH{l_present_win_sx1_q}}  & `CHIE_REQ_FLIT_QOS_WIDTH'h0) ;
+    assign pcrdgnt_qos_s1 = ({4{h_present_win_sx1_q}}  & 4'hf) |
+           ({4{l_present_win_sx1_q}}  & 4'h0) ;
 
     //generate pcrdgrant pcrdtype
     always_comb begin
-        pcrdgnt_pcrdtype_s1    = {`CHIE_REQ_FLIT_PCRDTYPE_WIDTH{1'b0}};
+        pcrdgnt_pcrdtype_s1    = {4{1'b0}};
         pcrdgnt_pcrdtype_s1[0] = l_present_win_sx1_q;
         pcrdgnt_pcrdtype_s1[1] = h_present_win_sx1_q;
     end
 
     //encode pcrdgrant part fields to fifo
-    assign pcrdgrant_fifo_datain_s1[`SNF_PCRDGRANTQ_SRCID_RANGE]    = pcrdgnt_srcid_s1;
-    assign pcrdgrant_fifo_datain_s1[`SNF_PCRDGRANTQ_QOS_RANGE]      = pcrdgnt_qos_s1;
-    assign pcrdgrant_fifo_datain_s1[`SNF_PCRDGRANTQ_PCRDTYPE_RANGE] = pcrdgnt_pcrdtype_s1;
+    assign pcrdgrant_fifo_datain_s1.srcid    = pcrdgnt_srcid_s1;
+    assign pcrdgrant_fifo_datain_s1.qos      = pcrdgnt_qos_s1;
+    assign pcrdgrant_fifo_datain_s1.pcrdtype = pcrdgnt_pcrdtype_s1;
 
     assign pcrdgrant_fifo_push = pcrdgnt_req_enable_s1 & (~pcrdgrant_fifo_full | (pcrdgrant_fifo_full & txrsp_pcrdgnt_won_s2));
     assign pcrdgrant_fifo_pop  = txrsp_pcrdgnt_won_s2 & ~pcrdgrant_fifo_empty;
 
     sync_fifo #(
-                       .FIFO_ENTRIES_WIDTH (`SNF_PCRDGRANTQ_DATA_WIDTH    ),
+                       .FIFO_ENTRIES_WIDTH ($bits(snf_pkg::pcrdgrantq_s)    ),
                        .FIFO_ENTRIES_DEPTH (`SNF_PCRDGRANTQ_DATA_DEPTH    ),
                        .FIFO_BYP_ENABLE(1'b0)
                    )pcrdgrant_fifo_nobyp(

@@ -24,35 +24,23 @@
 
 module snf_rxdat `SNF_PARAM
     (
-        clk,
-        rst,
-        run_state,
-        rxdatflitv,
-        rxdatflit,
-        rxdatflitpend,
+        //global inputs
+        input  wire                  clk,
+        input  wire                  rst,
+        input  wire                  run_state,
 
-        rxdat_lcrdv,
+        //inputs from snf_link
+        input  wire                  rxdatflitv,
+        input  chie_pkg::dat_flit_s  rxdatflit,
+        input  wire                  rxdatflitpend,
 
-        rxdat_valid_s0,
-        rxdatflit_s0
+        //outputs to snf_link
+        output wire                  rxdat_lcrdv,
+
+        //outputs to snf_data_buffer
+        output wire                  rxdat_valid_s0,
+        output chie_pkg::dat_flit_s  rxdatflit_s0
     );
-
-    //global inputs
-    input wire                                      clk;
-    input wire                                      rst;
-    input wire                                      run_state;
-
-    //inputs from snf_link
-    input wire                                      rxdatflitv;
-    input wire [`CHIE_DAT_FLIT_RANGE]               rxdatflit;
-    input wire                                      rxdatflitpend;
-
-    //outputs to snf_link
-    output wire                                     rxdat_lcrdv;
-
-    //outputs to snf_data_buffer
-    output wire                                     rxdat_valid_s0;
-    output wire [`CHIE_DAT_FLIT_RANGE]              rxdatflit_s0;
 
     //internal reg signals
     logic                                             rxdatflitv_en_q;
@@ -81,9 +69,9 @@ module snf_rxdat `SNF_PARAM
     // field." It carries no write data -- only the L-Credit it returns -- so it is
     // dropped here and only the credit accounting below sees it.
     assign rxdat_link_flit_s0 = (rxdatflitv == 1'b1) &&
-           (rxdatflit[`CHIE_DAT_FLIT_OPCODE_RANGE] == {`CHIE_DAT_FLIT_OPCODE_WIDTH{1'b0}});
+           (rxdatflit.opcode == chie_pkg::DAT_DATLCRDRETURN);
     assign rxdat_valid_s0  = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
-    assign rxdatflit_s0    = (rxdat_valid_s0 == 1'b1)? rxdatflit : {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+    assign rxdatflit_s0    = (rxdat_valid_s0 == 1'b1)? rxdatflit : '0;
 
     // The Receiver's pool of L-Credits not yet granted to the peer.
     //   into the pool  : an arriving flit hands back the credit it was sent under;

@@ -24,45 +24,29 @@
 
 module snf_txdat `SNF_PARAM
     (
-        clk,
-        rst,
+        //global inputs
+        input  wire                  clk,
+        input  wire                  rst,
 
-        txdat_lcrdv,
-        tx_deactivate,
-        txlink_run,
+        //inputs from snf_link
+        input  wire                  txdat_lcrdv,
+        input  wire                  tx_deactivate,
+        input  wire                  txlink_run,
 
-        dbf_txdat_valid_sx,
-        txdat_flit,
+        //inputs from snf_data_buffer
+        input  wire                  dbf_txdat_valid_sx,
+        input  chie_pkg::dat_flit_s  txdat_flit,
 
-        txdatflitv,
-        txdatflit,
-        txdatflitpend,
+        //outputs to snf_link
+        output logic                 txdatflitv,
+        output chie_pkg::dat_flit_s  txdatflit,
+        output wire                  txdatflitpend,
 
-        txdat_dbf_rdy_s1,
-        txdat_dbf_won_sx
+        //outputs to snf_dbf
+        output wire                  txdat_dbf_rdy_s1,
+        output wire                  txdat_dbf_won_sx
     );
 
-    //global inputs
-    input wire                                    clk;
-    input wire                                    rst;
-
-    //inputs from snf_link
-    input wire                                    txdat_lcrdv;
-    input wire                                    tx_deactivate;
-    input wire                                    txlink_run;
-
-    //inputs from snf_data_buffer
-    input wire                                    dbf_txdat_valid_sx;
-    input wire [`CHIE_DAT_FLIT_RANGE]             txdat_flit;
-
-    //outputs to snf_link
-    output logic                                    txdatflitv;
-    output logic  [`CHIE_DAT_FLIT_RANGE]            txdatflit;
-    output wire                                   txdatflitpend;
-
-    //outputs to snf_dbf
-    output  wire                                  txdat_dbf_rdy_s1;
-    output  wire                                  txdat_dbf_won_sx;
     //internal reg signals
     logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]           txdat_crd_cnt_q;
     logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]           dat_crd_cnt_ns_s0;
@@ -112,7 +96,7 @@ module snf_txdat `SNF_PARAM
     //txdatflit sending logic
     always_ff @(posedge clk or posedge rst) begin: txdatflit_logic_t
         if(rst == 1'b1)begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b0;
         end
         else if((txdat_send_ok_sx == 1'b1) && (dbf_txdat_valid_sx == 1'b1))begin
@@ -121,11 +105,11 @@ module snf_txdat `SNF_PARAM
         end
         else if(txdat_lcrd_rtn_s0 == 1'b1)begin
             //DataLCrdReturn: opcode 0 with every other field zero (Table 13-21)
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b1;
         end
         else begin
-            txdatflit  <= {`CHIE_DAT_FLIT_WIDTH{1'b0}};
+            txdatflit  <= '0;
             txdatflitv <= 1'b0;
         end
     end

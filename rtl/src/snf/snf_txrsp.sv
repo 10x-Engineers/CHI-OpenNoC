@@ -24,92 +24,59 @@
 
 module snf_txrsp `SNF_PARAM
     (
-        clk,
-        rst,
+        //global inputs
+        input  wire                            clk,
+        input  wire                            rst,
 
-        txrsp_lcrdv,
-        tx_deactivate,
-        txlink_run,
+        //inputs from snf_link
+        input  wire                            txrsp_lcrdv,
+        input  wire                            tx_deactivate,
+        input  wire                            txlink_run,
 
-        qos_txrsp_retryack_valid_s1,
-        qos_txrsp_retryack_fifo_s1,
+        input  wire                            qos_txrsp_retryack_valid_s1,
+        input snf_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
 
-        qos_txrsp_pcrdgnt_valid_s2,
-        qos_txrsp_pcrdgnt_fifo_s2,
+        input  wire                            qos_txrsp_pcrdgnt_valid_s2,
+        input snf_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
 
-        txrsp_valid_sx,
-        txrsp_qos_sx,
-        txrsp_tgtid_sx,
-        txrsp_txnid_sx,
-        txrsp_opcode_sx,
-        txrsp_resperr_sx,
-        txrsp_resp_sx,
-        txrsp_dbid_sx,
-        txrsp_tracetag_sx,
-        txrsp_srcid_sx,
+        //inputs from snf_mshr
+        input  wire                                 txrsp_valid_sx,
+        input  wire [3:0]                           txrsp_qos_sx,
+        input  wire [chie_pkg::NID_WIDTH-1:0]       txrsp_tgtid_sx,
+        input  wire [11:0]                          txrsp_txnid_sx,
+        input  wire [4:0]                           txrsp_opcode_sx,
+        input  wire [1:0]                           txrsp_resperr_sx,
+        input  wire [2:0]                           txrsp_resp_sx,
+        input  wire [11:0]                          txrsp_dbid_sx,
+        input  wire                                 txrsp_tracetag_sx,
+        input  wire [chie_pkg::NID_WIDTH-1:0]       txrsp_srcid_sx,
 
-        txrspflitv,
-        txrspflit,
-        txrspflitpend,
+        //outputs to snf_link
+        output logic                           txrspflitv,
+        output chie_pkg::rsp_flit_s            txrspflit,
+        output wire                            txrspflitpend,
 
-        txrsp_retryack_won_s1,
-        txrsp_pcrdgnt_won_s2,
+        //outputs to snf_qos
+        output wire                            txrsp_retryack_won_s1,
+        output wire                            txrsp_pcrdgnt_won_s2,
 
-        txrsp_won_sx
+        //outputs to snf_mshr
+        output wire                            txrsp_won_sx
     );
-
-    //global inputs
-    input wire                                     clk;
-    input wire                                     rst;
-
-    //inputs from snf_link
-    input wire                                     txrsp_lcrdv;
-    input wire                                     tx_deactivate;
-    input wire                                     txlink_run;
-
-    input wire                                     qos_txrsp_retryack_valid_s1;
-    input wire [`SNF_RETRY_ACKQ_DATA_RANGE]            qos_txrsp_retryack_fifo_s1;
-
-    input wire                                     qos_txrsp_pcrdgnt_valid_s2;
-    input wire [`SNF_PCRDGRANTQ_DATA_RANGE]            qos_txrsp_pcrdgnt_fifo_s2;
-
-    //inputs from snf_mshr
-    input wire                                     txrsp_valid_sx;
-    input wire [`CHIE_RSP_FLIT_QOS_WIDTH-1:0]      txrsp_qos_sx;
-    input wire [`CHIE_RSP_FLIT_TGTID_WIDTH-1:0]    txrsp_tgtid_sx;
-    input wire [`CHIE_RSP_FLIT_TXNID_WIDTH-1:0]    txrsp_txnid_sx;
-    input wire [`CHIE_RSP_FLIT_OPCODE_WIDTH-1:0]   txrsp_opcode_sx;
-    input wire [`CHIE_RSP_FLIT_RESPERR_WIDTH-1:0]  txrsp_resperr_sx;
-    input wire [`CHIE_RSP_FLIT_RESP_WIDTH-1:0]     txrsp_resp_sx;
-    input wire [`CHIE_RSP_FLIT_DBID_WIDTH-1:0]     txrsp_dbid_sx;
-    input wire [`CHIE_RSP_FLIT_TRACETAG_WIDTH-1:0] txrsp_tracetag_sx;
-    input wire [`CHIE_RSP_FLIT_SRCID_WIDTH-1:0]    txrsp_srcid_sx;
-
-    //outputs to snf_link
-    output logic                                     txrspflitv;
-    output logic  [`CHIE_RSP_FLIT_RANGE]             txrspflit;
-    output wire                                    txrspflitpend;
-
-    //outputs to snf_qos
-    output wire                                    txrsp_retryack_won_s1;
-    output wire                                    txrsp_pcrdgnt_won_s2;
-
-    //outputs to snf_mshr
-    output wire                                    txrsp_won_sx;
 
     //internal reg signals
     logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]            txrsp_crd_cnt_q;
 
-    logic [`CHIE_RSP_FLIT_RANGE]                     txrspflit_retyack_s1;
-    logic [`CHIE_RSP_FLIT_RANGE]                     txrspflit_pcrdgnt_s2;
-    logic [`CHIE_RSP_FLIT_RANGE]                     txrspflit_mshr_sx1;
+    chie_pkg::rsp_flit_s                             txrspflit_retyack_s1;
+    chie_pkg::rsp_flit_s                             txrspflit_pcrdgnt_s2;
+    chie_pkg::rsp_flit_s                             txrspflit_mshr_sx1;
     logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]            rsp_crd_cnt_ns_s0;
     wire                                           txrsp_crd_avail_s1;
     wire                                           txrsp_busy_sx;
     wire                                           txrspcrdv_s0;
     wire                                           txrsp_req_s0;
     wire                                           txrspflitv_s0;
-    wire [`CHIE_RSP_FLIT_RANGE]                    txrspflit_s0;
+    chie_pkg::rsp_flit_s                           txrspflit_s0;
     wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_s1;
     wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_inc_s0;
     wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_dec_s0;
@@ -157,58 +124,46 @@ module snf_txrsp `SNF_PARAM
                                          txrsp_valid_sx);
     always_comb begin
         //RetryAck wrap
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_QOS_RANGE]      = qos_txrsp_retryack_fifo_s1[`SNF_RETRY_ACKQ_QOS_RANGE];
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_TGTID_RANGE]    = qos_txrsp_retryack_fifo_s1[`SNF_RETRY_ACKQ_SRCID_RANGE];
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_SRCID_RANGE]    = SNF_NID_PARAM;
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_TXNID_RANGE]    = qos_txrsp_retryack_fifo_s1[`SNF_RETRY_ACKQ_TXNID_RANGE];
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_OPCODE_RANGE]   = `CHIE_RETRYACK;
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_RESPERR_RANGE]  = {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_RESP_RANGE]     = {`CHIE_RSP_FLIT_RESP_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_FWDSTATE_RANGE] = {`CHIE_RSP_FLIT_FWDSTATE_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_CBUSY_RANGE]    = {`CHIE_RSP_FLIT_CBUSY_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_DBID_RANGE]     = {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_PCRDTYPE_RANGE] = qos_txrsp_retryack_fifo_s1[`SNF_RETRY_ACKQ_PCRDTYPE_RANGE];
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_TAGOP_RANGE]    = {`CHIE_RSP_FLIT_TAGOP_WIDTH{1'b0}};
-        txrspflit_retyack_s1[`CHIE_RSP_FLIT_TRACETAG_RANGE] = qos_txrsp_retryack_fifo_s1[`SNF_RETRY_ACKQ_TRACE_RANGE];
+        txrspflit_retyack_s1          = '0;
+        txrspflit_retyack_s1.qos      = qos_txrsp_retryack_fifo_s1.qos;
+        txrspflit_retyack_s1.tgtid    = qos_txrsp_retryack_fifo_s1.srcid;
+        txrspflit_retyack_s1.srcid    = SNF_NID_PARAM;
+        txrspflit_retyack_s1.txnid    = qos_txrsp_retryack_fifo_s1.txnid;
+        txrspflit_retyack_s1.opcode   = chie_pkg::RSP_RETRYACK;
+        txrspflit_retyack_s1.pcrdtype = qos_txrsp_retryack_fifo_s1.pcrdtype;
+        txrspflit_retyack_s1.tracetag = qos_txrsp_retryack_fifo_s1.trace;
     end
 
     always_comb begin
         //PCrdGrant wrap
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_QOS_RANGE]      = qos_txrsp_pcrdgnt_fifo_s2[`SNF_PCRDGRANTQ_QOS_RANGE];
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_TGTID_RANGE]    = qos_txrsp_pcrdgnt_fifo_s2[`SNF_PCRDGRANTQ_SRCID_RANGE];
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_SRCID_RANGE]    = SNF_NID_PARAM;
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_TXNID_RANGE]    = {`CHIE_RSP_FLIT_TXNID_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_OPCODE_RANGE]   = `CHIE_PCRDGRANT;
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_RESPERR_RANGE]  = {`CHIE_RSP_FLIT_RESPERR_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_RESP_RANGE]     = {`CHIE_RSP_FLIT_RESP_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_FWDSTATE_RANGE] = {`CHIE_RSP_FLIT_FWDSTATE_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_CBUSY_RANGE]    = {`CHIE_RSP_FLIT_CBUSY_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_DBID_RANGE]     = {`CHIE_RSP_FLIT_DBID_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_PCRDTYPE_RANGE] = qos_txrsp_pcrdgnt_fifo_s2[`SNF_PCRDGRANTQ_PCRDTYPE_RANGE];
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_TAGOP_RANGE]    = {`CHIE_RSP_FLIT_TAGOP_WIDTH{1'b0}};
-        txrspflit_pcrdgnt_s2[`CHIE_RSP_FLIT_TRACETAG_RANGE] = {`CHIE_RSP_FLIT_TRACETAG_WIDTH{1'b0}};
+        txrspflit_pcrdgnt_s2          = '0;
+        txrspflit_pcrdgnt_s2.qos      = qos_txrsp_pcrdgnt_fifo_s2.qos;
+        txrspflit_pcrdgnt_s2.tgtid    = qos_txrsp_pcrdgnt_fifo_s2.srcid;
+        txrspflit_pcrdgnt_s2.srcid    = SNF_NID_PARAM;
+        txrspflit_pcrdgnt_s2.opcode   = chie_pkg::RSP_PCRDGRANT;
+        txrspflit_pcrdgnt_s2.pcrdtype = qos_txrsp_pcrdgnt_fifo_s2.pcrdtype;
     end
 
     always_comb begin
         //MSHR txrspflit wrap
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_QOS_RANGE]        = txrsp_qos_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_TGTID_RANGE]      = txrsp_tgtid_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_SRCID_RANGE]      = txrsp_srcid_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_TXNID_RANGE]      = txrsp_txnid_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_OPCODE_RANGE]     = txrsp_opcode_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_RESPERR_RANGE]    = txrsp_resperr_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_RESP_RANGE]       = txrsp_resp_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_FWDSTATE_RANGE]   = {`CHIE_RSP_FLIT_FWDSTATE_WIDTH{1'b0}};
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_CBUSY_RANGE]      = {`CHIE_RSP_FLIT_CBUSY_WIDTH{1'b0}};
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_DBID_RANGE]       = txrsp_dbid_sx;
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_PCRDTYPE_RANGE]   = {`CHIE_RSP_FLIT_PCRDTYPE_WIDTH{1'b0}};
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_TAGOP_RANGE]      = {`CHIE_RSP_FLIT_TAGOP_WIDTH{1'b0}};
-        txrspflit_mshr_sx1[`CHIE_RSP_FLIT_TRACETAG_RANGE]   = txrsp_tracetag_sx;
+        txrspflit_mshr_sx1          = '0;
+        txrspflit_mshr_sx1.qos      = txrsp_qos_sx;
+        txrspflit_mshr_sx1.tgtid    = txrsp_tgtid_sx;
+        txrspflit_mshr_sx1.srcid    = txrsp_srcid_sx;
+        txrspflit_mshr_sx1.txnid    = txrsp_txnid_sx;
+        txrspflit_mshr_sx1.opcode   = chie_pkg::rsp_opcode_e'(txrsp_opcode_sx);
+        txrspflit_mshr_sx1.resperr  = chie_pkg::resp_err_e'(txrsp_resperr_sx);
+        txrspflit_mshr_sx1.resp     = chie_pkg::resp_state_e'(txrsp_resp_sx);
+        txrspflit_mshr_sx1.dbid     = txrsp_dbid_sx;
+        txrspflit_mshr_sx1.tracetag = txrsp_tracetag_sx;
     end
 
-    assign txrspflit_s0 = ({`CHIE_RSP_FLIT_WIDTH{txrsp_retryack_won_s1}} & txrspflit_retyack_s1) |
-           ({`CHIE_RSP_FLIT_WIDTH{txrsp_pcrdgnt_won_s2 }} & txrspflit_pcrdgnt_s2) |
-           ({`CHIE_RSP_FLIT_WIDTH{txrsp_won_sx        }} & txrspflit_mshr_sx1  ) ;
+    always_comb begin : txrspflit_s0_mux_t
+        if      (txrsp_retryack_won_s1) txrspflit_s0 = txrspflit_retyack_s1;
+        else if (txrsp_pcrdgnt_won_s2)  txrspflit_s0 = txrspflit_pcrdgnt_s2;
+        else if (txrsp_won_sx)          txrspflit_s0 = txrspflit_mshr_sx1;
+        else                            txrspflit_s0 = '0;
+    end
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & (~txrsp_busy_sx);
@@ -226,7 +181,7 @@ module snf_txrsp `SNF_PARAM
     //txrspflit sending logic
     always_ff @(posedge clk or posedge rst) begin: txrspflit_logic_t
         if(rst == 1'b1)begin
-            txrspflit <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflit <= '0;
             txrspflitv <= 1'b0;
         end
         else if((txrspflitv_s0 == 1'b1) & (txrsp_crd_avail_s1 == 1'b1))begin
@@ -235,7 +190,7 @@ module snf_txrsp `SNF_PARAM
         end
         else if(txrsp_lcrd_rtn_s0 == 1'b1)begin
             //RespLCrdReturn: opcode 0 with every other field zero (Table 13-13)
-            txrspflit <= {`CHIE_RSP_FLIT_WIDTH{1'b0}};
+            txrspflit <= '0;
             txrspflitv <= 1'b1;
         end
         else begin
