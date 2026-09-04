@@ -884,7 +884,8 @@ module hnf_cache_pipeline `HNF_PARAM
     assign op_wufull_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEUNIQUEFULL);
     assign op_wuptl_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEUNIQUEPTL);
     assign op_wbfull_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEBACKFULL);
-    assign op_wevict_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEEVICTFULL);
+    assign op_wevict_sx3   = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEEVICTFULL)
+                           | (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_WRITEEVICTOREVICT);
     assign op_dl_cu_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_CLEANUNIQUE);
     assign op_dl_mu_sx3    = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_MAKEUNIQUE);
     assign op_dl_evict_sx3 = (pipe_opcode_sx3[OPCODE_WIDTH-1:0] == `CHIE_EVICT);
@@ -2285,13 +2286,14 @@ module hnf_cache_pipeline `HNF_PARAM
                         (mshr_l3_opcode_sx1_q == `CHIE_READUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEUNIQUEFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEUNIQUEPTL) ||
                         (mshr_l3_opcode_sx1_q == `CHIE_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTFULL) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANUNIQUE) ||
                         (mshr_l3_opcode_sx1_q == `CHIE_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_EVICT) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANSHARED) ||
-                        (mshr_l3_opcode_sx1_q == `CHIE_CLEANINVALID))begin
+                        (mshr_l3_opcode_sx1_q == `CHIE_CLEANINVALID) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTOREVICT))begin
                 end
                 else begin
                     $fatal("mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
                 end
                 //mshr_l3_fill_sx1_q check
-                if(((mshr_l3_opcode_sx1_q == `CHIE_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTFULL)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
+                if(((mshr_l3_opcode_sx1_q == `CHIE_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTFULL) ||
+                    (mshr_l3_opcode_sx1_q == `CHIE_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
                     $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
                 else if(((mshr_l3_opcode_sx1_q == `CHIE_READUNIQUE) || (mshr_l3_opcode_sx1_q == `CHIE_CLEANUNIQUE) ||
