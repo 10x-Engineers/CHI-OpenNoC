@@ -42,6 +42,8 @@ module hnf_data_buffer `HNF_PARAM
     // alone -- emits them.
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_err_fill_idx_sx1_q,
     input  wire                               mshr_dbf_err_fill_valid_sx1_q,
+    input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_err_fill_be_sx1_q,
+    input  wire [1:0]                         mshr_dbf_err_fill_pe_sx1_q,
 
     //inputs from hnf_cache_pipeline
     input  wire                               pipe_dbf_wr_valid_sx9_q,
@@ -191,8 +193,8 @@ module hnf_data_buffer `HNF_PARAM
                     end
                     else if (mshr_dbf_err_fill_valid_sx1_q && i == mshr_dbf_err_fill_idx_sx1_q)begin
                         dbf_data_q[i] <= 'd0;
-                        dbf_be_q[i]   <= {`CACHE_BE_WIDTH{1'b1}};
-                        dbf_pe_q[i]   <= 2'b11;
+                        dbf_be_q[i]   <= mshr_dbf_err_fill_be_sx1_q;
+                        dbf_pe_q[i]   <= mshr_dbf_err_fill_pe_sx1_q;
                     end
                     else begin
                     end

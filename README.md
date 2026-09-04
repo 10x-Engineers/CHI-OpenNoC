@@ -145,45 +145,50 @@ one of those sites is visibly a change to this table.
 | :--- | ---: | :--- |
 | **SN-F** | 16 | ⚪ NDERR catch-all — `snf_mshr.sv:389` |
 | **HN-I** | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.sv:515` |
-| **HN-F** | 18, plus 7 snoops and their 4 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv:3126`, `:3308` |
+| **HN-F** | 27, plus 7 snoops and their 4 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
 | **RN-I** | generates 4 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
 
 All three Completers now answer everything they do not implement. The HN-F count
 includes `SnoopFilterEvict`, whose encoding its internal back-invalidate shares
-(`hnf_defines.svh:184`).
+(`hnf_defines.svh:184`), and the eight requests `opennoc_hnf_pkg.sv`'s
+`hnf_serviced_as()` maps onto a twin the MSHR already decodes — each mapping a
+permission the spec gives the Home outright, cited beside it.
 
 ### Request opcodes
 
 | Request | SN-F | HN-I | HN-F |
 | :--- | :---: | :---: | :---: |
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 |
-| `ReadNoSnpSep` | 🟢 | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `ReadOnce` | — | 🟢 | 🟢 |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 |
-| `ReadShared`, `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🔴 [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadShared` | — | ⚪ | 🟢 served as `ReadNotSharedDirty` — Table 4-33 (p.4-212) gives it those rows, §4.4.2 (p.4-196) permits that snoop |
+| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
 | `WriteNoSnpFull`, `WriteNoSnpPtl` | 🟢 | 🟢 | 🟢 |
-| `WriteNoSnpZero` | 🟢 | 🟢 | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteNoSnpZero` | 🟢 | 🟢 | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 |
-| `WriteUniqueZero` | ⚪ | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUniqueZero` | ⚪ | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
-| `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
-| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
-| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
-| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
-| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🔴 [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteEvictOrEvict` | — | ⚪ | 🟢 on §2.3.2's (p.2-55) `CompDBIDResp` alternative |
+| `WriteBackPtl` | — | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 served as `WriteUniqueFull`/`Ptl` — §7.2 (p.7-296) permits ignoring the hint |
+| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 completed `Comp_I` / `CompStashDone` without stashing — §2.3.4 (p.2-71), §7.3 (p.7-297), Table 4-38 (p.4-218) |
+| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
-| `MakeInvalid` | 🟢 | 🟢 | 🔴 [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
-| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🔴 [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
+| `MakeInvalid` | 🟢 | 🟢 | 🟢 served as `CleanInvalid` — §4.2.2 (p.4-170) only permits the Dirty copy to be dropped, Table 4-38 (p.4-218) gives both `Comp_I` |
+| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | ⚪ [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
-| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
+| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) — `DBIDResp` then a `CompData` NDERR over the returned extent for the three that return data (§2.3.3, §4.2.5, §9.4.4) |
 | `SnoopFilterEvict` | ⚪ | ⚪ | 🟢 |
-| `DVMOp` | ⚪ | ⚪ | 🔴 [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
+| `DVMOp` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `PrefetchTgt`, `PCrdReturn` | ⬛ | ⬛ | ⬛ |
-| `ReqLCrdReturn` | ⬛ | ⬛ | 🔴 [#53](https://github.com/10x-Engineers/CHI-OpenNoC/issues/53) |
+| `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ |
 
-Decode sites: `snf_mshr.sv:353-394`, `hni_mshr.sv:454-543`, and for the HN-F the
-`op_*` chain at `hnf_mshr_ctl.sv:779-1122`.
+Decode sites: `snf_mshr.sv:353-394`, `hni_mshr.sv:454-543`, and for the HN-F
+`opennoc_hnf_pkg.sv`'s `hnf_serviced_as()` followed by the `op_*` chain in
+`hnf_mshr_ctl.sv`.
 
 ### Snoops — HN-F only
 
@@ -195,7 +200,7 @@ neither issues a snoop and neither has a SNP port.
 | `SnpOnce`, `SnpClean`, `SnpNotSharedDirty`, `SnpUnique` | 🟢 | `hnf_mshr_ctl.sv:1963-1986` |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | the CMO- and back-invalidate-driven snoops |
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16`, elected on a snoop-direct L3 miss for a non-Exclusive allocating read (`hnf_mshr_ctl.sv:1149`) |
-| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
+| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67); a `ReadShared` is snooped with `SnpNotSharedDirty(Fwd)`, which §4.4.2 (p.4-196) permits |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv:1299-1300`, `:1319-1320` |
 | `SnpRespDataPtl` | 🔴 | neither whitelisted (`hnf_link_rxdat_parse.sv:167`) nor decoded — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 
@@ -204,7 +209,7 @@ neither issues a snoop and neither has a SNP port.
 | Feature | SN-F | HN-I | RN-I | HN-F | Where |
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | Chapter 14 link activation | 🟢 | 🟢 | 🟢 | 🟢 | the shared `chi_link_handshake` on the HN-F, HN-I and RN-I; the SN-F drives its own FSM, which waits out §14.6.3's input race and gates every Protocol flit on its own TXLINK state |
-| `TXSACTIVE` per §14.7.4 | 🟢 | 🟢 | —¹ | 🟢 | tracks outstanding Protocol-layer work on all three nodes that have the port |
+| `TXSACTIVE` per §14.7.4 | 🟢 | 🟢 | —¹ | 🟢 | tracks outstanding Protocol-layer work on all three nodes that have the port; at the HN-F a retried request holds it only while its P-Credit is outstanding (§14.7.1) |
 | Retry (`RetryAck` / `PCrdGrant`) | 🟢 | 🟢 | 🟡 | 🟢 | each node's `*_qos.sv`; the RN-I stores `PCrdType` and re-sends with `AllowRetry=0` but never sends `PCrdReturn` |
 | QoS | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes at the SN-F/HN-I (`snf_qos.sv:232`, `hni_qos.sv:220`), 4 at the HN-F (`hnf_mshr_qos.sv:327-336`); the RN-I passes `AxQOS` through |
 | DMT | 🟢 | — | — | 🟢 | `snf_mshr.sv:346` (`ReturnNID != SrcID`), `hnf_mshr_ctl.sv:2848` |
@@ -212,12 +217,12 @@ neither issues a snoop and neither has a SNP port.
 | DCT (forwarding snoops) | — | — | — | 🟢 | `hnf_mshr_ctl.sv:1149` |
 | Snoop filter | — | — | — | 🟢 | `hnf_sf_sram.sv` |
 | L3 / system cache | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
-| Exclusives | —² | 🟡³ | 🔴⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean` load, `WriteNoSnp*`/`CleanUnique` store |
-| CMOs | 🟢 | 🟢 | — | 🟡 | all five at the SN-F and HN-I; the HN-F decodes `CleanShared` and `CleanInvalid` only |
-| Combined Writes | 🟡 | 🟡 | — | 🔴 | the six `WriteNoSnp` forms are serviced; the rest are error-completed |
-| Write Zero | 🟡 | 🟡 | — | 🔴 | `WriteNoSnpZero` is serviced; `WriteUniqueZero` is error-completed |
-| Atomics | ⚪ | ⚪ | — | 🔴 | §16.1 leaves `Atomic_Transactions` False when undeclared, and §16.3.3 then makes the error response the correct answer |
-| Stash | ⚪ | ⚪ | — | 🔴 | |
+| Exclusives | —² | 🟢³ | 🟢⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean` load, `WriteNoSnp*`/`CleanUnique` store; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
+| CMOs | 🟢 | 🟢 | — | 🟡 | all five at the SN-F and HN-I; the HN-F decodes `CleanShared`, `CleanInvalid` and `MakeInvalid`, and error-completes the two persistent ones |
+| Combined Writes | 🟡 | 🟡 | — | ⚪ | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the rest, and all fifteen at the HN-F, are error-completed |
+| Write Zero | 🟡 | 🟡 | — | ⚪ | `WriteNoSnpZero` is serviced at the SN-F and HN-I; `WriteUniqueZero`, and both at the HN-F, are error-completed |
+| Atomics | ⚪ | ⚪ | — | ⚪ | §16.1 leaves `Atomic_Transactions` False when undeclared, and §16.3.3 then makes the error response the correct answer |
+| Stash | ⚪ | ⚪ | — | 🟡 | the HN-F completes every Stash request without stashing and without an error (§2.3.4 p.2-71, §9.4.6 p.9-344); no Stash snoop is generated |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero |
 | MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_defines.svh`'s flit widths — the field is not in the layout |
 | RSVDC / DataCheck / Poison | 🔴 | 🔴 | 🔴 | 🔴 | the field is in the flit layout, but no node sources or parses one — [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) |
@@ -229,10 +234,22 @@ neither issues a snoop and neither has a SNP port.
 ¹ The RN-I has no `SACTIVE` ports at all.
 ² `rtl/src/snf/` has no monitor, which §6.2.4 permits — a System monitor "can be
 placed at a PoS or at endpoint devices", and here it sits at the Home.
-³ `hni_global_monitor.sv:80` arms on `ReadNoSnp` only, so an Exclusive `ReadClean`
-is serviced as a plain read and registers nothing.
-⁴ `rni_awlink.sv:110` decodes `AxLOCK` into a signal with no readers; `Excl` is
-never set on a request.
+³ `hni_global_monitor.sv` arms on `ReadNoSnp(Excl)` and judges `WriteNoSnp*(Excl)`,
+which is the whole of §6.3's (p.6-286) RN-I → ICN(HN-I) pair; the monitor is reset
+by another LP's write to the location (§6.2.4 p.6-285). `Excl` on any other opcode
+is the Requester's violation of §13.10.27 (p.13-432) and is serviced as a plain
+access, never answered `EXOK`.
+⁴ `AxLOCK` is carried as `Excl` on the `ReadNoSnp` / `WriteNoSnpPtl` of an exclusive
+access that one CHI transaction can carry: Non-cacheable, INCR (or single-beat
+FIXED), a power-of-two total of at most 64 bytes at an address aligned to it
+(§6.3.3 p.6-291), with `Size` set to the burst's byte count so the read and write
+are one §6.3.3 pair. `RespErr` passes through as `RRESP`/`BRESP`, so `EXOK` is
+`EXOKAY` and a failed exclusive is `OKAY`. A Cacheable, WRAP or 128-byte exclusive
+is bridged as a plain access and answered `OKAY`, AXI4 A7.2.3's response from a
+target without exclusive support. The bridge presents one Logical Processor
+(`LPID=0`), so its AXI manager must hold one exclusive sequence in flight at a
+time -- §6.3.3 (p.6-291) forbids two from one LP -- which is AXI4 A7.2's own
+read-then-write flow on a single ID.
 
 ### What the RN-I generates
 
@@ -253,7 +270,10 @@ rows and Ordered Write Observation on a Normal write; `EWA` comes from
 
 Only the **partial** write form is generated — the bridge's write path is
 byte-enabled throughout — so `WriteNoSnpFull` and `WriteUniqueFull` never appear.
-It emits no CMO, no Atomic and no `ReadNoSnpSep`.
+It emits no CMO, no Atomic and no `ReadNoSnpSep`. `AxLOCK=1` sets `Excl` on the
+two Non-cacheable rows, under the shape limits of footnote ⁴ above; a read is
+otherwise always a 64-byte request, and only an exclusive one carries the burst's
+own `Size`.
 
 ---
 

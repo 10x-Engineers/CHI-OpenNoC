@@ -29,6 +29,7 @@ module hnf_mshr `HNF_PARAM
     input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
     input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
     input  chie_pkg::req_opcode_e              li_mshr_rxreq_opcode_s0,
+    input  wire                                li_mshr_rxreq_stash_sep_s0,
     input  chie_pkg::size_e                    li_mshr_rxreq_size_s0,
     input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
     input  wire                                li_mshr_rxreq_ns_s0,
@@ -134,6 +135,8 @@ module hnf_mshr `HNF_PARAM
     output wire                                mshr_dbf_rd_valid_sx1_q,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_err_fill_idx_sx1_q,
     output wire                                mshr_dbf_err_fill_valid_sx1_q,
+    output wire [`CACHE_BE_WIDTH-1:0]          mshr_dbf_err_fill_be_sx1_q,
+    output wire [1:0]                          mshr_dbf_err_fill_pe_sx1_q,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_retired_idx_sx1_q,
     output wire                                mshr_dbf_retired_valid_sx1_q,
     output wire                                mshr_txreq_valid_sx1_q,
@@ -199,7 +202,6 @@ module hnf_mshr `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]   abf_internal_evict_addr_valid_sx_q;
     wire                           txreq_mshr_bypass_lost_s1;
     wire                           txrsp_mshr_bypass_lost_s1;
 
@@ -338,7 +340,6 @@ module hnf_mshr `HNF_PARAM
                              .pipe_evict_cam_idx_sx4                          (pipe_evict_cam_idx_sx4            ),
                              .mshr_mem_busy_sx                                (mshr_mem_busy_sx                  ),
                              .mshr_evict_hazard_sx5                           (mshr_evict_hazard_sx5             ),
-                             .abf_internal_evict_addr_valid_sx_q                     (abf_internal_evict_addr_valid_sx_q       ),
                              .mshr_l3_addr_sx1                                (mshr_l3_addr_sx1                  )
                          );
 
@@ -351,6 +352,7 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_srcid_s0                          (li_mshr_rxreq_srcid_s0            ),
                      .li_mshr_rxreq_txnid_s0                          (li_mshr_rxreq_txnid_s0            ),
                      .li_mshr_rxreq_opcode_s0                         (li_mshr_rxreq_opcode_s0           ),
+                     .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),
                      .li_mshr_rxreq_ns_s0                             (li_mshr_rxreq_ns_s0               ),
@@ -390,7 +392,6 @@ module hnf_mshr `HNF_PARAM
                      .rxreq_cam_hazard_entry_s1_q                     (rxreq_cam_hazard_entry_s1_q       ),
                      .mshr_l3_hazard_valid_sx3_q                      (mshr_l3_hazard_valid_sx3_q        ),
                      .mshr_mem_busy_sx                                (mshr_mem_busy_sx                  ),
-                     .abf_internal_evict_addr_valid_sx_q                     (abf_internal_evict_addr_valid_sx_q       ),
                      .pipe_cam_hazard_entry_sx3_q                     (pipe_cam_hazard_entry_sx3_q       ),
                      .pipe_sleep_entry_sx3_q                          (pipe_sleep_entry_sx3_q            ),
                      .txreq_mshr_won_sx1                              (txreq_mshr_won_sx1                ),
@@ -417,6 +418,8 @@ module hnf_mshr `HNF_PARAM
                      .mshr_dbf_rd_valid_sx1_q                         (mshr_dbf_rd_valid_sx1_q           ),
                      .mshr_dbf_err_fill_idx_sx1_q                     (mshr_dbf_err_fill_idx_sx1_q       ),
                      .mshr_dbf_err_fill_valid_sx1_q                   (mshr_dbf_err_fill_valid_sx1_q     ),
+                     .mshr_dbf_err_fill_be_sx1_q                      (mshr_dbf_err_fill_be_sx1_q        ),
+                     .mshr_dbf_err_fill_pe_sx1_q                      (mshr_dbf_err_fill_pe_sx1_q        ),
                      .mshr_dbf_retired_idx_sx1_q                      (mshr_dbf_retired_idx_sx1_q        ),
                      .mshr_dbf_retired_valid_sx1_q                    (mshr_dbf_retired_valid_sx1_q      ),
                      .mshr_txreq_valid_sx1_q                          (mshr_txreq_valid_sx1_q            ),
