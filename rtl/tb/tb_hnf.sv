@@ -19,9 +19,9 @@
 */
 
 `timescale 1ns / 1ns
-`include "chie_defines.v"
-`include "hnf_defines.v"
-`include "hnf_param.v"
+`include "chie_defines.svh"
+`include "hnf_defines.svh"
+`include "hnf_param.svh"
 
 module tb_hnf;
 

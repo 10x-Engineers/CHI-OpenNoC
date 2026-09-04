@@ -17,9 +17,9 @@
 //   R5 Table 14-2 DEACTIVATE (p.14-450, MUST): a deactivating Transmitter returns
 //      every L-Credit it holds, so the peer Receiver can reach STOP.
 // =============================================================================
-`include "chie_defines.v"
-`include "hnf_defines.v"
-`include "hnf_param.v"
+`include "chie_defines.svh"
+`include "hnf_defines.svh"
+`include "hnf_param.svh"
 
 module tb_hnf_link;
 

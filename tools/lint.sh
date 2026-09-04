@@ -6,16 +6,14 @@
 #   ./tools/lint.sh hnf snf    lint the named ones
 #
 # Verilator only: the repo's own flow needs VCS, which no CI runner has. This
-# elaborates each node standalone and gates on the two things that are always a
-# defect rather than a style opinion:
+# elaborates each node standalone and fails on ANY %Error or %Warning, so a PR
+# that introduces a warning cannot be merged. Some of what that catches:
 #
-#   - any %Error (the design does not elaborate)
 #   - %Warning-ALWNEVER -- an `always @*` whose right-hand sides are all constant,
-#     so the inferred sensitivity list is empty and the block never runs. That is
-#     not a style point: it silently leaves the assigned bits X for the whole
-#     simulation, and it has already been found three times in this repo
-#     (snf_data_buffer.v, hnf_link_txdat_wrap.v, hni_data_buffer.v).
-#
+#     so the inferred sensitivity list is empty and the block never runs. That
+#     silently leaves the assigned bits X for the whole simulation, and it has
+#     already been found three times in this repo (snf_data_buffer.sv,
+#     hnf_link_txdat_wrap.sv, hni_data_buffer.sv).
 #   - %Warning-COMBDLY -- a non-blocking assignment inside a combinational
 #     process. Verilator executes it as blocking and VCS schedules an NBA
 #     update, so the two tools disagree on the value inside the time step.
@@ -23,10 +21,14 @@
 #     where combinational logic was intended.
 #   - %Warning-CASEINCOMPLETE -- an uncovered case arm. Where the value really is
 #     unreachable a `default` says so; where it is not, the output is wrong.
+#   - %Warning-WIDTH* -- an implicit truncation or expansion. This is where a
+#     truncated address, NodeID or entry index hides: the HN-I's region decode
+#     compared a CHI address truncated to the AXI width against a full-width
+#     region base until the gate was turned on.
 #
-# The WIDTH* population is tallied and printed but does not fail the run: those
-# need per-site judgement, and bulk-adding casts would turn signal into silence.
-# WIDTHTRUNC in particular is where a truncated address or NodeID would hide.
+# Narrow a width at the site that means it -- a part-select, a sized localparam,
+# an explicit zero-extension -- never with a lint_off pragma, which hides the next
+# one too.
 #
 # The behavioural counterpart is tools/link_check.sh, which needs a simulator this
 # script deliberately does not.
@@ -35,6 +37,13 @@ set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
 
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
+
+# The version CI installs. Verilator's warning set moves between releases, so a
+# clean run under a different binary does not prove a clean run in CI: 5.020 also
+# reports WIDTHEXPAND for a 1-bit operand widened into an N-bit arithmetic context,
+# which 5.050 treats as noise. The WIDTHTRUNC and WIDTHCONCAT sets -- the ones where
+# information is actually lost -- are identical between the two.
+VERILATOR_PIN=5.050
 
 command -v verilator >/dev/null || { echo "verilator not on PATH"; exit 2; }
 verilator --version
@@ -45,26 +54,27 @@ if [ -z "$MAJOR" ] || [ "$MAJOR" -lt 5 ]; then
   echo "FAIL: Verilator 5.0 or later required (ALWNEVER is not reported before 5.x)"
   exit 2
 fi
+VERSION=$(verilator --version | sed -nE 's/^Verilator ([0-9.]+).*/\1/p')
+if [ "$VERSION" != "$VERILATOR_PIN" ]; then
+  echo "NOTE: CI pins Verilator $VERILATOR_PIN, this is $VERSION -- the two report"
+  echo "      different warning sets, so a pass here is not a pass in CI."
+fi
 
-FATAL="ALWNEVER|COMBDLY|LATCH|CASEINCOMPLETE"
 rc=0
 
 for n in "${NODES[@]}"; do
   echo "==================== $n ===================="
   out=$(verilator --lint-only -Wno-fatal --top-module "$n" \
-          -Iinclude -Imisc -I"src/$n" src/"$n"/*.v 2>&1)
+          -Iinclude -Imisc -I"src/$n" src/"$n"/*.sv 2>&1)
   echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
 
   if echo "$out" | grep -q "^%Error"; then
     echo "  FAIL: $n does not elaborate"
     echo "$out" | grep -A4 "^%Error" | head -40
     rc=1
-  fi
-  # -E, not plain grep: FATAL is an alternation, and BRE would read the `|` as a
-  # literal and pass vacuously on every node.
-  if echo "$out" | grep -qE "%Warning-($FATAL)"; then
-    echo "  FAIL: $n has a gated warning ($FATAL)"
-    echo "$out" | grep -EA2 "%Warning-($FATAL)"
+  elif echo "$out" | grep -q "^%Warning"; then
+    echo "  FAIL: $n has lint warnings"
+    echo "$out" | grep -A4 "^%Warning" | head -60
     rc=1
   fi
 done

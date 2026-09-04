@@ -14,10 +14,10 @@
 *    Wenhao Li <liwenhao@bosc.ac.cn>
 */
 
-`include "rni_param.v"
-`include "rni_defines.v"
-`include "axi4_defines.v"
-`include "chie_defines.v"
+`include "rni_param.svh"
+`include "rni_defines.svh"
+`include "axi4_defines.svh"
+`include "chie_defines.svh"
 
 // Mode Support
 // 1. NULL 
