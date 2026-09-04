@@ -23,113 +23,113 @@
 module hni_txrsp `HNI_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                               clk,
+    input  wire                               rst,
 
     //inputs from hni_link
-    input wire txrsp_lcrdv,
+    input  wire                               txrsp_lcrdv,
     // CHI E.b Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Transmitter must
     // return credits using Protocol flits or L-Credit return flits" -- an all-zero
     // flit, whose Opcode field is that channel's LCrdReturn (SS13.11 p.13-442).
-    input wire lcrd_return_en,
+    input  wire                               lcrd_return_en,
     // Table 14-3 (p.14-451, MUST): no flit is sent outside the RUN state.
-    input wire txlink_run,
+    input  wire                               txlink_run,
     // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
     // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
-    output wire txrsp_flit_avail,
+    output wire                               txrsp_flit_avail,
 
     //inputs from hni_qos
-    input wire rxreq_alloc_en_s0,
-    input chie_pkg::req_flit_s rxreq_alloc_flit_s0,
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+    input  wire                               rxreq_alloc_en_s0,
+    input  chie_pkg::req_flit_s               rxreq_alloc_flit_s0,
+    input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
 
-    input wire qos_txrsp_retryack_valid_s1,
-    input chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
+    input  wire                               qos_txrsp_retryack_valid_s1,
+    input  chie_pkg::retry_ackq_s             qos_txrsp_retryack_fifo_s1,
 
-    input wire qos_txrsp_pcrdgnt_valid_s2,
-    input chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
+    input  wire                               qos_txrsp_pcrdgnt_valid_s2,
+    input  chie_pkg::pcrdgrantq_s             qos_txrsp_pcrdgnt_fifo_s2,
 
     //inputs from hni_mshr
-    input wire mshr_entry_sleep_s1,  //endpoint hazard
-    input wire txrsp_valid_sx_q,
-    input wire [3:0] txrsp_qos_sx,
-    input wire [chie_pkg::NID_WIDTH-1:0] txrsp_tgtid_sx,
-    input wire [11:0] txrsp_txnid_sx,
-    input chie_pkg::rsp_opcode_e txrsp_opcode_sx,
-    input chie_pkg::resp_err_e txrsp_resperr_sx,
-    input chie_pkg::resp_state_e txrsp_resp_sx,
-    input wire [11:0] txrsp_dbid_sx,
-    input wire txrsp_tracetag_sx,
+    input  wire                               mshr_entry_sleep_s1,  //endpoint hazard
+    input  wire                               txrsp_valid_sx_q,
+    input  wire [3:0]                         txrsp_qos_sx,
+    input  wire [chie_pkg::NID_WIDTH-1:0]     txrsp_tgtid_sx,
+    input  wire [11:0]                        txrsp_txnid_sx,
+    input  chie_pkg::rsp_opcode_e             txrsp_opcode_sx,
+    input  chie_pkg::resp_err_e               txrsp_resperr_sx,
+    input  chie_pkg::resp_state_e             txrsp_resp_sx,
+    input  wire [11:0]                        txrsp_dbid_sx,
+    input  wire                               txrsp_tracetag_sx,
 
     //inputs from hni_global_monitor
-    input wire excl_pass_s1,
+    input  wire                               excl_pass_s1,
 
     //outputs to hni_link
-    output logic txrspflitv,
-    output chie_pkg::rsp_flit_s txrspflit,
-    output wire txrspflitpend,
+    output logic                              txrspflitv,
+    output chie_pkg::rsp_flit_s               txrspflit,
+    output wire                               txrspflitpend,
 
     //outputs to hni_qos
-    output wire txrsp_retryack_won_s1,
-    output wire txrsp_pcrdgnt_won_s2,
+    output wire                               txrsp_retryack_won_s1,
+    output wire                               txrsp_pcrdgnt_won_s2,
 
     //outputs to hni_mshr
-    output wire txrsp_won_sx,
-    output wire txrsp_fp_won_s1
+    output wire                               txrsp_won_sx,
+    output wire                               txrsp_fp_won_s1
     );
 
     //internal reg signals
-    logic [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]            txrsp_crd_cnt_q;
+    logic [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0] txrsp_crd_cnt_q;
 
-    logic [3:0]             rxreq_qos_s1_q;
-    logic [chie_pkg::NID_WIDTH-1:0]           rxreq_srcid_s1_q;
-    logic [11:0]           rxreq_txnid_s1_q;
-    logic            rxreq_excl_s1_q;    
-    logic        rxreq_tracetag_s1_q;
-    logic                                            rd_receipt_s1_q;
-    logic                                            wr_compdbid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]              mshr_entry_idx_alloc_s1_q;
-    chie_pkg::rsp_flit_s                     txrspflit_fp_s1;
-    chie_pkg::rsp_flit_s                     txrspflit_retyack_s1;
-    chie_pkg::rsp_flit_s                     txrspflit_pcrdgnt_s2;
-    chie_pkg::rsp_flit_s                     txrspflit_mshr_sx1;
-    logic [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]            rsp_crd_cnt_ns_s0;
+    logic [3:0]                           rxreq_qos_s1_q;
+    logic [chie_pkg::NID_WIDTH-1:0]       rxreq_srcid_s1_q;
+    logic [11:0]                          rxreq_txnid_s1_q;
+    logic                                 rxreq_excl_s1_q;
+    logic                                 rxreq_tracetag_s1_q;
+    logic                                 rd_receipt_s1_q;
+    logic                                 wr_compdbid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_entry_idx_alloc_s1_q;
+    chie_pkg::rsp_flit_s                  txrspflit_fp_s1;
+    chie_pkg::rsp_flit_s                  txrspflit_retyack_s1;
+    chie_pkg::rsp_flit_s                  txrspflit_pcrdgnt_s2;
+    chie_pkg::rsp_flit_s                  txrspflit_mshr_sx1;
+    logic [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0] rsp_crd_cnt_ns_s0;
 
     //internal wire signals
-    wire [3:0]            rxreq_qos_s0;
-    wire [chie_pkg::NID_WIDTH-1:0]          rxreq_srcid_s0;
-    wire [11:0]          rxreq_txnid_s0;
-    chie_pkg::req_opcode_e         rxreq_opcode_s0;
-    chie_pkg::order_e          rxreq_order_s0;
-    wire           rxreq_excl_s0;
-    wire       rxreq_tracetag_s0;
-    wire                                           req_wrnosnp_s0;
-    wire                                           rd_receipt_s0;
-    wire                                           wr_compdbid_s0;
+    wire [3:0]                            rxreq_qos_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]        rxreq_srcid_s0;
+    wire [11:0]                           rxreq_txnid_s0;
+    chie_pkg::req_opcode_e                rxreq_opcode_s0;
+    chie_pkg::order_e                     rxreq_order_s0;
+    wire                                  rxreq_excl_s0;
+    wire                                  rxreq_tracetag_s0;
+    wire                                  req_wrnosnp_s0;
+    wire                                  rd_receipt_s0;
+    wire                                  wr_compdbid_s0;
 
-    wire                                           txrsp_fp_valid_s1;
-    wire [3:0]            txrsp_fp_qos_s1;
-    wire [chie_pkg::NID_WIDTH-1:0]          txrsp_fp_tgtid_s1;
-    wire [11:0]          txrsp_fp_txnid_s1;
-    chie_pkg::rsp_opcode_e         txrsp_fp_opcode_s1;
-    chie_pkg::resp_err_e        txrsp_fp_resperr_s1;
-    wire [11:0]           txrsp_fp_dbid_s1;
-    wire       txrsp_fp_tracetag_s1;
+    wire                                  txrsp_fp_valid_s1;
+    wire [3:0]                            txrsp_fp_qos_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]        txrsp_fp_tgtid_s1;
+    wire [11:0]                           txrsp_fp_txnid_s1;
+    chie_pkg::rsp_opcode_e                txrsp_fp_opcode_s1;
+    chie_pkg::resp_err_e                  txrsp_fp_resperr_s1;
+    wire [11:0]                           txrsp_fp_dbid_s1;
+    wire                                  txrsp_fp_tracetag_s1;
 
-    wire                                           txrsp_crd_avail_s1;
-    wire                                           txrsp_busy_sx;
-    wire                                           txrspcrdv_s0;
-    wire                                           txrsp_req_s0;
-    wire                                           txrspflitv_s0;
-    chie_pkg::rsp_flit_s                    txrspflit_s0;
-    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_s1;
-    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_inc_s0;
-    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_dec_s0;
-    wire                                           update_rsp_crd_cnt_s0;
-    wire                                           txrsp_crd_cnt_inc_sx;
-    wire                                           txrsp_crd_cnt_dec_sx;
-    wire                                           txrsp_lcrd_rtn_sx;
-    wire                                           rsp_crd_cnt_not_zero_sx;
+    wire                                  txrsp_crd_avail_s1;
+    wire                                  txrsp_busy_sx;
+    wire                                  txrspcrdv_s0;
+    wire                                  txrsp_req_s0;
+    wire                                  txrspflitv_s0;
+    chie_pkg::rsp_flit_s                  txrspflit_s0;
+    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_s1;
+    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_inc_s0;
+    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_dec_s0;
+    wire                                  update_rsp_crd_cnt_s0;
+    wire                                  txrsp_crd_cnt_inc_sx;
+    wire                                  txrsp_crd_cnt_dec_sx;
+    wire                                  txrsp_lcrd_rtn_sx;
+    wire                                  rsp_crd_cnt_not_zero_sx;
 
     //main function
 
@@ -360,7 +360,7 @@ module hni_txrsp `HNI_PARAM
     assign rsp_crd_cnt_dec_s0      = (rsp_crd_cnt_s1 - 1'b1);
 
     always_comb begin: rsp_crd_cnt_ns_s0_logic_c
-        casez({txrsp_crd_cnt_inc_sx, txrsp_crd_cnt_dec_sx})
+        unique case({txrsp_crd_cnt_inc_sx, txrsp_crd_cnt_dec_sx})
             2'b00:
                 rsp_crd_cnt_ns_s0   = txrsp_crd_cnt_q;     // hold
             2'b01:

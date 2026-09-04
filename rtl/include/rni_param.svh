@@ -18,8 +18,8 @@
 `define RNI_PARAM_V
 
 `define RNI_PARAM #( \
-    parameter AXI4_PA_WIDTH_PARAM        = 44,  \
-    parameter AXI4_AXDATA_WIDTH_PARAM    = 128, \
+    parameter AXI4_PA_WIDTH_PARAM        = opennoc_rni_pkg::PA_WIDTH,  \
+    parameter AXI4_AXDATA_WIDTH_PARAM    = opennoc_rni_pkg::DATA_WIDTH, \
     parameter CHIE_NID_WIDTH_PARAM       = chie_pkg::NID_WIDTH,  \
     parameter CHIE_REQ_RSVDC_WIDTH_PARAM = 0,   \
     parameter CHIE_DAT_RSVDC_WIDTH_PARAM = 0,   \

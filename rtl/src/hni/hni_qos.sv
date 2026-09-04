@@ -24,177 +24,177 @@ module hni_qos `HNI_PARAM
     (
 //RET_CNT
     //inputs
-    input wire clk,
-    input wire rst,
+    input  wire                               clk,
+    input  wire                               rst,
 
     //inputs from RXREQ
-    input wire rxreq_valid_s0,
-    input chie_pkg::req_flit_s rxreqflit_s0,
+    input  wire                               rxreq_valid_s0,
+    input  chie_pkg::req_flit_s               rxreqflit_s0,
 
     //inputs from TXRSP
-    input wire txrsp_retryack_won_s1,
-    input wire txrsp_pcrdgnt_won_s2,
+    input  wire                               txrsp_retryack_won_s1,
+    input  wire                               txrsp_pcrdgnt_won_s2,
 
     //inputs from hni_mshr
-    input wire mshr_retired_valid_sx,
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
+    input  wire                               mshr_retired_valid_sx,
+    input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
 
     //outputs to TXRSP
-    output wire qos_txrsp_retryack_valid_s1,
-    output chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
+    output wire                               qos_txrsp_retryack_valid_s1,
+    output chie_pkg::retry_ackq_s             qos_txrsp_retryack_fifo_s1,
 
-    output wire qos_txrsp_pcrdgnt_valid_s2,
-    output chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
+    output wire                               qos_txrsp_pcrdgnt_valid_s2,
+    output chie_pkg::pcrdgrantq_s             qos_txrsp_pcrdgnt_fifo_s2,
 
     //outputs to RXREQ
-    output wire rxreq_retry_enable_s0,
+    output wire                               rxreq_retry_enable_s0,
 
     //outputs to hni: Protocol layer activity (Sec 14.7)
-    output wire qos_active_sx,
+    output wire                               qos_active_sx,
 
     //outputs to global_monitor,mshr and TXRSP(fastpath)
-    output wire rxreq_alloc_en_s0,
-    output chie_pkg::req_flit_s rxreq_alloc_flit_s0,
+    output wire                               rxreq_alloc_en_s0,
+    output chie_pkg::req_flit_s               rxreq_alloc_flit_s0,
     output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0
     );
 
     //internal wire signals
-    wire [11:0]            rxreq_txnid_s0;
-    wire [3:0]              rxreq_qos_s0;
-    wire       rxreq_allowretry_s0;
-    wire [chie_pkg::NID_WIDTH-1:0]            rxreq_srcid_s0;
-    wire         rxreq_tracetag_s0;
-    wire [3:0]         rxreq_pcrdtype_s0;
-    wire                                             qpc_high_s0;
-    wire                                             qpc_low_s0;
-    wire                                             req_qos_can_alloc_s0;
-    wire                                             req_dyn_s0;
-    wire                                             req_static_s0;
-    wire                                             qos_h_can_alloc_s0;
-    wire                                             qos_l_can_alloc_s0;
-    wire                                             req_dyn_alloc_s0;
-    wire                                             req_static_alloc_s0;
-    wire                                             req_dyn_alloc_fail_s0;
-    wire                                             mshr_dyn_avail_s0;
-    wire                                             mshr_static_avail_s0;
-    wire                                             use_static_pool_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_dyn_entry_idx_avail_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_static_entry_idx_avail_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_entry_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_set_v_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_entry_valid_flop_en_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_static_set_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_alloc_entry_s1;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 mshr_static_en_s0;
-    wire                                             qos_high_pool_avail_s0;
-    wire                                             qos_low_pool_avail_s0;
-    wire                                             qos_pool_high_full_s0;
-    wire                                             qos_pool_low_full_s0;
-    wire                                             high_cnt_update_s0;
-    wire                                             low_cnt_update_s0;
+    wire [11:0]                      rxreq_txnid_s0;
+    wire [3:0]                       rxreq_qos_s0;
+    wire                             rxreq_allowretry_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]   rxreq_srcid_s0;
+    wire                             rxreq_tracetag_s0;
+    wire [3:0]                       rxreq_pcrdtype_s0;
+    wire                             qpc_high_s0;
+    wire                             qpc_low_s0;
+    wire                             req_qos_can_alloc_s0;
+    wire                             req_dyn_s0;
+    wire                             req_static_s0;
+    wire                             qos_h_can_alloc_s0;
+    wire                             qos_l_can_alloc_s0;
+    wire                             req_dyn_alloc_s0;
+    wire                             req_static_alloc_s0;
+    wire                             req_dyn_alloc_fail_s0;
+    wire                             mshr_dyn_avail_s0;
+    wire                             mshr_static_avail_s0;
+    wire                             use_static_pool_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_dyn_entry_idx_avail_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_static_entry_idx_avail_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_alloc_entry_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_alloc_set_v_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_entry_valid_flop_en_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_static_set_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_alloc_entry_s1;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0] mshr_static_en_s0;
+    wire                             qos_high_pool_avail_s0;
+    wire                             qos_low_pool_avail_s0;
+    wire                             qos_pool_high_full_s0;
+    wire                             qos_pool_low_full_s0;
+    wire                             high_cnt_update_s0;
+    wire                             low_cnt_update_s0;
     localparam [31:0]                        HIGH_POOL_NUM      = `HNI_QOS_HIGH_POOL_NUM;
     localparam [31:0]                        LOW_POOL_NUM       = `HNI_QOS_LOW_POOL_NUM;
     localparam [`HNI_QOS_CNT_WIDTH-1:0]      QOS_HIGH_POOL_FULL = HIGH_POOL_NUM[`HNI_QOS_CNT_WIDTH-1:0];
     localparam [`HNI_QOS_CNT_WIDTH-1:0]      QOS_LOW_POOL_FULL  = LOW_POOL_NUM[`HNI_QOS_CNT_WIDTH-1:0];
     localparam [`HNI_RET_BANK_CNT_WIDTH-1:0] RET_CNT_ONE        = {{(`HNI_RET_BANK_CNT_WIDTH-1){1'b0}}, 1'b1};
 
-    wire [`HNI_QOS_CNT_WIDTH-1:0]                    qos_pool_high_cnt_ns;
-    wire [`HNI_QOS_CNT_WIDTH-1:0]                    qos_pool_low_cnt_ns;
-    wire                                             qos_pool_high_cnt_inc_s0;
-    wire                                             qos_pool_high_cnt_dec_s0;
-    wire                                             qos_pool_low_cnt_inc_s0;
-    wire                                             qos_pool_low_cnt_dec_s0;
-    wire                                             qos_low_pool_alloc_s0;
-    wire                                             qos_high_pool_alloc_s0;
-    wire [`HNI_QOS_CLASS_WIDTH-1:0]                  qos_pool_retire_class_sx;
-    wire                                             h_retire_can_convert_static_sx;
-    wire                                             l_retire_can_convert_static_sx;
-    wire [`HNI_QOS_CLASS_WIDTH-1:0]                  qos_class_pool_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]                 qos_class_pool_flop_en_s0;
-    wire                                             mark_mshr_static_sx;
-    chie_pkg::retry_ackq_s                retry_ackq_datain_s0;
-    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_datain_s1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_srcid_match_vec_s0;
-    wire                                             ret_bank_alloc_en_s0;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_bank_entry_v_s0;
-    wire                                             ret_is_h_s0;
-    wire                                             ret_is_l_s0;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_inc_ptr_s0;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_inc_s0;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_inc_s0;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_dec_s1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_dec_s1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_en_s1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_en_s1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_zero;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_one;
-    wire                                             retry_h_num_one;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_zero;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_one;
-    wire                                             retry_l_num_one;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             h_retry_req_entry;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             l_retry_req_entry;
-    wire                                             high_present;
-    wire                                             low_present;
-    wire                                             l_present_win;
-    wire                                             h_present_win_sx;
-    wire                                             l_present_win_sx;
-    wire                                             l_wait_lost;
-    wire                                             l_wait_cnt_inc;
-    wire                                             l_wait_cnt_rst;
-    wire                                             l_to_h_disbale;
-    wire                                             l_wait_upd_en;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_h_dec_ptr_sx1;
-    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]             ret_cnt_l_dec_ptr_sx1;
-    wire                                             pcrdgnt_req_enable_s1;
-    wire [chie_pkg::NID_WIDTH-1:0]            pcrdgnt_srcid_s1;
-    wire [3:0]              pcrdgnt_qos_s1;
-    wire [3:0]         retry_ackq_pcrdtype_s0;
-    chie_pkg::retry_ackq_s                retry_ack_fifo_dataout_s1;
-    wire                                             retry_ack_fifo_empty;
-    wire                                             retry_ack_fifo_full;
-    wire                                             retry_ack_fifo_push;
-    wire                                             retry_ack_fifo_pop;
-    chie_pkg::pcrdgrantq_s                pcrdgrant_fifo_dataout_s2;
-    wire                                             pcrdgrant_fifo_empty;
-    wire                                             pcrdgrant_fifo_full;
-    wire                                             pcrdgrant_fifo_push;
-    wire                                             pcrdgrant_fifo_pop;
+    wire [`HNI_QOS_CNT_WIDTH-1:0]           qos_pool_high_cnt_ns;
+    wire [`HNI_QOS_CNT_WIDTH-1:0]           qos_pool_low_cnt_ns;
+    wire                                    qos_pool_high_cnt_inc_s0;
+    wire                                    qos_pool_high_cnt_dec_s0;
+    wire                                    qos_pool_low_cnt_inc_s0;
+    wire                                    qos_pool_low_cnt_dec_s0;
+    wire                                    qos_low_pool_alloc_s0;
+    wire                                    qos_high_pool_alloc_s0;
+    wire [`HNI_QOS_CLASS_WIDTH-1:0]         qos_pool_retire_class_sx;
+    wire                                    h_retire_can_convert_static_sx;
+    wire                                    l_retire_can_convert_static_sx;
+    wire [`HNI_QOS_CLASS_WIDTH-1:0]         qos_class_pool_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]        qos_class_pool_flop_en_s0;
+    wire                                    mark_mshr_static_sx;
+    chie_pkg::retry_ackq_s                  retry_ackq_datain_s0;
+    chie_pkg::pcrdgrantq_s                  pcrdgrant_fifo_datain_s1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_bank_srcid_match_vec_s0;
+    wire                                    ret_bank_alloc_en_s0;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_bank_entry_v_s0;
+    wire                                    ret_is_h_s0;
+    wire                                    ret_is_l_s0;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_inc_ptr_s0;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_inc_s0;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_inc_s0;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_dec_s1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_dec_s1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_en_s1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_en_s1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_zero;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_one;
+    wire                                    retry_h_num_one;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_zero;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_one;
+    wire                                    retry_l_num_one;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    h_retry_req_entry;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    l_retry_req_entry;
+    wire                                    high_present;
+    wire                                    low_present;
+    wire                                    l_present_win;
+    wire                                    h_present_win_sx;
+    wire                                    l_present_win_sx;
+    wire                                    l_wait_lost;
+    wire                                    l_wait_cnt_inc;
+    wire                                    l_wait_cnt_rst;
+    wire                                    l_to_h_disbale;
+    wire                                    l_wait_upd_en;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_h_dec_ptr_sx1;
+    wire [`HNI_RET_BANK_ENTRIES_NUM-1:0]    ret_cnt_l_dec_ptr_sx1;
+    wire                                    pcrdgnt_req_enable_s1;
+    wire [chie_pkg::NID_WIDTH-1:0]          pcrdgnt_srcid_s1;
+    wire [3:0]                              pcrdgnt_qos_s1;
+    wire [3:0]                              retry_ackq_pcrdtype_s0;
+    chie_pkg::retry_ackq_s                  retry_ack_fifo_dataout_s1;
+    wire                                    retry_ack_fifo_empty;
+    wire                                    retry_ack_fifo_full;
+    wire                                    retry_ack_fifo_push;
+    wire                                    retry_ack_fifo_pop;
+    chie_pkg::pcrdgrantq_s                  pcrdgrant_fifo_dataout_s2;
+    wire                                    pcrdgrant_fifo_empty;
+    wire                                    pcrdgrant_fifo_full;
+    wire                                    pcrdgrant_fifo_push;
+    wire                                    pcrdgrant_fifo_pop;
 
     //internal reg signals
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_static_entry_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]                mshr_dyn_idx_alloc_s0;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]                mshr_static_idx_alloc_s0;
-    logic                                              rxreq_alloc_en_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_alloc_entry_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_entry_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_retire_entry_s0;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_dyn_entry_idx_ptr_s0;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_dyn_entry_idx_vector;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_static_entry_idx_ptr_s0;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]                  mshr_static_entry_idx_vector;
-    logic                                              qos_high_pool_full_s1_q;
-    logic                                              qos_low_pool_full_s1_q;
-    logic [`HNI_QOS_CNT_WIDTH-1:0]                     qos_pool_high_cnt_q;
-    logic [`HNI_QOS_CNT_WIDTH-1:0]                     qos_pool_low_cnt_q;
-    logic [`HNI_QOS_CLASS_WIDTH-1:0]                   qos_class_pool_s1_q[0:`HNI_MSHR_ENTRIES_NUM-1];
-    logic [3:0]          pcrdgnt_pcrdtype_s1;
-    logic [chie_pkg::NID_WIDTH-1:0]             ret_bank_srcid_s1_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
-    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]              ret_bank_entry_v_s1_q;
-    logic [`HNI_RET_BANK_ENTRIES_WIDTH-1:0]            ret_bank_entry_idx_s1_q;
-    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]              ret_bank_entry_ptr_s0;
-    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]              h_retry_req_entry_q;
-    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]              l_retry_req_entry_q;
-    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]                ret_cnt_h_entry_s2_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
-    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]                ret_cnt_l_entry_s2_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
-    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]                ret_cnt_h_entry_ns_s1[0:HNI_MSHR_RNF_NUM_PARAM-1];
-    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]                ret_cnt_l_entry_ns_s1[0:HNI_MSHR_RNF_NUM_PARAM-1];
-    logic                                              h_present_win_sx1_q;
-    logic                                              l_present_win_sx1_q;
-    logic [`HNI_MAX_WAIT_CNT_WIDTH-1:0]                l_wait_cnt_q;
-    logic [`HNI_MAX_WAIT_CNT_WIDTH-1:0]                l_wait_cnt_ns;
-    logic [chie_pkg::NID_WIDTH-1:0]             h_pcrdgrant_srcid_sx1;
-    logic [chie_pkg::NID_WIDTH-1:0]             l_pcrdgrant_srcid_sx1;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_static_entry_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     mshr_dyn_idx_alloc_s0;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     mshr_static_idx_alloc_s0;
+    logic                                   rxreq_alloc_en_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_alloc_entry_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_entry_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_retire_entry_s0;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_dyn_entry_idx_ptr_s0;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_dyn_entry_idx_vector;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_static_entry_idx_ptr_s0;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_static_entry_idx_vector;
+    logic                                   qos_high_pool_full_s1_q;
+    logic                                   qos_low_pool_full_s1_q;
+    logic [`HNI_QOS_CNT_WIDTH-1:0]          qos_pool_high_cnt_q;
+    logic [`HNI_QOS_CNT_WIDTH-1:0]          qos_pool_low_cnt_q;
+    logic [`HNI_QOS_CLASS_WIDTH-1:0]        qos_class_pool_s1_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [3:0]                             pcrdgnt_pcrdtype_s1;
+    logic [chie_pkg::NID_WIDTH-1:0]         ret_bank_srcid_s1_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
+    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]   ret_bank_entry_v_s1_q;
+    logic [`HNI_RET_BANK_ENTRIES_WIDTH-1:0] ret_bank_entry_idx_s1_q;
+    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]   ret_bank_entry_ptr_s0;
+    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]   h_retry_req_entry_q;
+    logic [`HNI_RET_BANK_ENTRIES_NUM-1:0]   l_retry_req_entry_q;
+    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]     ret_cnt_h_entry_s2_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
+    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]     ret_cnt_l_entry_s2_q[0:HNI_MSHR_RNF_NUM_PARAM-1];
+    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]     ret_cnt_h_entry_ns_s1[0:HNI_MSHR_RNF_NUM_PARAM-1];
+    logic [`HNI_RET_BANK_CNT_WIDTH-1:0]     ret_cnt_l_entry_ns_s1[0:HNI_MSHR_RNF_NUM_PARAM-1];
+    logic                                   h_present_win_sx1_q;
+    logic                                   l_present_win_sx1_q;
+    logic [`HNI_MAX_WAIT_CNT_WIDTH-1:0]     l_wait_cnt_q;
+    logic [`HNI_MAX_WAIT_CNT_WIDTH-1:0]     l_wait_cnt_ns;
+    logic [chie_pkg::NID_WIDTH-1:0]         h_pcrdgrant_srcid_sx1;
+    logic [chie_pkg::NID_WIDTH-1:0]         l_pcrdgrant_srcid_sx1;
 
     //Rxreq decode
     assign rxreq_txnid_s0       = (rxreq_valid_s0 == 1'b1) ? rxreqflit_s0.txnid      : '0;
@@ -254,25 +254,23 @@ module hni_qos `HNI_PARAM
 
     //find 1 from available dynamic allocations
     always_comb begin: mshr_dyn_entry_idx_ptr_comb_logic
-        integer i;
         mshr_dyn_entry_idx_vector = {`HNI_MSHR_ENTRIES_NUM{1'b0}};
         mshr_dyn_entry_idx_ptr_s0 = {`HNI_MSHR_ENTRIES_NUM{1'b0}};
 
-        for (i=1; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i=1; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
             mshr_dyn_entry_idx_vector[i] = mshr_dyn_entry_idx_vector[i-1] | mshr_dyn_entry_idx_avail_s0[i-1];
         end
 
-        for(i=0; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
+        for(int i=0; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
             mshr_dyn_entry_idx_ptr_s0[i] = ~mshr_dyn_entry_idx_vector[i] & mshr_dyn_entry_idx_avail_s0[i];
         end
     end
 
     //encode the dynamic allocation index
     always_comb begin: enc_dyn_ptr_alloc_idx_comb_logic
-        integer i;
         mshr_dyn_idx_alloc_s0 = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
 
-        for(i=0; i<`HNI_MSHR_ENTRIES_NUM; i = i+1)begin
+        for(int i=0; i<`HNI_MSHR_ENTRIES_NUM; i = i+1)begin
             if (mshr_dyn_entry_idx_ptr_s0[i])
                 mshr_dyn_idx_alloc_s0 = i[`HNI_MSHR_ENTRIES_WIDTH-1:0];
             else
@@ -285,24 +283,22 @@ module hni_qos `HNI_PARAM
 
     //find 1 from available static allocations
     always_comb begin: mshr_static_entry_idx_ptr_comb_logic
-        integer i;
         mshr_static_entry_idx_vector = {`HNI_MSHR_ENTRIES_NUM{1'b0}};
         mshr_static_entry_idx_ptr_s0 = {`HNI_MSHR_ENTRIES_NUM{1'b0}};
 
-        for (i=1; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i=1; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
             mshr_static_entry_idx_vector[i] = mshr_static_entry_idx_vector[i-1] | mshr_static_entry_idx_avail_s0[i-1];
         end
 
-        for(i=0; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
+        for(int i=0; i<`HNI_MSHR_ENTRIES_NUM; i=i+1)begin
             mshr_static_entry_idx_ptr_s0[i] = ~mshr_static_entry_idx_vector[i] & mshr_static_entry_idx_avail_s0[i];
         end
     end
 
     //encode the static allocation index
     always_comb begin: enc_static_ptr_alloc_idx_comb_logic
-        integer i;
         mshr_static_idx_alloc_s0 = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(i=0; i<`HNI_MSHR_ENTRIES_NUM; i = i+1)begin
+        for(int i=0; i<`HNI_MSHR_ENTRIES_NUM; i = i+1)begin
             if (mshr_static_entry_idx_ptr_s0[i])
                 mshr_static_idx_alloc_s0 = i[`HNI_MSHR_ENTRIES_WIDTH-1:0];
             else
@@ -538,9 +534,8 @@ module hni_qos `HNI_PARAM
     end
 
     always_comb begin:pass_ret_bank_alloc_idx_to_ptr
-        integer i;
         ret_bank_entry_ptr_s0 = {`HNI_RET_BANK_ENTRIES_NUM{1'b0}};
-        for (i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
+        for (int i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
             ret_bank_entry_ptr_s0[i] = (ret_bank_entry_idx_s1_q == i[`HNI_RET_BANK_ENTRIES_WIDTH-1:0]);
     end
 
@@ -586,7 +581,7 @@ module hni_qos `HNI_PARAM
             assign ret_cnt_h_en_s1[ret_entry] = ret_cnt_h_inc_s0[ret_entry] | ret_cnt_h_dec_s1[ret_entry];
 
             always_comb begin: determine_h_entry_cnt_update_comb_logic
-                casez({ret_cnt_h_inc_s0[ret_entry], ret_cnt_h_dec_s1[ret_entry]})
+                unique case({ret_cnt_h_inc_s0[ret_entry], ret_cnt_h_dec_s1[ret_entry]})
                     2'b10:
                         ret_cnt_h_entry_ns_s1[ret_entry] = ret_cnt_h_entry_s2_q[ret_entry]+1'b1;
                     2'b01:
@@ -615,7 +610,7 @@ module hni_qos `HNI_PARAM
             assign ret_cnt_l_en_s1[ret_entry] = ret_cnt_l_inc_s0[ret_entry] | ret_cnt_l_dec_s1[ret_entry];
 
             always_comb begin: determine_l_entry_cnt_update_comb_logic
-                casez({ret_cnt_l_inc_s0[ret_entry], ret_cnt_l_dec_s1[ret_entry]})
+                unique case({ret_cnt_l_inc_s0[ret_entry], ret_cnt_l_dec_s1[ret_entry]})
                     2'b10:
                         ret_cnt_l_entry_ns_s1[ret_entry] = ret_cnt_l_entry_s2_q[ret_entry]+1'b1;
                     2'b01:
@@ -694,7 +689,7 @@ module hni_qos `HNI_PARAM
     assign l_wait_cnt_rst = l_present_win_sx;
 
     always_comb begin: determine_low_wait_cnt_update_comb_logic
-        casez({l_wait_cnt_rst, l_wait_cnt_inc})
+        unique casez({l_wait_cnt_rst, l_wait_cnt_inc})
             2'b00:
                 l_wait_cnt_ns = l_wait_cnt_q;
             2'b01:
@@ -735,9 +730,8 @@ module hni_qos `HNI_PARAM
                     );
 
     always_comb begin: high_pcrdgrant_srcid_comb_logic
-        integer i;
         h_pcrdgrant_srcid_sx1 = '0;
-        for (i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
+        for (int i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
             h_pcrdgrant_srcid_sx1 = h_pcrdgrant_srcid_sx1 | ({chie_pkg::NID_WIDTH{ret_cnt_h_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 
@@ -756,9 +750,8 @@ module hni_qos `HNI_PARAM
                     );
 
     always_comb begin: low_pcrdgrant_srcid_comb_logic
-        integer i;
         l_pcrdgrant_srcid_sx1 = '0;
-        for (i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
+        for (int i=0; i<`HNI_RET_BANK_ENTRIES_NUM; i=i+1)
             l_pcrdgrant_srcid_sx1 = l_pcrdgrant_srcid_sx1 | ({chie_pkg::NID_WIDTH{ret_cnt_l_dec_ptr_sx1[i]}} & ret_bank_srcid_s1_q[i]);
     end
 

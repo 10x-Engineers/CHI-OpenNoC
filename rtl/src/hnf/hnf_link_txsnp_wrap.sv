@@ -20,72 +20,72 @@
 module hnf_link_txsnp_wrap `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from hnf_link
-    input wire txsnp_lcrdv,
-    input wire lcrd_return_en,
-    input wire txlink_run,
-    output wire txsnp_flit_avail,
+    input  wire                                txsnp_lcrdv,
+    input  wire                                lcrd_return_en,
+    input  wire                                txlink_run,
+    output wire                                txsnp_flit_avail,
 
     //inputs from hnf_mshr_ctl
-    input wire mshr_txsnp_valid_sx1_q,
-    input wire [3:0] mshr_txsnp_qos_sx1,
-    input wire [11:0] mshr_txsnp_txnid_sx1_q,
-    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txsnp_fwdnid_sx1,
-    input wire [11:0] mshr_txsnp_fwdtxnid_sx1,
-    input chie_pkg::snp_opcode_e mshr_txsnp_opcode_sx1,
-    input wire [chie_pkg::SNP_ADDR_WIDTH-1:0] mshr_txsnp_addr_sx1,
-    input wire mshr_txsnp_ns_sx1,
-    input wire mshr_txsnp_rettosrc_sx1,
-    input wire mshr_txsnp_tracetag_sx1,
-    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0] mshr_txsnp_rn_vec_sx1,
+    input  wire                                mshr_txsnp_valid_sx1_q,
+    input  wire [3:0]                          mshr_txsnp_qos_sx1,
+    input  wire [11:0]                         mshr_txsnp_txnid_sx1_q,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      mshr_txsnp_fwdnid_sx1,
+    input  wire [11:0]                         mshr_txsnp_fwdtxnid_sx1,
+    input  chie_pkg::snp_opcode_e              mshr_txsnp_opcode_sx1,
+    input  wire [chie_pkg::SNP_ADDR_WIDTH-1:0] mshr_txsnp_addr_sx1,
+    input  wire                                mshr_txsnp_ns_sx1,
+    input  wire                                mshr_txsnp_rettosrc_sx1,
+    input  wire                                mshr_txsnp_tracetag_sx1,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_rn_vec_sx1,
 
     //outputs to hnf_link
-    output logic txsnpflitv,
-    output opennoc_hnf_pkg::snp_routed_s txsnpflit,
-    output wire txsnpflitpend,
+    output logic                               txsnpflitv,
+    output opennoc_hnf_pkg::snp_routed_s       txsnpflit,
+    output wire                                txsnpflitpend,
 
     //outputs to hnf_mshr_ctl
-    output wire txsnp_mshr_busy_sx1
+    output wire                                txsnp_mshr_busy_sx1
     );
 
     //internal reg signals
-    logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0]             txsnp_crd_cnt_q;
-    logic [`MSHR_SNPCNT_WIDTH-1:0]                    txsnp_cnt_q;
-    logic [`MSHR_SNPCNT_WIDTH-1:0]                    mshr_txsnp_rn_cnt;
-    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]                tgt_vec;
-    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]                tgt_vec_q;
-    logic                                             clr_1st;
-    opennoc_hnf_pkg::snp_routed_s                       txsnpflit_s0_q;
-    logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0]             snp_crd_cnt_ns_s0;
-    opennoc_hnf_pkg::snp_routed_s                       txsnpflit_s0;
-    logic                                             found_rn_vec;
-    logic [`RNF_WIDTH-1:0]                            found_rn_vec_num;
-    logic                                             found_tgt_vec;
-    logic [`RNF_WIDTH-1:0]                            found_tgt_vec_num;
-    logic [CHIE_NID_WIDTH_PARAM-1:0]                  rnid_list_array[0:HNF_MSHR_RNF_NUM_PARAM-1];
+    logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0] txsnp_crd_cnt_q;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]      txsnp_cnt_q;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]      mshr_txsnp_rn_cnt;
+    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  tgt_vec;
+    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  tgt_vec_q;
+    logic                               clr_1st;
+    opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0_q;
+    logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0] snp_crd_cnt_ns_s0;
+    opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0;
+    logic                               found_rn_vec;
+    logic [`RNF_WIDTH-1:0]              found_rn_vec_num;
+    logic                               found_tgt_vec;
+    logic [`RNF_WIDTH-1:0]              found_tgt_vec_num;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]    rnid_list_array[0:HNF_MSHR_RNF_NUM_PARAM-1];
 
     //internal wire signals
-    wire                                            txsnp_busy_sx;
-    wire                                            txsnp_req_s0;
-    wire                                            txsnpflitv_s0;
-    wire [`MSHR_SNPCNT_WIDTH-1:0]                   txsnp_cnt_tmp;
-    wire                                            txsnp_crd_avail_s1;
-    wire                                            txsnpcrdv_s0;
-    wire                                            snp_crd_cnt_not_zero_sx;
-    wire                                            update_snp_crd_cnt_s0;
-    wire                                            txsnp_crd_cnt_inc_sx;
-    wire                                            txsnp_crd_cnt_dec_sx;
-    wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]            snp_crd_cnt_inc_s0;
-    wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]            snp_crd_cnt_dec_s0;
+    wire                                txsnp_busy_sx;
+    wire                                txsnp_req_s0;
+    wire                                txsnpflitv_s0;
+    wire [`MSHR_SNPCNT_WIDTH-1:0]       txsnp_cnt_tmp;
+    wire                                txsnp_crd_avail_s1;
+    wire                                txsnpcrdv_s0;
+    wire                                snp_crd_cnt_not_zero_sx;
+    wire                                update_snp_crd_cnt_s0;
+    wire                                txsnp_crd_cnt_inc_sx;
+    wire                                txsnp_crd_cnt_dec_sx;
+    wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]  snp_crd_cnt_inc_s0;
+    wire [`HNF_LCRD_SNP_CNT_WIDTH-1:0]  snp_crd_cnt_dec_s0;
     wire [((HNF_MSHR_RNF_NUM_PARAM*CHIE_NID_WIDTH_PARAM)-1):0] rnnid_list;
 
-    wire                                              txsnp_lcrd_rtn_sx;
+    wire                                txsnp_lcrd_rtn_sx;
 
     //main function
-    genvar i;
+    genvar                              i;
 
     assign rnnid_list = RNF_NID_LIST_PARAM;
 
@@ -98,10 +98,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     endgenerate
 
     always_comb begin:found_rn_vec_comb_logic
-        integer i;
         found_rn_vec     = 1'b0;
         found_rn_vec_num = {`RNF_WIDTH{1'b0}};
-        for (i=0; i<`RNF_NUM; i=i+1)begin
+        for (int i = 0; i<`RNF_NUM; i=i+1)begin
             if(mshr_txsnp_rn_vec_sx1[i] & ~found_rn_vec)begin
                 found_rn_vec = 1'b1;
                 found_rn_vec_num = i[`RNF_WIDTH-1:0];
@@ -110,10 +109,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     end
 
     always_comb begin:found_tgt_vec_comb_logic
-        integer i;
         found_tgt_vec     = 1'b0;
         found_tgt_vec_num = {`RNF_WIDTH{1'b0}};
-        for (i=0; i<`RNF_NUM; i=i+1)begin
+        for (int i = 0; i<`RNF_NUM; i=i+1)begin
             if(tgt_vec_q[i] & ~found_tgt_vec)begin
                 found_tgt_vec = 1'b1;
                 found_tgt_vec_num = i[`RNF_WIDTH-1:0];
@@ -122,9 +120,8 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     end
 
     always_comb begin: txsnp_wrap_compute_snp_cnt_comb_logic
-        integer i;
         mshr_txsnp_rn_cnt = {`MSHR_SNPCNT_WIDTH{1'b0}};
-        for (i = 0; i < `RNF_NUM; i = i + 1) begin
+        for (int i = 0; i < `RNF_NUM; i = i + 1) begin
             if (mshr_txsnp_rn_vec_sx1[i] == 1'b1) begin
                 mshr_txsnp_rn_cnt = mshr_txsnp_rn_cnt + {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
             end
@@ -195,10 +192,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     //clear the bit if that bit is ready to send
     always_comb begin : compute_target_need_to_be_send
-        integer i;
         tgt_vec = mshr_txsnp_rn_vec_sx1;
         clr_1st = 1'b0;
-        for(i = 0; i < `RNF_NUM ; i = i + 1)begin
+        for (int i = 0; i < `RNF_NUM ; i = i + 1)begin
             if(mshr_txsnp_rn_vec_sx1[i] == 1'b1 & txsnp_busy_sx == 1'b0 & clr_1st == 1'b0)begin
                 tgt_vec[i] = 1'b0;
                 clr_1st    = 1'b1;
@@ -212,7 +208,6 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     //save the rn vector and snoopee cnt
     always_ff @(posedge clk or posedge rst) begin: txsnp_cnt_q_logic_t
-        integer i;
         if(rst == 1'b1)begin
             tgt_vec_q        <= {`RNF_NUM{1'b0}};
             txsnp_cnt_q      <= {`MSHR_SNPCNT_WIDTH{1'b0}};
@@ -263,7 +258,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     assign snp_crd_cnt_dec_s0      = (txsnp_crd_cnt_q - 1'b1);
 
     always_comb begin: snp_crd_cnt_ns_s0_logic_c
-        casez({txsnp_crd_cnt_inc_sx, txsnp_crd_cnt_dec_sx})
+        unique case({txsnp_crd_cnt_inc_sx, txsnp_crd_cnt_dec_sx})
             2'b00:
                 snp_crd_cnt_ns_s0   = txsnp_crd_cnt_q;     // hold
             2'b01:

@@ -21,28 +21,28 @@
 module hnf_data_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                          clk,
+    input  wire                          rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] l3_index_q,
-    input wire [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
-    input wire [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
-    input wire [`CACHE_LINE_WIDTH-1:0] l3_wr_data_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]   l3_index_q,
+    input  wire [`LOC_WAY_NUM-1:0]       l3_rd_ways_q,
+    input  wire [`LOC_WAY_NUM-1:0]       l3_wr_ways_q,
+    input  wire [`CACHE_LINE_WIDTH-1:0]  l3_wr_data_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q
     );
 
     //internal reg signals
-    logic [`CACHE_LINE_WIDTH-1:0]               l3_rd_data;
-    logic [`LOC_WAY_NUM-1:0]                    l3_rd_ways_q_nxt;
+    logic [`CACHE_LINE_WIDTH-1:0]             l3_rd_data;
+    logic [`LOC_WAY_NUM-1:0]                  l3_rd_ways_q_nxt;
 
     //internal wire signals
     wire [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0] sram_out;
 
     //internal variables
-    integer i;
+    int                                       i;
 
     //module instantiation
     hnf_sram_mask #(
@@ -106,30 +106,30 @@ endmodule
 module hnf_data_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                          clk,
+    input  wire                          rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] l3_index_q,
-    input wire [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
-    input wire [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
-    input wire [`CACHE_LINE_WIDTH-1:0] l3_wr_data_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]   l3_index_q,
+    input  wire [`LOC_WAY_NUM-1:0]       l3_rd_ways_q,
+    input  wire [`LOC_WAY_NUM-1:0]       l3_wr_ways_q,
+    input  wire [`CACHE_LINE_WIDTH-1:0]  l3_wr_data_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q
     );
 
     //internal reg signals
-    logic [`CACHE_LINE_WIDTH-1:0]               l3_rd_data;
-    logic [`LOC_WAY_NUM-1:0]                    l3_rd_ways_q_nxt;
-    logic [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0]  sram_in;
+    logic [`CACHE_LINE_WIDTH-1:0]              l3_rd_data;
+    logic [`LOC_WAY_NUM-1:0]                   l3_rd_ways_q_nxt;
+    logic [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0] sram_in;
 
     //internal wire signals
-    wire [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0] sram_out,sram_out1;
+    wire [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0]  sram_out, sram_out1;
 
     //internal variables
-    integer i;
-    genvar ii;
+    int                                        i;
+    genvar                                     ii;
 
     //module instantiation
     generate

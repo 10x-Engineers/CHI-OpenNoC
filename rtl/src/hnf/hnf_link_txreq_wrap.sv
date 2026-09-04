@@ -21,86 +21,86 @@
 module hnf_link_txreq_wrap `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from hnf_link
-    input wire txreq_lcrdv,
-    input wire lcrd_return_en,
-    input wire txlink_run,
-    output wire txreq_flit_avail,
+    input  wire                                txreq_lcrdv,
+    input  wire                                lcrd_return_en,
+    input  wire                                txlink_run,
+    output wire                                txreq_flit_avail,
 
     //inputs from hnf_mshr_bypass
-    input wire mshr_txreq_bypass_valid_s1,
-    input wire [3:0] mshr_txreq_bypass_qos_s1,
-    input wire [11:0] mshr_txreq_bypass_txnid_s1,
-    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txreq_bypass_returnnid_s1,
-    input wire [12-1:0] mshr_txreq_bypass_returntxnid_s1,
-    input chie_pkg::req_opcode_e mshr_txreq_bypass_opcode_s1,
-    input chie_pkg::size_e mshr_txreq_bypass_size_s1,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_bypass_addr_s1,
-    input wire mshr_txreq_bypass_ns_s1,
-    input wire mshr_txreq_bypass_allowretry_s1,
-    input chie_pkg::order_e mshr_txreq_bypass_order_s1,
-    input wire [3:0] mshr_txreq_bypass_pcrdtype_s1,
-    input chie_pkg::memattr_s mshr_txreq_bypass_memattr_s1,
-    input wire mshr_txreq_bypass_dodwt_s1,
-    input wire mshr_txreq_bypass_tracetag_s1,
+    input  wire                                mshr_txreq_bypass_valid_s1,
+    input  wire [3:0]                          mshr_txreq_bypass_qos_s1,
+    input  wire [11:0]                         mshr_txreq_bypass_txnid_s1,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_bypass_returnnid_s1,
+    input  wire [12-1:0]                       mshr_txreq_bypass_returntxnid_s1,
+    input  chie_pkg::req_opcode_e              mshr_txreq_bypass_opcode_s1,
+    input  chie_pkg::size_e                    mshr_txreq_bypass_size_s1,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_bypass_addr_s1,
+    input  wire                                mshr_txreq_bypass_ns_s1,
+    input  wire                                mshr_txreq_bypass_allowretry_s1,
+    input  chie_pkg::order_e                   mshr_txreq_bypass_order_s1,
+    input  wire [3:0]                          mshr_txreq_bypass_pcrdtype_s1,
+    input  chie_pkg::memattr_s                 mshr_txreq_bypass_memattr_s1,
+    input  wire                                mshr_txreq_bypass_dodwt_s1,
+    input  wire                                mshr_txreq_bypass_tracetag_s1,
 
     //inputs from hnf_mshr_ctl
-    input wire mshr_txreq_valid_sx1_q,
-    input wire [3:0] mshr_txreq_qos_sx1,
-    input wire [11:0] mshr_txreq_txnid_sx1_q,
-    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txreq_returnnid_sx1,
-    input wire [12-1:0] mshr_txreq_returntxnid_sx1,
-    input chie_pkg::req_opcode_e mshr_txreq_opcode_sx1,
-    input chie_pkg::size_e mshr_txreq_size_sx1,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_addr_sx1,
-    input wire mshr_txreq_ns_sx1,
-    input wire mshr_txreq_allowretry_sx1,
-    input chie_pkg::order_e mshr_txreq_order_sx1,
-    input wire [3:0] mshr_txreq_pcrdtype_sx1,
-    input chie_pkg::memattr_s mshr_txreq_memattr_sx1,
-    input wire mshr_txreq_dodwt_sx1,
-    input wire mshr_txreq_tracetag_sx1,
+    input  wire                                mshr_txreq_valid_sx1_q,
+    input  wire [3:0]                          mshr_txreq_qos_sx1,
+    input  wire [11:0]                         mshr_txreq_txnid_sx1_q,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_returnnid_sx1,
+    input  wire [12-1:0]                       mshr_txreq_returntxnid_sx1,
+    input  chie_pkg::req_opcode_e              mshr_txreq_opcode_sx1,
+    input  chie_pkg::size_e                    mshr_txreq_size_sx1,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_addr_sx1,
+    input  wire                                mshr_txreq_ns_sx1,
+    input  wire                                mshr_txreq_allowretry_sx1,
+    input  chie_pkg::order_e                   mshr_txreq_order_sx1,
+    input  wire [3:0]                          mshr_txreq_pcrdtype_sx1,
+    input  chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
+    input  wire                                mshr_txreq_dodwt_sx1,
+    input  wire                                mshr_txreq_tracetag_sx1,
 
     //outputs to hnf_link
-    output logic txreqflitv,
-    output chie_pkg::req_flit_s txreqflit,
-    output wire txreqflitpend,
+    output logic                               txreqflitv,
+    output chie_pkg::req_flit_s                txreqflit,
+    output wire                                txreqflitpend,
 
     //outputs to hnf_mshr_ctl
-    output wire txreq_mshr_won_sx1,
+    output wire                                txreq_mshr_won_sx1,
 
     //outputs to hnf_mshr_bypass
-    output wire txreq_mshr_bypass_won_s1
+    output wire                                txreq_mshr_bypass_won_s1
     );
 
     //internal reg signals
-    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0]               txreq_crd_cnt_q;
-    chie_pkg::req_flit_s                        txreqflit_bypass_s1;
-    chie_pkg::req_flit_s                        txreqflit_sx1;
-    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0]               req_crd_cnt_ns_s0;
+    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0] txreq_crd_cnt_q;
+    chie_pkg::req_flit_s                txreqflit_bypass_s1;
+    chie_pkg::req_flit_s                txreqflit_sx1;
+    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0] req_crd_cnt_ns_s0;
 
     //internal wire signals
-    wire                                              req_crd_cnt_not_zero_sx;
-    wire                                              txreq_crd_avail_s1;
-    wire                                              txreq_busy_sx;
-    wire                                              txreqcrdv_s0;
-    wire                                              txreq_crd_cnt_inc_sx;
-    wire                                              txreq_req_s0;
-    chie_pkg::req_flit_s                       txreqflit_s0;
-    wire                                              txreqflitv_s0;
-    wire                                              txreq_crd_cnt_dec_sx;
-    wire                                              update_req_crd_cnt_s0;
-    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]              req_crd_cnt_s1;
-    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]              req_crd_cnt_inc_s0;
-    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]              req_crd_cnt_dec_s0;
+    wire                                req_crd_cnt_not_zero_sx;
+    wire                                txreq_crd_avail_s1;
+    wire                                txreq_busy_sx;
+    wire                                txreqcrdv_s0;
+    wire                                txreq_crd_cnt_inc_sx;
+    wire                                txreq_req_s0;
+    chie_pkg::req_flit_s                txreqflit_s0;
+    wire                                txreqflitv_s0;
+    wire                                txreq_crd_cnt_dec_sx;
+    wire                                update_req_crd_cnt_s0;
+    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]  req_crd_cnt_s1;
+    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]  req_crd_cnt_inc_s0;
+    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]  req_crd_cnt_dec_s0;
 
 
-    wire                                              txreq_lcrd_rtn_sx;
-    chie_pkg::memattr_s           txreq_bypass_memattr_snf_s1;
-    chie_pkg::memattr_s           txreq_memattr_snf_sx1;
+    wire                                txreq_lcrd_rtn_sx;
+    chie_pkg::memattr_s                 txreq_bypass_memattr_snf_s1;
+    chie_pkg::memattr_s                 txreq_memattr_snf_sx1;
 
     //main function
     // CHI E.b Sec 2.9.3 (p.2-128): MemAttr is preserved on a Home to Subordinate
@@ -214,7 +214,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     assign req_crd_cnt_dec_s0      = (req_crd_cnt_s1 - 1'b1);
 
     always_comb begin: req_crd_cnt_ns_s0_logic_c
-        casez({txreq_crd_cnt_inc_sx, txreq_crd_cnt_dec_sx})
+        unique case({txreq_crd_cnt_inc_sx, txreq_crd_cnt_dec_sx})
             2'b00:
                 req_crd_cnt_ns_s0   = txreq_crd_cnt_q;     // hold
             2'b01:

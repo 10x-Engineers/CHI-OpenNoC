@@ -23,45 +23,45 @@
 module hni_global_monitor `HNI_PARAM 
     (
     //inputs
-    input wire clk,
-    input wire rst,
+    input  wire                 clk,
+    input  wire                 rst,
 
     //inputs from hni_qos
-    input wire rxreq_alloc_en_s0,
-    input chie_pkg::req_flit_s rxreq_alloc_flit_s0,
+    input  wire                 rxreq_alloc_en_s0,
+    input  chie_pkg::req_flit_s rxreq_alloc_flit_s0,
 
     //outputs to hni_mshr and hni_txrsp(fastpath)
-    output wire excl_pass_s1,
-    output wire excl_fail_s1
+    output wire                 excl_pass_s1,
+    output wire                 excl_fail_s1
     );
 
-    logic                                   gb_valid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::NID_WIDTH-1:0]  gb_srcid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [7:0]   gb_lpid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]   gb_addr_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic                                gb_valid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]      gb_srcid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [7:0]                          gb_lpid_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] gb_addr_q[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
 
-    logic                                   gb_valid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::NID_WIDTH-1:0]  gb_srcid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [7:0]   gb_lpid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]   gb_addr_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic                                gb_valid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]      gb_srcid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [7:0]                          gb_lpid_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] gb_addr_w[0:HNI_MSHR_EXCL_RN_NUM_PARAM-1];
 
-    wire                                              rxreq_excl_s0;
-    chie_pkg::req_opcode_e            rxreq_opcode_s0;
-    wire [chie_pkg::NID_WIDTH-1:0]             rxreq_srcid_s0;
-    wire [7:0]              rxreq_lpid_s0;
-    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]              rxreq_addr_s0;
-    wire                                              excl_load_s0;
-    wire                                              rxreq_wr_s0;
-    wire                                              excl_store_s0;
-    wire                                              store_notmatch_s0;//req writenosnp not match
+    wire                                 rxreq_excl_s0;
+    chie_pkg::req_opcode_e               rxreq_opcode_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]       rxreq_srcid_s0;
+    wire [7:0]                           rxreq_lpid_s0;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]  rxreq_addr_s0;
+    wire                                 excl_load_s0;
+    wire                                 rxreq_wr_s0;
+    wire                                 excl_store_s0;
+    wire                                 store_notmatch_s0;//req writenosnp not match
 
-    logic                                               excl_pass_s1_q;
-    logic                                               excl_fail_s1_q;
-    logic                                               load_same_lp_s0;//load req come from same LP
-    logic                                               load_new_lp_s0;//load req come from not same LP
-    logic                                               store_match_s0;//store req match
-    logic                                               load_samelp_flag;//judge the same LP or not
-    logic                                               load_new_flag;//judge add new entry finish or not
+    logic                                excl_pass_s1_q;
+    logic                                excl_fail_s1_q;
+    logic                                load_same_lp_s0;//load req come from same LP
+    logic                                load_new_lp_s0;//load req come from not same LP
+    logic                                store_match_s0;//store req match
+    logic                                load_samelp_flag;//judge the same LP or not
+    logic                                load_new_flag;//judge add new entry finish or not
 
     assign rxreq_excl_s0         = (rxreq_alloc_en_s0 == 1'b1) ? rxreq_alloc_flit_s0.excl   : '0;
     assign rxreq_opcode_s0       = (rxreq_alloc_en_s0 == 1'b1) ? rxreq_alloc_flit_s0.opcode : chie_pkg::REQ_REQLCRDRETURN;
@@ -76,10 +76,9 @@ module hni_global_monitor `HNI_PARAM
     assign store_notmatch_s0    = !store_match_s0&&excl_store_s0;
 
     always_comb begin :load_judge
-        integer i;
         load_samelp_flag = 1'b0;
         if(excl_load_s0)begin
-            for(i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+            for(int i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
                 if (gb_valid_q[i]&&rxreq_srcid_s0 == gb_srcid_q[i]&&rxreq_lpid_s0 == gb_lpid_q[i])begin
                     load_samelp_flag = 1'b1;
                 end
@@ -103,9 +102,8 @@ module hni_global_monitor `HNI_PARAM
     end
 
     always_comb begin :store_judge_match
-        integer i;
         store_match_s0 = 1'b0;
-        for(i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+        for(int i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
             if (excl_store_s0&&gb_valid_q[i]&&rxreq_srcid_s0 == gb_srcid_q[i]&&rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:0] == rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:0])begin
                 store_match_s0 = 1'b1;
             end
@@ -116,9 +114,8 @@ module hni_global_monitor `HNI_PARAM
     end
 
     always_comb begin:temp_data
-        integer i;
         load_new_flag=1'b1;
-        for(i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1) begin:gb_ram_temp
+        for(int i = 0;i<HNI_MSHR_EXCL_RN_NUM_PARAM;i = i+1) begin:gb_ram_temp
             gb_valid_w[i]=gb_valid_q[i];
             gb_srcid_w[i]=gb_srcid_q[i];
             gb_lpid_w[i]=gb_lpid_q[i];

@@ -33,20 +33,16 @@
 `define SNF_MASK_CD_WIDTH                  4
 `define SNF_MASK_CD_LSB                    0
 `define SNF_MASK_CD_MSB                    3
-`define SNF_MASK_CD_RANGE                  3:0
 `define SNF_MASK_PD_WIDTH                  4
 `define SNF_MASK_PD_LSB                    0
 `define SNF_MASK_PD_MSB                    3
-`define SNF_MASK_PD_RANGE                  3:0
 `define SNF_MASK_WL_WIDTH                  4
 `define SNF_MASK_WL_LSB                    0
 `define SNF_MASK_WL_MSB                    3
-`define SNF_MASK_WL_RANGE                  3:0
 
 ////////////////////////////////////////////////////////////////////////
 // snf_link_req_channel_lcredit
 `define SNF_LL_REQ_CRD_CNT_WIDTH           4
-`define SNF_LL_REQ_CRD_CNT_RANGE           3:0
 `define SNF_LL_REQ_CRD_CNT_MSB             3
 `define SNF_LL_REQ_CRD_CNT_LSB             0
 `define SNF_LL_REQ_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
@@ -57,7 +53,6 @@
 ////////////////////////////////////////////////////////////////////////
 // snf_link_rsp_channel_lcredit
 `define SNF_LL_RSP_CRD_CNT_WIDTH           4
-`define SNF_LL_RSP_CRD_CNT_RANGE           3:0
 `define SNF_LL_RSP_CRD_CNT_MSB             3
 `define SNF_LL_RSP_CRD_CNT_LSB             0
 `define SNF_LL_RSP_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
@@ -65,7 +60,6 @@
 ////////////////////////////////////////////////////////////////////////
 // snf_link_dat_channel_lcredit
 `define SNF_LL_DAT_CRD_CNT_WIDTH           4
-`define SNF_LL_DAT_CRD_CNT_RANGE           3:0
 `define SNF_LL_DAT_CRD_CNT_MSB             3
 `define SNF_LL_DAT_CRD_CNT_LSB             0
 `define SNF_LL_DAT_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM

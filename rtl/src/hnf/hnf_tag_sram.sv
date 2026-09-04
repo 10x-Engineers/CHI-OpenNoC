@@ -20,22 +20,22 @@
 module hnf_tag_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                      clk,
+    input  wire                                      rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] loc_index_q,
-    input wire loc_rd_en_q,
-    input wire [`LOC_WAY_NUM-1:0] loc_wr_ways_q,
-    input wire [`LOC_CLINE_WIDTH-1:0] loc_wr_cline_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]               loc_index_q,
+    input  wire                                      loc_rd_en_q,
+    input  wire [`LOC_WAY_NUM-1:0]                   loc_wr_ways_q,
+    input  wire [`LOC_CLINE_WIDTH-1:0]               loc_wr_cline_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q
     );
 
     //internal wire signal
-    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]        loc_rd_clines;
-    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]        sram_out;
+    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines;
+    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] sram_out;
 
     //main function
 
@@ -71,28 +71,28 @@ endmodule
 module hnf_tag_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                      clk,
+    input  wire                                      rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] loc_index_q,
-    input wire loc_rd_en_q,
-    input wire [`LOC_WAY_NUM-1:0] loc_wr_ways_q,
-    input wire [`LOC_CLINE_WIDTH-1:0] loc_wr_cline_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]               loc_index_q,
+    input  wire                                      loc_rd_en_q,
+    input  wire [`LOC_WAY_NUM-1:0]                   loc_wr_ways_q,
+    input  wire [`LOC_CLINE_WIDTH-1:0]               loc_wr_cline_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q
     );
 
     //internal wire signal
-    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]        sram_out,sram_out1;
+    wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]  sram_out, sram_out1;
 
     //internal wire signal
-    logic [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0]         sram_in;
+    logic [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] sram_in;
 
     //internal varibales
-    genvar ii;
-    integer i;
+    genvar                                    ii;
+    int                                       i;
 
     //main function
 

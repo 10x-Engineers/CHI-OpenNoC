@@ -23,39 +23,39 @@
 module hni_rxrsp `HNI_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                 clk,
+    input  wire                 rst,
 
     //inputs from hni_link
-    input wire rxrspflitv,
-    input chie_pkg::rsp_flit_s rxrspflit,
-    input wire rxrspflitpend,
+    input  wire                 rxrspflitv,
+    input  chie_pkg::rsp_flit_s rxrspflit,
+    input  wire                 rxrspflitpend,
 
     //outputs to hni_link
-    output wire rxrsp_lcrdv,
+    output wire                 rxrsp_lcrdv,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire rxcrd_en,
+    input  wire                 rxcrd_en,
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    output wire rxrsp_crd_cnt_full,
+    output wire                 rxrsp_crd_cnt_full,
 
     //outputs to hni_mshr
-    output wire rxrsp_valid_s0,
+    output wire                 rxrsp_valid_s0,
     output chie_pkg::rsp_flit_s rxrspflit_s0
     );
 
     //internal reg signals
-    logic                                             rxrspflitv_en_q;
-    logic  [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]            rxrsp_crd_cnt_s1_q;
-    logic                                             rxrspcrdv_s1_q;
+    logic                                 rxrspflitv_en_q;
+    logic [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0] rxrsp_crd_cnt_s1_q;
+    logic                                 rxrspcrdv_s1_q;
 
     //internal wire signals
-    wire                                            rxrsp_crd_grant_sx;
-    wire                                            rxrsp_crd_cnt_zero;
-    wire                                            rxrsp_crd_cnt_upd_s0;
-    wire [`HNI_LL_RSP_CRD_CNT_RANGE]                rxrsp_crd_cnt_nxt_s0;
-    wire                                            rxrspcrdv_ns_s0;
+    wire                                  rxrsp_crd_grant_sx;
+    wire                                  rxrsp_crd_cnt_zero;
+    wire                                  rxrsp_crd_cnt_upd_s0;
+    wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]  rxrsp_crd_cnt_nxt_s0;
+    wire                                  rxrspcrdv_ns_s0;
 
     //main function
     //receive rxrspflitpend

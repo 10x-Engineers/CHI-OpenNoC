@@ -24,43 +24,43 @@
 module snf_rxreq `SNF_PARAM
     (
         //global inputs
-        input  wire                       clk,
-        input  wire                       rst,
-        input  wire                       run_state,
+        input  wire                 clk,
+        input  wire                 rst,
+        input  wire                 run_state,
 
         //inputs from link
-        input  wire                       rxreqflitv,
-        input  chie_pkg::req_flit_s       rxreqflit,
-        input  wire                       rxreqflitpend,
+        input  wire                 rxreqflitv,
+        input  chie_pkg::req_flit_s rxreqflit,
+        input  wire                 rxreqflitpend,
 
         //inputs from snf_qos
-        input  wire                       rxreq_retry_enable_s0,
+        input  wire                 rxreq_retry_enable_s0,
 
         //inputs from snf_txrsp
-        input  wire                       txrsp_retryack_won_s1,
+        input  wire                 txrsp_retryack_won_s1,
 
         //outputs to link
-        output wire                       rxreq_lcrdv,
+        output wire                 rxreq_lcrdv,
 
         //outputs to snf_qos
-        output wire                       rxreq_valid_s0,
-        output chie_pkg::req_flit_s       rxreqflit_s0
+        output wire                 rxreq_valid_s0,
+        output chie_pkg::req_flit_s rxreqflit_s0
     );
 
     //internal reg signals
-    logic                                             rxreqflitv_en_q;
-    logic [`SNF_LL_REQ_CRD_CNT_RANGE]                 rxreq_crd_cnt_s1_q;
-    logic                                             rxreqcrdv_s1_q;
+    logic                                 rxreqflitv_en_q;
+    logic [`SNF_LL_REQ_CRD_CNT_WIDTH-1:0] rxreq_crd_cnt_s1_q;
+    logic                                 rxreqcrdv_s1_q;
 
     //internal wire signals
-    wire                                            snf_rxcrd_enable_sx;
-    wire                                            rxreq_crd_cnt_zero_sx;
-    wire [1:0]                                      rxreq_crd_rtn_cnt_s1;
-    wire                                            req_crd_rtn_s0;
-    wire                                            rxreq_link_flit_s0;
-    wire                                            retack_tx_s1;
-    wire                                            rxreqcrdv_ns_s0;
-    wire [`SNF_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_nxt_s1;
+    wire                                  snf_rxcrd_enable_sx;
+    wire                                  rxreq_crd_cnt_zero_sx;
+    wire [1:0]                            rxreq_crd_rtn_cnt_s1;
+    wire                                  req_crd_rtn_s0;
+    wire                                  rxreq_link_flit_s0;
+    wire                                  retack_tx_s1;
+    wire                                  rxreqcrdv_ns_s0;
+    wire [`SNF_LL_REQ_CRD_CNT_WIDTH-1:0]  rxreq_crd_cnt_nxt_s1;
 
     //main function
 

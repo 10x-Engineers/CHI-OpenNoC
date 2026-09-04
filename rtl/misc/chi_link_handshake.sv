@@ -23,25 +23,25 @@ module chi_link_handshake #(
     )
     (
     // global input
-    input wire clk,
-    input wire rst,
+    input  wire                      clk,
+    input  wire                      rst,
 
     // link handshake interface
-    output wire TXLINKACTIVEREQ,
-    input wire TXLINKACTIVEACK,
+    output wire                      TXLINKACTIVEREQ,
+    input  wire                      TXLINKACTIVEACK,
 
-    input wire RXLINKACTIVEREQ,
-    output wire RXLINKACTIVEACK,
+    input  wire                      RXLINKACTIVEREQ,
+    output wire                      RXLINKACTIVEACK,
 
     output wire [LL_STATE_WIDTH-1:0] txlink_state,
     output wire [LL_STATE_WIDTH-1:0] rxlink_state,
 
-    input wire txflit_avail,
-    input wire rxcrd_cnt_full,
+    input  wire                      txflit_avail,
+    input  wire                      rxcrd_cnt_full,
 
-    output wire lcrd_return_en,
-    output wire rxcrd_en,
-    output wire txlink_run
+    output wire                      lcrd_return_en,
+    output wire                      rxcrd_en,
+    output wire                      txlink_run
     );
     localparam LL_STOP        = 2'b00;
     localparam LL_ACTIVATE    = 2'b10;
@@ -51,12 +51,12 @@ module chi_link_handshake #(
     // wire
 
     // reg
-    logic                               txlinkactivereq_s0;
-    logic                               rxlinkactiveack_s0;
-    logic                               txlinkactivereq_s1_q;
-    logic                               txlinkactiveack_s1_q;
-    logic                               rxlinkactivereq_s1_q;
-    logic                               rxlinkactiveack_s1_q;
+    logic txlinkactivereq_s0;
+    logic rxlinkactiveack_s0;
+    logic txlinkactivereq_s1_q;
+    logic txlinkactiveack_s1_q;
+    logic rxlinkactivereq_s1_q;
+    logic rxlinkactiveack_s1_q;
 
     // main function
     // TXLINKACTIVE

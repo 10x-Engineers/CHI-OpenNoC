@@ -21,113 +21,113 @@
 module rni_link_ctl `RNI_PARAM
     (
     // global inputs
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                 clk_i,
+    input  wire                 rst_i,
 
     // link handshake
-    output wire TXLINKACTIVEREQ,
-    input wire TXLINKACTIVEACK,
-    input wire RXLINKACTIVEREQ,
-    output wire RXLINKACTIVEACK,
+    output wire                 TXLINKACTIVEREQ,
+    input  wire                 TXLINKACTIVEACK,
+    input  wire                 RXLINKACTIVEREQ,
+    output wire                 RXLINKACTIVEACK,
 
     // CHI Interface
-    input wire RXRSPFLITPEND,
-    input wire RXRSPFLITV,
-    input chie_pkg::rsp_flit_s RXRSPFLIT,
-    output logic RXRSPLCRDV,
-    input wire RXDATFLITPEND,
-    input wire RXDATFLITV,
-    input chie_pkg::dat_flit_s RXDATFLIT,
-    output logic RXDATLCRDV,
-    output wire TXDATFLITPEND,
-    output wire TXDATFLITV,
+    input  wire                 RXRSPFLITPEND,
+    input  wire                 RXRSPFLITV,
+    input  chie_pkg::rsp_flit_s RXRSPFLIT,
+    output logic                RXRSPLCRDV,
+    input  wire                 RXDATFLITPEND,
+    input  wire                 RXDATFLITV,
+    input  chie_pkg::dat_flit_s RXDATFLIT,
+    output logic                RXDATLCRDV,
+    output wire                 TXDATFLITPEND,
+    output wire                 TXDATFLITV,
     output chie_pkg::dat_flit_s TXDATFLIT,
-    input wire TXDATLCRDV,
-    output wire TXRSPFLITPEND,
-    output wire TXRSPFLITV,
+    input  wire                 TXDATLCRDV,
+    output wire                 TXRSPFLITPEND,
+    output wire                 TXRSPFLITV,
     output chie_pkg::rsp_flit_s TXRSPFLIT,
-    input wire TXRSPLCRDV,
-    output wire TXREQFLITPEND,
-    output wire TXREQFLITV,
+    input  wire                 TXRSPLCRDV,
+    output wire                 TXREQFLITPEND,
+    output wire                 TXREQFLITV,
     output chie_pkg::req_flit_s TXREQFLIT,
-    input wire TXREQLCRDV,
+    input  wire                 TXREQLCRDV,
 
     // rni_wr_buffer Interface
-    input chie_pkg::dat_flit_s wb_txdatflit_d3_i,
-    input wire wb_txdatflitv_d3_i,
-    output wire wb_txdatflit_sent_d3_o,
+    input  chie_pkg::dat_flit_s wb_txdatflit_d3_i,
+    input  wire                 wb_txdatflitv_d3_i,
+    output wire                 wb_txdatflit_sent_d3_o,
 
     // rni_ar_ctl Interface
-    input chie_pkg::req_flit_s ar_txreqflit_s4_i,
-    input wire ar_txreqflitv_s4_i,
-    output wire ar_txreqflit_sent_s4_o,
+    input  chie_pkg::req_flit_s ar_txreqflit_s4_i,
+    input  wire                 ar_txreqflitv_s4_i,
+    output wire                 ar_txreqflit_sent_s4_o,
 
     // rni_aw_ctl Interface
-    input chie_pkg::rsp_flit_s aw_txrspflit_d0_i,
-    input wire aw_txrspflitv_d0_i,
-    output wire aw_txrspflit_sent_d0_o,
-    input chie_pkg::req_flit_s aw_txreqflit_s4_i,
-    input wire aw_txreqflitv_s4_i,
-    output wire aw_txreqflit_sent_s4_o,
+    input  chie_pkg::rsp_flit_s aw_txrspflit_d0_i,
+    input  wire                 aw_txrspflitv_d0_i,
+    output wire                 aw_txrspflit_sent_d0_o,
+    input  chie_pkg::req_flit_s aw_txreqflit_s4_i,
+    input  wire                 aw_txreqflitv_s4_i,
+    output wire                 aw_txreqflit_sent_s4_o,
 
     // outputs to rni_ar_ctl/rni_aw_ctl/rni_rd_buffer/rni_misc
-    output wire rxrspflitv_d1_o,
+    output wire                 rxrspflitv_d1_o,
     output chie_pkg::rsp_flit_s rxrspflit_d1_q_o,
-    output wire rxdatflitv_d1_o,
+    output wire                 rxdatflitv_d1_o,
     output chie_pkg::dat_flit_s rxdatflit_d1_q_o
     );
 
     // internal wire
-    wire                                   rxrsplcrdv_d1_w;
-    wire                                   rxdatlcrdv_d1_w;
-    wire                                   rxrsp_lcrd_full_d2_w;
-    wire                                   rxdat_lcrd_full_d2_w;
-    wire                                   rxrsp_lcrd_avail_d1_w;
-    wire                                   rxdat_lcrd_avail_d1_w;
-    wire                                   txdat_lcrd_avail_d3_w;
-    wire                                   txrsp_lcrd_avail_d0_w;
-    wire                                   txreq_lcrd_avail_s4_w;
-    wire                                   txdatflitv_en_w;
-    chie_pkg::dat_flit_s            txdatflit_d3_w;
-    wire                                   ax_txrspflitv_d0_w;
-    wire                                   ax_txrspflit_upd_d0_w;
-    wire                                   ax_txrspflit_sel_d0_w;
-    wire                                   ax_txrspflit_sent_d0_w;
-    wire                                   txrspflitv_en_w;
-    chie_pkg::rsp_flit_s            txrspflit_d0_w;
-    wire [1:0]                             ax_txreqflitv_s4_w;
-    wire                                   ax_txreqflit_upd_s4_w;
-    wire [1:0]                             ax_txreqflit_sel_s4_w;
-    wire                                   ax_txreqflit_sent_s4_w;
-    wire                                   txreqflitv_en_w;
-    chie_pkg::req_flit_s            txreqflit_s4_w;
-    wire [`LL_STATE_WIDTH-1:0]             txlink_state;
-    wire [`LL_STATE_WIDTH-1:0]             rxlink_state;
-    wire                                   txflit_avail;
-    wire                                   txll_st_run;
-    wire                                   rxll_st_run;
-    wire                                   llst_is_run;
-    wire                                   rxcrd_cnt_full;
-    wire                                   lcrd_return_en;
-    wire                                   rxcrd_en;
-    wire                                   txdatflit_lcrd_v;
-    wire                                   txrspflit_lcrd_v;
-    wire                                   txreqflit_lcrd_v;
+    wire                       rxrsplcrdv_d1_w;
+    wire                       rxdatlcrdv_d1_w;
+    wire                       rxrsp_lcrd_full_d2_w;
+    wire                       rxdat_lcrd_full_d2_w;
+    wire                       rxrsp_lcrd_avail_d1_w;
+    wire                       rxdat_lcrd_avail_d1_w;
+    wire                       txdat_lcrd_avail_d3_w;
+    wire                       txrsp_lcrd_avail_d0_w;
+    wire                       txreq_lcrd_avail_s4_w;
+    wire                       txdatflitv_en_w;
+    chie_pkg::dat_flit_s       txdatflit_d3_w;
+    wire                       ax_txrspflitv_d0_w;
+    wire                       ax_txrspflit_upd_d0_w;
+    wire                       ax_txrspflit_sel_d0_w;
+    wire                       ax_txrspflit_sent_d0_w;
+    wire                       txrspflitv_en_w;
+    chie_pkg::rsp_flit_s       txrspflit_d0_w;
+    wire [1:0]                 ax_txreqflitv_s4_w;
+    wire                       ax_txreqflit_upd_s4_w;
+    wire [1:0]                 ax_txreqflit_sel_s4_w;
+    wire                       ax_txreqflit_sent_s4_w;
+    wire                       txreqflitv_en_w;
+    chie_pkg::req_flit_s       txreqflit_s4_w;
+    wire [`LL_STATE_WIDTH-1:0] txlink_state;
+    wire [`LL_STATE_WIDTH-1:0] rxlink_state;
+    wire                       txflit_avail;
+    wire                       txll_st_run;
+    wire                       rxll_st_run;
+    wire                       llst_is_run;
+    wire                       rxcrd_cnt_full;
+    wire                       lcrd_return_en;
+    wire                       rxcrd_en;
+    wire                       txdatflit_lcrd_v;
+    wire                       txrspflit_lcrd_v;
+    wire                       txreqflit_lcrd_v;
 
     // internal reg
-    logic                                    rxrspflitpend_d1_q;
-    logic                                    rxrspflitv_d1_q;
-    logic                                    rxdatflitpend_d1_q;
-    logic                                    rxdatflitv_d1_q;
-    logic                                    txdatflitv_d4_q;
-    chie_pkg::dat_flit_s            txdatflit_d4_q;
-    logic                                    txrspflitv_d1_q;
-    chie_pkg::rsp_flit_s            txrspflit_d1_q;
-    logic                                    txreqflitv_s5_q;
-    chie_pkg::req_flit_s            txreqflit_s5_q;
-    chie_pkg::dat_flit_s            txdatflit_lcrd_d4;
-    chie_pkg::rsp_flit_s            txrspflit_lcrd_d4;
-    chie_pkg::req_flit_s            txreqflit_lcrd_d4;
+    logic                      rxrspflitpend_d1_q;
+    logic                      rxrspflitv_d1_q;
+    logic                      rxdatflitpend_d1_q;
+    logic                      rxdatflitv_d1_q;
+    logic                      txdatflitv_d4_q;
+    chie_pkg::dat_flit_s       txdatflit_d4_q;
+    logic                      txrspflitv_d1_q;
+    chie_pkg::rsp_flit_s       txrspflit_d1_q;
+    logic                      txreqflitv_s5_q;
+    chie_pkg::req_flit_s       txreqflit_s5_q;
+    chie_pkg::dat_flit_s       txdatflit_lcrd_d4;
+    chie_pkg::rsp_flit_s       txrspflit_lcrd_d4;
+    chie_pkg::req_flit_s       txreqflit_lcrd_d4;
 
     // local parameter
     localparam XP_LCRD_NUM_PARAM = 15;

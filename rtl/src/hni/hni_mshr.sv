@@ -23,315 +23,315 @@
 module hni_mshr `HNI_PARAM
     (
     //inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from hni_qos
-    input wire rxreq_alloc_en_s0,
-    input chie_pkg::req_flit_s rxreq_alloc_flit_s0,
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+    input  wire                                rxreq_alloc_en_s0,
+    input  chie_pkg::req_flit_s                rxreq_alloc_flit_s0,
+    input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_entry_idx_alloc_s0,
 
     //inouts with hni_global_monitor
-    input wire excl_pass_s1,
-    input wire excl_fail_s1,
+    input  wire                                excl_pass_s1,
+    input  wire                                excl_fail_s1,
 
     //inouts with hni_rxrsp
-    input wire rxrsp_valid_s0,
-    input chie_pkg::rsp_flit_s rxrspflit_s0,
+    input  wire                                rxrsp_valid_s0,
+    input  chie_pkg::rsp_flit_s                rxrspflit_s0,
 
     //inouts with hni_txrsp
-    output wire mshr_entry_sleep_s1,
-    output logic txrsp_valid_sx_q,
-    output wire [3:0] txrsp_qos_sx,
-    output wire [chie_pkg::NID_WIDTH-1:0] txrsp_tgtid_sx,
-    output wire [11:0] txrsp_txnid_sx,
-    output chie_pkg::rsp_opcode_e txrsp_opcode_sx,
-    output chie_pkg::resp_err_e txrsp_resperr_sx,
-    output chie_pkg::resp_state_e txrsp_resp_sx,
-    output wire [11:0] txrsp_dbid_sx,
-    output wire txrsp_tracetag_sx,
+    output wire                                mshr_entry_sleep_s1,
+    output logic                               txrsp_valid_sx_q,
+    output wire [3:0]                          txrsp_qos_sx,
+    output wire [chie_pkg::NID_WIDTH-1:0]      txrsp_tgtid_sx,
+    output wire [11:0]                         txrsp_txnid_sx,
+    output chie_pkg::rsp_opcode_e              txrsp_opcode_sx,
+    output chie_pkg::resp_err_e                txrsp_resperr_sx,
+    output chie_pkg::resp_state_e              txrsp_resp_sx,
+    output wire [11:0]                         txrsp_dbid_sx,
+    output wire                                txrsp_tracetag_sx,
 
-    input wire txrsp_won_sx,
-    input wire txrsp_fp_won_s1,
+    input  wire                                txrsp_won_sx,
+    input  wire                                txrsp_fp_won_s1,
 
     //inouts with hni_data_buffer
-    output wire rxreq_dbf_en_s0,
-    output wire [`HNI_AXI4_AXID_WIDTH-1:0] rxreq_dbf_axid_s0,
+    output wire                                rxreq_dbf_en_s0,
+    output wire [`HNI_AXI4_AXID_WIDTH-1:0]     rxreq_dbf_axid_s0,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s0,
-    output wire rxreq_dbf_device_s0,
-    output wire rxreq_dbf_wr_s0,  //write txn
-    output wire rxreq_dbf_wrzero_s0,
-    output chie_pkg::size_e rxreq_dbf_size_s0,
-    output wire [`AXI4_AWLEN_WIDTH-1:0] rxreq_dbf_axlen_s0,
+    output wire                                rxreq_dbf_device_s0,
+    output wire                                rxreq_dbf_wr_s0,  //write txn
+    output wire                                rxreq_dbf_wrzero_s0,
+    output chie_pkg::size_e                    rxreq_dbf_size_s0,
+    output wire [`AXI4_AWLEN_WIDTH-1:0]        rxreq_dbf_axlen_s0,
 
-    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] rxreq_dbf_entry_idx_s0,
+    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  rxreq_dbf_entry_idx_s0,
 
-    output wire mshr_rdat_en_sx,  //mshr allow dbf receive data from slave
-    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_rdat_entry_idx_sx,
+    output wire                                mshr_rdat_en_sx,  //mshr allow dbf receive data from slave
+    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_rdat_entry_idx_sx,
 
-    input wire dbf_rvalid_sx,  //dbf receive rdata
-    input wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] dbf_rvalid_entry_idx_sx,
-    input wire [3:0] dbf_cdmask_sx,
+    input  wire                                dbf_rvalid_sx,  //dbf receive rdata
+    input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  dbf_rvalid_entry_idx_sx,
+    input  wire [3:0]                          dbf_cdmask_sx,
 
-    output wire mshr_txdat_en_sx,  //mshr allow dbf send data to chi xp
-    output wire [1:0] mshr_txdat_dataid_sx,
-    output wire [11:0] mshr_txdat_txnid_sx,
-    output chie_pkg::dat_opcode_e mshr_txdat_opcode_sx,
-    output chie_pkg::resp_state_e mshr_txdat_resp_sx,
-    output chie_pkg::resp_err_e mshr_txdat_resperr_sx,
-    output wire mshr_txdat_be_ovr_en_sx,
-    output logic  [chie_pkg::BE_WIDTH-1:0] mshr_txdat_be_ovr_sx,
-    output wire [11:0] mshr_txdat_dbid_sx,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx,
-    output wire mshr_txdat_tracetag_sx,
-    input wire mshr_txdat_won_sx,
+    output wire                                mshr_txdat_en_sx,  //mshr allow dbf send data to chi xp
+    output wire [1:0]                          mshr_txdat_dataid_sx,
+    output wire [11:0]                         mshr_txdat_txnid_sx,
+    output chie_pkg::dat_opcode_e              mshr_txdat_opcode_sx,
+    output chie_pkg::resp_state_e              mshr_txdat_resp_sx,
+    output chie_pkg::resp_err_e                mshr_txdat_resperr_sx,
+    output wire                                mshr_txdat_be_ovr_en_sx,
+    output logic [chie_pkg::BE_WIDTH-1:0]      mshr_txdat_be_ovr_sx,
+    output wire [11:0]                         mshr_txdat_dbid_sx,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_tgtid_sx,
+    output wire                                mshr_txdat_tracetag_sx,
+    input  wire                                mshr_txdat_won_sx,
 
-    input wire dbf_rxdat_valid_s0,
-    input wire [11:0] dbf_rxdat_txnid_s0,
-    input chie_pkg::dat_opcode_e dbf_rxdat_opcode_s0,
-    input wire [1:0] dbf_rxdat_dataid_s0,
+    input  wire                                dbf_rxdat_valid_s0,
+    input  wire [11:0]                         dbf_rxdat_txnid_s0,
+    input  chie_pkg::dat_opcode_e              dbf_rxdat_opcode_s0,
+    input  wire [1:0]                          dbf_rxdat_dataid_s0,
 
-    output wire mshr_wdat_en_sx,  //send data to axi slave enable
-    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_wdat_entry_idx_sx,
-    input wire dbf_wdat_last,
+    output wire                                mshr_wdat_en_sx,  //send data to axi slave enable
+    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_wdat_entry_idx_sx,
+    input  wire                                dbf_wdat_last,
 
     //outputs to hni_qos, hni_data_buffer
-    output wire mshr_retired_valid_sx,
-    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
+    output wire                                mshr_retired_valid_sx,
+    output wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_retired_idx_sx,
 
     //inout with axi slaves
-    output wire [`AXI4_ARID_WIDTH-1:0] arid_sx,
-    output wire [`AXI4_ARADDR_WIDTH-1:0] araddr_sx,
-    output wire [`AXI4_ARLEN_WIDTH-1:0] arlen_sx,
-    output wire [`AXI4_ARSIZE_WIDTH-1:0] arsize_sx,
-    output wire [`AXI4_ARBURST_WIDTH-1:0] arburst_sx,
-    output wire [`AXI4_ARLOCK_WIDTH-1:0] arlock_sx,
-    output wire [`AXI4_ARCACHE_WIDTH-1:0] arcache_sx,
-    output wire [`AXI4_ARPROT_WIDTH-1:0] arprot_sx,
-    output wire [`AXI4_ARQOS_WIDTH-1:0] arqos_sx,
-    output wire [`AXI4_ARREGION_WIDTH-1:0] arregion_sx,
-    output logic arvalid_sx,
-    input wire arready_sx,
+    output wire [`AXI4_ARID_WIDTH-1:0]         arid_sx,
+    output wire [`AXI4_ARADDR_WIDTH-1:0]       araddr_sx,
+    output wire [`AXI4_ARLEN_WIDTH-1:0]        arlen_sx,
+    output wire [`AXI4_ARSIZE_WIDTH-1:0]       arsize_sx,
+    output wire [`AXI4_ARBURST_WIDTH-1:0]      arburst_sx,
+    output wire [`AXI4_ARLOCK_WIDTH-1:0]       arlock_sx,
+    output wire [`AXI4_ARCACHE_WIDTH-1:0]      arcache_sx,
+    output wire [`AXI4_ARPROT_WIDTH-1:0]       arprot_sx,
+    output wire [`AXI4_ARQOS_WIDTH-1:0]        arqos_sx,
+    output wire [`AXI4_ARREGION_WIDTH-1:0]     arregion_sx,
+    output logic                               arvalid_sx,
+    input  wire                                arready_sx,
 
-    output wire [`AXI4_AWID_WIDTH-1:0] awid_sx,
-    output wire [`AXI4_AWADDR_WIDTH-1:0] awaddr_sx,
-    output wire [`AXI4_AWLEN_WIDTH-1:0] awlen_sx,
-    output wire [`AXI4_AWSIZE_WIDTH-1:0] awsize_sx,
-    output wire [`AXI4_AWBURST_WIDTH-1:0] awburst_sx,
-    output wire [`AXI4_AWLOCK_WIDTH-1:0] awlock_sx,
-    output wire [`AXI4_AWCACHE_WIDTH-1:0] awcache_sx,
-    output wire [`AXI4_AWPROT_WIDTH-1:0] awprot_sx,
-    output wire [`AXI4_AWQOS_WIDTH-1:0] awqos_sx,
-    output wire [`AXI4_AWREGION_WIDTH-1:0] awregion_sx,
-    output logic awvalid_sx,
-    input wire awready_sx,
+    output wire [`AXI4_AWID_WIDTH-1:0]         awid_sx,
+    output wire [`AXI4_AWADDR_WIDTH-1:0]       awaddr_sx,
+    output wire [`AXI4_AWLEN_WIDTH-1:0]        awlen_sx,
+    output wire [`AXI4_AWSIZE_WIDTH-1:0]       awsize_sx,
+    output wire [`AXI4_AWBURST_WIDTH-1:0]      awburst_sx,
+    output wire [`AXI4_AWLOCK_WIDTH-1:0]       awlock_sx,
+    output wire [`AXI4_AWCACHE_WIDTH-1:0]      awcache_sx,
+    output wire [`AXI4_AWPROT_WIDTH-1:0]       awprot_sx,
+    output wire [`AXI4_AWQOS_WIDTH-1:0]        awqos_sx,
+    output wire [`AXI4_AWREGION_WIDTH-1:0]     awregion_sx,
+    output logic                               awvalid_sx,
+    input  wire                                awready_sx,
 
-    input wire [`AXI4_BID_WIDTH-1:0] bid_sx,
-    input wire [`AXI4_BRESP_WIDTH-1:0] bresp_sx,
-    input wire bvalid_sx,
-    output wire bready_sx
+    input  wire [`AXI4_BID_WIDTH-1:0]          bid_sx,
+    input  wire [`AXI4_BRESP_WIDTH-1:0]        bresp_sx,
+    input  wire                                bvalid_sx,
+    output wire                                bready_sx
     );
 
     //internal reg
-    logic                                         rxreq_alloc_en_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           mshr_entry_idx_alloc_s1_q;
+    logic                                   rxreq_alloc_en_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     mshr_entry_idx_alloc_s1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             mshr_entry_valid_sx_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_entry_valid_sx_q;
 
-    chie_pkg::req_opcode_e       rxreq_opcode_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [3:0]          rxreq_qos_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::memattr_s      rxreq_memattr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic                                         rxreq_device_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::NID_WIDTH-1:0]        rxreq_srcid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [11:0]        rxreq_txnid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_excl_s1_q;
-    chie_pkg::size_e         rxreq_size_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]         rxreq_addr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic           rxreq_ns_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::order_e        rxreq_order_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_expcompack_s1_q;
-    logic     rxreq_tracetag_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [7:0]         rxreq_lpid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_excl_pass_s2_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_excl_fail_s2_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_rd_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_wrf_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_wrp_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_err_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_errrd_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_errwr_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_errdat_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_drop_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_cw_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_cwpersist_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxreq_rsp1_owed_s1_q;
-    chie_pkg::rsp_opcode_e       rxreq_rsp1_opcode_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             wrzero_pending_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             errdat_pending_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           wrzero_inject_idx_sx;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           errdat_inject_idx_sx;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txdat_en_idx_sx;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txrsp_second_idx_sx;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             txrsp_second_pend_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             txrsp_second_sent_q;
-    logic [1:0]         rxreq_ccid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]         rxreq_alignaddr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_AXI4_AXID_WIDTH-1:0]              rxreq_axid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AWLEN_WIDTH-1:0]                 rxreq_axlen_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AWSIZE_WIDTH-1:0]                rxreq_axsize_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::req_opcode_e                  rxreq_opcode_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [3:0]                             rxreq_qos_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::memattr_s                     rxreq_memattr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic                                   rxreq_device_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::NID_WIDTH-1:0]         rxreq_srcid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [11:0]                            rxreq_txnid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_excl_s1_q;
+    chie_pkg::size_e                        rxreq_size_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]    rxreq_addr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic                                   rxreq_ns_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::order_e                       rxreq_order_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_expcompack_s1_q;
+    logic                                   rxreq_tracetag_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [7:0]                             rxreq_lpid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_excl_pass_s2_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_excl_fail_s2_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_rd_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_wrf_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_wrp_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_err_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_errrd_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_errwr_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_errdat_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_drop_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cw_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cwpersist_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_rsp1_owed_s1_q;
+    chie_pkg::rsp_opcode_e                  rxreq_rsp1_opcode_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       wrzero_pending_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       errdat_pending_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     wrzero_inject_idx_sx;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     errdat_inject_idx_sx;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_en_idx_sx;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txrsp_second_idx_sx;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_second_pend_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_second_sent_q;
+    logic [1:0]                             rxreq_ccid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]    rxreq_alignaddr_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_AXI4_AXID_WIDTH-1:0]        rxreq_axid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_AWLEN_WIDTH-1:0]           rxreq_axlen_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_AWSIZE_WIDTH-1:0]          rxreq_axsize_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
 
-    logic [`HNI_AXI4_AXID_WIDTH-1:0]              rxreq_axid_s0;    
-    logic [1:0]                                   addr_region_id;
-    logic [2:0]                                   addr_range_compare;
-    logic [chie_pkg::REQ_ADDR_WIDTH-1-12:0]      addr_order_region_aligned;
+    logic [`HNI_AXI4_AXID_WIDTH-1:0]        rxreq_axid_s0;
+    logic [1:0]                             addr_region_id;
+    logic [2:0]                             addr_range_compare;
+    logic [chie_pkg::REQ_ADDR_WIDTH-1-12:0] addr_order_region_aligned;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxrsp_compack_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxrsp_compack_s1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxdat_data1_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxdat_data2_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             dbf_rxdat_ok_s2_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rxdat_compack_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_data1_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_data2_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       dbf_rxdat_ok_s2_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_compack_s1_q;
 
-    logic [2*`HNI_MSHR_ENTRIES_NUM-1:0]           txrsp_fifo_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txrsp_fifo_entry_idx_sx_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::rsp_opcode_e       txrsp_fifo_opcode_s1_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_WIDTH:0]             txrsp_fifo_set_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH:0]             txrsp_fifo_cnt_sx_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txrsp_entry_idx_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             txrsp_sent_q;
+    logic [2*`HNI_MSHR_ENTRIES_NUM-1:0]     txrsp_fifo_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txrsp_fifo_entry_idx_sx_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::rsp_opcode_e                  txrsp_fifo_opcode_s1_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_WIDTH:0]       txrsp_fifo_set_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH:0]       txrsp_fifo_cnt_sx_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txrsp_entry_idx_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_sent_q;
 
-    logic [1:0]                                   txdat_fifo_rdy_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [2*`HNI_MSHR_ENTRIES_NUM-1:0]           txdat_fifo_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txdat_fifo_entry_idx_sx_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [1:0]       txdat_fifo_dataid_s1_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_WIDTH:0]             txdat_fifo_set_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH:0]             txdat_fifo_cnt_sx_q;
-    logic                                         txdat_en_sx_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           txdat_entry_idx_sx_q;
-    logic [1:0]                                   txdat_sent_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [1:0]                             txdat_fifo_rdy_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [2*`HNI_MSHR_ENTRIES_NUM-1:0]     txdat_fifo_valid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_fifo_entry_idx_sx_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [1:0]                             txdat_fifo_dataid_s1_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_WIDTH:0]       txdat_fifo_set_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH:0]       txdat_fifo_cnt_sx_q;
+    logic                                   txdat_en_sx_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_entry_idx_sx_q;
+    logic [1:0]                             txdat_sent_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             arvalid_fifo_s1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           arvalid_fifo_idx_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           arvalid_fifo_set_sx_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           arvalid_fifo_cnt_sx_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           arvalid_entry_idx_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       arvalid_fifo_s1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     arvalid_fifo_idx_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     arvalid_fifo_set_sx_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     arvalid_fifo_cnt_sx_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     arvalid_entry_idx_s1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             rdat_valid_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           rdat_entry_idx_s1_q;
-    logic [3:0]                                   rdat_pdmask_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rdat_valid_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     rdat_entry_idx_s1_q;
+    logic [3:0]                             rdat_pdmask_q[`HNI_MSHR_ENTRIES_NUM-1:0];
 
-    logic                                         dbf_rxdat_valid_s1_q;
+    logic                                   dbf_rxdat_valid_s1_q;
     localparam [31:0]                        HNI_ENTRIES_M1 = `HNI_MSHR_ENTRIES_NUM-1;
     localparam [`HNI_MSHR_ENTRIES_WIDTH-1:0] IDX_LAST       = HNI_ENTRIES_M1[`HNI_MSHR_ENTRIES_WIDTH-1:0];
 
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           dbf_rxdat_txnid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             awvalid_fifo_s2_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           awvalid_fifo_idx_s2_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           awvalid_fifo_set_s2_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           awvalid_fifo_cnt_sx_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           awvalid_entry_idx_s2_q;
-    logic                                         awvalid_sx1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    dbf_rxdat_txnid_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      awvalid_fifo_s2_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    awvalid_fifo_idx_s2_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    awvalid_fifo_set_s2_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    awvalid_fifo_cnt_sx_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    awvalid_entry_idx_s2_q;
+    logic                                  awvalid_sx1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             bresp_ok_q;
-    logic                                         wdat_wait_sx_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      bresp_ok_q;
+    logic                                  wdat_wait_sx_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             mshr_entry_sleep_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             need_to_wakeup_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           need_to_wakeup_idx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             sleep_sx_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      mshr_entry_sleep_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      need_to_wakeup_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    need_to_wakeup_idx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      sleep_sx_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]             retired_entry_sx1_q;
-    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]           retired_entry_idx_sx1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]      retired_entry_sx1_q;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    retired_entry_idx_sx1_q;
 
     //wire 
-    wire [3:0]         rxreq_qos_s0;
-    wire [chie_pkg::NID_WIDTH-1:0]       rxreq_srcid_s0;
-    wire [11:0]       rxreq_txnid_s0;
-    chie_pkg::req_opcode_e      rxreq_opcode_s0;
-    chie_pkg::size_e        rxreq_size_s0;
-    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        rxreq_addr_s0;
-    wire          rxreq_ns_s0;
-    wire                                        rxreq_allowretry_s0;
-    chie_pkg::order_e       rxreq_order_s0;
-    wire [3:0]    rxreq_pcrdtype_s0;
-    chie_pkg::memattr_s     rxreq_memattr_s0;
-    wire                                        rxreq_device_s0;
-    wire [7:0]        rxreq_lpid_s0;
-    wire                                        rxreq_excl_s0;
-    wire                                        rxreq_expcompack_s0;
-    wire    rxreq_tracetag_s0;
-    wire                                        rxreq_rd_s0;
-    wire                                        rxreq_wrf_s0;
-    wire                                        rxreq_wrp_s0;
-    wire                                        rxreq_wrzero_s0;
-    wire                                        rxreq_cwf_s0;
-    wire                                        rxreq_cwp_s0;
-    wire                                        rxreq_errcw_s0;
-    wire                                        rxreq_cw_s0;
-    wire                                        rxreq_cwpersist_s0;
-    wire                                        rxreq_cmo_s0;
-    wire                                        rxreq_cmopersist_s0;
-    wire                                        rxreq_drop_s0;
-    wire                                        rxreq_atomic_s0;
-    wire                                        rxreq_atomicdat_s0;
-    wire                                        rxreq_err_s0;
-    wire                                        rxreq_errrd_s0;
-    wire                                        rxreq_errwrdat_s0;
-    wire                                        rxreq_errwr_s0;
-    wire                                        rxreq_errdat_s0;
-    wire                                        rxreq_errgrant_s0;
-    wire                                        rxreq_errstash_s0;
-    wire                                        rxreq_rdshape_s0;
-    wire                                        rxreq_rsp1_owed_s0;
-    chie_pkg::rsp_opcode_e      rxreq_rsp1_opcode_s0;
-    wire [`AXI4_AWSIZE_WIDTH-1:0]               rxreq_axsize_s0;
-    wire [`AXI4_AWLEN_WIDTH-1:0]                rxreq_axlen_s0;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            mshr_entry_alloc_sx;
-    wire [chie_pkg::REQ_ADDR_WIDTH-1-12:0]     sam_addrregion_idx[2:0];
-    wire [5:0]                                  sam_addrregion_size[2:0];
-    wire [5:0]                                  sam_order_region_size[2:0];
-    wire [11:0]       rxrsp_entry_idx_s0;
-    chie_pkg::rsp_opcode_e      rxrsp_opcode_s0;
-    wire                                        rxdat_valid_s0;
-    wire [11:0]       rxdat_entry_idx_s0;
-    chie_pkg::dat_opcode_e      rxdat_opcode_s0;
-    wire [1:0]      rxdat_dataid_s0;
-    wire                                        rxdat_data1_valid_s0;
-    wire                                        rxdat_data2_valid_s0;
-    wire                                        rxdat_ok_real_s1;
-    wire                                        dbf_rxdat_ok_s1;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          rxdat_ok_idx_s1;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            wrzero_ready_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            errdat_ready_sx;
-    wire                                        wrzero_inject_sx;
-    wire                                        errdat_inject_sx;
-    wire                                        rdat_valid_sx;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          rdat_idx_sx;
-    wire [3:0]                                  rdat_cdmask_sx;
-    wire                                        txrsp_en_s1;
-    wire                                        txrsp_en2_s1;
-    wire                                        txrsp_en3_sx;
-    chie_pkg::rsp_opcode_e      txrsp_opcode3_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txrsp_all_sent_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txdat_done_sx;
-    chie_pkg::size_e        atomic_ret_size_sx;
+    wire [3:0]                             rxreq_qos_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]         rxreq_srcid_s0;
+    wire [11:0]                            rxreq_txnid_s0;
+    chie_pkg::req_opcode_e                 rxreq_opcode_s0;
+    chie_pkg::size_e                       rxreq_size_s0;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]    rxreq_addr_s0;
+    wire                                   rxreq_ns_s0;
+    wire                                   rxreq_allowretry_s0;
+    chie_pkg::order_e                      rxreq_order_s0;
+    wire [3:0]                             rxreq_pcrdtype_s0;
+    chie_pkg::memattr_s                    rxreq_memattr_s0;
+    wire                                   rxreq_device_s0;
+    wire [7:0]                             rxreq_lpid_s0;
+    wire                                   rxreq_excl_s0;
+    wire                                   rxreq_expcompack_s0;
+    wire                                   rxreq_tracetag_s0;
+    wire                                   rxreq_rd_s0;
+    wire                                   rxreq_wrf_s0;
+    wire                                   rxreq_wrp_s0;
+    wire                                   rxreq_wrzero_s0;
+    wire                                   rxreq_cwf_s0;
+    wire                                   rxreq_cwp_s0;
+    wire                                   rxreq_errcw_s0;
+    wire                                   rxreq_cw_s0;
+    wire                                   rxreq_cwpersist_s0;
+    wire                                   rxreq_cmo_s0;
+    wire                                   rxreq_cmopersist_s0;
+    wire                                   rxreq_drop_s0;
+    wire                                   rxreq_atomic_s0;
+    wire                                   rxreq_atomicdat_s0;
+    wire                                   rxreq_err_s0;
+    wire                                   rxreq_errrd_s0;
+    wire                                   rxreq_errwrdat_s0;
+    wire                                   rxreq_errwr_s0;
+    wire                                   rxreq_errdat_s0;
+    wire                                   rxreq_errgrant_s0;
+    wire                                   rxreq_errstash_s0;
+    wire                                   rxreq_rdshape_s0;
+    wire                                   rxreq_rsp1_owed_s0;
+    chie_pkg::rsp_opcode_e                 rxreq_rsp1_opcode_s0;
+    wire [`AXI4_AWSIZE_WIDTH-1:0]          rxreq_axsize_s0;
+    wire [`AXI4_AWLEN_WIDTH-1:0]           rxreq_axlen_s0;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       mshr_entry_alloc_sx;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1-12:0] sam_addrregion_idx[2:0];
+    wire [5:0]                             sam_addrregion_size[2:0];
+    wire [5:0]                             sam_order_region_size[2:0];
+    wire [11:0]                            rxrsp_entry_idx_s0;
+    chie_pkg::rsp_opcode_e                 rxrsp_opcode_s0;
+    wire                                   rxdat_valid_s0;
+    wire [11:0]                            rxdat_entry_idx_s0;
+    chie_pkg::dat_opcode_e                 rxdat_opcode_s0;
+    wire [1:0]                             rxdat_dataid_s0;
+    wire                                   rxdat_data1_valid_s0;
+    wire                                   rxdat_data2_valid_s0;
+    wire                                   rxdat_ok_real_s1;
+    wire                                   dbf_rxdat_ok_s1;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]     rxdat_ok_idx_s1;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       wrzero_ready_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       errdat_ready_sx;
+    wire                                   wrzero_inject_sx;
+    wire                                   errdat_inject_sx;
+    wire                                   rdat_valid_sx;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]     rdat_idx_sx;
+    wire [3:0]                             rdat_cdmask_sx;
+    wire                                   txrsp_en_s1;
+    wire                                   txrsp_en2_s1;
+    wire                                   txrsp_en3_sx;
+    chie_pkg::rsp_opcode_e                 txrsp_opcode3_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_all_sent_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat_done_sx;
+    chie_pkg::size_e                       atomic_ret_size_sx;
     wire [chie_pkg::BE_WIDTH:0]            atomic_ret_bytes_sx;
-    wire [4:0]                                  atomic_ret_off_sx;
-    wire                                        txdat_en_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txdat1_en_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            txdat2_en_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            rdat_allrcvd_sx;
-    wire                                        arvalid_en_s1;
-    wire                                        arvalid_en2_s1;
-    wire                                        awvalid_en_s1;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            need_to_sleep_s0;
-    wire                                        wakeup_valid;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          wakeup_idx_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1: 0]           compack_ok_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]            retired_entry_sx;
+    wire [4:0]                             atomic_ret_off_sx;
+    wire                                   txdat_en_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat1_en_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat2_en_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       rdat_allrcvd_sx;
+    wire                                   arvalid_en_s1;
+    wire                                   arvalid_en2_s1;
+    wire                                   awvalid_en_s1;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       need_to_sleep_s0;
+    wire                                   wakeup_valid;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]     wakeup_idx_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1: 0]      compack_ok_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       retired_entry_sx;
 
 //main function
-    genvar entry, i, j;
+    genvar                                 entry, i, j;
 
     //************************************************************************//
 
@@ -895,9 +895,8 @@ module hni_mshr `HNI_PARAM
     assign wrzero_ready_sx = wrzero_pending_q & (~sleep_sx_q);
 
     always_comb begin: wrzero_inject_idx_comb_logic
-        integer m;
         wrzero_inject_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
+        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
             if (wrzero_ready_sx[m])
                 wrzero_inject_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
         end
@@ -926,9 +925,8 @@ module hni_mshr `HNI_PARAM
     assign txrsp_opcode3_sx = rxreq_cwpersist_s1_q[txrsp_second_idx_sx] ? chie_pkg::RSP_COMPPERSIST : chie_pkg::RSP_COMPCMO;
 
     always_comb begin: txrsp_second_idx_comb_logic
-        integer m;
         txrsp_second_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
+        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
             if (txrsp_second_pend_q[m])
                 txrsp_second_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
         end
@@ -1089,9 +1087,8 @@ module hni_mshr `HNI_PARAM
     // One packet is enqueued per cycle, so the enqueue must name the entry that won it
     // rather than whichever entry last took AXI read data.
     always_comb begin: txdat_en_idx_comb_logic
-        integer m;
         txdat_en_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
+        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
             if (txdat1_en_sx[m] | txdat2_en_sx[m])
                 txdat_en_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
         end
@@ -1196,11 +1193,11 @@ module hni_mshr `HNI_PARAM
     assign mshr_txdat_be_ovr_en_sx = rxreq_errdat_s1_q[txdat_entry_idx_sx_q];
 
     always_comb begin: mshr_txdat_be_ovr_comb_logic
-        integer m, lo, hi;
+        integer lo, hi;
         lo = {27'b0, atomic_ret_off_sx};
         hi = lo + atomic_ret_bytes_sx[31:0];
         mshr_txdat_be_ovr_sx = '0;
-        for(m=0; m<chie_pkg::BE_WIDTH; m=m+1)begin
+        for(int m=0; m<chie_pkg::BE_WIDTH; m=m+1)begin
             if ((m >= lo) && (m < hi))
                 mshr_txdat_be_ovr_sx[m] = 1'b1;
         end
@@ -1304,9 +1301,8 @@ module hni_mshr `HNI_PARAM
     assign errdat_ready_sx = errdat_pending_q & (~sleep_sx_q);
 
     always_comb begin: errdat_inject_idx_comb_logic
-        integer m;
         errdat_inject_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
-        for(m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
+        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
             if (errdat_ready_sx[m])
                 errdat_inject_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
         end

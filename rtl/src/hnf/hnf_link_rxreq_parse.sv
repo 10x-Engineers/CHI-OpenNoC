@@ -20,65 +20,65 @@
 module hnf_link_rxreq_parse `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from link
-    input wire rxreqflitv,
-    input chie_pkg::req_flit_s rxreqflit,
-    input wire rxreqflitpend,
+    input  wire                                rxreqflitv,
+    input  chie_pkg::req_flit_s                rxreqflit,
+    input  wire                                rxreqflitpend,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire rxcrd_en,
-    output wire rxreq_crd_cnt_full,
+    input  wire                                rxcrd_en,
+    output wire                                rxreq_crd_cnt_full,
 
     //inputs from hnf_cache_pipeline
-    input wire biq_req_valid_s0_q,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
+    input  wire                                biq_req_valid_s0_q,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
 
     //inputs from hnf_mshr_qos
-    input wire qos_seq_pool_full_s0_q,
-    input wire rxreq_retry_enable_s0,
+    input  wire                                qos_seq_pool_full_s0_q,
+    input  wire                                rxreq_retry_enable_s0,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire txrsp_mshr_retryack_won_s1,
+    input  wire                                txrsp_mshr_retryack_won_s1,
 
     //outputs to link
-    output wire rxreq_lcrdv,
+    output wire                                rxreq_lcrdv,
 
     //outputs to hnf_mshr
-    output wire li_mshr_rxreq_valid_s0,
-    output wire [3:0] li_mshr_rxreq_qos_s0,
-    output wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
-    output wire [11:0] li_mshr_rxreq_txnid_s0,
-    output chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
-    output chie_pkg::size_e li_mshr_rxreq_size_s0,
+    output wire                                li_mshr_rxreq_valid_s0,
+    output wire [3:0]                          li_mshr_rxreq_qos_s0,
+    output wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
+    output wire [11:0]                         li_mshr_rxreq_txnid_s0,
+    output chie_pkg::req_opcode_e              li_mshr_rxreq_opcode_s0,
+    output chie_pkg::size_e                    li_mshr_rxreq_size_s0,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
-    output wire li_mshr_rxreq_ns_s0,
-    output wire li_mshr_rxreq_allowretry_s0,
-    output chie_pkg::order_e li_mshr_rxreq_order_s0,
-    output wire [3:0] li_mshr_rxreq_pcrdtype_s0,
-    output chie_pkg::memattr_s li_mshr_rxreq_memattr_s0,
-    output wire [7:0] li_mshr_rxreq_lpid_s0,
-    output wire li_mshr_rxreq_excl_s0,
-    output wire li_mshr_rxreq_expcompack_s0,
-    output wire li_mshr_rxreq_tracetag_s0
+    output wire                                li_mshr_rxreq_ns_s0,
+    output wire                                li_mshr_rxreq_allowretry_s0,
+    output chie_pkg::order_e                   li_mshr_rxreq_order_s0,
+    output wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
+    output chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
+    output wire [7:0]                          li_mshr_rxreq_lpid_s0,
+    output wire                                li_mshr_rxreq_excl_s0,
+    output wire                                li_mshr_rxreq_expcompack_s0,
+    output wire                                li_mshr_rxreq_tracetag_s0
     );
 
     //internal reg signals
-    logic                                             rxreqflitv_en_q;
-    logic [`HNF_LCRD_REQ_CNT_RANGE]                 rxreq_crd_cnt_s1_q;
-    logic                                             rxreqcrdv_s1_q;
+    logic                               rxreqflitv_en_q;
+    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0] rxreq_crd_cnt_s1_q;
+    logic                               rxreqcrdv_s1_q;
 
     //internal wire signals
-    wire                                            rxreq_crd_grant_sx;
-    wire [1:0]                                      rxreq_crd_rtn_sx;
-    wire                                            rxreq_crd_cnt_zero_sx;
-    wire                                            li_req_crd_rtn_s0;
-    wire                                            li_retack_tx_s1;
-    wire                                            rxreq_crd_cnt_upd_s1;
-    wire                                            rxreqcrdv_ns_s0;
-    wire [`HNF_LCRD_REQ_CNT_RANGE]                rxreq_crd_cnt_nxt_s1;
+    wire                                rxreq_crd_grant_sx;
+    wire [1:0]                          rxreq_crd_rtn_sx;
+    wire                                rxreq_crd_cnt_zero_sx;
+    wire                                li_req_crd_rtn_s0;
+    wire                                li_retack_tx_s1;
+    wire                                rxreq_crd_cnt_upd_s1;
+    wire                                rxreqcrdv_ns_s0;
+    wire [`HNF_LCRD_REQ_CNT_WIDTH-1:0]  rxreq_crd_cnt_nxt_s1;
 
     //main function
 

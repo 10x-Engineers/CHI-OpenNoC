@@ -20,23 +20,23 @@ module poll_with_start_entry
      )
     (
     //input
-    input wire [ENTRIES_NUM-1:0] entry_vec,
-    input wire [ENTRIES_NUM-1:0] start_entry,
+    input  wire [ENTRIES_NUM-1:0] entry_vec,
+    input  wire [ENTRIES_NUM-1:0] start_entry,
     //output
     output wire [ENTRIES_NUM-1:0] entry_ptr_sel,
-    output wire found
+    output wire                   found
     );
 
     //internal signals
-    wire [ENTRIES_NUM-1:0]    upper_mask;
-    wire [ENTRIES_NUM-1:0]    lower_mask;
-    wire [ENTRIES_NUM-1:0]    in_vecx;
-    logic [ENTRIES_NUM-1:0]     upper_ptr_dec;
-    logic [ENTRIES_NUM-1:0]     lower_ptr_dec;
-    wire upper_found;
-    wire lower_found;
-    logic tmp_flag_low;
-    logic tmp_flag_high;
+    wire [ENTRIES_NUM-1:0]  upper_mask;
+    wire [ENTRIES_NUM-1:0]  lower_mask;
+    wire [ENTRIES_NUM-1:0]  in_vecx;
+    logic [ENTRIES_NUM-1:0] upper_ptr_dec;
+    logic [ENTRIES_NUM-1:0] lower_ptr_dec;
+    wire                    upper_found;
+    wire                    lower_found;
+    logic                   tmp_flag_low;
+    logic                   tmp_flag_high;
 
 
     assign lower_mask[ENTRIES_NUM-1:0] = ((start_entry[ENTRIES_NUM-1:0]) - 1'b1);

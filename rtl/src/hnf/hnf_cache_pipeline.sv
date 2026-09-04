@@ -25,90 +25,90 @@
 module hnf_cache_pipeline `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                     clk,
+    input  wire                                     rst,
 
     //inputs from hnf_mshr_ctl
-    input wire mshr_l3_req_en_sx1_q,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_l3_addr_sx1,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_l3_entry_idx_sx1_q,
-    input wire mshr_l3_fill_sx1_q,
-    input chie_pkg::req_opcode_e mshr_l3_opcode_sx1_q,
-    input wire [CHIE_NID_WIDTH_PARAM-1:0] mshr_l3_rnf_sx1_q,
-    input wire mshr_l3_fill_dirty_sx1_q,
-    input wire mshr_l3_seq_retire_sx1_q,
+    input  wire                                     mshr_l3_req_en_sx1_q,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      mshr_l3_addr_sx1,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_l3_entry_idx_sx1_q,
+    input  wire                                     mshr_l3_fill_sx1_q,
+    input  chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q,
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0]          mshr_l3_rnf_sx1_q,
+    input  wire                                     mshr_l3_fill_dirty_sx1_q,
+    input  wire                                     mshr_l3_seq_retire_sx1_q,
 
     //inputs from hnf_tag_sram
-    input wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q,
+    input  wire [`LOC_CLINE_WIDTH*`LOC_WAY_NUM-1:0] loc_rd_clines_q,
 
     //inputs from hnf_sf_sram
-    input wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0] sf_rd_clines_q,
+    input  wire [`SF_CLINE_WIDTH*`SF_WAY_NUM-1:0]   sf_rd_clines_q,
 
     //inputs from hnf_lru_sram
-    input wire [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q,
+    input  wire [`LRU_CLINE_WIDTH-1:0]              lru_rd_data_q,
 
     //inputs from hnf_mshr_addr_buffer
-    input wire mshr_l3_hazard_valid_sx3_q,
-    input wire mshr_evict_hazard_sx5,
+    input  wire                                     mshr_l3_hazard_valid_sx3_q,
+    input  wire                                     mshr_evict_hazard_sx5,
 
     //outputs to hnf_tag_sram
-    output logic [`LOC_INDEX_WIDTH-1:0] loc_index_q,
-    output logic loc_rd_en_q,
-    output logic [`LOC_WAY_NUM-1:0] loc_wr_ways_q,
-    output logic [`LOC_CLINE_WIDTH-1:0] loc_wr_cline_q,
+    output logic [`LOC_INDEX_WIDTH-1:0]             loc_index_q,
+    output logic                                    loc_rd_en_q,
+    output logic [`LOC_WAY_NUM-1:0]                 loc_wr_ways_q,
+    output logic [`LOC_CLINE_WIDTH-1:0]             loc_wr_cline_q,
 
     //outputs to hnf_sf_sram
-    output logic [`SF_INDEX_WIDTH-1:0] sf_index_q,
-    output logic sf_rd_en_q,
-    output logic [`SF_WAY_NUM-1:0] sf_wr_ways_q,
-    output logic [`SF_CLINE_WIDTH-1:0] sf_wr_cline_q,
+    output logic [`SF_INDEX_WIDTH-1:0]              sf_index_q,
+    output logic                                    sf_rd_en_q,
+    output logic [`SF_WAY_NUM-1:0]                  sf_wr_ways_q,
+    output logic [`SF_CLINE_WIDTH-1:0]              sf_wr_cline_q,
 
     //outputs to hnf_data_sram
-    output logic [`LOC_INDEX_WIDTH-1:0] l3_index_q,
-    output logic [`LOC_WAY_NUM-1:0] l3_rd_ways_q,
-    output logic [`LOC_WAY_NUM-1:0] l3_wr_ways_q,
+    output logic [`LOC_INDEX_WIDTH-1:0]             l3_index_q,
+    output logic [`LOC_WAY_NUM-1:0]                 l3_rd_ways_q,
+    output logic [`LOC_WAY_NUM-1:0]                 l3_wr_ways_q,
 
     //outputs to hnf_lru_sram
-    output logic [`LOC_INDEX_WIDTH-1:0] lru_index_q,
-    output logic lru_rd_en_q,
-    output logic lru_wr_en_q,
-    output logic [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
+    output logic [`LOC_INDEX_WIDTH-1:0]             lru_index_q,
+    output logic                                    lru_rd_en_q,
+    output logic                                    lru_wr_en_q,
+    output logic [`LRU_CLINE_WIDTH-1:0]             lru_wr_data_q,
 
     //outputs to hnf_mshr_addr_buffer
-    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] pipe_mshr_addr_sx5_q,
-    output logic pipe_mshr_addr_valid_sx5_q,
-    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_mshr_addr_idx_sx5_q,
+    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0]     pipe_mshr_addr_sx5_q,
+    output logic                                    pipe_mshr_addr_valid_sx5_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_addr_idx_sx5_q,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_evict_cam_addr_sx4,
-    output wire pipe_evict_cam_valid_sx4,
-    output wire [`MSHR_ENTRIES_WIDTH-1:0] pipe_evict_cam_idx_sx4,
+    output wire                                     pipe_evict_cam_valid_sx4,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]           pipe_evict_cam_idx_sx4,
 
     //outputs to hnf_mshr_addr_buffer and hnf_mshr_ctl
-    output logic l3_evict_sx7_q,
-    output logic [`MSHR_ENTRIES_WIDTH-1:0] l3_mshr_entry_sx7_q,
+    output logic                                    l3_evict_sx7_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]          l3_mshr_entry_sx7_q,
 
     //outputs to hnf_link_rxreq_wrap
-    output wire biq_req_valid_s0_q,
-    output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
+    output wire                                     biq_req_valid_s0_q,
+    output wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      biq_req_addr_s0_q,
 
     //outputs to hnf_mshr_ctl
-    output logic l3_pipeval_sx7_q,
-    output chie_pkg::req_opcode_e l3_opcode_sx7_q,
-    output logic l3_memrd_sx7_q,
-    output logic l3_hit_sx7_q,
-    output logic l3_hit_dirty_sx7_q,
-    output logic l3_sfhit_sx7_q,
-    output logic l3_snpdirect_sx7_q,
-    output logic l3_snpbrd_sx7_q,
-    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0] l3_snp_bit_sx7_q,
-    output logic l3_replay_sx7_q,
-    output logic l3_mshr_wr_op_sx7_q,
-    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] l3_evict_addr_sx7_q,
+    output logic                                    l3_pipeval_sx7_q,
+    output chie_pkg::req_opcode_e                   l3_opcode_sx7_q,
+    output logic                                    l3_memrd_sx7_q,
+    output logic                                    l3_hit_sx7_q,
+    output logic                                    l3_hit_dirty_sx7_q,
+    output logic                                    l3_sfhit_sx7_q,
+    output logic                                    l3_snpdirect_sx7_q,
+    output logic                                    l3_snpbrd_sx7_q,
+    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]       l3_snp_bit_sx7_q,
+    output logic                                    l3_replay_sx7_q,
+    output logic                                    l3_mshr_wr_op_sx7_q,
+    output logic [chie_pkg::REQ_ADDR_WIDTH-1:0]     l3_evict_addr_sx7_q,
 
     //outputs to hnf_data_buffer
-    output logic pipe_dbf_wr_valid_sx9_q,
-    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_wr_idx_sx9_q,
-    output logic pipe_dbf_rd_idx_valid_sx6_q,
-    output logic [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_rd_idx_sx6_q
+    output logic                                    pipe_dbf_wr_valid_sx9_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_dbf_wr_idx_sx9_q,
+    output logic                                    pipe_dbf_rd_idx_valid_sx6_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_dbf_rd_idx_sx6_q
     );
 
     //local param
@@ -130,7 +130,7 @@ module hnf_cache_pipeline `HNF_PARAM
     localparam BIQ_DATA_WIDTH = ADDR_WIDTH;
 
     //internal variables
-    genvar gi;
+    genvar                                   gi;
 
     //internal signals
 
@@ -139,28 +139,28 @@ module hnf_cache_pipeline `HNF_PARAM
     // CPL every stage keep all MSHR info
     /////////////////////////////////////////////////////////////
     //===========================================================
-    chie_pkg::req_opcode_e                 pipe_opcode_sx_q[CPL_STAGE-1:0];
+    chie_pkg::req_opcode_e                   pipe_opcode_sx_q[CPL_STAGE-1:0];
     logic [ADDR_WIDTH-1:0]                   pipe_addr_sx_q[CPL_STAGE-1:0];
     logic [NID_WIDTH-1:0]                    pipe_rnf_idx_sx_q[CPL_STAGE-1:0];
     logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_idx_sx_q[CPL_STAGE-1:0];
     logic [CPL_STAGE-1:0]                    pipe_fill_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_fill_dirty_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_req_valid_sx_q;
-    wire [CPL_STAGE-2:0]                   pipe_req_valid_sx;
+    wire [CPL_STAGE-2:0]                     pipe_req_valid_sx;
 
     /////////////////////////////////////////////////////////////
     //===========================================================
     // Stage SX1 signals
     /////////////////////////////////////////////////////////////
     //===========================================================
-    chie_pkg::req_opcode_e                 pipe_opcode_sx1;
-    wire [ADDR_WIDTH-1:0]                   pipe_addr_sx1;
-    wire [NID_WIDTH-1:0]                    pipe_rnf_idx_sx1;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_idx_sx1;
-    wire                                    pipe_fill_sx1;
-    wire                                    pipe_fill_dirty_sx1;
-    wire                                    pipe_req_bypass_sx1;
-    wire                                    pipe_mshr_req_valid_sx1;
+    chie_pkg::req_opcode_e                   pipe_opcode_sx1;
+    wire [ADDR_WIDTH-1:0]                    pipe_addr_sx1;
+    wire [NID_WIDTH-1:0]                     pipe_rnf_idx_sx1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]           pipe_mshr_idx_sx1;
+    wire                                     pipe_fill_sx1;
+    wire                                     pipe_fill_dirty_sx1;
+    wire                                     pipe_req_bypass_sx1;
+    wire                                     pipe_mshr_req_valid_sx1;
 
     /////////////////////////////////////////////////////////////
     //===========================================================
@@ -168,22 +168,22 @@ module hnf_cache_pipeline `HNF_PARAM
     /////////////////////////////////////////////////////////////
     //===========================================================
     // mshr requst signals
-    wire                                    pipe_tag_rd_sx1;
-    wire                                    pipe_sf_rd_sx1;
-    wire                                    pipe_lru_rd_sx1;
+    wire                                     pipe_tag_rd_sx1;
+    wire                                     pipe_sf_rd_sx1;
+    wire                                     pipe_lru_rd_sx1;
 
     // cpl internal write signals
-    wire                                    pipe_tag_wr_sx1;
-    wire                                    pipe_sf_wr_sx1;
-    wire                                    pipe_lru_wr_sx1;
-    logic                                     pipe_data_wr_sx2_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx2_q;
-    logic                                     pipe_wrap_wr_sx2_q;
-    logic [ADDR_WIDTH-1:0]                    pipe_addr_wr_sx2_q;
-    logic [`RNF_NUM*NID_WIDTH-1:0]            pipe_nodeid_list_sx2;
-    logic [NID_WIDTH-1:0]                     pipe_physical_nodeid_sx2;
-    logic [NID_WIDTH-1:0]                     pipe_current_nodeid_sx2;
-    logic                                     pipe_rnfid_found_sx2;
+    wire                                     pipe_tag_wr_sx1;
+    wire                                     pipe_sf_wr_sx1;
+    wire                                     pipe_lru_wr_sx1;
+    logic                                    pipe_data_wr_sx2_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx2_q;
+    logic                                    pipe_wrap_wr_sx2_q;
+    logic [ADDR_WIDTH-1:0]                   pipe_addr_wr_sx2_q;
+    logic [`RNF_NUM*NID_WIDTH-1:0]           pipe_nodeid_list_sx2;
+    logic [NID_WIDTH-1:0]                    pipe_physical_nodeid_sx2;
+    logic [NID_WIDTH-1:0]                    pipe_current_nodeid_sx2;
+    logic                                    pipe_rnfid_found_sx2;
 
     /////////////////////////////////////////////////////////////
     //===========================================================
@@ -192,74 +192,74 @@ module hnf_cache_pipeline `HNF_PARAM
     //===========================================================
 
     // cpl internal write signals
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx3_q;
-    logic [ADDR_WIDTH-1:0]                    pipe_addr_wr_sx3_q;
-    logic                                     pipe_data_wr_sx3_q;
-    logic                                     pipe_wrap_wr_sx3_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx3_q;
+    logic [ADDR_WIDTH-1:0]                   pipe_addr_wr_sx3_q;
+    logic                                    pipe_data_wr_sx3_q;
+    logic                                    pipe_wrap_wr_sx3_q;
 
     // Prepare decode stage for SX4
-    chie_pkg::req_opcode_e                 pipe_opcode_sx3;
-    wire                                    op_rdonce_sx3;
-    wire                                    op_rdnsd_sx3;
-    wire                                    op_rdclean_sx3;
-    wire                                    op_rdunique_sx3;
-    wire                                    op_wufull_sx3;
-    wire                                    op_wuptl_sx3;
-    wire                                    op_wbfull_sx3;
-    wire                                    op_wevict_sx3;
-    wire                                    op_dl_cu_sx3;
-    wire                                    op_dl_mu_sx3;
-    wire                                    op_dl_evict_sx3;
-    wire                                    op_cmo_cs_sx3;
-    wire                                    op_cmo_ci_sx3;
-    wire                                    pipe_mem_rd_sx3;
+    chie_pkg::req_opcode_e                   pipe_opcode_sx3;
+    wire                                     op_rdonce_sx3;
+    wire                                     op_rdnsd_sx3;
+    wire                                     op_rdclean_sx3;
+    wire                                     op_rdunique_sx3;
+    wire                                     op_wufull_sx3;
+    wire                                     op_wuptl_sx3;
+    wire                                     op_wbfull_sx3;
+    wire                                     op_wevict_sx3;
+    wire                                     op_dl_cu_sx3;
+    wire                                     op_dl_mu_sx3;
+    wire                                     op_dl_evict_sx3;
+    wire                                     op_cmo_cs_sx3;
+    wire                                     op_cmo_ci_sx3;
+    wire                                     pipe_mem_rd_sx3;
 
     // Tag Match signals
-    wire [ADDR_WIDTH-1:0]                   pipe_addr_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_match_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_dirty_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_free_vec_sx3;
-    wire                                    pipe_tag_free_sx3;
-    wire                                    pipe_tag_match_sx3;
-    wire                                    pipe_tag_match_dirty_sx3;
-    wire                                    pipe_tag_evict_dirty_sx3;
-    wire                                    pipe_tag_evict_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_evict_way_sx3;
-    logic [`LOC_TAG_WIDTH-1:0]                pipe_tag_evict_tag_sx3;
+    wire [ADDR_WIDTH-1:0]                    pipe_addr_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_match_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_dirty_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_free_vec_sx3;
+    wire                                     pipe_tag_free_sx3;
+    wire                                     pipe_tag_match_sx3;
+    wire                                     pipe_tag_match_dirty_sx3;
+    wire                                     pipe_tag_evict_dirty_sx3;
+    wire                                     pipe_tag_evict_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_evict_way_sx3;
+    logic [`LOC_TAG_WIDTH-1:0]               pipe_tag_evict_tag_sx3;
     // LRU match signals
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_immediate_rrpv_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_near_immediate_rrpv_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_long_rrpv_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_distance_rrpv_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_immediate_alloc_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_near_immediate_alloc_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_long_alloc_vec_sx3;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_distance_alloc_vec_sx3;
-    wire                                    pipe_lru_immediate_found_sx3;
-    wire                                    pipe_lru_near_immediate_found_sx3;
-    wire                                    pipe_lru_long_found_sx3;
-    wire                                    pipe_lru_distance_found_sx3;
-    logic  [`LOC_WAY_NUM-1:0]                 pipe_lru_next_vec_q;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_lru_alloc_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_immediate_rrpv_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_near_immediate_rrpv_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_long_rrpv_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_distance_rrpv_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_immediate_alloc_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_near_immediate_alloc_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_long_alloc_vec_sx3;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_distance_alloc_vec_sx3;
+    wire                                     pipe_lru_immediate_found_sx3;
+    wire                                     pipe_lru_near_immediate_found_sx3;
+    wire                                     pipe_lru_long_found_sx3;
+    wire                                     pipe_lru_distance_found_sx3;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_lru_next_vec_q;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_lru_alloc_vec_sx3;
     // SF Match signals
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_match_vec_sx3;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_free_vec_sx3;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_other_valid_vec_sx3;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_other_share_vec_sx3;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_self_valid_vec_sx3;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_self_share_vec_sx3;
-    wire                                    pipe_sf_other_match_sx3;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_match_state_sx3;
-    logic [`SF_TAG_WIDTH-1:0]                 pipe_sf_evict_tag_sx3;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_evict_state_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_match_vec_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_free_vec_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_other_valid_vec_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_other_share_vec_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_self_valid_vec_sx3;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_self_share_vec_sx3;
+    wire                                     pipe_sf_other_match_sx3;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_match_state_sx3;
+    logic [`SF_TAG_WIDTH-1:0]                pipe_sf_evict_tag_sx3;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_evict_state_sx3;
     // Random SF evict posistion, left shift per cycle
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_evict_next_sx3_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_evict_next_sx3_q;
     // generate SF mask
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_other_valid_mask_sx3_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_other_share_mask_sx3_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_valid_mask_sx3_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_share_mask_sx3_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_mask_sx3_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_other_valid_mask_sx3_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_other_share_mask_sx3_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_valid_mask_sx3_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_share_mask_sx3_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_mask_sx3_q;
 
     //===========================================================
     /////////////////////////////////////////////////////////////
@@ -268,257 +268,257 @@ module hnf_cache_pipeline `HNF_PARAM
     //===========================================================
 
     // cpl internal write signals
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx4_q;
-    logic [ADDR_WIDTH-1:0]                    pipe_addr_wr_sx4_q;
-    logic                                     pipe_data_wr_sx4_q;
-    logic                                     pipe_wrap_wr_sx4_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx4_q;
+    logic [ADDR_WIDTH-1:0]                   pipe_addr_wr_sx4_q;
+    logic                                    pipe_data_wr_sx4_q;
+    logic                                    pipe_wrap_wr_sx4_q;
 
     //LRU data delay one cycle
-    logic [`LRU_CLINE_WIDTH-1:0]              lru_rd_data_d_q;
+    logic [`LRU_CLINE_WIDTH-1:0]             lru_rd_data_d_q;
 
     // MSHR request tag/sf state machine
-    wire [ADDR_WIDTH-1:0]                   pipe_addr_sx4;
-    wire                                    pipe_fill_sx4;
-    logic                                     op_rdonce_sx4_q;
-    logic                                     op_rdnsd_sx4_q;
-    logic                                     op_rdclean_sx4_q;
-    logic                                     op_rdunique_sx4_q;
-    logic                                     op_wufull_sx4_q;
-    logic                                     op_wuptl_sx4_q;
-    logic                                     op_wbfull_sx4_q;
-    logic                                     op_wevict_sx4_q;
-    logic                                     op_dl_cu_sx4_q;
-    logic                                     op_dl_mu_sx4_q;
-    logic                                     op_dl_evict_sx4_q;
-    logic                                     op_cmo_cs_sx4_q;
-    logic                                     op_cmo_ci_sx4_q;
+    wire [ADDR_WIDTH-1:0]                    pipe_addr_sx4;
+    wire                                     pipe_fill_sx4;
+    logic                                    op_rdonce_sx4_q;
+    logic                                    op_rdnsd_sx4_q;
+    logic                                    op_rdclean_sx4_q;
+    logic                                    op_rdunique_sx4_q;
+    logic                                    op_wufull_sx4_q;
+    logic                                    op_wuptl_sx4_q;
+    logic                                    op_wbfull_sx4_q;
+    logic                                    op_wevict_sx4_q;
+    logic                                    op_dl_cu_sx4_q;
+    logic                                    op_dl_mu_sx4_q;
+    logic                                    op_dl_evict_sx4_q;
+    logic                                    op_cmo_cs_sx4_q;
+    logic                                    op_cmo_ci_sx4_q;
 
     /////////////////////////////////////////////////////////////
     // Tag Match signals
     /////////////////////////////////////////////////////////////
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_match_vec_sx4_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_free_vec_sx4_q;
-    logic                                     pipe_tag_match_sx4_q;
-    logic                                     pipe_tag_free_sx4_q;
-    logic                                     pipe_tag_match_dirty_sx4_q;
-    logic                                     pipe_tag_evict_dirty_sx4_q;
-    logic                                     pipe_tag_evict_sx4_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_alloc_free_way_vec_sx4;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_alloc_free_way_vector;
-    logic [`LOC_TAG_WIDTH-1:0]                pipe_tag_evict_tag_sx4_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_evict_way_sx4_q;
-    wire [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_tag_evict_addr_sx4;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx4;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_haz_way_sx4;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_match_vec_sx4_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_free_vec_sx4_q;
+    logic                                    pipe_tag_match_sx4_q;
+    logic                                    pipe_tag_free_sx4_q;
+    logic                                    pipe_tag_match_dirty_sx4_q;
+    logic                                    pipe_tag_evict_dirty_sx4_q;
+    logic                                    pipe_tag_evict_sx4_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_alloc_free_way_vec_sx4;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_alloc_free_way_vector;
+    logic [`LOC_TAG_WIDTH-1:0]               pipe_tag_evict_tag_sx4_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_evict_way_sx4_q;
+    wire [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]  pipe_tag_evict_addr_sx4;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx4;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_haz_way_sx4;
 
     // Tag update signals
-    wire                                    pipe_insert_slc_nofill_sx4;
-    wire                                    pipe_insert_slc_fill_sx4;
-    wire                                    pipe_insert_slc_sx4;
-    wire                                    pipe_update_slc_nofill_sx4;
-    wire                                    pipe_update_slc_fill_sx4;
-    wire                                    pipe_update_slc_sx4;
-    wire                                    pipe_invalid_slc_nofill_sx4;
-    wire                                    pipe_invalid_slc_fill_sx4;
-    wire                                    pipe_invalid_slc_sx4;
-    wire                                    pipe_tag_state_invalid_sx4;
-    wire                                    pipe_tag_state_clean_sx4;
-    wire                                    pipe_tag_state_dirty_sx4;
-    wire                                    pipe_read_slc_nofill_sx4;
-    wire                                    pipe_read_slc_fill_sx4;
-    wire                                    pipe_read_slc_sx4;
-    wire [1:0]                              pipe_tag_state_sx4;
-    wire                                    pipe_read_l3_nofill_sx4;
-    wire                                    pipe_read_l3_fill_sx4;
-    wire                                    pipe_read_l3_sx4;
+    wire                                     pipe_insert_slc_nofill_sx4;
+    wire                                     pipe_insert_slc_fill_sx4;
+    wire                                     pipe_insert_slc_sx4;
+    wire                                     pipe_update_slc_nofill_sx4;
+    wire                                     pipe_update_slc_fill_sx4;
+    wire                                     pipe_update_slc_sx4;
+    wire                                     pipe_invalid_slc_nofill_sx4;
+    wire                                     pipe_invalid_slc_fill_sx4;
+    wire                                     pipe_invalid_slc_sx4;
+    wire                                     pipe_tag_state_invalid_sx4;
+    wire                                     pipe_tag_state_clean_sx4;
+    wire                                     pipe_tag_state_dirty_sx4;
+    wire                                     pipe_read_slc_nofill_sx4;
+    wire                                     pipe_read_slc_fill_sx4;
+    wire                                     pipe_read_slc_sx4;
+    wire [1:0]                               pipe_tag_state_sx4;
+    wire                                     pipe_read_l3_nofill_sx4;
+    wire                                     pipe_read_l3_fill_sx4;
+    wire                                     pipe_read_l3_sx4;
 
     /////////////////////////////////////////////////////////////
     // SF Match signals
     /////////////////////////////////////////////////////////////
     // SX4 SF mask
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_valid_mask_sx4_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_share_mask_sx4_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_self_mask_sx4_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_other_valid_mask_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_valid_mask_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_share_mask_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_self_mask_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_other_valid_mask_sx4_q;
     // SF hit status
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_match_vec_sx4_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_free_vec_sx4_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_match_state_sx4_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_other_valid_vec_sx4_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_other_share_vec_sx4_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_self_valid_vec_sx4_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_self_share_vec_sx4_q;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_snp_share_state_sx4;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_free_way_vec_sx4;
-    wire                                    pipe_sf_free_sx4;
-    wire                                    pipe_sf_other_match_sx4;
-    wire                                    pipe_sf_other_match_share_sx4;
-    wire                                    pipe_sf_self_match_sx4;
-    wire                                    pipe_sf_self_match_share_sx4;
-    wire                                    pipe_sf_clear_valid_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_all_invalid_sx4;
-    wire                                    pipe_sf_self_unique_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_requester_unique_sx4;
-    wire                                    pipe_sf_self_share_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_requester_share_sx4;
-    wire                                    pipe_sf_self_invalid_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_requester_invalid_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_insert_state_sx4;
-    wire [`RNF_NUM-1:0]                     pipe_sf_evict_tgt_vec_sx4;
-    wire [`RNF_NUM-1:0]                     pipe_sf_snp_tgt_vec_sx4;
-    wire [`RNF_NUM-1:0]                     pipe_sf_snp_unq_tgt_vec_sx4;
-    wire [`RNF_NUM-1:0]                     pipe_sf_tgt_vec_sx4;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_match_vec_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_free_vec_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_match_state_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_other_valid_vec_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_other_share_vec_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_self_valid_vec_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_self_share_vec_sx4_q;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_snp_share_state_sx4;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_free_way_vec_sx4;
+    wire                                     pipe_sf_free_sx4;
+    wire                                     pipe_sf_other_match_sx4;
+    wire                                     pipe_sf_other_match_share_sx4;
+    wire                                     pipe_sf_self_match_sx4;
+    wire                                     pipe_sf_self_match_share_sx4;
+    wire                                     pipe_sf_clear_valid_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_all_invalid_sx4;
+    wire                                     pipe_sf_self_unique_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_requester_unique_sx4;
+    wire                                     pipe_sf_self_share_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_requester_share_sx4;
+    wire                                     pipe_sf_self_invalid_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_requester_invalid_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_insert_state_sx4;
+    wire [`RNF_NUM-1:0]                      pipe_sf_evict_tgt_vec_sx4;
+    wire [`RNF_NUM-1:0]                      pipe_sf_snp_tgt_vec_sx4;
+    wire [`RNF_NUM-1:0]                      pipe_sf_snp_unq_tgt_vec_sx4;
+    wire [`RNF_NUM-1:0]                      pipe_sf_tgt_vec_sx4;
 
     // SF update signals
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_update_state_sx4;
-    wire                                    pipe_sf_insert_sx4;
-    logic [`SF_TAG_WIDTH-1:0]                 pipe_sf_evict_tag_sx4_q;
-    logic [`RNF_NUM*2-1:0]                    pipe_sf_evict_state_sx4_q;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_update_state_sx4;
+    wire                                     pipe_sf_insert_sx4;
+    logic [`SF_TAG_WIDTH-1:0]                pipe_sf_evict_tag_sx4_q;
+    logic [`RNF_NUM*2-1:0]                   pipe_sf_evict_state_sx4_q;
 
     // Random SF evict posistion, left shift per cycle
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_evict_next_sx4_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_evict_next_sx4_q;
 
     /////////////////////////////////////////////////////////////
     // LRU match signals
     /////////////////////////////////////////////////////////////
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_degrade1_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_degrade2_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_degrade3_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_degrade_rrpv_sx4;
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_replace_entry_mask_sx4;
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_replace_entry_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_replace_rrpv_sx4;
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_free_entry_mask_sx4;
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_free_entry_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_free_rrpv_sx4;
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_promote_mask_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_promote_rrpv_sx4;
-    wire [`LOC_WAY_NUM*2-1:0]               pipe_lru_next_rrpv_sx4;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_lru_alloc_vec_sx4_q;
-    logic                                     pipe_lru_near_immediate_found_sx4_q;
-    logic                                     pipe_lru_long_found_sx4_q;
-    logic                                     pipe_lru_distance_found_sx4_q;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_degrade1_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_degrade2_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_degrade3_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_degrade_rrpv_sx4;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_replace_entry_mask_sx4;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_replace_entry_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_replace_rrpv_sx4;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_free_entry_mask_sx4;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_free_entry_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_free_rrpv_sx4;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_promote_mask_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_promote_rrpv_sx4;
+    wire [`LOC_WAY_NUM*2-1:0]                pipe_lru_next_rrpv_sx4;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_lru_alloc_vec_sx4_q;
+    logic                                    pipe_lru_near_immediate_found_sx4_q;
+    logic                                    pipe_lru_long_found_sx4_q;
+    logic                                    pipe_lru_distance_found_sx4_q;
 
     /////////////////////////////////////////////////////////////
     // Stage SX4 State Machine result
     /////////////////////////////////////////////////////////////
-    wire                                    pipe_data_rd_sx4;
-    wire                                    pipe_data_wr_sx4;
-    wire                                    pipe_tag_wr_sx4;
-    wire                                    pipe_sf_wr_sx4;
-    wire                                    pipe_sf_evict_sx4;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_wr_way_sx4;
-    wire [`RNF_NUM*2-1:0]                   pipe_sf_wr_state_sx4;
-    wire [ADDR_WIDTH-1:0]                   pipe_sf_evict_addr_sx4;
-    wire                                    pipe_lru_wr_sx4;
-    wire                                    pipe_mem_rd_sx4;
+    wire                                     pipe_data_rd_sx4;
+    wire                                     pipe_data_wr_sx4;
+    wire                                     pipe_tag_wr_sx4;
+    wire                                     pipe_sf_wr_sx4;
+    wire                                     pipe_sf_evict_sx4;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_wr_way_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_wr_state_sx4;
+    wire [ADDR_WIDTH-1:0]                    pipe_sf_evict_addr_sx4;
+    wire                                     pipe_lru_wr_sx4;
+    wire                                     pipe_mem_rd_sx4;
 
     //===========================================================
     /////////////////////////////////////////////////////////////
     // Stage SX5 signals
     /////////////////////////////////////////////////////////////
     //===========================================================
-    wire [`LOC_INDEX_WIDTH-1:0]             l3_index_sx4;
-    wire [`LOC_WAY_NUM-1:0]                 l3_rd_ways_sx4;
-    wire [`LOC_WAY_NUM-1:0]                 l3_wr_ways_sx4;
-    logic                                     pipe_data_rd_sx5_q;
-    logic                                     pipe_data_wr_sx5_q;
-    logic                                     pipe_tag_wr_sx5_q;
-    logic                                     pipe_sf_wr_sx5_q;
-    logic                                     pipe_lru_wr_sx5_q;
-    wire                                    pipe_tag_wr_sx5;
+    wire [`LOC_INDEX_WIDTH-1:0]              l3_index_sx4;
+    wire [`LOC_WAY_NUM-1:0]                  l3_rd_ways_sx4;
+    wire [`LOC_WAY_NUM-1:0]                  l3_wr_ways_sx4;
+    logic                                    pipe_data_rd_sx5_q;
+    logic                                    pipe_data_wr_sx5_q;
+    logic                                    pipe_tag_wr_sx5_q;
+    logic                                    pipe_sf_wr_sx5_q;
+    logic                                    pipe_lru_wr_sx5_q;
+    wire                                     pipe_tag_wr_sx5;
 
     // SLC evict
-    logic [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]  pipe_tag_evict_addr_sx5_q;
-    logic                                     pipe_tag_dirty_sx5_q;
-    logic                                     pipe_tag_evict_sx5_q;
+    logic [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_tag_evict_addr_sx5_q;
+    logic                                    pipe_tag_dirty_sx5_q;
+    logic                                    pipe_tag_evict_sx5_q;
     // SLC hit
-    logic                                     pipe_tag_hit_sx5_q;
+    logic                                    pipe_tag_hit_sx5_q;
     // SLC new state
-    logic [1:0]                               pipe_tag_wr_state_sx5_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx5_q;
+    logic [1:0]                              pipe_tag_wr_state_sx5_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx5_q;
     // SF evict
-    logic                                     pipe_sf_evict_sx5_q;
-    logic [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]  pipe_sf_evict_addr_sx5_q;
+    logic                                    pipe_sf_evict_sx5_q;
+    logic [ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] pipe_sf_evict_addr_sx5_q;
     // SF hit vec for snp
-    logic                                     pipe_sf_other_hit_sx5_q;
-    logic                                     pipe_sf_hit_sx5_q;
-    logic [`RNF_NUM-1:0]                      pipe_sf_tgt_vec_sx5_q;
-    wire                                    pipe_biq_hit_cancel_brd_sx5;
-    logic [`RNF_NUM-1:0]                      pipe_biq_hit_tgt_vec_sx5_q;
-    wire [`RNF_NUM-1:0]                     pipe_biq_hit_tgt_vec_sx5;
+    logic                                    pipe_sf_other_hit_sx5_q;
+    logic                                    pipe_sf_hit_sx5_q;
+    logic [`RNF_NUM-1:0]                     pipe_sf_tgt_vec_sx5_q;
+    wire                                     pipe_biq_hit_cancel_brd_sx5;
+    logic [`RNF_NUM-1:0]                     pipe_biq_hit_tgt_vec_sx5_q;
+    wire [`RNF_NUM-1:0]                      pipe_biq_hit_tgt_vec_sx5;
     // SF new state
-    logic [`SF_CLINE_WIDTH-1:0]               pipe_sf_wr_state_sx5_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_wr_way_sx5_q;
+    logic [`SF_CLINE_WIDTH-1:0]              pipe_sf_wr_state_sx5_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_wr_way_sx5_q;
     // LRU new state
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_wr_rrpv_sx5_q;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_wr_rrpv_sx5_q;
     // if need read SF
-    logic                                     pipe_mem_rd_sx5_q;
-    logic                                     pipe_wrap_wr_sx5_q;
+    logic                                    pipe_mem_rd_sx5_q;
+    logic                                    pipe_wrap_wr_sx5_q;
     //Stage SX6 signals
 
     //FIXME: hazard should record tag/SF index other than bitmap
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_valid_sx6_q;
-    logic [`LOC_INDEX_WIDTH-1:0]              pipe_tag_hazard_index_sx6_q[CPL_HZD_ENTRY-1:0];
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_hazard_way_sx6_q[CPL_HZD_ENTRY-1:0];
-    wire [`LOC_INDEX_WIDTH-1:0]             pipe_tag_index_sx5;
-    wire [`LOC_WAY_NUM-1:0]                 pipe_tag_way_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_match_vec_sx5;
-    logic                                     pipe_tag_hazard_valid_sx5_q;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_alloc_sx5;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_alloc_vector;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_set_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_clr_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_ns_sx5;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_timer_sx5_q[CPL_HZD_ENTRY-1:0];
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_haz_way_sx5_q;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_valid_sx6_q;
-    logic [`SF_INDEX_WIDTH-1:0]               pipe_sf_hazard_index_sx6_q[CPL_HZD_ENTRY-1:0];
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_hazard_way_sx6_q[CPL_HZD_ENTRY-1:0];
-    wire [`SF_INDEX_WIDTH-1:0]              pipe_sf_index_sx5;
-    wire [`SF_WAY_NUM-1:0]                  pipe_sf_way_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_match_vec_sx5;
-    logic                                     pipe_sf_hazard_valid_sx5_q;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_alloc_sx5;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_alloc_vector;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_set_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_clr_sx5;
-    wire [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_ns_sx5;
-    logic [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_timer_sx5_q[CPL_HZD_ENTRY-1:0];
-    wire                                    pipe_hazard_fail_sx5;
-    logic                                     pipe_data_wr_sx6_q;
-    logic                                     pipe_tag_wr_sx6_q;
-    logic                                     pipe_sf_wr_sx6_q;
-    logic                                     pipe_lru_wr_sx6_q;
-    logic [1:0]                               pipe_tag_wr_state_sx6_q;
-    logic [`LOC_WAY_NUM-1:0]                  pipe_tag_wr_way_sx6_q;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_valid_sx6_q;
+    logic [`LOC_INDEX_WIDTH-1:0]             pipe_tag_hazard_index_sx6_q[CPL_HZD_ENTRY-1:0];
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_hazard_way_sx6_q[CPL_HZD_ENTRY-1:0];
+    wire [`LOC_INDEX_WIDTH-1:0]              pipe_tag_index_sx5;
+    wire [`LOC_WAY_NUM-1:0]                  pipe_tag_way_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_match_vec_sx5;
+    logic                                    pipe_tag_hazard_valid_sx5_q;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_alloc_sx5;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_alloc_vector;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_set_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_clr_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_tag_hazard_ns_sx5;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_tag_hazard_timer_sx5_q[CPL_HZD_ENTRY-1:0];
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_haz_way_sx5_q;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_valid_sx6_q;
+    logic [`SF_INDEX_WIDTH-1:0]              pipe_sf_hazard_index_sx6_q[CPL_HZD_ENTRY-1:0];
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_hazard_way_sx6_q[CPL_HZD_ENTRY-1:0];
+    wire [`SF_INDEX_WIDTH-1:0]               pipe_sf_index_sx5;
+    wire [`SF_WAY_NUM-1:0]                   pipe_sf_way_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_match_vec_sx5;
+    logic                                    pipe_sf_hazard_valid_sx5_q;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_alloc_sx5;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_alloc_vector;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_set_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_clr_sx5;
+    wire [CPL_HZD_ENTRY-1:0]                 pipe_sf_hazard_ns_sx5;
+    logic [CPL_HZD_ENTRY-1:0]                pipe_sf_hazard_timer_sx5_q[CPL_HZD_ENTRY-1:0];
+    wire                                     pipe_hazard_fail_sx5;
+    logic                                    pipe_data_wr_sx6_q;
+    logic                                    pipe_tag_wr_sx6_q;
+    logic                                    pipe_sf_wr_sx6_q;
+    logic                                    pipe_lru_wr_sx6_q;
+    logic [1:0]                              pipe_tag_wr_state_sx6_q;
+    logic [`LOC_WAY_NUM-1:0]                 pipe_tag_wr_way_sx6_q;
     // SF new state
-    logic [`SF_CLINE_WIDTH-1:0]               pipe_sf_wr_state_sx6_q;
-    logic [`SF_WAY_NUM-1:0]                   pipe_sf_wr_way_sx6_q;
+    logic [`SF_CLINE_WIDTH-1:0]              pipe_sf_wr_state_sx6_q;
+    logic [`SF_WAY_NUM-1:0]                  pipe_sf_wr_way_sx6_q;
     // LRU new state
-    logic [`LOC_WAY_NUM*2-1:0]                pipe_lru_wr_rrpv_sx6_q;
+    logic [`LOC_WAY_NUM*2-1:0]               pipe_lru_wr_rrpv_sx6_q;
     // if need read SF
-    wire                                    cpl_internal_wr_sx5;
+    wire                                     cpl_internal_wr_sx5;
 
-    wire                                    l3_replay_sx5;
-    wire                                    pipe_tag_evict_commit_sx4;
+    wire                                     l3_replay_sx5;
+    wire                                     pipe_tag_evict_commit_sx4;
     // Stage SX7 signals
-    wire [ADDR_WIDTH-1:0]                   pipe_addr_sx6;
+    wire [ADDR_WIDTH-1:0]                    pipe_addr_sx6;
 
-    logic                                     cpl_internal_wr_sx6_q;
-    logic [`RNF_WIDTH-1:0]                    pipe_sf_hit_count_sx5;
+    logic                                    cpl_internal_wr_sx6_q;
+    logic [`RNF_WIDTH-1:0]                   pipe_sf_hit_count_sx5;
 
     // BIQ signals
-    logic [ADDR_WIDTH-1:0]                    biq_evict_addr_sx5_q;
-    wire                                    biq_evict_retry_sx5;
-    wire                                    biq_fifo_empty;
-    wire                                    biq_fifo_full;
-    wire                                    biq_hit_raw;
-    wire                                    biq_hit;
-    wire                                    biq_evict_valid_sx5;
-    wire                                    biq_find_valid_sx5;
+    logic [ADDR_WIDTH-1:0]                   biq_evict_addr_sx5_q;
+    wire                                     biq_evict_retry_sx5;
+    wire                                     biq_fifo_empty;
+    wire                                     biq_fifo_full;
+    wire                                     biq_hit_raw;
+    wire                                     biq_hit;
+    wire                                     biq_evict_valid_sx5;
+    wire                                     biq_find_valid_sx5;
 
-    wire [`SF_CLINE_WIDTH-1:0]              sf_rd_clines[`SF_WAY_NUM-1:0];
+    wire [`SF_CLINE_WIDTH-1:0]               sf_rd_clines[`SF_WAY_NUM-1:0];
 
 
     //=============================================================================
@@ -761,11 +761,10 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_req_valid_sx[SX3] = pipe_req_valid_sx_q[SX3] & ~(pipe_wrap_wr_sx3_q ^ pipe_data_wr_sx3_q);
 
     always_comb begin : func_rnfid2physicalid
-        integer i;
         pipe_nodeid_list_sx2[`RNF_NUM*NID_WIDTH-1:0]      = RNF_NID_LIST_PARAM;
         pipe_physical_nodeid_sx2[NID_WIDTH-1:0]          = {NID_WIDTH{1'b0}};
         pipe_rnfid_found_sx2                             = 0;
-        for (i = 0; i < `RNF_NUM; i = i+1) begin
+        for (int i = 0; i < `RNF_NUM; i = i+1) begin
             pipe_current_nodeid_sx2[NID_WIDTH-1:0] = pipe_nodeid_list_sx2[NID_WIDTH*i +: NID_WIDTH];
             if (pipe_current_nodeid_sx2[NID_WIDTH-1:0] == pipe_rnf_idx_sx_q[SX2][NID_WIDTH-1:0]) begin
                 pipe_physical_nodeid_sx2[NID_WIDTH-1:0] = i[NID_WIDTH-1:0];
@@ -861,8 +860,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //  Match TAG\LRU\SF sram
     //=============================================================================
     //TAG match
-    assign pipe_addr_sx3          = pipe_addr_sx_q[SX3][ADDR_WIDTH-1:
-            0];
+    assign pipe_addr_sx3          = pipe_addr_sx_q[SX3][ADDR_WIDTH-1:0];
 
     generate
         for (gi = 0;
@@ -876,19 +874,15 @@ module hnf_cache_pipeline `HNF_PARAM
     endgenerate
 
     //Tag is invalid
-    assign pipe_tag_free_sx3        = |pipe_tag_free_vec_sx3[`LOC_WAY_NUM-1:
-            0];
+    assign pipe_tag_free_sx3        = |pipe_tag_free_vec_sx3[`LOC_WAY_NUM-1:0];
     //Tag is clean or dirty
-    assign pipe_tag_match_sx3       = |pipe_tag_match_vec_sx3[`LOC_WAY_NUM-1:
-            0];
+    assign pipe_tag_match_sx3       = |pipe_tag_match_vec_sx3[`LOC_WAY_NUM-1:0];
     //Tag is dirty
     assign pipe_tag_match_dirty_sx3 = |(pipe_tag_match_vec_sx3[`LOC_WAY_NUM-1:0] & pipe_tag_dirty_vec_sx3[`LOC_WAY_NUM-1:0]);
 
     // Need to evict someone for insert new cacheline
     assign pipe_tag_evict_sx3 = ~pipe_tag_match_sx3 & ~pipe_tag_free_sx3 & pipe_fill_sx_q[SX3];
-    assign pipe_tag_evict_way_sx3[`LOC_WAY_NUM-1:
-                                  0] = pipe_lru_alloc_vec_sx3[`LOC_WAY_NUM-1:
-                                                              0];
+    assign pipe_tag_evict_way_sx3[`LOC_WAY_NUM-1:0] = pipe_lru_alloc_vec_sx3[`LOC_WAY_NUM-1:0];
 
     //Evict tag
     always_comb begin
@@ -1070,8 +1064,7 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
     // Replace Priority: distance > long > near immediate > immediate
-    assign pipe_lru_alloc_vec_sx3[`LOC_WAY_NUM-1:
-                                  0] =
+    assign pipe_lru_alloc_vec_sx3[`LOC_WAY_NUM-1:0] =
            pipe_lru_distance_found_sx3 ? pipe_lru_distance_alloc_vec_sx3[`LOC_WAY_NUM-1:0]:
            (pipe_lru_long_found_sx3 ? pipe_lru_long_alloc_vec_sx3[`LOC_WAY_NUM-1:0]:
             (pipe_lru_near_immediate_found_sx3 ? pipe_lru_near_immediate_alloc_vec_sx3[`LOC_WAY_NUM-1:0]:
@@ -1197,8 +1190,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //   10: none legal
 
     assign pipe_req_valid_sx[SX4] = pipe_req_valid_sx_q[SX4];
-    assign pipe_addr_sx4          = pipe_addr_sx_q[SX4][ADDR_WIDTH-1:
-            0];
+    assign pipe_addr_sx4          = pipe_addr_sx_q[SX4][ADDR_WIDTH-1:0];
     assign pipe_fill_sx4          = pipe_fill_sx_q[SX4];
 
     //====================================================================================
@@ -1266,25 +1258,22 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_read_slc_sx4 = (~pipe_fill_sx4 & pipe_read_slc_nofill_sx4)|(pipe_fill_sx4 & pipe_read_slc_fill_sx4);
 
     always_comb begin: pipe_tag_alloc_free_way_vector_comb_logic
-        integer i;
         pipe_tag_alloc_free_way_vector = {`LOC_WAY_NUM{1'b0}};
         pipe_tag_alloc_free_way_vec_sx4 = {`LOC_WAY_NUM{1'b0}};
 
-        for (i=1; i<`LOC_WAY_NUM; i=i+1)begin
+        for (int i = 1; i<`LOC_WAY_NUM; i=i+1)begin
             pipe_tag_alloc_free_way_vector[i] = pipe_tag_alloc_free_way_vector[i-1] | pipe_tag_free_vec_sx4_q[i-1];
         end
 
-        for(i=0; i<`LOC_WAY_NUM; i=i+1)begin
+        for (int i = 0; i<`LOC_WAY_NUM; i=i+1)begin
             pipe_tag_alloc_free_way_vec_sx4[i] = ~pipe_tag_alloc_free_way_vector[i] & pipe_tag_free_vec_sx4_q[i];
         end
     end
 
 
-    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:
-                               0] = (pipe_invalid_slc_sx4 | (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
+    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_invalid_slc_sx4 | (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
 
-    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:
-                                0] = pipe_read_slc_sx4 ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
+    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:0] = pipe_read_slc_sx4 ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
 
     assign pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:
                                    `CACHE_BLOCK_OFFSET] = {
@@ -1302,8 +1291,7 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_tag_state_invalid_sx4 = pipe_invalid_slc_sx4;
     assign pipe_tag_state_clean_sx4 = (pipe_fill_sx4 & ~pipe_fill_dirty_sx_q[SX4]) | op_cmo_cs_sx4_q;
     assign pipe_tag_state_dirty_sx4 = pipe_fill_sx4 & pipe_fill_dirty_sx_q[SX4];
-    assign pipe_tag_state_sx4[1:
-                              0] = pipe_tag_state_invalid_sx4 ? 2'b00 :
+    assign pipe_tag_state_sx4[1:0] = pipe_tag_state_invalid_sx4 ? 2'b00 :
            (pipe_tag_state_dirty_sx4 ? 2'b01: (pipe_tag_state_clean_sx4 ? 2'b11: {~pipe_tag_match_dirty_sx4_q, pipe_tag_match_sx4_q}));
 
 
@@ -1336,8 +1324,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     endgenerate
 
-    assign pipe_lru_degrade_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                     0] =
+    assign pipe_lru_degrade_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] =
            pipe_lru_distance_found_sx4_q ? lru_rd_data_d_q[`LRU_CLINE_WIDTH-1:0] :
            (pipe_lru_long_found_sx4_q ? pipe_lru_degrade1_rrpv_sx4[`LRU_CLINE_WIDTH-1:0]:
             (pipe_lru_near_immediate_found_sx4_q ? pipe_lru_degrade2_rrpv_sx4[`LRU_CLINE_WIDTH-1:0]:
@@ -1360,9 +1347,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_lru_replace_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                     0] = (pipe_lru_degrade_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] & pipe_lru_replace_entry_mask_sx4[`LRU_CLINE_WIDTH-1:0]) | pipe_lru_replace_entry_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                             0];
+    assign pipe_lru_replace_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] = (pipe_lru_degrade_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] & pipe_lru_replace_entry_mask_sx4[`LRU_CLINE_WIDTH-1:0]) | pipe_lru_replace_entry_rrpv_sx4[`LRU_CLINE_WIDTH-1:0];
 
     // When Tag only Read/Update and hit, promote RRPV to 0
     always_comb begin
@@ -1376,10 +1361,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_lru_promote_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                     0] = lru_rd_data_d_q[`LRU_CLINE_WIDTH-1:
-                                                          0] & pipe_lru_promote_mask_sx4[`LRU_CLINE_WIDTH-1:
-                                                                                         0];
+    assign pipe_lru_promote_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] = lru_rd_data_d_q[`LRU_CLINE_WIDTH-1:0] & pipe_lru_promote_mask_sx4[`LRU_CLINE_WIDTH-1:0];
 
     // When insert and find free entry, only set RRPV to 2
     always_comb begin
@@ -1395,9 +1377,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_lru_free_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                  0] = (lru_rd_data_d_q[`LRU_CLINE_WIDTH-1:0] & pipe_lru_free_entry_mask_sx4[`LRU_CLINE_WIDTH-1:0]) | pipe_lru_free_entry_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                          0];
+    assign pipe_lru_free_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] = (lru_rd_data_d_q[`LRU_CLINE_WIDTH-1:0] & pipe_lru_free_entry_mask_sx4[`LRU_CLINE_WIDTH-1:0]) | pipe_lru_free_entry_rrpv_sx4[`LRU_CLINE_WIDTH-1:0];
     // Evict Data Sram degrade RRPV, Read Hit promote RRPV
     // if (insert slc) {
     //      if (no free tag)
@@ -1410,8 +1390,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //      if (invalid slc)
     //          do nothing
     // }
-    assign pipe_lru_next_rrpv_sx4[`LRU_CLINE_WIDTH-1:
-                                  0] = pipe_tag_evict_sx4_q ? pipe_lru_replace_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] :
+    assign pipe_lru_next_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] = pipe_tag_evict_sx4_q ? pipe_lru_replace_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] :
            ((pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_lru_free_rrpv_sx4[`LRU_CLINE_WIDTH-1:0] : pipe_lru_promote_rrpv_sx4[`LRU_CLINE_WIDTH-1:0]);
 
 
@@ -1426,8 +1405,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // bit 0: 1 is Valid
     // bit 1: 1 is Share, 0 is Unique
     // FIXME: Maybe should advance the work for preventing to be critical path
-    assign pipe_sf_free_sx4              = |pipe_sf_free_vec_sx4_q[`SF_WAY_NUM-1:
-            0];
+    assign pipe_sf_free_sx4              = |pipe_sf_free_vec_sx4_q[`SF_WAY_NUM-1:0];
 
     assign pipe_sf_other_match_sx4       = |(pipe_sf_other_valid_vec_sx4_q[`SF_WAY_NUM-1:0] & pipe_sf_match_vec_sx4_q[`SF_WAY_NUM-1:0]);
     assign pipe_sf_other_match_share_sx4 = |(pipe_sf_other_share_vec_sx4_q[`SF_WAY_NUM-1:0] & pipe_sf_match_vec_sx4_q[`SF_WAY_NUM-1:0]);
@@ -1454,29 +1432,21 @@ module hnf_cache_pipeline `HNF_PARAM
 
     // Clear is for all RNF
     assign pipe_sf_clear_valid_sx4                       = (op_wufull_sx4_q | op_wuptl_sx4_q | op_cmo_ci_sx4_q);
-    assign pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:
-                                   0]       = {(`RNF_NUM*2){1'b0}};
+    assign pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:0]       = {(`RNF_NUM*2){1'b0}};
 
     // unique for requester
     assign pipe_sf_self_unique_sx4                       = op_rdunique_sx4_q | op_dl_cu_sx4_q | op_dl_mu_sx4_q | ((op_rdnsd_sx4_q | op_rdclean_sx4_q) & ~pipe_sf_other_match_sx4);
-    assign pipe_sf_requester_unique_sx4[`RNF_NUM*2-1:
-                                        0]  = pipe_sf_self_valid_mask_sx4_q[`RNF_NUM*2-1:
-                                                                            0];
+    assign pipe_sf_requester_unique_sx4[`RNF_NUM*2-1:0]  = pipe_sf_self_valid_mask_sx4_q[`RNF_NUM*2-1:0];
 
     // share for requester
     assign pipe_sf_self_share_sx4                        = (op_rdnsd_sx4_q | op_rdclean_sx4_q) & pipe_sf_other_match_sx4;
-    assign pipe_sf_requester_share_sx4[`RNF_NUM*2-1:
-                                       0]   = (pipe_sf_self_share_mask_sx4_q[`RNF_NUM*2-1:0] | pipe_sf_self_valid_mask_sx4_q[`RNF_NUM*2-1:0]);
+    assign pipe_sf_requester_share_sx4[`RNF_NUM*2-1:0]   = (pipe_sf_self_share_mask_sx4_q[`RNF_NUM*2-1:0] | pipe_sf_self_valid_mask_sx4_q[`RNF_NUM*2-1:0]);
 
     // invalid for requester
     assign pipe_sf_self_invalid_sx4                      = op_dl_evict_sx4_q | op_wbfull_sx4_q | op_wevict_sx4_q;
-    assign pipe_sf_requester_invalid_sx4[`RNF_NUM*2-1:
-                                         0] = ~pipe_sf_self_mask_sx4_q[`RNF_NUM*2-1:
-                                                                       0] & pipe_sf_match_state_sx4_q[`RNF_NUM*2-1:
-                                                                                                      0];
+    assign pipe_sf_requester_invalid_sx4[`RNF_NUM*2-1:0] = ~pipe_sf_self_mask_sx4_q[`RNF_NUM*2-1:0] & pipe_sf_match_state_sx4_q[`RNF_NUM*2-1:0];
 
-    assign pipe_sf_update_state_sx4[`RNF_NUM*2-1:
-                                    0] = pipe_sf_clear_valid_sx4  ? pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:0]       :
+    assign pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] = pipe_sf_clear_valid_sx4  ? pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:0]       :
            pipe_sf_self_unique_sx4  ? pipe_sf_requester_unique_sx4[`RNF_NUM*2-1:0]  :
            (pipe_sf_self_share_sx4 & pipe_sf_other_match_share_sx4)  ? (pipe_sf_requester_share_sx4[`RNF_NUM*2-1:0] | pipe_sf_match_state_sx4_q[`RNF_NUM*2-1:0])     :
            (pipe_sf_self_share_sx4 & ~pipe_sf_other_match_share_sx4) ? (pipe_sf_requester_share_sx4[`RNF_NUM*2-1:0] | pipe_sf_snp_share_state_sx4[`RNF_NUM*2-1:0]) :
@@ -1522,27 +1492,22 @@ module hnf_cache_pipeline `HNF_PARAM
     endgenerate
 
 
-    assign pipe_sf_evict_addr_sx4[ADDR_WIDTH-1:
-                                  0] = {
+    assign pipe_sf_evict_addr_sx4[ADDR_WIDTH-1:0] = {
                pipe_sf_evict_tag_sx4_q[`SF_TAG_WIDTH-1:0],
                pipe_addr_sx_q[SX4][`SF_INDEX_RANGE],
                {`CACHE_BLOCK_OFFSET{1'b0}}
            };
 
     // Insert miss SF entry
-    assign pipe_sf_insert_state_sx4[`RNF_NUM*2-1:
-                                    0] = pipe_sf_self_unique_sx4 ? pipe_sf_requester_unique_sx4[`RNF_NUM*2-1:0] :
+    assign pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0] = pipe_sf_self_unique_sx4 ? pipe_sf_requester_unique_sx4[`RNF_NUM*2-1:0] :
            (pipe_sf_self_share_sx4 ? (pipe_sf_self_valid_mask_sx4_q[`RNF_NUM*2-1:0] | pipe_sf_self_share_mask_sx4_q[`RNF_NUM*2-1:0]):
             pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:0]);
 
 
-    assign pipe_sf_wr_way_sx4[`SF_WAY_NUM-1:
-                              0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_match_vec_sx4_q[`SF_WAY_NUM-1:0] :
+    assign pipe_sf_wr_way_sx4[`SF_WAY_NUM-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_match_vec_sx4_q[`SF_WAY_NUM-1:0] :
            (pipe_sf_evict_sx4 ? pipe_sf_evict_next_sx4_q[`SF_WAY_NUM-1:0] : pipe_sf_free_way_vec_sx4[`SF_WAY_NUM-1:0]);
-    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:
-                               0] = op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0];
-    assign pipe_sf_wr_state_sx4[`RNF_NUM*2-1:
-                                0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] : pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0];
+    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0];
+    assign pipe_sf_wr_state_sx4[`RNF_NUM*2-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] : pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0];
 
     //////////////////////////////////////////////////////////////////////////////
     // Tag hits and needs to read l3 data
@@ -1682,12 +1647,9 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
     // read data sram
-    assign l3_index_sx4[`LOC_INDEX_WIDTH-1:
-                        0] = ( pipe_wrap_wr_sx4_q & pipe_data_wr_sx4_q) ? pipe_addr_wr_sx4_q[`LOC_INDEX_RANGE]: pipe_addr_sx_q[SX4][`LOC_INDEX_RANGE];
-    assign l3_rd_ways_sx4[`LOC_WAY_NUM-1:
-                          0]   = (~pipe_wrap_wr_sx4_q & pipe_data_rd_sx4  ) ? ((pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q) ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : pipe_tag_match_vec_sx4_q[`LOC_WAY_NUM-1:0]) : {`LOC_WAY_NUM{1'b0}};
-    assign l3_wr_ways_sx4[`LOC_WAY_NUM-1:
-                          0]   = ( pipe_wrap_wr_sx4_q & pipe_data_wr_sx4_q) ? pipe_tag_wr_way_sx4_q[`LOC_WAY_NUM-1:0]  : {`LOC_WAY_NUM{1'b0}};
+    assign l3_index_sx4[`LOC_INDEX_WIDTH-1:0] = ( pipe_wrap_wr_sx4_q & pipe_data_wr_sx4_q) ? pipe_addr_wr_sx4_q[`LOC_INDEX_RANGE]: pipe_addr_sx_q[SX4][`LOC_INDEX_RANGE];
+    assign l3_rd_ways_sx4[`LOC_WAY_NUM-1:0]   = (~pipe_wrap_wr_sx4_q & pipe_data_rd_sx4  ) ? ((pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q) ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : pipe_tag_match_vec_sx4_q[`LOC_WAY_NUM-1:0]) : {`LOC_WAY_NUM{1'b0}};
+    assign l3_wr_ways_sx4[`LOC_WAY_NUM-1:0]   = ( pipe_wrap_wr_sx4_q & pipe_data_wr_sx4_q) ? pipe_tag_wr_way_sx4_q[`LOC_WAY_NUM-1:0]  : {`LOC_WAY_NUM{1'b0}};
 
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
@@ -1766,16 +1728,10 @@ module hnf_cache_pipeline `HNF_PARAM
     // Internal Hazard Check
     // Hazard period is from SX2, SX3, SX4, SX5
 
-    assign pipe_tag_index_sx5[`LOC_INDEX_WIDTH-1:
-                              0] = pipe_addr_sx_q[SX5][`LOC_INDEX_RANGE];
-    assign pipe_tag_way_sx5[`LOC_WAY_NUM-1:
-                            0]       = pipe_tag_haz_way_sx5_q[`LOC_WAY_NUM-1:
-                                                              0];
-    assign pipe_sf_index_sx5[`SF_INDEX_WIDTH-1:
-                             0]   = pipe_addr_sx_q[SX5][`SF_INDEX_RANGE];
-    assign pipe_sf_way_sx5[`SF_WAY_NUM-1:
-                           0]         = pipe_sf_wr_way_sx5_q[`SF_WAY_NUM-1:
-                                                             0];
+    assign pipe_tag_index_sx5[`LOC_INDEX_WIDTH-1:0] = pipe_addr_sx_q[SX5][`LOC_INDEX_RANGE];
+    assign pipe_tag_way_sx5[`LOC_WAY_NUM-1:0]       = pipe_tag_haz_way_sx5_q[`LOC_WAY_NUM-1:0];
+    assign pipe_sf_index_sx5[`SF_INDEX_WIDTH-1:0]   = pipe_addr_sx_q[SX5][`SF_INDEX_RANGE];
+    assign pipe_sf_way_sx5[`SF_WAY_NUM-1:0]         = pipe_sf_wr_way_sx5_q[`SF_WAY_NUM-1:0];
     generate
         for (gi = 0;
                 gi < CPL_HZD_ENTRY;
@@ -1793,15 +1749,14 @@ module hnf_cache_pipeline `HNF_PARAM
 
     // Tag hazard manage
     always_comb begin: pipe_tag_hazard_alloc_vector_comb_logic
-        integer i;
         pipe_tag_hazard_alloc_vector = {CPL_HZD_ENTRY{1'b0}};
         pipe_tag_hazard_alloc_sx5 = {CPL_HZD_ENTRY{1'b0}};
 
-        for (i=1; i<CPL_HZD_ENTRY; i=i+1)begin
+        for (int i = 1; i<CPL_HZD_ENTRY; i=i+1)begin
             pipe_tag_hazard_alloc_vector[i] = pipe_tag_hazard_alloc_vector[i-1] | ~pipe_tag_hazard_valid_sx6_q[i-1];
         end
 
-        for(i=0; i<CPL_HZD_ENTRY; i=i+1)begin
+        for (int i = 0; i<CPL_HZD_ENTRY; i=i+1)begin
             pipe_tag_hazard_alloc_sx5[i] = ~pipe_tag_hazard_alloc_vector[i] & ~pipe_tag_hazard_valid_sx6_q[i];
         end
     end
@@ -1847,15 +1802,14 @@ module hnf_cache_pipeline `HNF_PARAM
 
     // SF hazard manage
     always_comb begin: pipe_sf_hazard_alloc_vector_comb_logic
-        integer i;
         pipe_sf_hazard_alloc_vector = {CPL_HZD_ENTRY{1'b0}};
         pipe_sf_hazard_alloc_sx5 = {CPL_HZD_ENTRY{1'b0}};
 
-        for (i=1; i<CPL_HZD_ENTRY; i=i+1)begin
+        for (int i = 1; i<CPL_HZD_ENTRY; i=i+1)begin
             pipe_sf_hazard_alloc_vector[i] = pipe_sf_hazard_alloc_vector[i-1] | ~pipe_sf_hazard_valid_sx6_q[i-1];
         end
 
-        for(i=0; i<CPL_HZD_ENTRY; i=i+1)begin
+        for (int i = 0; i<CPL_HZD_ENTRY; i=i+1)begin
             pipe_sf_hazard_alloc_sx5[i] = ~pipe_sf_hazard_alloc_vector[i] & ~pipe_sf_hazard_valid_sx6_q[i];
         end
     end
@@ -2057,9 +2011,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
     end
 
-    assign pipe_addr_sx6[ADDR_WIDTH-1:
-                         0] = pipe_addr_sx_q[SX6][ADDR_WIDTH-1:
-                                                  0];
+    assign pipe_addr_sx6[ADDR_WIDTH-1:0] = pipe_addr_sx_q[SX6][ADDR_WIDTH-1:0];
 
     // read databuffer valid
     always_ff @(posedge clk or posedge rst)begin
@@ -2084,12 +2036,9 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
 `ifdef DISPLAY_INFO
-    logic [`RNF_NUM*2-1:
-         0]        disp_pipe_sf_match_state_sx5_q;
-    logic [`RNF_NUM*2-1:
-         0]        disp_pipe_sf_wr_state_sx5_q;
-    logic [`LRU_CLINE_WIDTH-1:
-         0]  disp_lru_rd_data_sx5_q;
+    logic [`RNF_NUM*2-1:0]       disp_pipe_sf_match_state_sx5_q;
+    logic [`RNF_NUM*2-1:0]       disp_pipe_sf_wr_state_sx5_q;
+    logic [`LRU_CLINE_WIDTH-1:0] disp_lru_rd_data_sx5_q;
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
             disp_pipe_sf_match_state_sx5_q       <= 'd0;
@@ -2186,12 +2135,8 @@ module hnf_cache_pipeline `HNF_PARAM
 `endif
 
 `ifdef DISPLAY_FATAL
-    logic [`RNF_NUM-1:
-         0] sf_state_u_count;
-    logic [`RNF_NUM-1:
-         0] sf_state_s_count;
-    integer i;
-    integer j;
+    logic [`RNF_NUM-1:0] sf_state_u_count;
+    logic [`RNF_NUM-1:0] sf_state_s_count;
     initial begin
         while(1)begin
             @(posedge clk);
@@ -2228,24 +2173,24 @@ module hnf_cache_pipeline `HNF_PARAM
             end
             if(pipe_req_valid_sx_q[SX3])begin
                 //loc_state sf_state check
-                for (i = 0; i < `LOC_WAY_NUM; i = i + 1)begin
+                for (int i = 0; i < `LOC_WAY_NUM; i = i + 1)begin
                     if({loc_rd_clines_q[`LOC_TAG_STATE_CLEAN+i*`LOC_CLINE_WIDTH],loc_rd_clines_q[`LOC_TAG_STATE_VALID+i*`LOC_CLINE_WIDTH]} == 2'b10)begin
                         $fatal(1, "loc_rd_clines_q ERROR:  loc state = 2'b10 ");
                     end
                 end
 
-                for (i = 0; i < `SF_WAY_NUM; i = i + 1)begin
-                    for(j = 0; j < `RNF_NUM; j = j + 1)begin
+                for (int i = 0; i < `SF_WAY_NUM; i = i + 1)begin
+                    for (int j = 0; j < `RNF_NUM; j = j + 1)begin
                         if({sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2+1],sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2]} == 2'b10)begin
                             $fatal(1, "sf_rd_clines_q ERROR:  sf state = 2'b10 ");
                         end
                     end
                 end
 
-                for (i = 0; i < `SF_WAY_NUM; i = i + 1)begin
+                for (int i = 0; i < `SF_WAY_NUM; i = i + 1)begin
                     sf_state_u_count = 'd0;
                     sf_state_s_count = 'd0;
-                    for(j = 0; j < `RNF_NUM; j = j + 1)begin
+                    for (int j = 0; j < `RNF_NUM; j = j + 1)begin
                         if({sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2+1],sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2]} == 2'b01)begin
                             sf_state_u_count = sf_state_u_count + 1;
                         end
@@ -2264,7 +2209,7 @@ module hnf_cache_pipeline `HNF_PARAM
             if(pipe_req_valid_sx_q[SX4])begin
                 if(pipe_tag_match_sx4_q && (pipe_sf_self_match_sx4 || pipe_sf_other_match_sx4))begin
                     sf_state_u_count = 'd0;
-                    for(i = 0; i < `RNF_NUM; i = i + 1)begin
+                    for (int i = 0; i < `RNF_NUM; i = i + 1)begin
                         if({pipe_sf_match_state_sx4_q[i*2+1],pipe_sf_match_state_sx4_q[i*2]} == 2'b01)begin
                             sf_state_u_count = sf_state_u_count + 1;
                         end

@@ -103,7 +103,6 @@
 
 //hnf_link_req_channel_lcredit
 `define HNF_LCRD_REQ_CNT_WIDTH             4
-`define HNF_LCRD_REQ_CNT_RANGE             3:0
 `define HNF_LCRD_REQ_CNT_MSB               3
 `define HNF_LCRD_REQ_CNT_LSB               0
 `define HNF_LCRD_REQ_MAX_VALUE             XP_LCRD_NUM_PARAM
@@ -113,21 +112,18 @@
 
 //hnf_link_rsp_channel_lcredit
 `define HNF_LCRD_RSP_CNT_WIDTH             4
-`define HNF_LCRD_RSP_CNT_RANGE             3:0
 `define HNF_LCRD_RSP_CNT_MSB               3
 `define HNF_LCRD_RSP_CNT_LSB               0
 `define HNF_LCRD_RSP_MAX_VALUE             XP_LCRD_NUM_PARAM
 
 //hnf_link_snp_channel_lcredit
 `define HNF_LCRD_SNP_CNT_WIDTH             4
-`define HNF_LCRD_SNP_CNT_RANGE             3:0
 `define HNF_LCRD_SNP_CNT_MSB               3
 `define HNF_LCRD_SNP_CNT_LSB               0
 `define HNF_LCRD_SNP_MAX_VALUE             XP_LCRD_NUM_PARAM
 
 //hnf_link_dat_channel_lcredit
 `define HNF_LCRD_DAT_CNT_WIDTH             4
-`define HNF_LCRD_DAT_CNT_RANGE             3:0
 `define HNF_LCRD_DAT_CNT_MSB               3
 `define HNF_LCRD_DAT_CNT_LSB               0
 `define HNF_LCRD_DAT_MAX_VALUE             XP_LCRD_NUM_PARAM

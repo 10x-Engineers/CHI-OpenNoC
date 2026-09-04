@@ -22,37 +22,35 @@ module hnf_biq #(
     )
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                 clk,
+    input  wire                 rst,
 
     //main inputs
-    input wire push,
-    input wire pop,
-    input wire [BIQ_WIDTH-1:0] addr_in,
-    input wire find,
-    input wire [BIQ_WIDTH-1:0] find_addr,
+    input  wire                 push,
+    input  wire                 pop,
+    input  wire [BIQ_WIDTH-1:0] addr_in,
+    input  wire                 find,
+    input  wire [BIQ_WIDTH-1:0] find_addr,
 
     //main outputs
-    output wire match,
+    output wire                 match,
     output wire [BIQ_WIDTH-1:0] addr_out,
-    output wire biq_full,
-    output wire biq_empty,
-    output wire biq_pfull
+    output wire                 biq_full,
+    output wire                 biq_empty,
+    output wire                 biq_pfull
     );
     //local parameter
     localparam BIQ_PTR_WIDTH = $clog2(BIQ_DEPTH)+1;
 
     //internal regs
-    wire                        biq_push_con;
-    wire                        biq_pop_con;
-    logic [BIQ_PTR_WIDTH-1:0]     rd_ptr_q;
-    logic [BIQ_PTR_WIDTH-1:0]     wr_ptr_q;
-    logic [BIQ_WIDTH-1:0]         biq_data_q [BIQ_DEPTH-1:0];
-    logic [BIQ_DEPTH-1:0]         match_vec;
-    logic [BIQ_PTR_WIDTH-1:0]     biq_find_loc;
-    logic                         biq_find_flag;
-
-    integer ii;
+    wire                      biq_push_con;
+    wire                      biq_pop_con;
+    logic [BIQ_PTR_WIDTH-1:0] rd_ptr_q;
+    logic [BIQ_PTR_WIDTH-1:0] wr_ptr_q;
+    logic [BIQ_WIDTH-1:0]     biq_data_q [BIQ_DEPTH-1:0];
+    logic [BIQ_DEPTH-1:0]     match_vec;
+    logic [BIQ_PTR_WIDTH-1:0] biq_find_loc;
+    logic                     biq_find_flag;
 
     generate
         if(BIQ_DEPTH == 1)begin
@@ -126,7 +124,7 @@ module hnf_biq #(
                 biq_find_loc[BIQ_PTR_WIDTH-1:0] = {BIQ_PTR_WIDTH{1'b0}};
                 if (find & ~biq_empty) begin
                     match_vec = {BIQ_DEPTH{1'b0}};
-                    for (ii = 0; ii < BIQ_DEPTH; ii = ii + 1) begin
+                    for (int ii = 0; ii < BIQ_DEPTH; ii = ii + 1) begin
                         // The sum wraps modulo 2**BIQ_PTR_WIDTH, which is the read
                         // pointer's own wrap, so the truncation is intended.
                         biq_find_loc[BIQ_PTR_WIDTH-1:0] = rd_ptr_q[BIQ_PTR_WIDTH-1:0] + ii[BIQ_PTR_WIDTH-1:0];

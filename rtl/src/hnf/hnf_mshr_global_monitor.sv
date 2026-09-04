@@ -20,55 +20,55 @@
 module hnf_mshr_global_monitor `HNF_PARAM
     (
     //inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from hnf_mshr_qos
-    input wire mshr_alloc_en_s0,
+    input  wire                                mshr_alloc_en_s0,
 
     //inputs from hnf_link_rxreq_parse
-    input wire li_mshr_rxreq_valid_s0,
-    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
-    input chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
-    input wire li_mshr_rxreq_ns_s0,
-    input wire [7:0] li_mshr_rxreq_lpid_s0,
-    input wire li_mshr_rxreq_excl_s0,
+    input  wire                                li_mshr_rxreq_valid_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
+    input  chie_pkg::req_opcode_e              li_mshr_rxreq_opcode_s0,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
+    input  wire                                li_mshr_rxreq_ns_s0,
+    input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
+    input  wire                                li_mshr_rxreq_excl_s0,
 
     //outputs to hnf_mshr_ctl and hnf_mshr_bypass
-    output wire excl_pass_s1,
-    output wire excl_fail_s1
+    output wire                                excl_pass_s1,
+    output wire                                excl_fail_s1
     );
 
 
-    logic                                   gb_valid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::NID_WIDTH-1:0]  gb_srcid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [7:0]   gb_lpid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]   gb_addr_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic                                gb_valid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]      gb_srcid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [7:0]                          gb_lpid_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] gb_addr_q[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
 
-    logic                                   gb_valid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::NID_WIDTH-1:0]  gb_srcid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [7:0]   gb_lpid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]   gb_addr_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic                                gb_valid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]      gb_srcid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [7:0]                          gb_lpid_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] gb_addr_w[0:HNF_MSHR_EXCL_RN_NUM_PARAM-1];
 
-    wire                                              excl_load_s0;
-    wire                                              excl_store_s0;
-    wire                                              req_rdnosnp_s0;
-    wire                                              req_rdnosharedirty_s0;
-    wire                                              req_rdclean_s0;
-    wire                                              req_wrnosnp_s0;
-    wire                                              req_cleanunique_s0;
-    wire                                              store_notmatch_wrnosnp_s0;//req writenosnp not match
-    wire                                              store_notmatch_cu_s0;//req writenosnp not match
-    logic                                               excl_pass_s1_q;
-    logic                                               excl_fail_s1_q;
-    logic                                               load_same_lp_s0;//load req come from same LP
-    logic                                               load_new_lp_s0;//load req come from not same LP
-    logic                                               store_match_s0;//store req match
-    logic                                               cu_addr_notmatch_s0;//cleanunique req come from same LP but addr not match
-    logic                                               load_samelp_flag;//judge the same LP or not
-    logic                                               load_new_flag;//judge add new entry finish or not
-    logic                                               store_cu_newentry_flag;//judge cleanunique add new entry finish or not
+    wire                                 excl_load_s0;
+    wire                                 excl_store_s0;
+    wire                                 req_rdnosnp_s0;
+    wire                                 req_rdnosharedirty_s0;
+    wire                                 req_rdclean_s0;
+    wire                                 req_wrnosnp_s0;
+    wire                                 req_cleanunique_s0;
+    wire                                 store_notmatch_wrnosnp_s0;  //req writenosnp not match
+    wire                                 store_notmatch_cu_s0;       //req writenosnp not match
+    logic                                excl_pass_s1_q;
+    logic                                excl_fail_s1_q;
+    logic                                load_same_lp_s0;            //load req come from same LP
+    logic                                load_new_lp_s0;             //load req come from not same LP
+    logic                                store_match_s0;             //store req match
+    logic                                cu_addr_notmatch_s0;        //cleanunique req come from same LP but addr not match
+    logic                                load_samelp_flag;           //judge the same LP or not
+    logic                                load_new_flag;              //judge add new entry finish or not
+    logic                                store_cu_newentry_flag;     //judge cleanunique add new entry finish or not
 
     assign req_rdnosnp_s0        = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)&&mshr_alloc_en_s0;
     assign req_rdnosharedirty_s0 = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)&&mshr_alloc_en_s0;
@@ -83,10 +83,9 @@ module hnf_mshr_global_monitor `HNF_PARAM
 
 
     always_comb begin :load_judge
-        integer i;
         load_samelp_flag = 0;
         if(excl_load_s0)begin
-            for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+            for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
                 if (gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i])begin
                     load_samelp_flag = 1;
                 end
@@ -110,9 +109,8 @@ module hnf_mshr_global_monitor `HNF_PARAM
     end
 
     always_comb begin :store_judge_match
-        integer i;
         store_match_s0 = 1'b0;
-        for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+        for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
             if (excl_store_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
                 store_match_s0 = 1'b1;
             end
@@ -123,9 +121,8 @@ module hnf_mshr_global_monitor `HNF_PARAM
     end
 
     always_comb begin :cleanunique_judge
-        integer i;
         cu_addr_notmatch_s0 = 'd0;
-        for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+        for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
             if (store_notmatch_cu_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] != li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
                 cu_addr_notmatch_s0 = 'd1;
             end
@@ -137,11 +134,10 @@ module hnf_mshr_global_monitor `HNF_PARAM
 
 
     always_comb begin:temp_data
-        integer i;
         load_new_flag=1;
         store_cu_newentry_flag=1;
 
-        for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1) begin:gb_ram_temp
+        for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1) begin:gb_ram_temp
             gb_valid_w[i]=gb_valid_q[i];
             gb_srcid_w[i]=gb_srcid_q[i];
             gb_lpid_w[i]=gb_lpid_q[i];
@@ -248,17 +244,15 @@ module hnf_mshr_global_monitor `HNF_PARAM
 
     logic gm_full;
     always_comb begin
-        integer i;
         gm_full = 1;
-        for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+        for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
             gm_full = gm_full & gb_valid_q[i];
         end
     end
     always_ff @(posedge clk)begin
-        integer i;
         if(load_new_lp_s0 && (gm_full))begin
             $display($sformatf("Fatal info: Global Monitor overflowed,when RXREQ receield a excl filt with srcid: %h lpid: %h",li_mshr_rxreq_srcid_s0,li_mshr_rxreq_lpid_s0));
-            for(i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+            for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
                 $display($sformatf("Global Monitor entry %d: srcid: %h,lpid: %h\n",i,gb_srcid_q[i],gb_lpid_q[i]));
             end
             `display_fatal(0,"");

@@ -21,81 +21,81 @@
 module hnf_link_txdat_wrap `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                              clk,
+    input  wire                              rst,
 
     //inputs from hnf_link
-    input wire txdat_lcrdv,
-    input wire lcrd_return_en,
-    input wire txlink_run,
-    output wire txdat_flit_avail,
+    input  wire                              txdat_lcrdv,
+    input  wire                              lcrd_return_en,
+    input  wire                              txlink_run,
+    output wire                              txdat_flit_avail,
 
     //inputs from hnf_mshr
-    input wire [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx2,
-    input wire [11:0] mshr_txdat_txnid_sx2,
-    input chie_pkg::dat_opcode_e mshr_txdat_opcode_sx2,
-    input chie_pkg::resp_state_e mshr_txdat_resp_sx2,
-    input chie_pkg::resp_err_e mshr_txdat_resperr_sx2,
-    input wire [11:0] mshr_txdat_dbid_sx2,
-    input wire [1:0] mshr_txdat_ccid_sx2,
-    input wire mshr_txdat_tracetag_sx2,
+    input  wire [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_tgtid_sx2,
+    input  wire [11:0]                       mshr_txdat_txnid_sx2,
+    input  chie_pkg::dat_opcode_e            mshr_txdat_opcode_sx2,
+    input  chie_pkg::resp_state_e            mshr_txdat_resp_sx2,
+    input  chie_pkg::resp_err_e              mshr_txdat_resperr_sx2,
+    input  wire [11:0]                       mshr_txdat_dbid_sx2,
+    input  wire [1:0]                        mshr_txdat_ccid_sx2,
+    input  wire                              mshr_txdat_tracetag_sx2,
 
     //inputs from hnf_data_buffer
-    input wire dbf_txdat_valid_sx1,
-    input wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] dbf_txdat_idx_sx1,
-    input wire [chie_pkg::BE_WIDTH*2-1:0] dbf_txdat_be_sx1,
-    input wire [1:0] dbf_txdat_pe_sx1,
+    input  wire                              dbf_txdat_valid_sx1,
+    input  wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]    dbf_txdat_idx_sx1,
+    input  wire [chie_pkg::BE_WIDTH*2-1:0]   dbf_txdat_be_sx1,
+    input  wire [1:0]                        dbf_txdat_pe_sx1,
 
     //outputs to hnf_link
-    output logic txdatflitv,
-    output chie_pkg::dat_flit_s txdatflit,
-    output wire txdatflitpend,
+    output logic                             txdatflitv,
+    output chie_pkg::dat_flit_s              txdatflit,
+    output wire                              txdatflitpend,
 
     //outputs to hnf_mshr
-    output logic txdat_mshr_clr_dbf_busy_valid_sx3,
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_clr_dbf_busy_idx_sx3,
-    output wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_rd_idx_sx2,
-    output wire txdat_mshr_busy_sx
+    output logic                             txdat_mshr_clr_dbf_busy_valid_sx3,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]   txdat_mshr_clr_dbf_busy_idx_sx3,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]    txdat_mshr_rd_idx_sx2,
+    output wire                              txdat_mshr_busy_sx
     );
 
     //internal reg signals
-    chie_pkg::dat_flit_s                    txdatflit_mshr_s0;
-    logic                                           dbf_txdat_valid_entry1_sx;
-    logic [chie_pkg::DATA_WIDTH*2-1:0]         dbf_txdat_data_entry1_sx;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]                 dbf_txdat_idx_entry1_sx;
-    logic [chie_pkg::BE_WIDTH*2-1:0]           dbf_txdat_be_entry1_sx;
-    logic [1:0]                                     dbf_txdat_pe_entry1_sx;
-    logic                                           dbf_txdat_valid_entry2_sx;
-    logic [chie_pkg::DATA_WIDTH*2-1:0]         dbf_txdat_data_entry2_sx;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]                 dbf_txdat_idx_entry2_sx;
-    logic [chie_pkg::BE_WIDTH*2-1:0]           dbf_txdat_be_entry2_sx;
-    logic [1:0]                                     dbf_txdat_pe_entry2_sx;
-    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0]             txdat_crd_cnt_q;
-    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0]             dat_crd_cnt_ns_s0;
-    logic                                           dbf_txdat_valid_entry2_sx_ns;
-    wire [1:0]        mshr_txdat_dataid_sx_ns;
-    logic [chie_pkg::BE_WIDTH-1:0]             mshr_txdat_be_sx_ns;
-    logic [chie_pkg::DATA_WIDTH-1:0]           mshr_txdat_data_sx_ns;
+    chie_pkg::dat_flit_s                txdatflit_mshr_s0;
+    logic                               dbf_txdat_valid_entry1_sx;
+    logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry1_sx;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry1_sx;
+    logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry1_sx;
+    logic [1:0]                         dbf_txdat_pe_entry1_sx;
+    logic                               dbf_txdat_valid_entry2_sx;
+    logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry2_sx;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry2_sx;
+    logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry2_sx;
+    logic [1:0]                         dbf_txdat_pe_entry2_sx;
+    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] txdat_crd_cnt_q;
+    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
+    logic                               dbf_txdat_valid_entry2_sx_ns;
+    wire [1:0]                          mshr_txdat_dataid_sx_ns;
+    logic [chie_pkg::BE_WIDTH-1:0]      mshr_txdat_be_sx_ns;
+    logic [chie_pkg::DATA_WIDTH-1:0]    mshr_txdat_data_sx_ns;
 
     //internal wire signals
-    wire                                          dat_crd_cnt_not_zero_sx;
-    wire                                          txdat_crd_avail_s1;
-    wire                                          txdat_busy_sx;
-    wire                                          txdatcrdv_s0;
-    wire                                          txdat_crd_cnt_inc_sx;
-    wire                                          txdat_req_s0;
-    chie_pkg::dat_flit_s                   txdatflit_s0;
-    wire                                          txdatflitv_s0;
-    wire                                          txdat_crd_cnt_dec_sx;
-    wire                                          update_dat_crd_cnt_s0;
-    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            dat_crd_cnt_s1;
-    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            dat_crd_cnt_inc_s0;
-    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            dat_crd_cnt_dec_s0;
-    wire                                          dbf_txdat_entry1_dealloc_sx;
-    wire                                          dbf_txdat_entry2_dealloc_sx;
+    wire                                dat_crd_cnt_not_zero_sx;
+    wire                                txdat_crd_avail_s1;
+    wire                                txdat_busy_sx;
+    wire                                txdatcrdv_s0;
+    wire                                txdat_crd_cnt_inc_sx;
+    wire                                txdat_req_s0;
+    chie_pkg::dat_flit_s                txdatflit_s0;
+    wire                                txdatflitv_s0;
+    wire                                txdat_crd_cnt_dec_sx;
+    wire                                update_dat_crd_cnt_s0;
+    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]  dat_crd_cnt_s1;
+    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]  dat_crd_cnt_inc_s0;
+    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]  dat_crd_cnt_dec_s0;
+    wire                                dbf_txdat_entry1_dealloc_sx;
+    wire                                dbf_txdat_entry2_dealloc_sx;
 
-    wire                                              txdat_lcrd_rtn_sx;
+    wire                                txdat_lcrd_rtn_sx;
 
     //main function
     assign dat_crd_cnt_not_zero_sx = (txdat_crd_cnt_q != 'd0);
@@ -352,7 +352,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     assign dat_crd_cnt_dec_s0      = (dat_crd_cnt_s1 - 1'b1);
 
     always_comb begin: dat_crd_cnt_ns_s0_logic_c
-        casez({txdat_crd_cnt_inc_sx, txdat_crd_cnt_dec_sx})
+        unique case({txdat_crd_cnt_inc_sx, txdat_crd_cnt_dec_sx})
             2'b00:
                 dat_crd_cnt_ns_s0 = txdat_crd_cnt_q;     // hold
             2'b01:

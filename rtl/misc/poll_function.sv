@@ -24,39 +24,39 @@ module poll_function #(
     )
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                          clk,
+    input  wire                          rst,
 
     //inputs
-    input wire  [POLL_ENTRIES_NUM-1:0] entry_vec,
-    input wire upd,
+    input  wire [POLL_ENTRIES_NUM-1:0]   entry_vec,
+    input  wire                          upd,
 
     //outputs
-    output wire found,
-    output wire [POLL_ENTRIES_NUM-1:0] sel_entry,
+    output wire                          found,
+    output wire [POLL_ENTRIES_NUM-1:0]   sel_entry,
     output wire [POLL_ENTRIES_WIDTH-1:0] sel_index
     );
     //local parameters
 
     //internal wire
-    wire [POLL_ENTRIES_NUM-1:0]          nxt_entry_mask;
-    wire [POLL_ENTRIES_NUM-1:0]          entry_vecx;
+    wire [POLL_ENTRIES_NUM-1:0]    nxt_entry_mask;
+    wire [POLL_ENTRIES_NUM-1:0]    entry_vecx;
 
     //internal reg
-    logic  [POLL_ENTRIES_NUM-1:0]          nxt_entry_mask0;
-    logic  [POLL_ENTRIES_NUM-1:0]          nxt_entry_maskx;
-    logic  [POLL_ENTRIES_NUM-1:0]          nxt_entry_mask_q;
-    logic  [POLL_ENTRIES_NUM-1:0]          entry_vec_ptr_sel0_tmp;
-    logic  [POLL_ENTRIES_NUM-1:0]          entry_vec_ptr_selx_tmp;
-    logic  [POLL_ENTRIES_NUM-1:0]          entry_vec_ptr_sel0;
-    logic  [POLL_ENTRIES_NUM-1:0]          entry_vec_ptr_selx;
-    logic                                  found0;
-    logic                                  foundx;
-    logic  [POLL_ENTRIES_WIDTH-1:0]        sel0_index;
-    logic  [POLL_ENTRIES_WIDTH-1:0]        selx_index;
+    logic [POLL_ENTRIES_NUM-1:0]   nxt_entry_mask0;
+    logic [POLL_ENTRIES_NUM-1:0]   nxt_entry_maskx;
+    logic [POLL_ENTRIES_NUM-1:0]   nxt_entry_mask_q;
+    logic [POLL_ENTRIES_NUM-1:0]   entry_vec_ptr_sel0_tmp;
+    logic [POLL_ENTRIES_NUM-1:0]   entry_vec_ptr_selx_tmp;
+    logic [POLL_ENTRIES_NUM-1:0]   entry_vec_ptr_sel0;
+    logic [POLL_ENTRIES_NUM-1:0]   entry_vec_ptr_selx;
+    logic                          found0;
+    logic                          foundx;
+    logic [POLL_ENTRIES_WIDTH-1:0] sel0_index;
+    logic [POLL_ENTRIES_WIDTH-1:0] selx_index;
 
     always_comb begin : find_1st_entry_from_entry_vec
-        integer i;
+        int i;
         entry_vec_ptr_sel0_tmp = {POLL_ENTRIES_NUM{1'b0}};
         entry_vec_ptr_sel0 = {POLL_ENTRIES_NUM{1'b0}};
 
@@ -72,7 +72,7 @@ module poll_function #(
     assign entry_vecx = entry_vec & nxt_entry_mask_q;
 
     always_comb begin :find_xst_entry_from_entry_vecx
-        integer i;
+        int i;
         entry_vec_ptr_selx_tmp = {POLL_ENTRIES_NUM{1'b0}};
         entry_vec_ptr_selx = {POLL_ENTRIES_NUM{1'b0}};
 
@@ -86,11 +86,10 @@ module poll_function #(
     end
 
     always_comb begin : mask_nxt_from_entry0
-        integer i;
         nxt_entry_mask0 = {POLL_ENTRIES_NUM{1'b1}};
         found0 = 1'b0;
         sel0_index = {POLL_ENTRIES_WIDTH{1'b0}};
-        for(i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
+        for(int i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
             if(entry_vec[i] == 1'b1 && !found0)begin
                 nxt_entry_mask0[i] = 1'b0;
                 sel0_index = i[POLL_ENTRIES_WIDTH-1:0];
@@ -104,11 +103,10 @@ module poll_function #(
     end
 
     always_comb begin : mask_nxt_from_entryx
-        integer i;
         nxt_entry_maskx = nxt_entry_mask_q;
         foundx = 1'b0;
         selx_index = {POLL_ENTRIES_WIDTH{1'b0}};
-        for(i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
+        for(int i=0;i<POLL_ENTRIES_NUM;i=i+1)begin
             if(entry_vecx[i] == 1'b1 && !foundx)begin
                 nxt_entry_maskx[i] = 1'b0;
                 selx_index = i[POLL_ENTRIES_WIDTH-1:0];

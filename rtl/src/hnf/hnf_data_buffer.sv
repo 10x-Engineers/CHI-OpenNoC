@@ -20,62 +20,62 @@
 module hnf_data_buffer `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                               clk,
+    input  wire                               rst,
 
     //inputs from hnf_link_rxdat_parse
-    input wire li_dbf_rxdat_valid_s0,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] li_dbf_rxdat_txnid_s0,
-    input chie_pkg::dat_opcode_e li_dbf_rxdat_opcode_s0,
-    input wire [1:0] li_dbf_rxdat_dataid_s0,
-    input wire [chie_pkg::BE_WIDTH-1:0] li_dbf_rxdat_be_s0,
-    input wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0,
+    input  wire                               li_dbf_rxdat_valid_s0,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     li_dbf_rxdat_txnid_s0,
+    input  chie_pkg::dat_opcode_e             li_dbf_rxdat_opcode_s0,
+    input  wire [1:0]                         li_dbf_rxdat_dataid_s0,
+    input  wire [chie_pkg::BE_WIDTH-1:0]      li_dbf_rxdat_be_s0,
+    input  wire [chie_pkg::DATA_WIDTH-1:0]    li_dbf_rxdat_data_s0,
 
     //inputs from hnf_mshr_ctl
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_rd_idx_sx1_q,
-    input wire mshr_dbf_rd_valid_sx1_q,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_retired_idx_sx1_q,
-    input wire mshr_dbf_retired_valid_sx1_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
+    input  wire                               mshr_dbf_rd_valid_sx1_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_retired_idx_sx1_q,
+    input  wire                               mshr_dbf_retired_valid_sx1_q,
     // CHI E.b Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data
     // packets. This stamps an entry present with no fill behind it, so the TXDAT
     // wrapper -- which derives DataID and the beat count from the presence bits
     // alone -- emits them.
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_err_fill_idx_sx1_q,
-    input wire mshr_dbf_err_fill_valid_sx1_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_err_fill_idx_sx1_q,
+    input  wire                               mshr_dbf_err_fill_valid_sx1_q,
 
     //inputs from hnf_cache_pipeline
-    input wire pipe_dbf_wr_valid_sx9_q,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_wr_idx_sx9_q,
-    input wire [chie_pkg::DATA_WIDTH*2-1:0] pipe_dbf_wr_data_sx9_q,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] pipe_dbf_rd_idx_sx2_q,
-    input wire pipe_dbf_rd_idx_sx2_valid_q,
+    input  wire                               pipe_dbf_wr_valid_sx9_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_wr_idx_sx9_q,
+    input  wire [chie_pkg::DATA_WIDTH*2-1:0]  pipe_dbf_wr_data_sx9_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_rd_idx_sx2_q,
+    input  wire                               pipe_dbf_rd_idx_sx2_valid_q,
 
 
     //outputs to hnf_cache_pipeline
     output logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx7_q,
 
     //outputs to hnf_link_txdat_wrap
-    output wire dbf_txdat_valid_sx1,
-    output wire [`MSHR_ENTRIES_WIDTH-1:0] dbf_txdat_idx_sx1,
-    output wire [chie_pkg::BE_WIDTH*2-1:0] dbf_txdat_be_sx1,
-    output wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
-    output wire [1:0] dbf_txdat_pe_sx1
+    output wire                               dbf_txdat_valid_sx1,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
+    output wire [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_sx1,
+    output wire [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_sx1,
+    output wire [1:0]                         dbf_txdat_pe_sx1
     );
 
     //internal signals
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [1:0]                             dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [1:0]                        dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx3_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx4_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx5_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx6_q;
 
     logic [chie_pkg::DATA_WIDTH*2-1:0] temp_li_data;
-    logic [chie_pkg::BE_WIDTH*2-1:0] temp_li_be;
+    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_be;
 
     logic [chie_pkg::DATA_WIDTH*2-1:0] temp_pipe_data;
-    logic [chie_pkg::BE_WIDTH*2-1:0] temp_pipe_be;
+    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_pipe_be;
 
     localparam DBF_PKT_BYTE_NUM  = chie_pkg::DATA_WIDTH/8;
     localparam DBF_PKT_IDX_WIDTH = $clog2(DBF_PKT_BYTE_NUM);

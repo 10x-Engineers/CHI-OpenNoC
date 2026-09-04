@@ -21,145 +21,145 @@
 module rni_arctrl
     `RNI_PARAM
     (
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                             clk_i,
+    input  wire                             rst_i,
 
-    input wire [`AXI4_AR_WIDTH-1:0] AR_CH_S0,
-    input wire ARVALID0,
-    output wire ARREADY0,
+    input  opennoc_rni_pkg::ax_ch_s         AR_CH_S0,
+    input  wire                             ARVALID0,
+    output wire                             ARREADY0,
 
-    output wire arctrl_txreqflitv_s4_o,
-    output chie_pkg::req_flit_s arctrl_txreqflit_s4_o,
-    input wire arctrl_txreqflit_sent_s4_i,
+    output wire                             arctrl_txreqflitv_s4_o,
+    output chie_pkg::req_flit_s             arctrl_txreqflit_s4_o,
+    input  wire                             arctrl_txreqflit_sent_s4_i,
 
-    input wire rxdatflitv_d1_i,
-    input wire [11:0] rxdatflit_txnid_d1_i,
-    input wire [1:0] rxdatflit_dataid_d1_i,
+    input  wire                             rxdatflitv_d1_i,
+    input  wire [11:0]                      rxdatflit_txnid_d1_i,
+    input  wire [1:0]                       rxdatflit_dataid_d1_i,
 
-    input wire rxrspflitv_d1_i,
-    input chie_pkg::rsp_flit_s rxrspflit_d1_i,
+    input  wire                             rxrspflitv_d1_i,
+    input  chie_pkg::rsp_flit_s             rxrspflit_d1_i,
 
-    input wire rp_fifo_acpt_d4_i,
-    output wire arctrl_rb_valid_d4_o,
-    output wire [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rb_ctmask_d4_o,
-    output wire arctrl_rb_rlast_d4_o,
-    output wire [`AXI4_ARID_WIDTH-1:0] arctrl_rb_rid_d4_o,
+    input  wire                             rp_fifo_acpt_d4_i,
+    output wire                             arctrl_rb_valid_d4_o,
+    output wire [`RNI_DMASK_CT_WIDTH-1:0]   arctrl_rb_ctmask_d4_o,
+    output wire                             arctrl_rb_rlast_d4_o,
+    output wire [`AXI4_ARID_WIDTH-1:0]      arctrl_rb_rid_d4_o,
     output wire [`RNI_AR_ENTRIES_WIDTH-1:0] arctrl_rb_idx_d4_o,
-    output wire [`RNI_BC_WIDTH-1:0] arctrl_rb_bc_d4_o,
+    output wire [`RNI_BC_WIDTH-1:0]         arctrl_rb_bc_d4_o,
 
-    input wire pcrdgnt_pkt_v_d2_i,
-    input opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_i,
-    output wire arctrl_pcrdgnt_h_present_d3_o,
-    output wire arctrl_pcrdgnt_l_present_d3_o,
-    input wire ar_pcrdgnt_h_win_d3_i,
-    input wire ar_pcrdgnt_l_win_d3_i
+    input  wire                             pcrdgnt_pkt_v_d2_i,
+    input  opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_i,
+    output wire                             arctrl_pcrdgnt_h_present_d3_o,
+    output wire                             arctrl_pcrdgnt_l_present_d3_o,
+    input  wire                             ar_pcrdgnt_h_win_d3_i,
+    input  wire                             ar_pcrdgnt_l_win_d3_i
     );
 
-    wire alloc_busy_s1_w;
-    wire [`AXI4_AR_WIDTH-1:0] arlink_arbus_s1_w;
-    wire arlink_valid_s1_w;
-    wire [`AXI4_ARADDR_WIDTH-1:0] arlink_addr_s1_w;
-    wire [`RNI_BCVEC_WIDTH-1:0] arlink_bc_vec_s2_w;
-    wire [`RNI_DMASK_WIDTH-1:0] arlink_dmask_s2_w;
-    wire [`AXI4_ARSIZE_WIDTH-1:0] arlink_size_s2_w;
-    logic  [`AXI4_ARCACHE_WIDTH-1:0] ar_axcache_r;
-    wire                           ar_device_w;
-    wire                           ar_cacheable_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_alloc_ptr_s1_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_rdy_s1_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_v_ns_w;
-    wire arctrl_new_entry_req_dep_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_v_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_dep_v_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_req_dep_chain_young_ns_w;
-    wire arctrl_new_entry_rdata_dep_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_rdata_dep_v_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_rdata_dep_v_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_dep_chain_young_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_req_retry_ready_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_hi_retry_rdy_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_lo_retry_rdy_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_req_new_rdy_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_hi_new_rdy_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_lo_new_rdy_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_select_vec_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_hi_retry_dec_w;
-    wire arctrl_req_hi_retry_found_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_lo_retry_dec_w;
-    wire arctrl_req_lo_retry_found_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_hi_new_dec_w;
-    wire arctrl_req_hi_new_found_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_lo_new_dec_w;
-    wire arctrl_req_lo_new_found_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_ptr_ns_w;
-    wire arctrl_entry_req_select_success_flag_w;
-    wire [CHIE_NID_WIDTH_PARAM-1:0] ar_tx_send_nid_w;
-    wire [chie_pkg::NID_WIDTH-1:0] arctrl_entry_rxrsp_tgtid_w;
-    wire [chie_pkg::NID_WIDTH-1:0] arctrl_entry_rxrsp_srcid_w;
-    wire [11:0] arctrl_entry_rxrsp_txnid_w;
-    chie_pkg::rsp_opcode_e arctrl_entry_rxrsp_opcode_w;
-    wire [3:0] arctrl_entry_rxrsp_pcrdtype_w;
-    wire ar_rxrsp_correct_w;
-    wire rxrsp_retryack_recv_flag_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_ns_w;
-    wire                                rxrsp_ordrsp_recv_flag_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_ordrsp_recv_vec_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_ordered_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_ordered_pending_ns_w;
-    wire                                arctrl_ordered_pending_any_w;
-    wire rxrsp_pcrdgrant_recv_flag_w;
-    wire rxrsp_pcrdtype_hi_select_w;
-    wire rxrsp_pcrdtype_lo_select_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_upd_ptr_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_upd_ptr_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_recv_vec_d2_w;
-    wire rxrsp_pcrdtype_hi_match_d2_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d2_w;
-    wire rxrsp_pcrdtype_lo_match_d2_w;
-    wire [`RNI_DMASK_PD_WIDTH-1:0] arctrl_rdat_pdmask_ns_w;
-    wire rxdat_recv_done_flag_w;
-    wire rdata_select_adv_w;
-    wire [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rdat_ctmask_ns_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_select_w;
-    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_dealloc_vec_w;
-    wire arctrl_entry_dealloc_v_w;
+    wire                                 alloc_busy_s1_w;
+    opennoc_rni_pkg::ax_ch_s             arlink_arbus_s1_w;
+    wire                                 arlink_valid_s1_w;
+    wire [`AXI4_ARADDR_WIDTH-1:0]        arlink_addr_s1_w;
+    wire [`RNI_BCVEC_WIDTH-1:0]          arlink_bc_vec_s2_w;
+    wire [`RNI_DMASK_WIDTH-1:0]          arlink_dmask_s2_w;
+    wire [`AXI4_ARSIZE_WIDTH-1:0]        arlink_size_s2_w;
+    logic [`AXI4_ARCACHE_WIDTH-1:0]      ar_axcache_r;
+    wire                                 ar_device_w;
+    wire                                 ar_cacheable_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_alloc_ptr_s1_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdy_s1_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_v_ns_w;
+    wire                                 arctrl_new_entry_req_dep_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_is_req_dep_v_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_dep_v_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_req_dep_chain_young_ns_w;
+    wire                                 arctrl_new_entry_rdata_dep_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_is_rdata_dep_v_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdata_dep_v_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_rdata_dep_chain_young_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_req_retry_ready_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_hi_retry_rdy_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_lo_retry_rdy_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_req_new_rdy_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_hi_new_rdy_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_lo_new_rdy_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_select_vec_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_hi_retry_dec_w;
+    wire                                 arctrl_req_hi_retry_found_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_lo_retry_dec_w;
+    wire                                 arctrl_req_lo_retry_found_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_hi_new_dec_w;
+    wire                                 arctrl_req_hi_new_found_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_lo_new_dec_w;
+    wire                                 arctrl_req_lo_new_found_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_req_ptr_ns_w;
+    wire                                 arctrl_entry_req_select_success_flag_w;
+    wire [CHIE_NID_WIDTH_PARAM-1:0]      ar_tx_send_nid_w;
+    wire [chie_pkg::NID_WIDTH-1:0]       arctrl_entry_rxrsp_tgtid_w;
+    wire [chie_pkg::NID_WIDTH-1:0]       arctrl_entry_rxrsp_srcid_w;
+    wire [11:0]                          arctrl_entry_rxrsp_txnid_w;
+    chie_pkg::rsp_opcode_e               arctrl_entry_rxrsp_opcode_w;
+    wire [3:0]                           arctrl_entry_rxrsp_pcrdtype_w;
+    wire                                 ar_rxrsp_correct_w;
+    wire                                 rxrsp_retryack_recv_flag_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_retryack_recv_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_retryack_recv_vec_ns_w;
+    wire                                 rxrsp_ordrsp_recv_flag_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_ordrsp_recv_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_ordered_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_ordered_pending_ns_w;
+    wire                                 arctrl_ordered_pending_any_w;
+    wire                                 rxrsp_pcrdgrant_recv_flag_w;
+    wire                                 rxrsp_pcrdtype_hi_select_w;
+    wire                                 rxrsp_pcrdtype_lo_select_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_hi_upd_ptr_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_lo_upd_ptr_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_recv_vec_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_hi_recv_vec_d2_w;
+    wire                                 rxrsp_pcrdtype_hi_match_d2_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_lo_recv_vec_d2_w;
+    wire                                 rxrsp_pcrdtype_lo_match_d2_w;
+    wire [`RNI_DMASK_PD_WIDTH-1:0]       arctrl_rdat_pdmask_ns_w;
+    wire                                 rxdat_recv_done_flag_w;
+    wire                                 rdata_select_adv_w;
+    wire [`RNI_DMASK_CT_WIDTH-1:0]       arctrl_rdat_ctmask_ns_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_rdata_select_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_dealloc_vec_w;
+    wire                                 arctrl_entry_dealloc_v_w;
 
-    logic arctrl_entry_full_r;
-    logic [`AXI4_ARID_WIDTH-1:0] arctrl_arid_s2_r;
-    logic [`AXI4_ARADDR_WIDTH-1:0] arctrl_araddr_s2_r;
+    logic                                arctrl_entry_full_r;
+    logic [`AXI4_ARID_WIDTH-1:0]         arctrl_arid_s2_r;
+    logic [`AXI4_ARADDR_WIDTH-1:0]       arctrl_araddr_s2_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_same_req_chain_vec_d2_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_num_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_sameid_rdata_chain_vec_d2_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_rdata_dep_num_r;
-    logic [11:0] ar_txreq_txnid_r;
-    chie_pkg::req_flit_s ar_txreqflit_info_r;
+    logic [11:0]                         ar_txreq_txnid_r;
+    chie_pkg::req_flit_s                 ar_txreqflit_info_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rxrsp_ptr_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_rdy_vec_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_rdy_vec_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rxdat_ptr_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_rdy_r;
-    logic [`RNI_BCVEC_WIDTH-1:0] arctrl_rdata_bc_r;
-    logic arctrl_rdata_bc_break_r;
-    logic [`RNI_AR_ENTRIES_WIDTH-1:0] arctrl_rdata_entry_idx_r;
+    logic [`RNI_BCVEC_WIDTH-1:0]         arctrl_rdata_bc_r;
+    logic                                arctrl_rdata_bc_break_r;
+    logic [`RNI_AR_ENTRIES_WIDTH-1:0]    arctrl_rdata_entry_idx_r;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxdat_recv_done_vec_r;
-    logic [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rdat_ctmask_r;
-    logic [`RNI_DMASK_PD_WIDTH-1:0] arctrl_rdat_pdmask_r;
-    logic [`RNI_DMASK_LS_WIDTH-1:0] arctrl_rdat_lsmask_r;
-    logic [`AXI4_ARID_WIDTH-1:0] arctrl_rdat_axid_r;
-    logic [`RNI_BCVEC_WIDTH-1:0] arctrl_rdat_bcvec_r;
+    logic [`RNI_DMASK_CT_WIDTH-1:0]      arctrl_rdat_ctmask_r;
+    logic [`RNI_DMASK_PD_WIDTH-1:0]      arctrl_rdat_pdmask_r;
+    logic [`RNI_DMASK_LS_WIDTH-1:0]      arctrl_rdat_lsmask_r;
+    logic [`AXI4_ARID_WIDTH-1:0]         arctrl_rdat_axid_r;
+    logic [`RNI_BCVEC_WIDTH-1:0]         arctrl_rdat_bcvec_r;
 
-    logic [`AXI4_AR_WIDTH-1:0] arctrl_entry_info_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    logic [`AXI4_ARADDR_WIDTH-1:0] arctrl_entry_addr_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    opennoc_rni_pkg::ax_ch_s             arctrl_entry_info_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`AXI4_ARADDR_WIDTH-1:0]       arctrl_entry_addr_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_qos_hi_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_v_q;
-    logic arlink_valid_s2_q;
+    logic                                arlink_valid_s2_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_alloc_ptr_s2_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_select_rdy_q;
-    logic [`AXI4_ARSIZE_WIDTH-1:0] arctrl_entry_size_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_DMASK_LS_WIDTH-1:0] arctrl_entry_lsmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_BCVEC_WIDTH-1:0] arctrl_entry_bcvec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`AXI4_ARSIZE_WIDTH-1:0]       arctrl_entry_size_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_LS_WIDTH-1:0]      arctrl_entry_lsmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_BCVEC_WIDTH-1:0]         arctrl_entry_bcvec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_v_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_dep_v_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_req_dep_num_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
@@ -169,32 +169,32 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_is_rdata_dep_num_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_dep_chain_young_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_ptr_q;
-    logic arctrl_entry_req_select_success_q;
+    logic                                arctrl_entry_req_select_success_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_entry_req_select_vec_q;
-    logic arctrl_entry_req_select_retry_flag_q;
-    logic ar_txreqflitv_s5_q;
-    chie_pkg::req_flit_s ar_txreqflit_s5_q;
-    logic ar_txreqflit_sent_s5_q;
-    logic rxrsp_pcrdtype_hi_match_d3_q;
+    logic                                arctrl_entry_req_select_retry_flag_q;
+    logic                                ar_txreqflitv_s5_q;
+    chie_pkg::req_flit_s                 ar_txreqflit_s5_q;
+    logic                                ar_txreqflit_sent_s5_q;
+    logic                                rxrsp_pcrdtype_hi_match_d3_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_recv_vec_d3_q;
-    logic rxrsp_pcrdtype_lo_match_d3_q;
+    logic                                rxrsp_pcrdtype_lo_match_d3_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d3_q;
-    logic [3:0] rxrsp_retryack_pcrdtype_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [3:0]                          rxrsp_retryack_pcrdtype_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_ordered_pending_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_upd_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_upd_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_q;
-    logic rxdat_flitv_q;
-    logic [11:0] rxdat_txnid_q;
-    logic [1:0] rxdat_dataid_q;
+    logic                                rxdat_flitv_q;
+    logic [11:0]                         rxdat_txnid_q;
+    logic [1:0]                          rxdat_dataid_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_start_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_send_q;
-    logic [`RNI_DMASK_RV_WIDTH-1:0] arctrl_entry_rvmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_DMASK_CT_WIDTH-1:0] arctrl_entry_ctmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_DMASK_PD_WIDTH-1:0] arctrl_entry_pdmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_RV_WIDTH-1:0]      arctrl_entry_rvmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_CT_WIDTH-1:0]      arctrl_entry_ctmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_PD_WIDTH-1:0]      arctrl_entry_pdmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 
-    genvar entry;
+    genvar                               entry;
     /////////////////////////////////////////////////////////////
     // txreq s1
     /////////////////////////////////////////////////////////////
@@ -240,7 +240,7 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin: txn_info
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    arctrl_entry_info_q[entry][`AXI4_AR_WIDTH-1:0] <= {`AXI4_AR_WIDTH{1'b0}};
+                    arctrl_entry_info_q[entry] <= '0;
                 end
                 else begin
                     if(arctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
@@ -251,7 +251,7 @@ module rni_arctrl
 
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    arctrl_entry_addr_q[entry][`AXI4_ARADDR_WIDTH-1:0] <= {`AXI4_ARADDR_WIDTH{1'b0}};
+                    arctrl_entry_addr_q[entry][`AXI4_ARADDR_WIDTH-1:0] <= '0;
                 end
                 else begin
                     if(arctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
@@ -266,7 +266,7 @@ module rni_arctrl
                 end
                 else begin
                     if(arctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
-                        arctrl_entry_qos_hi_q[entry] <= (arlink_arbus_s1_w[`AXI4_ARQOS_RANGE] == 4'b1111);
+                        arctrl_entry_qos_hi_q[entry] <= (arlink_arbus_s1_w.qos == 4'b1111);
                     end
                 end
             end
@@ -305,13 +305,13 @@ module rni_arctrl
     // txreq s2
     /////////////////////////////////////////////////////////////
     always_comb begin
-        arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] = {`AXI4_ARID_WIDTH{1'b0}};
+        arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
-            arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] = arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] | ({`AXI4_ARID_WIDTH{arctrl_alloc_ptr_s2_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARID_RANGE]);
+            arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] = arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] | ({`AXI4_ARID_WIDTH{arctrl_alloc_ptr_s2_q[i]}} & arctrl_entry_info_q[i].id);
     end
 
     always_comb begin
-        arctrl_araddr_s2_r[`AXI4_ARADDR_WIDTH-1:0] = {`AXI4_ARADDR_WIDTH{1'b0}};
+        arctrl_araddr_s2_r[`AXI4_ARADDR_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
             arctrl_araddr_s2_r[`AXI4_ARADDR_WIDTH-1:0] = arctrl_araddr_s2_r[`AXI4_ARADDR_WIDTH-1:0] | ({`AXI4_ARADDR_WIDTH{arctrl_alloc_ptr_s2_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
     end
@@ -329,7 +329,7 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin: txn_size_info
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    arctrl_entry_size_q[entry][`AXI4_ARSIZE_WIDTH-1:0] <= {`AXI4_ARSIZE_WIDTH{1'b0}};
+                    arctrl_entry_size_q[entry][`AXI4_ARSIZE_WIDTH-1:0] <= '0;
                 end
                 else begin
                     if(arctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
@@ -372,7 +372,7 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_req_same
             always_comb begin
                 if((arctrl_alloc_ptr_s2_q[entry] == 1'b0) && (arctrl_entry_v_q[entry] == 1'b1) && (rxdat_recv_done_vec_r[entry] == 1'b0))begin
-                    arctrl_same_req_chain_vec_d2_r[entry] = arlink_valid_s2_q && (arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] == arctrl_entry_info_q[entry][`AXI4_ARID_RANGE]) &&
+                    arctrl_same_req_chain_vec_d2_r[entry] = arlink_valid_s2_q && (arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] == arctrl_entry_info_q[entry].id) &&
                                                   (arctrl_araddr_s2_r[`AXI4_ARADDR_WIDTH-1:`L3_CACHELINE_OFFSET] == arctrl_entry_addr_q[entry][`AXI4_ARADDR_WIDTH-1:`L3_CACHELINE_OFFSET]) && arctrl_req_dep_chain_young_q[entry];
                 end
                 else begin
@@ -449,7 +449,7 @@ module rni_arctrl
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_rdata_same
             always_comb begin
                 if((arctrl_alloc_ptr_s2_q[entry] == 1'b0) && (arctrl_entry_v_q[entry] == 1'b1) && (arctrl_entry_dealloc_vec_w[entry] == 1'b0))begin
-                    arctrl_sameid_rdata_chain_vec_d2_r[entry] = (arlink_valid_s2_q && arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] == arctrl_entry_info_q[entry][`AXI4_ARID_RANGE]) && arctrl_rdata_dep_chain_young_q[entry];
+                    arctrl_sameid_rdata_chain_vec_d2_r[entry] = (arlink_valid_s2_q && arctrl_arid_s2_r[`AXI4_ARID_WIDTH-1:0] == arctrl_entry_info_q[entry].id) && arctrl_rdata_dep_chain_young_q[entry];
                 end
                 else begin
                     arctrl_sameid_rdata_chain_vec_d2_r[entry] = 1'b0;
@@ -646,10 +646,10 @@ module rni_arctrl
     // ReadOnce only on the Snoopable one -- so opcode and attributes are derived
     // from the access rather than fixed (CHI-OpenNoC#21).
     always_comb begin: ar_axcache_sel_t
-        ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] = {`AXI4_ARCACHE_WIDTH{1'b0}};
+        ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
             ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] = ar_axcache_r[`AXI4_ARCACHE_WIDTH-1:0] |
-                ({`AXI4_ARCACHE_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARCACHE_RANGE]);
+                ({`AXI4_ARCACHE_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].cache);
     end
 
     assign ar_device_w    = ~ar_axcache_r[1];
@@ -660,7 +660,7 @@ module rni_arctrl
     // Order=EndpointOrder, so this is "this entry's request is ordered".
     generate
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:entry_ordered
-            assign arctrl_entry_ordered_w[entry] = ~arctrl_entry_info_q[entry][`AXI4_ARCACHE_LSB+1];
+            assign arctrl_entry_ordered_w[entry] = ~arctrl_entry_info_q[entry].cache[1];
         end
     endgenerate
 
@@ -686,12 +686,12 @@ module rni_arctrl
         ar_txreqflit_info_r.size = chie_pkg::SIZE_64B;
         ar_txreqflit_info_r.expcompack = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
-            ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARQOS_RANGE]);
+            ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].qos);
             ar_txreqflit_info_r.addr = ar_txreqflit_info_r.addr | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
             ar_txreqflit_info_r.pcrdtype = ~arctrl_entry_req_select_retry_flag_q ? '0 :
                                ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
             // Table 2-11 gives no non-cacheable row an Allocate value.
-            ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i][`AXI4_ARCACHE_MSB-1]);
+            ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i].cache[2]);
         end
     end
 
@@ -1027,13 +1027,13 @@ module rni_arctrl
         arctrl_rdat_ctmask_r[`RNI_DMASK_CT_WIDTH-1:0] = {`RNI_DMASK_CT_WIDTH{1'b0}};
         arctrl_rdat_pdmask_r[`RNI_DMASK_PD_WIDTH-1:0] = {`RNI_DMASK_PD_WIDTH{1'b0}};
         arctrl_rdat_lsmask_r[`RNI_DMASK_LS_WIDTH-1:0] = {`RNI_DMASK_LS_WIDTH{1'b0}};
-        arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] = {`AXI4_ARID_WIDTH{1'b0}};
+        arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] = '0;
         arctrl_rdat_bcvec_r[`RNI_BCVEC_WIDTH-1:0] = {`RNI_BCVEC_WIDTH{1'b0}};
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             arctrl_rdat_ctmask_r[`RNI_DMASK_CT_WIDTH-1:0] = arctrl_rdat_ctmask_r[`RNI_DMASK_CT_WIDTH-1:0] | ({`RNI_DMASK_CT_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_ctmask_q[i][`RNI_DMASK_CT_WIDTH-1:0]);
             arctrl_rdat_pdmask_r[`RNI_DMASK_PD_WIDTH-1:0] = arctrl_rdat_pdmask_r[`RNI_DMASK_PD_WIDTH-1:0] | ({`RNI_DMASK_PD_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_pdmask_q[i][`RNI_DMASK_PD_WIDTH-1:0]);
             arctrl_rdat_lsmask_r[`RNI_DMASK_LS_WIDTH-1:0] = arctrl_rdat_lsmask_r[`RNI_DMASK_LS_WIDTH-1:0] | ({`RNI_DMASK_LS_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_lsmask_q[i][`RNI_DMASK_LS_WIDTH-1:0]);
-            arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] = arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] | ({`AXI4_ARID_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_info_q[i][`AXI4_ARID_RANGE]);
+            arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] = arctrl_rdat_axid_r[`AXI4_ARID_WIDTH-1:0] | ({`AXI4_ARID_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_info_q[i].id);
             arctrl_rdat_bcvec_r[`RNI_BCVEC_WIDTH-1:0] = arctrl_rdat_bcvec_r[`RNI_BCVEC_WIDTH-1:0] | ({`RNI_BCVEC_WIDTH{arctrl_rdata_send_q[i]}} & arctrl_entry_bcvec_q[i][`RNI_BCVEC_WIDTH-1:0]);
         end
     end
@@ -1106,7 +1106,7 @@ module rni_arctrl
                 end
                 else begin
                     if(arctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
-                        arctrl_entry_ctmask_q[entry][`RNI_DMASK_CT_WIDTH-1:0] <= arlink_dmask_s2_w[`RNI_DMASK_CT_RANGE];
+                        arctrl_entry_ctmask_q[entry][`RNI_DMASK_CT_WIDTH-1:0] <= arlink_dmask_s2_w[`RNI_DMASK_CT_WIDTH-1:0];
                     end
                     else if(arctrl_rdata_send_q[entry] && rp_fifo_acpt_d4_i)begin
                         arctrl_entry_ctmask_q[entry][`RNI_DMASK_CT_WIDTH-1:0] <= arctrl_rdat_ctmask_ns_w[`RNI_DMASK_CT_WIDTH-1:0];

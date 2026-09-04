@@ -21,157 +21,157 @@
 module rni `RNI_PARAM
     (
     // global ports
-    input wire CLK,
-    input wire RST,
+    input  wire                            CLK,
+    input  wire                            RST,
 
     // link handshake
-    output wire TXLINKACTIVEREQ,
-    input wire TXLINKACTIVEACK,
-    input wire RXLINKACTIVEREQ,
-    output wire RXLINKACTIVEACK,
+    output wire                            TXLINKACTIVEREQ,
+    input  wire                            TXLINKACTIVEACK,
+    input  wire                            RXLINKACTIVEREQ,
+    output wire                            RXLINKACTIVEACK,
 
     // CHI interface
-    input wire RXRSPFLITPEND,
-    input wire RXRSPFLITV,
-    input chie_pkg::rsp_flit_s RXRSPFLIT,
-    output wire RXRSPLCRDV,
-    input wire RXDATFLITPEND,
-    input wire RXDATFLITV,
-    input chie_pkg::dat_flit_s RXDATFLIT,
-    output wire RXDATLCRDV,
-    output wire TXRSPFLITPEND,
-    output wire TXRSPFLITV,
-    output chie_pkg::rsp_flit_s TXRSPFLIT,
-    input wire TXRSPLCRDV,
-    output wire TXDATFLITPEND,
-    output wire TXDATFLITV,
-    output chie_pkg::dat_flit_s TXDATFLIT,
-    input wire TXDATLCRDV,
-    output wire TXREQFLITPEND,
-    output wire TXREQFLITV,
-    output chie_pkg::req_flit_s TXREQFLIT,
-    input wire TXREQLCRDV,
+    input  wire                            RXRSPFLITPEND,
+    input  wire                            RXRSPFLITV,
+    input  chie_pkg::rsp_flit_s            RXRSPFLIT,
+    output wire                            RXRSPLCRDV,
+    input  wire                            RXDATFLITPEND,
+    input  wire                            RXDATFLITV,
+    input  chie_pkg::dat_flit_s            RXDATFLIT,
+    output wire                            RXDATLCRDV,
+    output wire                            TXRSPFLITPEND,
+    output wire                            TXRSPFLITV,
+    output chie_pkg::rsp_flit_s            TXRSPFLIT,
+    input  wire                            TXRSPLCRDV,
+    output wire                            TXDATFLITPEND,
+    output wire                            TXDATFLITV,
+    output chie_pkg::dat_flit_s            TXDATFLIT,
+    input  wire                            TXDATLCRDV,
+    output wire                            TXREQFLITPEND,
+    output wire                            TXREQFLITV,
+    output chie_pkg::req_flit_s            TXREQFLIT,
+    input  wire                            TXREQLCRDV,
 
     // AXI interface0
-    input wire [`AXI4_AWID_WIDTH-1:0] AWID0,
-    input wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR0,
-    input wire [`AXI4_AWLEN_WIDTH-1:0] AWLEN0,
-    input wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE0,
-    input wire [`AXI4_AWBURST_WIDTH-1:0] AWBURST0,
-    input wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK0,
-    input wire [`AXI4_AWCACHE_WIDTH-1:0] AWCACHE0,
-    input wire [`AXI4_AWPROT_WIDTH-1:0] AWPROT0,
-    input wire [`AXI4_AWQOS_WIDTH-1:0] AWQOS0,
-    input wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
-    input wire AWVALID0,
-    output wire AWREADY0,
-    input wire [`AXI4_WDATA_WIDTH-1:0] WDATA0,
-    input wire [`AXI4_WSTRB_WIDTH-1:0] WSTRB0,
-    input wire [`AXI4_WLAST_WIDTH-1:0] WLAST0,
-    input wire WVALID0,
-    output wire WREADY0,
-    output wire [`AXI4_BID_WIDTH-1:0] BID0,
-    output wire [`AXI4_BRESP_WIDTH-1:0] BRESP0,
-    output wire BVALID0,
-    input wire BREADY0,
-    input wire [`AXI4_ARID_WIDTH-1:0] ARID0,
-    input wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR0,
-    input wire [`AXI4_ARLEN_WIDTH-1:0] ARLEN0,
-    input wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE0,
-    input wire [`AXI4_ARBURST_WIDTH-1:0] ARBURST0,
-    input wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK0,
-    input wire [`AXI4_ARCACHE_WIDTH-1:0] ARCACHE0,
-    input wire [`AXI4_ARPROT_WIDTH-1:0] ARPROT0,
-    input wire [`AXI4_ARQOS_WIDTH-1:0] ARQOS0,
-    input wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
-    input wire ARVALID0,
-    output wire ARREADY0,
-    output wire [`AXI4_RID_WIDTH-1:0] RID0,
-    output wire [`AXI4_RDATA_WIDTH-1:0] RDATA0,
-    output wire [`AXI4_RRESP_WIDTH-1:0] RRESP0,
-    output wire [`AXI4_RLAST_WIDTH-1:0] RLAST0,
-    output wire RVALID0,
-    input wire RREADY0
+    input  wire [`AXI4_AWID_WIDTH-1:0]     AWID0,
+    input  wire [`AXI4_AWADDR_WIDTH-1:0]   AWADDR0,
+    input  wire [`AXI4_AWLEN_WIDTH-1:0]    AWLEN0,
+    input  wire [`AXI4_AWSIZE_WIDTH-1:0]   AWSIZE0,
+    input  wire [`AXI4_AWBURST_WIDTH-1:0]  AWBURST0,
+    input  wire [`AXI4_AWLOCK_WIDTH-1:0]   AWLOCK0,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0]  AWCACHE0,
+    input  wire [`AXI4_AWPROT_WIDTH-1:0]   AWPROT0,
+    input  wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS0,
+    input  wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
+    input  wire                            AWVALID0,
+    output wire                            AWREADY0,
+    input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0,
+    input  wire [`AXI4_WSTRB_WIDTH-1:0]    WSTRB0,
+    input  wire [`AXI4_WLAST_WIDTH-1:0]    WLAST0,
+    input  wire                            WVALID0,
+    output wire                            WREADY0,
+    output wire [`AXI4_BID_WIDTH-1:0]      BID0,
+    output wire [`AXI4_BRESP_WIDTH-1:0]    BRESP0,
+    output wire                            BVALID0,
+    input  wire                            BREADY0,
+    input  wire [`AXI4_ARID_WIDTH-1:0]     ARID0,
+    input  wire [`AXI4_ARADDR_WIDTH-1:0]   ARADDR0,
+    input  wire [`AXI4_ARLEN_WIDTH-1:0]    ARLEN0,
+    input  wire [`AXI4_ARSIZE_WIDTH-1:0]   ARSIZE0,
+    input  wire [`AXI4_ARBURST_WIDTH-1:0]  ARBURST0,
+    input  wire [`AXI4_ARLOCK_WIDTH-1:0]   ARLOCK0,
+    input  wire [`AXI4_ARCACHE_WIDTH-1:0]  ARCACHE0,
+    input  wire [`AXI4_ARPROT_WIDTH-1:0]   ARPROT0,
+    input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0,
+    input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
+    input  wire                            ARVALID0,
+    output wire                            ARREADY0,
+    output wire [`AXI4_RID_WIDTH-1:0]      RID0,
+    output wire [`AXI4_RDATA_WIDTH-1:0]    RDATA0,
+    output wire [`AXI4_RRESP_WIDTH-1:0]    RRESP0,
+    output wire [`AXI4_RLAST_WIDTH-1:0]    RLAST0,
+    output wire                            RVALID0,
+    input  wire                            RREADY0
     );
 
     // wire
-    wire [`AXI4_AW_WIDTH-1:0]                   AW_CH_S0;
-    wire [`AXI4_W_WIDTH-1:0]                    W_CH_S0;
-    wire [`AXI4_B_WIDTH-1:0]                    B_CH_S0;
-    wire [`AXI4_AR_WIDTH-1:0]                   AR_CH_S0;
-    wire [`AXI4_R_WIDTH-1:0]                    R_CH_S0;
-    wire                                        rxrspflitv_d1;
-    chie_pkg::rsp_flit_s             rxrspflit_d1_q;
-    wire                                        rxdatflitv_d1;
-    wire                                        rxdatflitv_d1_w;
-    chie_pkg::dat_flit_s                 rxdatflit_d1;
-    wire [11:0]       rxdatflit_txnid_d1;
-    wire [1:0]      rxdatflit_dataid_d1;
-    wire                                        arctrl_rxdat_rb_v_d2;
-    wire [`RNI_AR_ENTRIES_WIDTH-1:0]            arctrl_rxdat_rb_idx_d2;
-    wire                                        rp_fifo_acpt_d4;
-    wire                                        arctrl_rb_valid_d4;
-    wire [`RNI_DMASK_CT_WIDTH-1:0]              arctrl_rb_ctmask_d4;
-    wire                                        arctrl_rb_rlast_d4;
-    wire [`AXI4_ARID_WIDTH-1:0]                 arctrl_rb_rid_d4;
-    chie_pkg::resp_err_e     arctrl_rdata_resperr_d4;
-    wire [`RNI_AR_ENTRIES_WIDTH-1:0]            arctrl_rb_idx_d4;
-    wire [`RNI_BC_WIDTH-1:0]                    arctrl_rb_bc_d4;
-    chie_pkg::dat_flit_s             aw_txdatflit_s3;
-    wire                                        aw_txdatflitv_s3;
-    wire                                        aw_txdatflit_sent_s3;
-    wire                                        pcrdgnt_pkt_v_d2;
-    opennoc_rni_pkg::pcrdgrant_pkt_s             pcrdgnt_pkt_d2;
-    chie_pkg::req_flit_s             arctrl_txreqflit_s4;
-    wire                                        arctrl_txreqflitv_s4;
-    wire                                        arctrl_txreqflit_sent_s4;
-    chie_pkg::rsp_flit_s             aw_txrspflit_s0;
-    wire                                        aw_txrspflitv_s0;
-    wire                                        aw_txrspflit_sent_s0;
-    chie_pkg::req_flit_s             aw_txreqflit_s0;
-    wire                                        aw_txreqflitv_s0;
-    wire                                        aw_txreqflit_sent_s0;
-    wire                                        arctrl_pcrdgnt_l_present_d3;
-    wire                                        arctrl_pcrdgnt_h_present_d3;
-    wire                                        aw_pcrdgnt_l_present_d3;
-    wire                                        aw_pcrdgnt_h_present_d3;
-    wire                                        ar_pcrdgnt_l_win_d3;
-    wire                                        ar_pcrdgnt_h_win_d3;
-    wire                                        aw_pcrdgnt_l_win_d3;
-    wire                                        aw_pcrdgnt_h_win_d3;
-    chie_pkg::rsp_flit_s             awctrl_txrspflit_d0;
-    wire                                        awctrl_txrspflitv_d0;
-    wire                                        awctrl_txrspflit_sent_d0;
-    chie_pkg::req_flit_s             awctrl_txreqflit_s4;
-    wire                                        awctrl_txreqflitv_s4;
-    wire                                        awctrl_txreqflit_sent_s4;
-    wire                                        awctrl_alloc_valid_s2;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_alloc_entry_s2;
-    wire [`RNI_DMASK_CT_WIDTH-1:0]              awctrl_ctmask_s2;
-    wire [`RNI_DMASK_PD_WIDTH-1:0]              awctrl_pdmask_s2;
-    wire [`RNI_BCVEC_WIDTH-1:0]                 awctrl_bc_vec_s2;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_dealloc_entry;
-    wire                                        wb_req_fifo_pfull_d1;
-    wire                                        wb_req_done_d3;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         wb_req_entry_d3;
-    wire                                        wb_not_busy_d1;
-    wire                                        awctrl_txdat_rdy_v_d2;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_txdat_rdy_entry_d2;
-    wire [3:0]         awctrl_txdat_qos_d2;
-    wire                                        awctrl_txdat_compack_d2;
-    wire [11:0]        awctrl_txdat_dbid_d2;
-    wire [chie_pkg::NID_WIDTH-1:0]       awctrl_txdat_tgtid_d2;
-    wire [1:0]        awctrl_txdat_ccid_d2;
-    wire [`RNI_DMASK_CT_WIDTH-1:0]              awctrl_txdat_ctmask_d2;
-    wire                                        awctrl_txdat_not_busy_d2;
-    wire                                        awctrl_brsp_fifo_pop_d3;
-    wire                                        awctrl_brsp_rdy_v_d2;
-    wire                                        awctrl_brsp_last_v_d2;
-    wire [`AXI4_BID_WIDTH-1:0]                  awctrl_brsp_axid_d2;
-    chie_pkg::resp_err_e     awctrl_brsp_resperr_d2;
-    chie_pkg::dat_flit_s             wb_txdatflit_d3;
-    wire                                        wb_txdatflitv_d3;
-    wire                                        wb_txdatflit_sent_d3;
+    opennoc_rni_pkg::ax_ch_s            AW_CH_S0;
+    opennoc_rni_pkg::w_ch_s             W_CH_S0;
+    opennoc_rni_pkg::b_ch_s             B_CH_S0;
+    opennoc_rni_pkg::ax_ch_s            AR_CH_S0;
+    opennoc_rni_pkg::r_ch_s             R_CH_S0;
+    wire                                rxrspflitv_d1;
+    chie_pkg::rsp_flit_s                rxrspflit_d1_q;
+    wire                                rxdatflitv_d1;
+    wire                                rxdatflitv_d1_w;
+    chie_pkg::dat_flit_s                rxdatflit_d1;
+    wire [11:0]                         rxdatflit_txnid_d1;
+    wire [1:0]                          rxdatflit_dataid_d1;
+    wire                                arctrl_rxdat_rb_v_d2;
+    wire [`RNI_AR_ENTRIES_WIDTH-1:0]    arctrl_rxdat_rb_idx_d2;
+    wire                                rp_fifo_acpt_d4;
+    wire                                arctrl_rb_valid_d4;
+    wire [`RNI_DMASK_CT_WIDTH-1:0]      arctrl_rb_ctmask_d4;
+    wire                                arctrl_rb_rlast_d4;
+    wire [`AXI4_ARID_WIDTH-1:0]         arctrl_rb_rid_d4;
+    chie_pkg::resp_err_e                arctrl_rdata_resperr_d4;
+    wire [`RNI_AR_ENTRIES_WIDTH-1:0]    arctrl_rb_idx_d4;
+    wire [`RNI_BC_WIDTH-1:0]            arctrl_rb_bc_d4;
+    chie_pkg::dat_flit_s                aw_txdatflit_s3;
+    wire                                aw_txdatflitv_s3;
+    wire                                aw_txdatflit_sent_s3;
+    wire                                pcrdgnt_pkt_v_d2;
+    opennoc_rni_pkg::pcrdgrant_pkt_s    pcrdgnt_pkt_d2;
+    chie_pkg::req_flit_s                arctrl_txreqflit_s4;
+    wire                                arctrl_txreqflitv_s4;
+    wire                                arctrl_txreqflit_sent_s4;
+    chie_pkg::rsp_flit_s                aw_txrspflit_s0;
+    wire                                aw_txrspflitv_s0;
+    wire                                aw_txrspflit_sent_s0;
+    chie_pkg::req_flit_s                aw_txreqflit_s0;
+    wire                                aw_txreqflitv_s0;
+    wire                                aw_txreqflit_sent_s0;
+    wire                                arctrl_pcrdgnt_l_present_d3;
+    wire                                arctrl_pcrdgnt_h_present_d3;
+    wire                                aw_pcrdgnt_l_present_d3;
+    wire                                aw_pcrdgnt_h_present_d3;
+    wire                                ar_pcrdgnt_l_win_d3;
+    wire                                ar_pcrdgnt_h_win_d3;
+    wire                                aw_pcrdgnt_l_win_d3;
+    wire                                aw_pcrdgnt_h_win_d3;
+    chie_pkg::rsp_flit_s                awctrl_txrspflit_d0;
+    wire                                awctrl_txrspflitv_d0;
+    wire                                awctrl_txrspflit_sent_d0;
+    chie_pkg::req_flit_s                awctrl_txreqflit_s4;
+    wire                                awctrl_txreqflitv_s4;
+    wire                                awctrl_txreqflit_sent_s4;
+    wire                                awctrl_alloc_valid_s2;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_alloc_entry_s2;
+    wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_ctmask_s2;
+    wire [`RNI_DMASK_PD_WIDTH-1:0]      awctrl_pdmask_s2;
+    wire [`RNI_BCVEC_WIDTH-1:0]         awctrl_bc_vec_s2;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_dealloc_entry;
+    wire                                wb_req_fifo_pfull_d1;
+    wire                                wb_req_done_d3;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_req_entry_d3;
+    wire                                wb_not_busy_d1;
+    wire                                awctrl_txdat_rdy_v_d2;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_txdat_rdy_entry_d2;
+    wire [3:0]                          awctrl_txdat_qos_d2;
+    wire                                awctrl_txdat_compack_d2;
+    wire [11:0]                         awctrl_txdat_dbid_d2;
+    wire [chie_pkg::NID_WIDTH-1:0]      awctrl_txdat_tgtid_d2;
+    wire [1:0]                          awctrl_txdat_ccid_d2;
+    wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_txdat_ctmask_d2;
+    wire                                awctrl_txdat_not_busy_d2;
+    wire                                awctrl_brsp_fifo_pop_d3;
+    wire                                awctrl_brsp_rdy_v_d2;
+    wire                                awctrl_brsp_last_v_d2;
+    wire [`AXI4_BID_WIDTH-1:0]          awctrl_brsp_axid_d2;
+    chie_pkg::resp_err_e                awctrl_brsp_resperr_d2;
+    chie_pkg::dat_flit_s                wb_txdatflit_d3;
+    wire                                wb_txdatflitv_d3;
+    wire                                wb_txdatflit_sent_d3;
 
     rni_axi_bus `RNI_PARAM_INST
                 rni_axi_bus_inst(

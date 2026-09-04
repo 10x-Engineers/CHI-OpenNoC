@@ -21,119 +21,119 @@
 module hnf_mshr_bypass `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs from hnf_mshr_rxreq_parse
-    input wire li_mshr_rxreq_valid_s0,
-    input wire [3:0] li_mshr_rxreq_qos_s0,
-    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
-    input wire [11:0] li_mshr_rxreq_txnid_s0,
-    input chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
-    input chie_pkg::size_e li_mshr_rxreq_size_s0,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
-    input wire li_mshr_rxreq_ns_s0,
-    input chie_pkg::order_e li_mshr_rxreq_order_s0,
-    input wire [3:0] li_mshr_rxreq_pcrdtype_s0,
-    input chie_pkg::memattr_s li_mshr_rxreq_memattr_s0,
-    input wire li_mshr_rxreq_excl_s0,
-    input wire li_mshr_rxreq_expcompack_s0,
-    input wire li_mshr_rxreq_tracetag_s0,
+    input  wire                                li_mshr_rxreq_valid_s0,
+    input  wire [3:0]                          li_mshr_rxreq_qos_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
+    input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
+    input  chie_pkg::req_opcode_e              li_mshr_rxreq_opcode_s0,
+    input  chie_pkg::size_e                    li_mshr_rxreq_size_s0,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
+    input  wire                                li_mshr_rxreq_ns_s0,
+    input  chie_pkg::order_e                   li_mshr_rxreq_order_s0,
+    input  wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
+    input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
+    input  wire                                li_mshr_rxreq_excl_s0,
+    input  wire                                li_mshr_rxreq_expcompack_s0,
+    input  wire                                li_mshr_rxreq_tracetag_s0,
 
     //inputs from hnf_mshr_qos
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s1_q,
-    input wire mshr_alloc_en_s0,
-    input wire rxreq_cam_hazard_s1_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_entry_idx_alloc_s1_q,
+    input  wire                                mshr_alloc_en_s0,
+    input  wire                                rxreq_cam_hazard_s1_q,
 
     //inputs from hnf_mshr_global_monitor
-    input wire excl_pass_s1,
-    input wire excl_fail_s1,
+    input  wire                                excl_pass_s1,
+    input  wire                                excl_fail_s1,
 
     //inputs from hnf_link_txreq_wrap
-    input wire txreq_mshr_bypass_won_s1,
+    input  wire                                txreq_mshr_bypass_won_s1,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire txrsp_mshr_bypass_won_s1,
+    input  wire                                txrsp_mshr_bypass_won_s1,
 
     //outputs to hnf_link_txrsp_wrap
-    output wire mshr_txrsp_bypass_valid_s1,
-    output wire [3:0] mshr_txrsp_bypass_qos_s1,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txrsp_bypass_tgtid_s1,
-    output wire [11:0] mshr_txrsp_bypass_txnid_s1,
-    output chie_pkg::rsp_opcode_e mshr_txrsp_bypass_opcode_s1,
-    output chie_pkg::resp_err_e mshr_txrsp_bypass_resperr_s1,
-    output wire [11:0] mshr_txrsp_bypass_dbid_s1,
-    output wire mshr_txrsp_bypass_tracetag_s1,
+    output wire                                mshr_txrsp_bypass_valid_s1,
+    output wire [3:0]                          mshr_txrsp_bypass_qos_s1,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txrsp_bypass_tgtid_s1,
+    output wire [11:0]                         mshr_txrsp_bypass_txnid_s1,
+    output chie_pkg::rsp_opcode_e              mshr_txrsp_bypass_opcode_s1,
+    output chie_pkg::resp_err_e                mshr_txrsp_bypass_resperr_s1,
+    output wire [11:0]                         mshr_txrsp_bypass_dbid_s1,
+    output wire                                mshr_txrsp_bypass_tracetag_s1,
 
     //outputs to hnf_link_txreq_wrap
-    output wire mshr_txreq_bypass_valid_s1,
-    output wire [3:0] mshr_txreq_bypass_qos_s1,
-    output wire [11:0] mshr_txreq_bypass_txnid_s1,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txreq_bypass_returnnid_s1,
-    output wire [12-1:0] mshr_txreq_bypass_returntxnid_s1,
-    output chie_pkg::req_opcode_e mshr_txreq_bypass_opcode_s1,
-    output chie_pkg::size_e mshr_txreq_bypass_size_s1,
+    output wire                                mshr_txreq_bypass_valid_s1,
+    output wire [3:0]                          mshr_txreq_bypass_qos_s1,
+    output wire [11:0]                         mshr_txreq_bypass_txnid_s1,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_bypass_returnnid_s1,
+    output wire [12-1:0]                       mshr_txreq_bypass_returntxnid_s1,
+    output chie_pkg::req_opcode_e              mshr_txreq_bypass_opcode_s1,
+    output chie_pkg::size_e                    mshr_txreq_bypass_size_s1,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_bypass_addr_s1,
-    output wire mshr_txreq_bypass_ns_s1,
-    output wire mshr_txreq_bypass_allowretry_s1,
-    output chie_pkg::order_e mshr_txreq_bypass_order_s1,
-    output wire [3:0] mshr_txreq_bypass_pcrdtype_s1,
-    output chie_pkg::memattr_s mshr_txreq_bypass_memattr_s1,
-    output wire mshr_txreq_bypass_dodwt_s1,
-    output wire mshr_txreq_bypass_tracetag_s1,
+    output wire                                mshr_txreq_bypass_ns_s1,
+    output wire                                mshr_txreq_bypass_allowretry_s1,
+    output chie_pkg::order_e                   mshr_txreq_bypass_order_s1,
+    output wire [3:0]                          mshr_txreq_bypass_pcrdtype_s1,
+    output chie_pkg::memattr_s                 mshr_txreq_bypass_memattr_s1,
+    output wire                                mshr_txreq_bypass_dodwt_s1,
+    output wire                                mshr_txreq_bypass_tracetag_s1,
 
     //outputs to hnf_mshr_ctl
-    output wire txreq_mshr_bypass_lost_s1,
-    output wire txrsp_mshr_bypass_lost_s1
+    output wire                                txreq_mshr_bypass_lost_s1,
+    output wire                                txrsp_mshr_bypass_lost_s1
     );
 
-    wire                                              req_rd_s0;
-    wire                                              req_cb_s0;
-    wire                                              req_wuf_s0;
-    wire                                              req_wup_s0;
-    wire                                              req_rdnosnp_s0;
-    wire                                              req_wrnosnpful_s0;
-    wire                                              req_wrnosnpptl_s0;
-    wire                                              req_wrnosnp_s0;
-    wire                                              req_ord_s0;
-    wire                                              req_memattr_cacheable;
-    wire                                              req_memattr_allocate;
+    wire                                 req_rd_s0;
+    wire                                 req_cb_s0;
+    wire                                 req_wuf_s0;
+    wire                                 req_wup_s0;
+    wire                                 req_rdnosnp_s0;
+    wire                                 req_wrnosnpful_s0;
+    wire                                 req_wrnosnpptl_s0;
+    wire                                 req_wrnosnp_s0;
+    wire                                 req_ord_s0;
+    wire                                 req_memattr_cacheable;
+    wire                                 req_memattr_allocate;
 
-    logic [3:0]                li_mshr_rxreq_qos_s1_q;
-    logic [chie_pkg::NID_WIDTH-1:0]              li_mshr_rxreq_srcid_s1_q;
-    logic [11:0]              li_mshr_rxreq_txnid_s1_q;
-    chie_pkg::req_opcode_e             li_mshr_rxreq_opcode_s1_q;
-    chie_pkg::size_e               li_mshr_rxreq_size_s1_q;
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]               li_mshr_rxreq_addr_s1_q;
-    chie_pkg::order_e              li_mshr_rxreq_order_s1_q;
-    logic         li_mshr_rxreq_expcompack_s1_q;
-    logic                 li_mshr_rxreq_ns_s1_q;
-    logic [3:0]           li_mshr_rxreq_pcrdtype_s1_q;
-    chie_pkg::memattr_s            li_mshr_rxreq_memattr_s1_q;
-    logic               li_mshr_rxreq_excl_s1_q;
-    logic           li_mshr_rxreq_tracetag_s1_q;
+    logic [3:0]                          li_mshr_rxreq_qos_s1_q;
+    logic [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s1_q;
+    logic [11:0]                         li_mshr_rxreq_txnid_s1_q;
+    chie_pkg::req_opcode_e               li_mshr_rxreq_opcode_s1_q;
+    chie_pkg::size_e                     li_mshr_rxreq_size_s1_q;
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s1_q;
+    chie_pkg::order_e                    li_mshr_rxreq_order_s1_q;
+    logic                                li_mshr_rxreq_expcompack_s1_q;
+    logic                                li_mshr_rxreq_ns_s1_q;
+    logic [3:0]                          li_mshr_rxreq_pcrdtype_s1_q;
+    chie_pkg::memattr_s                  li_mshr_rxreq_memattr_s1_q;
+    logic                                li_mshr_rxreq_excl_s1_q;
+    logic                                li_mshr_rxreq_tracetag_s1_q;
 
-    wire                                              rd_receipt_s0;
-    wire                                              wr_compdbid_s0;
-    wire                                              wr_dbid_s0;
-    wire                                              tx_rdnosnp_s0;
-    wire                                              tx_wrnosnpful_wuf_s0;
+    wire                                 rd_receipt_s0;
+    wire                                 wr_compdbid_s0;
+    wire                                 wr_dbid_s0;
+    wire                                 tx_rdnosnp_s0;
+    wire                                 tx_wrnosnpful_wuf_s0;
 
-    logic                                               rd_receipt_s1_q;
-    logic                                               wr_compdbid_s1_q;
-    logic                                               wr_dbid_s1_q;
-    logic                                               tx_rdnosnp_s1_q;
-    logic                                               tx_wrnosnpful_wuf_s1_q;
-    wire                                              tx_wrnosnpful_s1;
-    wire                                              tx_wrnosnpptl_s1;
+    logic                                rd_receipt_s1_q;
+    logic                                wr_compdbid_s1_q;
+    logic                                wr_dbid_s1_q;
+    logic                                tx_rdnosnp_s1_q;
+    logic                                tx_wrnosnpful_wuf_s1_q;
+    wire                                 tx_wrnosnpful_s1;
+    wire                                 tx_wrnosnpptl_s1;
 
-    wire                                             do_dwt_wrnosnpfull_s0;
-    wire                                             do_dwt_wrnosnpptl_s0 ;
-    wire                                             do_dmt_s0;
-    logic                                              do_dwt_wrnosnpfull_s1_q;
-    logic                                              do_dwt_wrnosnpptl_s1_q ;
-    logic                                              do_dmt_s1_q;
-    logic                                              mshr_alloc_en_s1_q;
+    wire                                 do_dwt_wrnosnpfull_s0;
+    wire                                 do_dwt_wrnosnpptl_s0;
+    wire                                 do_dmt_s0;
+    logic                                do_dwt_wrnosnpfull_s1_q;
+    logic                                do_dwt_wrnosnpptl_s1_q;
+    logic                                do_dmt_s1_q;
+    logic                                mshr_alloc_en_s1_q;
 
     assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
     // Table 4-16 (Sec 4.2.3 p.4-181)'s CopyBack set, which is what hnf_mshr_ctl's

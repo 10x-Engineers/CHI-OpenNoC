@@ -20,21 +20,21 @@
 module hnf_lru_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                         clk,
+    input  wire                         rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] lru_index_q,
-    input wire lru_rd_en_q,
-    input wire lru_wr_en_q,
-    input wire [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]  lru_index_q,
+    input  wire                         lru_rd_en_q,
+    input  wire                         lru_wr_en_q,
+    input  wire [`LRU_CLINE_WIDTH-1:0]  lru_wr_data_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q
     );
 
     //internal signals
-    wire [`LRU_CLINE_WIDTH-1:0]             lru_rd_data;
+    wire [`LRU_CLINE_WIDTH-1:0] lru_rd_data;
 
     //main function
 
@@ -65,21 +65,21 @@ endmodule
 module hnf_lru_sram `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                         clk,
+    input  wire                         rst,
 
     //inputs from hnf_cache_pipeline
-    input wire [`LOC_INDEX_WIDTH-1:0] lru_index_q,
-    input wire lru_rd_en_q,
-    input wire lru_wr_en_q,
-    input wire [`LRU_CLINE_WIDTH-1:0] lru_wr_data_q,
+    input  wire [`LOC_INDEX_WIDTH-1:0]  lru_index_q,
+    input  wire                         lru_rd_en_q,
+    input  wire                         lru_wr_en_q,
+    input  wire [`LRU_CLINE_WIDTH-1:0]  lru_wr_data_q,
 
     //outputs to hnf_cache_pipeline
     output logic [`LRU_CLINE_WIDTH-1:0] lru_rd_data_q
     );
 
     //internal signals
-    wire [`LRU_CLINE_WIDTH-1:0]             lru_rd_data,lru_rd_data1;
+    wire [`LRU_CLINE_WIDTH-1:0] lru_rd_data, lru_rd_data1;
 
     //main function
 
