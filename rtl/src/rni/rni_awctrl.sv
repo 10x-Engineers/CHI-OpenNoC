@@ -21,276 +21,276 @@
 module rni_awctrl `RNI_PARAM
     (
     // Global inputs
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                                clk_i,
+    input  wire                                rst_i,
 
     /////////////////////////////////////////////////////////////
     // CHI face
     /////////////////////////////////////////////////////////////
 
-    output chie_pkg::rsp_flit_s awctrl_txrspflit_d0_o,
-    output wire awctrl_txrspflitv_d0_o,
-    input wire awctrl_txrspflit_sent_d0_i,
+    output chie_pkg::rsp_flit_s                awctrl_txrspflit_d0_o,
+    output wire                                awctrl_txrspflitv_d0_o,
+    input  wire                                awctrl_txrspflit_sent_d0_i,
 
-    output chie_pkg::req_flit_s awctrl_txreqflit_s4_o,
-    output wire awctrl_txreqflitv_s4_o,
-    input wire awctrl_txreqflit_sent_s4_i,
+    output chie_pkg::req_flit_s                awctrl_txreqflit_s4_o,
+    output wire                                awctrl_txreqflitv_s4_o,
+    input  wire                                awctrl_txreqflit_sent_s4_i,
 
-    input wire awctrl_rxrspflitv_d1_i,
-    input chie_pkg::rsp_flit_s awctrl_rxrspflit_d1_i,
+    input  wire                                awctrl_rxrspflitv_d1_i,
+    input  chie_pkg::rsp_flit_s                awctrl_rxrspflit_d1_i,
 
     /////////////////////////////////////////////////////////////
     // AMBA4 face
     /////////////////////////////////////////////////////////////
 
-    input wire AWVALID0,
-    input wire [`AXI4_AW_WIDTH-1:0] AW_CH_S0,
-    output wire AWREADY0,
+    input  wire                                AWVALID0,
+    input  opennoc_rni_pkg::ax_ch_s            AW_CH_S0,
+    output wire                                AWREADY0,
 
     ///////////////////////////////////////////////////////////////
     // Misc face
     ///////////////////////////////////////////////////////////////
 
-    input wire pcrdgnt_pkt_v_d2_i,
-    input opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_i,
-    output wire awctrl_pcrdgnt_h_present_d3_o,
-    output wire awctrl_pcrdgnt_l_present_d3_o,
-    input wire awctrl_pcrdgnt_h_win_d3_i,
-    input wire awctrl_pcrdgnt_l_win_d3_i,
+    input  wire                                pcrdgnt_pkt_v_d2_i,
+    input  opennoc_rni_pkg::pcrdgrant_pkt_s    pcrdgnt_pkt_d2_i,
+    output wire                                awctrl_pcrdgnt_h_present_d3_o,
+    output wire                                awctrl_pcrdgnt_l_present_d3_o,
+    input  wire                                awctrl_pcrdgnt_h_win_d3_i,
+    input  wire                                awctrl_pcrdgnt_l_win_d3_i,
 
-    output wire awctrl_alloc_valid_s2_o,
+    output wire                                awctrl_alloc_valid_s2_o,
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_alloc_entry_s2_o,
-    output wire [`RNI_DMASK_CT_WIDTH-1:0] awctrl_ctmask_s2_o,
-    output wire [`RNI_DMASK_PD_WIDTH-1:0] awctrl_pdmask_s2_o,
-    output wire [`RNI_BCVEC_WIDTH-1:0] awctrl_bc_vec_s2_o,
+    output wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_ctmask_s2_o,
+    output wire [`RNI_DMASK_PD_WIDTH-1:0]      awctrl_pdmask_s2_o,
+    output wire [`RNI_BCVEC_WIDTH-1:0]         awctrl_bc_vec_s2_o,
 
     // request deallocate
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_dealloc_entry_o,
 
     // misc
-    input wire wb_req_fifo_pfull_d1_i,
-    input wire wb_req_done_d3_i,
-    input wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_req_entry_d3_i,
+    input  wire                                wb_req_fifo_pfull_d1_i,
+    input  wire                                wb_req_done_d3_i,
+    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_req_entry_d3_i,
 
     // txdatflit request
-    input wire wb_not_busy_d1_i,
-    output wire awctrl_txdat_rdy_v_d2_o,
+    input  wire                                wb_not_busy_d1_i,
+    output wire                                awctrl_txdat_rdy_v_d2_o,
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_txdat_rdy_entry_d2_o,
-    output logic [3:0] awctrl_txdat_qos_d2_o,
-    output wire awctrl_txdat_compack_d2_o,
-    output logic [11:0] awctrl_txdat_dbid_d2_o,
-    output logic [chie_pkg::NID_WIDTH-1:0] awctrl_txdat_tgtid_d2_o,
-    output wire [1:0] awctrl_txdat_ccid_d2_o,
-    output wire [`RNI_DMASK_CT_WIDTH-1:0] awctrl_txdat_ctmask_d2_o,
-    input wire awctrl_txdat_not_busy_d2_i,
+    output logic [3:0]                         awctrl_txdat_qos_d2_o,
+    output wire                                awctrl_txdat_compack_d2_o,
+    output logic [11:0]                        awctrl_txdat_dbid_d2_o,
+    output logic [chie_pkg::NID_WIDTH-1:0]     awctrl_txdat_tgtid_d2_o,
+    output wire [1:0]                          awctrl_txdat_ccid_d2_o,
+    output wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_txdat_ctmask_d2_o,
+    input  wire                                awctrl_txdat_not_busy_d2_i,
 
     // B response request
-    input wire awctrl_brsp_fifo_pop_d3_i,
-    output wire awctrl_brsp_rdy_v_d2_o,
-    output wire awctrl_brsp_last_v_d2_o,
-    output wire [`AXI4_BID_WIDTH-1:0] awctrl_brsp_axid_d2_o,
-    output chie_pkg::resp_err_e awctrl_brsp_resperr_d2_o
+    input  wire                                awctrl_brsp_fifo_pop_d3_i,
+    output wire                                awctrl_brsp_rdy_v_d2_o,
+    output wire                                awctrl_brsp_last_v_d2_o,
+    output wire [`AXI4_BID_WIDTH-1:0]          awctrl_brsp_axid_d2_o,
+    output chie_pkg::resp_err_e                awctrl_brsp_resperr_d2_o
     );
 
-    wire [`AXI4_AW_WIDTH-1:0]                   awlink_awbus_s1_w;
-    wire                                        stall_flag_s1_w;
-    wire [`AXI4_AWLEN_WIDTH-1:0]                awlink_len_s1_w;
-    wire                                        awlink_valid_s1_w;
-    wire [`AXI4_AWADDR_WIDTH-1:0]               awlink_addr_s1_w;
-    wire                                        awlink_done_s1_w;
-    wire [`RNI_BCVEC_WIDTH-1:0]                 awlink_bc_vec_s2_w;
-    wire [`RNI_DMASK_WIDTH-1:0]                 awlink_dmask_s2_w;
-    chie_pkg::size_e        awlink_size_s2_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_alloc_ptr_s1_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_rdy_s1_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_v_ns_w;
-    wire                                        awctrl_entry_dealloc_v_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_dealloc_vec_w;
-    wire                                        txdat_packet_0_s2_w;
-    wire                                        txdat_packet_1_s2_w;
-    wire                                        txdat_two_packets_s2_w;
-    wire                                        aw_txreq_expcompack_w;
-    logic  [`AXI4_AWCACHE_WIDTH-1:0]              aw_axcache_r;
-    wire                                        aw_device_w;
-    wire                                        aw_cacheable_w;
-    wire                                        awctrl_new_entry_req_dep_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_is_req_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_req_dep_chain_young_ns_w;
-    wire                                        awctrl_new_entry_compack_dep_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_is_compack_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_compack_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_compack_dep_chain_young_ns_w;
-    wire                                        awctrl_new_entry_bresp_dep_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_is_bresp_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_bresp_dep_v_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_bresp_dep_chain_young_ns_w;
-    wire                                        awctrl_req_hi_retry_found_w;
-    wire                                        awctrl_req_lo_retry_found_w;
-    wire                                        awctrl_req_hi_new_found_w;
-    wire                                        awctrl_req_lo_new_found_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_hi_retry_dec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_lo_retry_dec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_hi_new_dec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_lo_new_dec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_ptr_ns_w;
-    wire                                        awctrl_entry_req_select_success_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_req_retry_ready_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_hi_retry_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_lo_retry_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_req_new_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_hi_new_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_lo_new_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_req_select_vec_ns_w;
-    wire [CHIE_NID_WIDTH_PARAM-1:0]             aw_tx_send_nid_w;
+    opennoc_rni_pkg::ax_ch_s             awlink_awbus_s1_w;
+    wire                                 stall_flag_s1_w;
+    wire [`AXI4_AWLEN_WIDTH-1:0]         awlink_len_s1_w;
+    wire                                 awlink_valid_s1_w;
+    wire [`AXI4_AWADDR_WIDTH-1:0]        awlink_addr_s1_w;
+    wire                                 awlink_done_s1_w;
+    wire [`RNI_BCVEC_WIDTH-1:0]          awlink_bc_vec_s2_w;
+    wire [`RNI_DMASK_WIDTH-1:0]          awlink_dmask_s2_w;
+    chie_pkg::size_e                     awlink_size_s2_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_alloc_ptr_s1_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_rdy_s1_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_v_ns_w;
+    wire                                 awctrl_entry_dealloc_v_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_dealloc_vec_w;
+    wire                                 txdat_packet_0_s2_w;
+    wire                                 txdat_packet_1_s2_w;
+    wire                                 txdat_two_packets_s2_w;
+    wire                                 aw_txreq_expcompack_w;
+    logic [`AXI4_AWCACHE_WIDTH-1:0]      aw_axcache_r;
+    wire                                 aw_device_w;
+    wire                                 aw_cacheable_w;
+    wire                                 awctrl_new_entry_req_dep_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_is_req_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_req_dep_chain_young_ns_w;
+    wire                                 awctrl_new_entry_compack_dep_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_is_compack_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_compack_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_compack_dep_chain_young_ns_w;
+    wire                                 awctrl_new_entry_bresp_dep_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_is_bresp_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_bresp_dep_v_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_bresp_dep_chain_young_ns_w;
+    wire                                 awctrl_req_hi_retry_found_w;
+    wire                                 awctrl_req_lo_retry_found_w;
+    wire                                 awctrl_req_hi_new_found_w;
+    wire                                 awctrl_req_lo_new_found_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_hi_retry_dec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_lo_retry_dec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_hi_new_dec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_lo_new_dec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_ptr_ns_w;
+    wire                                 awctrl_entry_req_select_success_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_req_retry_ready_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_hi_retry_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_lo_retry_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_req_new_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_hi_new_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_lo_new_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_select_vec_ns_w;
+    wire [CHIE_NID_WIDTH_PARAM-1:0]      aw_tx_send_nid_w;
     wire [chie_pkg::NID_WIDTH-1:0]       awctrl_entry_rxrsp_tgtid_w;
     wire [chie_pkg::NID_WIDTH-1:0]       awctrl_entry_rxrsp_srcid_w;
-    wire [11:0]       awctrl_entry_rxrsp_txnid_w;
-    chie_pkg::rsp_opcode_e      awctrl_entry_rxrsp_opcode_w;
-    wire [11:0]        awctrl_entry_rxrsp_dbid_w;
-    wire [3:0]    awctrl_entry_rxrsp_pcrdtype_w;
-    wire                                        aw_rxrsp_correct_w;
-    wire                                        rxrsp_dbid_recv_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_dbid_recv_vec_w;
-    wire                                        rxrsp_comp_recv_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_comp_recv_vec_w;
-    wire                                        rxrsp_retryack_recv_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_retryack_recv_vec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_retryack_recv_vec_ns_w;
-    wire                                        rxrsp_pcrdgrant_recv_flag_w;
-    wire                                        rxrsp_pcrdtype_hi_select_w;
-    wire                                        rxrsp_pcrdtype_lo_select_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_pcrdgrant_hi_upd_ptr_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_pcrdgrant_lo_upd_ptr_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_pcrdgrant_recv_vec_ns_w;
-    wire                                        rxrsp_pcrdtype_hi_match_d2_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_pcrdgrant_hi_recv_vec_d2_w;
-    wire                                        rxrsp_pcrdtype_lo_match_d2_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_pcrdgrant_lo_recv_vec_d2_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_dbid_recv_vec_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         rxrsp_comp_recv_vec_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txdat_select_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         wdata_recv_done_ns_w;
-    wire                                        txdat_select_entry_two_packets_w;
-    wire                                        txdat_select_new_entry_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txdat_select_vec_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_two_packets_current_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_entry_two_packets_flag_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txdat_send_vec_ns_w;
-    wire                                        txdat_select_success_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txdat_select_vec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txrsp_select_rdy_w;
-    wire                                        txrsp_select_success_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txrsp_select_vec_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txrsp_compack_send_vec_ns_w;
-    wire                                        awctrl_compack_chain_clean_flag_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         awctrl_compack_chain_clean_vec_w;
-    wire                                        txrsp_select_success_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         txrsp_select_vec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         bresp_select_rdy_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         bresp_select_vec_ns_w;
-    wire                                        bresp_select_success_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         bresp_select_vec_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]         bresp_send_ptr_w;
-    wire                                        bresp_credit_full_w;
-    wire                                        bresp_credit_avail_w;
+    wire [11:0]                          awctrl_entry_rxrsp_txnid_w;
+    chie_pkg::rsp_opcode_e               awctrl_entry_rxrsp_opcode_w;
+    wire [11:0]                          awctrl_entry_rxrsp_dbid_w;
+    wire [3:0]                           awctrl_entry_rxrsp_pcrdtype_w;
+    wire                                 aw_rxrsp_correct_w;
+    wire                                 rxrsp_dbid_recv_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_dbid_recv_vec_w;
+    wire                                 rxrsp_comp_recv_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_comp_recv_vec_w;
+    wire                                 rxrsp_retryack_recv_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_retryack_recv_vec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_retryack_recv_vec_ns_w;
+    wire                                 rxrsp_pcrdgrant_recv_flag_w;
+    wire                                 rxrsp_pcrdtype_hi_select_w;
+    wire                                 rxrsp_pcrdtype_lo_select_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_hi_upd_ptr_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_lo_upd_ptr_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_recv_vec_ns_w;
+    wire                                 rxrsp_pcrdtype_hi_match_d2_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_hi_recv_vec_d2_w;
+    wire                                 rxrsp_pcrdtype_lo_match_d2_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_pcrdgrant_lo_recv_vec_d2_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_dbid_recv_vec_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_comp_recv_vec_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  wdata_recv_done_ns_w;
+    wire                                 txdat_select_entry_two_packets_w;
+    wire                                 txdat_select_new_entry_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_vec_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_two_packets_current_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_two_packets_flag_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_send_vec_ns_w;
+    wire                                 txdat_select_success_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_vec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txrsp_select_rdy_w;
+    wire                                 txrsp_select_success_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txrsp_select_vec_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txrsp_compack_send_vec_ns_w;
+    wire                                 awctrl_compack_chain_clean_flag_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_compack_chain_clean_vec_w;
+    wire                                 txrsp_select_success_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txrsp_select_vec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  bresp_select_rdy_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  bresp_select_vec_ns_w;
+    wire                                 bresp_select_success_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  bresp_select_vec_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  bresp_send_ptr_w;
+    wire                                 bresp_credit_full_w;
+    wire                                 bresp_credit_avail_w;
 
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_v_q;
-    logic [`AXI4_AW_WIDTH-1:0]                    awctrl_entry_info_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic                                         awctrl_entry_full_r;
-    logic [`AXI4_AWLEN_WIDTH-1:0]                 awctrl_entry_len_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [`AXI4_AWADDR_WIDTH-1:0]                awctrl_entry_addr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [`AXI4_AWSIZE_WIDTH-1:0]                awctrl_entry_size_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_DMASK_CT_WIDTH-1:0]               awctrl_entry_ctmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [`RNI_DMASK_PD_WIDTH-1:0]               awctrl_entry_pdmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_expcompack_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_v_q;
+    opennoc_rni_pkg::ax_ch_s             awctrl_entry_info_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic                                awctrl_entry_full_r;
+    logic [`AXI4_AWLEN_WIDTH-1:0]        awctrl_entry_len_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [`AXI4_AWADDR_WIDTH-1:0]       awctrl_entry_addr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [`AXI4_AWSIZE_WIDTH-1:0]       awctrl_entry_size_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_entry_ctmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [`RNI_DMASK_PD_WIDTH-1:0]      awctrl_entry_pdmask_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_expcompack_q;
     // CHI E.b Table 9-6 (SS9.4.3 p.9-340) gives a write's Comp and CompDBIDResp
     // both DERR and NDERR, and SS9.1 (p.9-334) makes the Home pass that error
     // back to the Requester. Latched per entry off the completion, so the AXI
     // BRESP can report it.
-    chie_pkg::resp_err_e      awctrl_entry_resperr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    chie_pkg::resp_err_e     awctrl_entry_rxrsp_resperr_w;
-    chie_pkg::resp_err_e      brsp_resperr_d2_ns_r;
-    chie_pkg::resp_err_e      brsp_resperr_d2_q;
-    logic                                         awctrl_entry_segburst_last_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_qos_hi_q;
-    logic                                         awlink_valid_s2_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_alloc_ptr_s2_q;
-    logic [`AXI4_AWID_WIDTH-1:0]                  awctrl_awid_s2_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_req_select_rdy_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_req_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_sameid_req_chain_vec_d2_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_req_dep_num_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_req_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_req_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_req_dep_chain_young_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_compack_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_sameid_compack_chain_vec_d2_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_compack_dep_num_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_compack_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_compack_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_compack_dep_chain_young_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_bresp_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_sameid_bresp_chain_vec_d2_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_bresp_dep_num_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_bresp_dep_v_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_is_bresp_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_bresp_dep_chain_young_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_req_ptr_q;
-    logic                                         awctrl_entry_req_select_success_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_req_select_vec_q;
-    logic                                         awctrl_entry_req_select_retry_flag_q;
-    logic [11:0]        aw_txreq_txnid_r;
-    chie_pkg::req_flit_s              aw_txreqflit_info_r;
-    logic                                         aw_txreqflitv_s5_q;
-    chie_pkg::req_flit_s              aw_txreqflit_s5_q;
-    logic                                         aw_txreqflit_sent_s5_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_rxrsp_ptr_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_hi_rdy_vec_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_lo_rdy_vec_r;
-    logic                                         rxrsp_pcrdtype_hi_match_d3_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_hi_recv_vec_d3_q;
-    logic                                         rxrsp_pcrdtype_lo_match_d3_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_lo_recv_vec_d3_q;
-    logic [chie_pkg::NID_WIDTH-1:0]        rxrsp_dbidresp_srcid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [11:0]         rxrsp_dbidresp_dbid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [3:0]     rxrsp_retryack_pcrdtype_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_retryack_recv_vec_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_hi_upd_ptr_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_lo_upd_ptr_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_pcrdgrant_recv_vec_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_dbid_recv_vec_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          rxrsp_comp_recv_vec_q;
-    logic [`RNI_DMASK_CT_WIDTH-1:0]               txdat_ctmask_d1_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          wdata_recv_done_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_select_ptr_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_select_vec_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_two_packets_current_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          awctrl_entry_two_packets_flag_q;
-    logic                                         txdat_rdy_v_d2_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_rdy_entry_d2_q;
-    logic [`RNI_DMASK_CT_WIDTH-1:0]               txdat_ctmask_d2_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_rdy_entry_d3_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_select_vec_d3_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txdat_send_vec_q;
-    logic [11:0]        aw_txrsp_txnid_r;
-    chie_pkg::rsp_flit_s              aw_txrspflit_info_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txrsp_select_ptr_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txrsp_select_vec_q;
-    logic                                         aw_txrspflitv_d0_q;
-    logic                                         aw_txrspflit_sent_d0_q;
-    chie_pkg::rsp_flit_s              aw_txrspflit_d0_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          txrsp_compack_send_vec_q;
-    logic                                         txrsp_select_success_flag_q;
-    logic                                         brsp_last_v_d2_ns_r;
-    logic [`AXI4_BID_WIDTH-1:0]                   brsp_axid_d2_ns_r;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          bresp_select_ptr_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0]          bresp_select_vec_q;
-    logic                                         brsp_rdy_v_d2_q;
-    logic                                         brsp_last_v_d2_q;
-    logic [`AXI4_BID_WIDTH-1:0]                   brsp_axid_d2_q;
+    chie_pkg::resp_err_e                 awctrl_entry_resperr_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    chie_pkg::resp_err_e                 awctrl_entry_rxrsp_resperr_w;
+    chie_pkg::resp_err_e                 brsp_resperr_d2_ns_r;
+    chie_pkg::resp_err_e                 brsp_resperr_d2_q;
+    logic                                awctrl_entry_segburst_last_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_qos_hi_q;
+    logic                                awlink_valid_s2_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_alloc_ptr_s2_q;
+    logic [`AXI4_AWID_WIDTH-1:0]         awctrl_awid_s2_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_select_rdy_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_sameid_req_chain_vec_d2_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_req_dep_num_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_req_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_req_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_req_dep_chain_young_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_compack_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_sameid_compack_chain_vec_d2_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_compack_dep_num_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_compack_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_compack_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_compack_dep_chain_young_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_bresp_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_sameid_bresp_chain_vec_d2_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_bresp_dep_num_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_bresp_dep_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_bresp_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_bresp_dep_chain_young_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_ptr_q;
+    logic                                awctrl_entry_req_select_success_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_select_vec_q;
+    logic                                awctrl_entry_req_select_retry_flag_q;
+    logic [11:0]                         aw_txreq_txnid_r;
+    chie_pkg::req_flit_s                 aw_txreqflit_info_r;
+    logic                                aw_txreqflitv_s5_q;
+    chie_pkg::req_flit_s                 aw_txreqflit_s5_q;
+    logic                                aw_txreqflit_sent_s5_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_rxrsp_ptr_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_rdy_vec_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_rdy_vec_r;
+    logic                                rxrsp_pcrdtype_hi_match_d3_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_recv_vec_d3_q;
+    logic                                rxrsp_pcrdtype_lo_match_d3_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d3_q;
+    logic [chie_pkg::NID_WIDTH-1:0]      rxrsp_dbidresp_srcid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [11:0]                         rxrsp_dbidresp_dbid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [3:0]                          rxrsp_retryack_pcrdtype_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_hi_upd_ptr_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_upd_ptr_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_dbid_recv_vec_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_comp_recv_vec_q;
+    logic [`RNI_DMASK_CT_WIDTH-1:0]      txdat_ctmask_d1_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] wdata_recv_done_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_select_ptr_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_select_vec_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_two_packets_current_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_two_packets_flag_q;
+    logic                                txdat_rdy_v_d2_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_rdy_entry_d2_q;
+    logic [`RNI_DMASK_CT_WIDTH-1:0]      txdat_ctmask_d2_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_rdy_entry_d3_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_select_vec_d3_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_send_vec_q;
+    logic [11:0]                         aw_txrsp_txnid_r;
+    chie_pkg::rsp_flit_s                 aw_txrspflit_info_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txrsp_select_ptr_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txrsp_select_vec_q;
+    logic                                aw_txrspflitv_d0_q;
+    logic                                aw_txrspflit_sent_d0_q;
+    chie_pkg::rsp_flit_s                 aw_txrspflit_d0_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txrsp_compack_send_vec_q;
+    logic                                txrsp_select_success_flag_q;
+    logic                                brsp_last_v_d2_ns_r;
+    logic [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_ns_r;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] bresp_select_ptr_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] bresp_select_vec_q;
+    logic                                brsp_rdy_v_d2_q;
+    logic                                brsp_last_v_d2_q;
+    logic [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_q;
 
-    genvar entry;
+    genvar                               entry;
 
     /////////////////////////////////////////////////////////////
     // txreq s1
@@ -341,7 +341,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: txn_info
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    awctrl_entry_info_q[entry][`AXI4_AW_WIDTH-1:0] <= {`AXI4_AW_WIDTH{1'b0}};
+                    awctrl_entry_info_q[entry] <= '0;
                 end
                 else begin
                     if(awctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
@@ -352,7 +352,7 @@ module rni_awctrl `RNI_PARAM
 
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    awctrl_entry_len_q[entry][`AXI4_AWLEN_WIDTH-1:0] <= {`AXI4_AWLEN_WIDTH{1'b0}};
+                    awctrl_entry_len_q[entry][`AXI4_AWLEN_WIDTH-1:0] <= '0;
                 end
                 else begin
                     if(awctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
@@ -363,7 +363,7 @@ module rni_awctrl `RNI_PARAM
 
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    awctrl_entry_addr_q[entry][`AXI4_AWADDR_WIDTH-1:0] <= {`AXI4_AWADDR_WIDTH{1'b0}};
+                    awctrl_entry_addr_q[entry][`AXI4_AWADDR_WIDTH-1:0] <= '0;
                 end
                 else begin
                     if(awctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
@@ -389,7 +389,7 @@ module rni_awctrl `RNI_PARAM
                 end
                 else begin
                     if(awctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
-                        awctrl_entry_qos_hi_q[entry] <= (awlink_awbus_s1_w[`AXI4_AWQOS_RANGE] == 4'b1111);
+                        awctrl_entry_qos_hi_q[entry] <= (awlink_awbus_s1_w.qos == 4'b1111);
                     end
                 end
             end
@@ -430,7 +430,7 @@ module rni_awctrl `RNI_PARAM
     /////////////////////////////////////////////////////////////
     assign awctrl_alloc_valid_s2_o = awlink_valid_s2_q;
     assign awctrl_alloc_entry_s2_o[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign awctrl_ctmask_s2_o[`RNI_DMASK_CT_WIDTH-1:0] = awlink_dmask_s2_w[`RNI_DMASK_CT_RANGE];
+    assign awctrl_ctmask_s2_o[`RNI_DMASK_CT_WIDTH-1:0] = awlink_dmask_s2_w[`RNI_DMASK_CT_WIDTH-1:0];
     assign awctrl_pdmask_s2_o[`RNI_DMASK_PD_WIDTH-1:0] = awlink_dmask_s2_w[`RNI_DMASK_PD_RANGE];
     assign awctrl_bc_vec_s2_o[`RNI_BCVEC_WIDTH-1:0] = awlink_bc_vec_s2_w[`RNI_BCVEC_WIDTH-1:0];
     assign txdat_packet_0_s2_w = awlink_valid_s2_q & |awlink_dmask_s2_w[`RNI_DMASK_PD_LSB + 1:`RNI_DMASK_PD_LSB];
@@ -439,9 +439,9 @@ module rni_awctrl `RNI_PARAM
     assign aw_txreq_expcompack_w = awctrl_new_entry_compack_dep_w;
 
     always_comb begin
-        awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = {`AXI4_AWID_WIDTH{1'b0}};
+        awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
-            awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] | ({`AXI4_AWID_WIDTH{awctrl_alloc_ptr_s2_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWID_RANGE]);
+            awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] | ({`AXI4_AWID_WIDTH{awctrl_alloc_ptr_s2_q[i]}} & awctrl_entry_info_q[i].id);
     end
 
     always_ff @(posedge clk_i or posedge rst_i) begin
@@ -457,7 +457,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: txn_size_info
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
-                    awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0] <= {`AXI4_AWSIZE_WIDTH{1'b0}};
+                    awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0] <= '0;
                 end
                 else begin
                     if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
@@ -527,7 +527,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_req_same
             always_comb begin
                 if((awctrl_alloc_ptr_s2_q[entry] == 1'b0) && (awctrl_entry_v_q[entry] == 1'b1) && (rxrsp_dbid_recv_vec_w[entry] == 1'b0))begin
-                    awctrl_sameid_req_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry][`AXI4_AWID_RANGE]) && awctrl_req_dep_chain_young_q[entry];
+                    awctrl_sameid_req_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry].id) && awctrl_req_dep_chain_young_q[entry];
                 end
                 else begin
                     awctrl_sameid_req_chain_vec_d2_r[entry] = 1'b0;
@@ -606,7 +606,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_compack_same
             always_comb begin
                 if((awctrl_alloc_ptr_s2_q[entry] == 1'b0) && (awctrl_entry_v_q[entry] == 1'b1) && (awctrl_compack_chain_clean_vec_w[entry] == 1'b0))begin
-                    awctrl_sameid_compack_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry][`AXI4_AWID_RANGE]) && awctrl_compack_dep_chain_young_q[entry];
+                    awctrl_sameid_compack_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry].id) && awctrl_compack_dep_chain_young_q[entry];
                 end
                 else begin
                     awctrl_sameid_compack_chain_vec_d2_r[entry] = 1'b0;
@@ -682,7 +682,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_bresp_same
             always_comb begin
                 if((awctrl_alloc_ptr_s2_q[entry] == 1'b0) && (awctrl_entry_v_q[entry] == 1'b1) && (awctrl_entry_dealloc_vec_w[entry] == 1'b0))begin
-                    awctrl_sameid_bresp_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry][`AXI4_AWID_RANGE]) && awctrl_bresp_dep_chain_young_q[entry];
+                    awctrl_sameid_bresp_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry].id) && awctrl_bresp_dep_chain_young_q[entry];
                 end
                 else begin
                     awctrl_sameid_bresp_chain_vec_d2_r[entry] = 1'b0;
@@ -871,10 +871,10 @@ module rni_awctrl `RNI_PARAM
     // WriteUnique* only on the Snoopable row, so a Device or Non-cacheable write
     // is a WriteNoSnp (CHI-OpenNoC#20).
     always_comb begin: aw_axcache_sel_t
-        aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = {`AXI4_AWCACHE_WIDTH{1'b0}};
+        aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
             aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] |
-                ({`AXI4_AWCACHE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWCACHE_RANGE]);
+                ({`AXI4_AWCACHE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].cache);
     end
 
     assign aw_device_w    = ~aw_axcache_r[1];
@@ -905,13 +905,13 @@ module rni_awctrl `RNI_PARAM
         aw_txreqflit_info_r.snpattr = aw_cacheable_w;
         aw_txreqflit_info_r.lpid = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
-            aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWQOS_RANGE]);
+            aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.size = chie_pkg::size_e'(aw_txreqflit_info_r.size | ({`AXI4_AWSIZE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_size_q[i][`AXI4_AWSIZE_WIDTH-1:0]));
             aw_txreqflit_info_r.addr = aw_txreqflit_info_r.addr | ({`AXI4_AWADDR_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_addr_q[i][`AXI4_AWADDR_WIDTH-1:0]);
             aw_txreqflit_info_r.pcrdtype = ~awctrl_entry_req_select_retry_flag_q ? '0 :
                                aw_txreqflit_info_r.pcrdtype | ({4{awctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
             // Table 2-11 gives no non-cacheable row an Allocate value.
-            aw_txreqflit_info_r.memattr.allocate = aw_txreqflit_info_r.memattr.allocate | (aw_cacheable_w & awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i][`AXI4_AWCACHE_MSB]);
+            aw_txreqflit_info_r.memattr.allocate = aw_txreqflit_info_r.memattr.allocate | (aw_cacheable_w & awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i].cache[3]);
             aw_txreqflit_info_r.expcompack = aw_txreqflit_info_r.expcompack | (awctrl_entry_req_ptr_q[i] & awctrl_entry_expcompack_q[i]);
         end
     end
@@ -1314,7 +1314,7 @@ module rni_awctrl `RNI_PARAM
         awctrl_txdat_qos_d2_o = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
             if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i])
-                awctrl_txdat_qos_d2_o[3:0] = awctrl_entry_info_q[i][`AXI4_AWQOS_RANGE];
+                awctrl_txdat_qos_d2_o[3:0] = awctrl_entry_info_q[i].qos;
         end
     end
 
@@ -1414,7 +1414,7 @@ module rni_awctrl `RNI_PARAM
         aw_txrspflit_info_r.txnid = aw_txrsp_txnid_r[11:0];
         aw_txrspflit_info_r.opcode = chie_pkg::RSP_COMPACK;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
-            aw_txrspflit_info_r.qos = aw_txrspflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{txrsp_select_ptr_q[i]}} & awctrl_entry_info_q[i][`AXI4_AWQOS_RANGE]);
+            aw_txrspflit_info_r.qos = aw_txrspflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{txrsp_select_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
         end
     end
 
@@ -1535,9 +1535,9 @@ module rni_awctrl `RNI_PARAM
     end
 
     always_comb begin
-        brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = {`AXI4_BID_WIDTH{1'b0}};
+        brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
-            brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] | ({`AXI4_BID_WIDTH{bresp_select_vec_w[i]}} & awctrl_entry_info_q[i][`AXI4_AWID_RANGE]);
+            brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] | ({`AXI4_BID_WIDTH{bresp_select_vec_w[i]}} & awctrl_entry_info_q[i].id);
     end
 
     always_comb begin
@@ -1588,7 +1588,7 @@ module rni_awctrl `RNI_PARAM
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
-            brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0] <= {`AXI4_BID_WIDTH{1'b0}};
+            brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0] <= '0;
         end
         else begin
             brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0] <= brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0];

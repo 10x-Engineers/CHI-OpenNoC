@@ -20,26 +20,26 @@ module xp_sel_bit_from_vec
      )
     (
     //input
-    input wire [VEC_WIDTH-1:0] in_vec,
-    input wire [VEC_WIDTH-1:0] startx,
+    input  wire [VEC_WIDTH-1:0] in_vec,
+    input  wire [VEC_WIDTH-1:0] startx,
     //output
     output wire [VEC_WIDTH-1:0] ptr_dec,
-    output wire found
+    output wire                 found
     );
     localparam VEC_LOG2_WIDTH = $clog2(VEC_WIDTH);
 
     //internal signals
-    wire [VEC_WIDTH-1:0]    upper_mask;
-    wire [VEC_WIDTH-1:0]    lower_mask;
-    wire [VEC_WIDTH-1:0]    in_vecx;
-    logic [VEC_WIDTH-1:0]     upper_ptr_dec;
-    logic [VEC_WIDTH-1:0]     lower_ptr_dec;
-    logic upper_found;
-    logic lower_found;
+    wire [VEC_WIDTH-1:0]  upper_mask;
+    wire [VEC_WIDTH-1:0]  lower_mask;
+    wire [VEC_WIDTH-1:0]  in_vecx;
+    logic [VEC_WIDTH-1:0] upper_ptr_dec;
+    logic [VEC_WIDTH-1:0] lower_ptr_dec;
+    logic                 upper_found;
+    logic                 lower_found;
     logic [VEC_WIDTH-1:0] tmp_low;
     logic [VEC_WIDTH-1:0] tmp_upr;
 
-    integer ii;
+    int                   ii;
 
     assign lower_mask[VEC_WIDTH-1:0] = (startx[VEC_WIDTH-1:0] - 1'b1);
     assign upper_mask[VEC_WIDTH-1:0] = ~lower_mask[VEC_WIDTH-1:0];

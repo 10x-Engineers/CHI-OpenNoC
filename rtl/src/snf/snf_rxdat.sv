@@ -24,34 +24,34 @@
 module snf_rxdat `SNF_PARAM
     (
         //global inputs
-        input  wire                  clk,
-        input  wire                  rst,
-        input  wire                  run_state,
+        input  wire                 clk,
+        input  wire                 rst,
+        input  wire                 run_state,
 
         //inputs from snf_link
-        input  wire                  rxdatflitv,
-        input  chie_pkg::dat_flit_s  rxdatflit,
-        input  wire                  rxdatflitpend,
+        input  wire                 rxdatflitv,
+        input  chie_pkg::dat_flit_s rxdatflit,
+        input  wire                 rxdatflitpend,
 
         //outputs to snf_link
-        output wire                  rxdat_lcrdv,
+        output wire                 rxdat_lcrdv,
 
         //outputs to snf_data_buffer
-        output wire                  rxdat_valid_s0,
-        output chie_pkg::dat_flit_s  rxdatflit_s0
+        output wire                 rxdat_valid_s0,
+        output chie_pkg::dat_flit_s rxdatflit_s0
     );
 
     //internal reg signals
-    logic                                             rxdatflitv_en_q;
-    logic  [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_s1_q;
-    logic                                             rxdatcrdv_s1_q;
+    logic                                 rxdatflitv_en_q;
+    logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0] rxdat_crd_cnt_s1_q;
+    logic                                 rxdatcrdv_s1_q;
 
     //internal wire signals
-    wire                                            snf_rxcrd_enable_s0;
-    wire                                            rxdat_crd_cnt_zero;
-    wire [`SNF_LL_DAT_CRD_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
-    wire                                            rxdatcrdv_ns_s0;
-    wire                                            rxdat_link_flit_s0;
+    wire                                  snf_rxcrd_enable_s0;
+    wire                                  rxdat_crd_cnt_zero;
+    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]  rxdat_crd_cnt_nxt_s0;
+    wire                                  rxdatcrdv_ns_s0;
+    wire                                  rxdat_link_flit_s0;
 
     //main function
     always_ff @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t

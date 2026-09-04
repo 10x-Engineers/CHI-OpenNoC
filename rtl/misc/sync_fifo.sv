@@ -22,43 +22,43 @@ module sync_fifo #(
     )
     (
     // global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                          clk,
+    input  wire                          rst,
 
     // inputs
-    input wire push,
-    input wire pop,
-    input wire [FIFO_ENTRIES_WIDTH-1:0] data_in,
+    input  wire                          push,
+    input  wire                          pop,
+    input  wire [FIFO_ENTRIES_WIDTH-1:0] data_in,
 
     // outputs
     output wire [FIFO_ENTRIES_WIDTH-1:0] data_out,
-    output wire empty,
-    output wire full,
-    output logic  [FIFO_PTR_WIDTH:0] count
+    output wire                          empty,
+    output wire                          full,
+    output logic [FIFO_PTR_WIDTH:0]      count
     );
     // localparam
 
     // wire
-    wire                                 fifo_byp;
-    wire                                 rd_ptr_en;
-    wire                                 wr_ptr_en;
-    wire [FIFO_PTR_WIDTH-1:0]            rd_ptr_ns;
-    wire [FIFO_PTR_WIDTH-1:0]            wr_ptr_ns;
-    wire [FIFO_PTR_WIDTH:0]              fifo_cnt;
-    wire                                 upd_fifo_cnt;
-    wire                                 empty_ns;
-    wire                                 full_ns;
+    wire                           fifo_byp;
+    wire                           rd_ptr_en;
+    wire                           wr_ptr_en;
+    wire [FIFO_PTR_WIDTH-1:0]      rd_ptr_ns;
+    wire [FIFO_PTR_WIDTH-1:0]      wr_ptr_ns;
+    wire [FIFO_PTR_WIDTH:0]        fifo_cnt;
+    wire                           upd_fifo_cnt;
+    wire                           empty_ns;
+    wire                           full_ns;
 
     // reg
-    logic  [FIFO_ENTRIES_WIDTH-1:0]        fifo_mem [0:FIFO_ENTRIES_DEPTH-1];
-    logic  [FIFO_ENTRIES_WIDTH-1:0]        fifo_mem_q;
-    logic  [FIFO_PTR_WIDTH-1:0]            rd_ptr;
-    logic  [FIFO_PTR_WIDTH-1:0]            wr_ptr;
-    logic                                  empty_q;
-    logic                                  full_q;
-    logic  [FIFO_ENTRIES_WIDTH-1:0]        rd_mem_data;
+    logic [FIFO_ENTRIES_WIDTH-1:0] fifo_mem [0:FIFO_ENTRIES_DEPTH-1];
+    logic [FIFO_ENTRIES_WIDTH-1:0] fifo_mem_q;
+    logic [FIFO_PTR_WIDTH-1:0]     rd_ptr;
+    logic [FIFO_PTR_WIDTH-1:0]     wr_ptr;
+    logic                          empty_q;
+    logic                          full_q;
+    logic [FIFO_ENTRIES_WIDTH-1:0] rd_mem_data;
 
-    genvar i;
+    genvar                         i;
 
 generate if(FIFO_ENTRIES_DEPTH == 1)begin
             assign upd_fifo_cnt = push ^ pop;

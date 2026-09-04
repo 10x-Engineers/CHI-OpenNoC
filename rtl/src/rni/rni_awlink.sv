@@ -25,57 +25,57 @@ module rni_awlink `RNI_PARAM
     ///////////////////////////////////////////////////////////////
 
     // Global inputs
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                          clk_i,
+    input  wire                          rst_i,
 
     // AMBA4 xface
-    input wire AWVALID,
-    input wire  [`AXI4_AW_WIDTH-1:0] AWBUS,
-    input wire stall_flag_s1_i,
+    input  wire                          AWVALID,
+    input  opennoc_rni_pkg::ax_ch_s      AWBUS,
+    input  wire                          stall_flag_s1_i,
 
 
     ///////////////////////////////////////////////////////////////
     // Outputs
     ///////////////////////////////////////////////////////////////
-    output wire AWREADY,
+    output wire                          AWREADY,
 
-    output wire awlink_awvalid_s1_o,
-    output wire [`AXI4_AW_WIDTH-1:0] awlink_awbus_s1_o,
+    output wire                          awlink_awvalid_s1_o,
+    output opennoc_rni_pkg::ax_ch_s      awlink_awbus_s1_o,
 
-    output wire  [`AXI4_AWLEN_WIDTH-1:0] awlink_len_s1_o,
-    output wire awlink_valid_s1_o,
+    output wire [`AXI4_AWLEN_WIDTH-1:0]  awlink_len_s1_o,
+    output wire                          awlink_valid_s1_o,
     output wire [`AXI4_AWADDR_WIDTH-1:0] awlink_addr_s1_o,
-    output wire awlink_done_s1_o,
-    output wire [`RNI_BCVEC_WIDTH-1:0] awlink_bc_vec_s2_o,
-    output wire [`RNI_DMASK_WIDTH-1:0] awlink_dmask_s2_o,
-    output chie_pkg::size_e awlink_size_s2_o,
-    output wire awlink_lock_s2_o
+    output wire                          awlink_done_s1_o,
+    output wire [`RNI_BCVEC_WIDTH-1:0]   awlink_bc_vec_s2_o,
+    output wire [`RNI_DMASK_WIDTH-1:0]   awlink_dmask_s2_o,
+    output chie_pkg::size_e              awlink_size_s2_o,
+    output wire                          awlink_lock_s2_o
     );
 
-    wire [`AW_FIFO_CNT_WIDTH-1:0]       aw_fifo_count;
-    wire                                awready_w;
-    wire [`AXI4_AW_WIDTH-1:0]           awbus_out_r1;
-    wire                                axi_valid_s1_i;
-    wire  [`AXI4_AWADDR_WIDTH-1:0]      axi_addr_in_s1_i;
-    wire  [`AXI4_AWSIZE_WIDTH-1:0]      axi_size_in_s1_i;
-    wire  [`AXI4_AWBURST_WIDTH-1:0]     axi_burst_s1_i;
-    wire                                axi_lock_in_s1_i;
-    wire                                axi_excl_s1_i;
-    wire [`AXI4_AWLEN_WIDTH-1:0]        axi_len_in_s1_i;
-    wire                                aw_fifo_empty;
+    wire [`AW_FIFO_CNT_WIDTH-1:0]  aw_fifo_count;
+    wire                           awready_w;
+    opennoc_rni_pkg::ax_ch_s       awbus_out_r1;
+    wire                           axi_valid_s1_i;
+    wire [`AXI4_AWADDR_WIDTH-1:0]  axi_addr_in_s1_i;
+    wire [`AXI4_AWSIZE_WIDTH-1:0]  axi_size_in_s1_i;
+    wire [`AXI4_AWBURST_WIDTH-1:0] axi_burst_s1_i;
+    wire                           axi_lock_in_s1_i;
+    wire                           axi_excl_s1_i;
+    wire [`AXI4_AWLEN_WIDTH-1:0]   axi_len_in_s1_i;
+    wire                           aw_fifo_empty;
 
-    logic                                 awready_q;
+    logic                          awready_q;
 
     assign awlink_awvalid_s1_o = axi_valid_s1_i;
     assign awlink_awbus_s1_o[`AXI4_AW_WIDTH-1:0] = awbus_out_r1[`AXI4_AW_WIDTH-1:0];
     assign awready_w = ~(((aw_fifo_count[`AW_FIFO_CNT_WIDTH-1:0] == `AW_FIFO_CNT_NUM)&& ~awlink_done_s1_o) || ((aw_fifo_count[`AW_FIFO_CNT_WIDTH-1:0] == (`AW_FIFO_CNT_NUM - 1'b1)) && AWVALID && AWREADY && ~awlink_done_s1_o));
 
     assign AWREADY = awready_q;
-    assign axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0] = awbus_out_r1[`AXI4_AWADDR_RANGE];
-    assign axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] = awbus_out_r1[`AXI4_AWSIZE_RANGE];
-    assign axi_burst_s1_i[`AXI4_AWBURST_WIDTH-1:0] = awbus_out_r1[`AXI4_AWBURST_RANGE];
-    assign axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] = awbus_out_r1[`AXI4_AWLEN_RANGE];
-    assign axi_lock_in_s1_i = awbus_out_r1[`AXI4_AWLOCK_RANGE];
+    assign axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0] = awbus_out_r1.addr;
+    assign axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] = awbus_out_r1.size;
+    assign axi_burst_s1_i[`AXI4_AWBURST_WIDTH-1:0] = awbus_out_r1.burst;
+    assign axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] = awbus_out_r1.len;
+    assign axi_lock_in_s1_i = awbus_out_r1.lock;
     assign axi_excl_s1_i = axi_lock_in_s1_i & (axi_burst_s1_i[`AXI4_AWBURST_WIDTH-1:0] == 2'b00);
     assign axi_valid_s1_i = !aw_fifo_empty;
     assign awlink_len_s1_o[`AXI4_AWLEN_WIDTH-1:0] = axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0];

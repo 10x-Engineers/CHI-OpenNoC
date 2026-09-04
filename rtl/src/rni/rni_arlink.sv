@@ -22,22 +22,22 @@
 module rni_arlink
     `RNI_PARAM
     (
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                          clk_i,
+    input  wire                          rst_i,
 
-    input wire ARVALID,
-    input wire [`AXI4_AR_WIDTH-1:0] AR_CH_S0,
-    input wire alloc_busy_s1_i,
+    input  wire                          ARVALID,
+    input  opennoc_rni_pkg::ax_ch_s      AR_CH_S0,
+    input  wire                          alloc_busy_s1_i,
 
-    output wire ARREADY,
-    output wire [`AXI4_AR_WIDTH-1:0] arlink_arbus_s1_o,
+    output wire                          ARREADY,
+    output opennoc_rni_pkg::ax_ch_s      arlink_arbus_s1_o,
 
-    output wire arlink_valid_s1_o,
+    output wire                          arlink_valid_s1_o,
     output wire [`AXI4_ARADDR_WIDTH-1:0] arlink_addr_s1_o,
-    output wire [`RNI_BCVEC_WIDTH-1:0] arlink_bc_vec_s2_o,
-    output wire [`RNI_DMASK_WIDTH-1:0] arlink_dmask_s2_o,
-    output chie_pkg::size_e arlink_size_s2_o,
-    output wire arlink_lock_s2_o
+    output wire [`RNI_BCVEC_WIDTH-1:0]   arlink_bc_vec_s2_o,
+    output wire [`RNI_DMASK_WIDTH-1:0]   arlink_dmask_s2_o,
+    output chie_pkg::size_e              arlink_size_s2_o,
+    output wire                          arlink_lock_s2_o
     );
 
 
@@ -51,7 +51,7 @@ module rni_arlink
     wire [`AXI4_ARLEN_WIDTH-1:0]   ar_len_in_s1_w;
     wire [`AXI4_ARLOCK_WIDTH-1:0]  ar_lock_in_s1_w;
     wire [`AXI4_ARSIZE_WIDTH-1:0]  ar_size_in_s1_w;
-    wire [`AXI4_AR_WIDTH-1:0]      arbus_out_s1_w;
+    opennoc_rni_pkg::ax_ch_s       arbus_out_s1_w;
     wire                           segburst_busy_s1_w;
 
     wire                           arvalid_s1;
@@ -81,11 +81,11 @@ module rni_arlink
     assign arlink_arbus_s1_o   = arbus_out_s1_w;
     assign arvalid_s1 = ~arlink_fifo_empty_s1_w;
 
-    assign ar_addr_in_s1_w[`AXI4_ARADDR_WIDTH-1:0]   = {`AXI4_ARADDR_WIDTH{arvalid_s1}} & arlink_arbus_s1_o[`AXI4_ARADDR_RANGE];
-    assign ar_len_in_s1_w[`AXI4_ARLEN_WIDTH-1:0]     = {`AXI4_ARLEN_WIDTH{arvalid_s1}} & arlink_arbus_s1_o[`AXI4_ARLEN_RANGE];
-    assign ar_size_in_s1_w[`AXI4_ARSIZE_WIDTH-1:0]   = {`AXI4_ARSIZE_WIDTH{arvalid_s1}} & arlink_arbus_s1_o[`AXI4_ARSIZE_RANGE];
-    assign ar_burst_in_s1_w[`AXI4_ARBURST_WIDTH-1:0] = {`AXI4_ARBURST_WIDTH{arvalid_s1}} & arlink_arbus_s1_o[`AXI4_ARBURST_RANGE];
-    assign ar_lock_in_s1_w[`AXI4_ARLOCK_WIDTH-1:0]   = {`AXI4_ARLOCK_WIDTH{arvalid_s1}} & arlink_arbus_s1_o[`AXI4_ARLOCK_RANGE];
+    assign ar_addr_in_s1_w[`AXI4_ARADDR_WIDTH-1:0]   = {`AXI4_ARADDR_WIDTH{arvalid_s1}} & arlink_arbus_s1_o.addr;
+    assign ar_len_in_s1_w[`AXI4_ARLEN_WIDTH-1:0]     = {`AXI4_ARLEN_WIDTH{arvalid_s1}} & arlink_arbus_s1_o.len;
+    assign ar_size_in_s1_w[`AXI4_ARSIZE_WIDTH-1:0]   = {`AXI4_ARSIZE_WIDTH{arvalid_s1}} & arlink_arbus_s1_o.size;
+    assign ar_burst_in_s1_w[`AXI4_ARBURST_WIDTH-1:0] = {`AXI4_ARBURST_WIDTH{arvalid_s1}} & arlink_arbus_s1_o.burst;
+    assign ar_lock_in_s1_w[`AXI4_ARLOCK_WIDTH-1:0]   = {`AXI4_ARLOCK_WIDTH{arvalid_s1}} & arlink_arbus_s1_o.lock;
 
     assign segburst_busy_s1_w = alloc_busy_s1_i;
 

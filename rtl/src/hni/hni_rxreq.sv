@@ -23,48 +23,48 @@
 module hni_rxreq `HNI_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                 clk,
+    input  wire                 rst,
 
     //inputs from link
-    input wire rxreqflitv,
-    input chie_pkg::req_flit_s rxreqflit,
-    input wire rxreqflitpend,
+    input  wire                 rxreqflitv,
+    input  chie_pkg::req_flit_s rxreqflit,
+    input  wire                 rxreqflitpend,
 
     //inputs from hni_qos
-    input wire rxreq_retry_enable_s0,
+    input  wire                 rxreq_retry_enable_s0,
 
     //inputs from hni_txrsp
-    input wire txrsp_retryack_won_s1,
+    input  wire                 txrsp_retryack_won_s1,
 
     //outputs to link
-    output wire rxreq_lcrdv,
+    output wire                 rxreq_lcrdv,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire rxcrd_en,
+    input  wire                 rxcrd_en,
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    output wire rxreq_crd_cnt_full,
+    output wire                 rxreq_crd_cnt_full,
 
     //outputs to hni_qos
-    output wire rxreq_valid_s0,
+    output wire                 rxreq_valid_s0,
     output chie_pkg::req_flit_s rxreqflit_s0
     );
 
     //internal reg signals
-    logic                                             rxreqflitv_en_q;
-    logic [`HNI_LL_REQ_CRD_CNT_RANGE]                 rxreq_crd_cnt_s1_q;
-    logic                                             rxreqcrdv_s1_q;
+    logic                                 rxreqflitv_en_q;
+    logic [`HNI_LL_REQ_CRD_CNT_WIDTH-1:0] rxreq_crd_cnt_s1_q;
+    logic                                 rxreqcrdv_s1_q;
 
     //internal wire signals
-    wire                                            rxreq_crd_grant_sx;
-    wire [1:0]                                      rxreq_crd_rtn_sx;
-    wire                                            rxreq_crd_cnt_zero_sx;
-    wire                                            req_crd_rtn_s0;
-    wire                                            retack_tx_s1;
-    wire                                            rxreq_crd_cnt_upd_s1;
-    wire                                            rxreqcrdv_ns_s0;
-    wire [`HNI_LL_REQ_CRD_CNT_RANGE]                rxreq_crd_cnt_nxt_s1;
+    wire                                  rxreq_crd_grant_sx;
+    wire [1:0]                            rxreq_crd_rtn_sx;
+    wire                                  rxreq_crd_cnt_zero_sx;
+    wire                                  req_crd_rtn_s0;
+    wire                                  retack_tx_s1;
+    wire                                  rxreq_crd_cnt_upd_s1;
+    wire                                  rxreqcrdv_ns_s0;
+    wire [`HNI_LL_REQ_CRD_CNT_WIDTH-1:0]  rxreq_crd_cnt_nxt_s1;
 
     //main function
 

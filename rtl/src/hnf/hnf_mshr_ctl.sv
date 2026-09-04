@@ -30,635 +30,635 @@
 module hnf_mshr_ctl `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                                clk,
+    input  wire                                rst,
 
     //inputs related to request handling from hnf_link_rxreq_parse
-    input wire li_mshr_rxreq_valid_s0,
-    input wire [3:0] li_mshr_rxreq_qos_s0,
-    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxreq_srcid_s0,
-    input wire [11:0] li_mshr_rxreq_txnid_s0,
-    input chie_pkg::req_opcode_e li_mshr_rxreq_opcode_s0,
-    input chie_pkg::size_e li_mshr_rxreq_size_s0,
-    input wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
-    input wire li_mshr_rxreq_ns_s0,
-    input wire li_mshr_rxreq_allowretry_s0,
-    input chie_pkg::order_e li_mshr_rxreq_order_s0,
-    input wire [3:0] li_mshr_rxreq_pcrdtype_s0,
-    input chie_pkg::memattr_s li_mshr_rxreq_memattr_s0,
-    input wire [7:0] li_mshr_rxreq_lpid_s0,
-    input wire li_mshr_rxreq_excl_s0,
-    input wire li_mshr_rxreq_expcompack_s0,
-    input wire li_mshr_rxreq_tracetag_s0,
+    input  wire                                li_mshr_rxreq_valid_s0,
+    input  wire [3:0]                          li_mshr_rxreq_qos_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
+    input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
+    input  chie_pkg::req_opcode_e              li_mshr_rxreq_opcode_s0,
+    input  chie_pkg::size_e                    li_mshr_rxreq_size_s0,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] li_mshr_rxreq_addr_s0,
+    input  wire                                li_mshr_rxreq_ns_s0,
+    input  wire                                li_mshr_rxreq_allowretry_s0,
+    input  chie_pkg::order_e                   li_mshr_rxreq_order_s0,
+    input  wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
+    input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
+    input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
+    input  wire                                li_mshr_rxreq_excl_s0,
+    input  wire                                li_mshr_rxreq_expcompack_s0,
+    input  wire                                li_mshr_rxreq_tracetag_s0,
 
     //inputs related to data handling from hnf_link_rxreq_parse
-    input wire li_mshr_rxdat_valid_s0,
-    input wire [11:0] li_mshr_rxdat_txnid_s0,
-    input chie_pkg::dat_opcode_e li_mshr_rxdat_opcode_s0,
-    input chie_pkg::resp_state_e li_mshr_rxdat_resp_s0,
-    input chie_pkg::resp_err_e li_mshr_rxdat_resperr_s0,
-    input wire [3:0] li_mshr_rxdat_fwdstate_s0,
-    input wire [1:0] li_mshr_rxdat_dataid_s0,
+    input  wire                                li_mshr_rxdat_valid_s0,
+    input  wire [11:0]                         li_mshr_rxdat_txnid_s0,
+    input  chie_pkg::dat_opcode_e              li_mshr_rxdat_opcode_s0,
+    input  chie_pkg::resp_state_e              li_mshr_rxdat_resp_s0,
+    input  chie_pkg::resp_err_e                li_mshr_rxdat_resperr_s0,
+    input  wire [3:0]                          li_mshr_rxdat_fwdstate_s0,
+    input  wire [1:0]                          li_mshr_rxdat_dataid_s0,
 
     //inputs related to response handling from hnf_link_rxreq_parse
-    input wire li_mshr_rxrsp_valid_s0,
-    input wire [chie_pkg::NID_WIDTH-1:0] li_mshr_rxrsp_srcid_s0,
-    input wire [11:0] li_mshr_rxrsp_txnid_s0,
-    input chie_pkg::rsp_opcode_e li_mshr_rxrsp_opcode_s0,
-    input chie_pkg::resp_state_e li_mshr_rxrsp_resp_s0,
-    input chie_pkg::resp_err_e li_mshr_rxrsp_resperr_s0,
-    input wire [2:0] li_mshr_rxrsp_fwdstate_s0,
-    input wire [11:0] li_mshr_rxrsp_dbid_s0,
-    input wire [3:0] li_mshr_rxrsp_pcrdtype_s0,
+    input  wire                                li_mshr_rxrsp_valid_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxrsp_srcid_s0,
+    input  wire [11:0]                         li_mshr_rxrsp_txnid_s0,
+    input  chie_pkg::rsp_opcode_e              li_mshr_rxrsp_opcode_s0,
+    input  chie_pkg::resp_state_e              li_mshr_rxrsp_resp_s0,
+    input  chie_pkg::resp_err_e                li_mshr_rxrsp_resperr_s0,
+    input  wire [2:0]                          li_mshr_rxrsp_fwdstate_s0,
+    input  wire [11:0]                         li_mshr_rxrsp_dbid_s0,
+    input  wire [3:0]                          li_mshr_rxrsp_pcrdtype_s0,
 
     //inputs from hnf_mshr_global_monitor
-    input wire excl_pass_s1,
-    input wire excl_fail_s1,
+    input  wire                                excl_pass_s1,
+    input  wire                                excl_fail_s1,
 
     //inputs from hnf_mshr_bypass
-    input wire txreq_mshr_bypass_lost_s1,
-    input wire txrsp_mshr_bypass_lost_s1,
+    input  wire                                txreq_mshr_bypass_lost_s1,
+    input  wire                                txrsp_mshr_bypass_lost_s1,
 
     //inputs from hnf_mshr_qos
-    input wire mshr_alloc_en_s0,
-    input wire mshr_alloc_en_s1_q,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s1_q,
+    input  wire                                mshr_alloc_en_s0,
+    input  wire                                mshr_alloc_en_s1_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_entry_idx_alloc_s0,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_entry_idx_alloc_s1_q,
 
     //inputs from hnf_mshr_addr_buffer
-    input wire rxreq_cam_hazard_s1_q,
-    input wire [`MSHR_ENTRIES_NUM-1:0] rxreq_cam_hazard_entry_s1_q,
-    input wire mshr_l3_hazard_valid_sx3_q,
-    input wire [`MSHR_ENTRIES_NUM-1:0] pipe_cam_hazard_entry_sx3_q,
-    input wire [`MSHR_ENTRIES_NUM-1:0] pipe_sleep_entry_sx3_q,
+    input  wire                                rxreq_cam_hazard_s1_q,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        rxreq_cam_hazard_entry_s1_q,
+    input  wire                                mshr_l3_hazard_valid_sx3_q,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        pipe_cam_hazard_entry_sx3_q,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        pipe_sleep_entry_sx3_q,
 
     //inputs from hnf_link_txreq_wrap
-    input wire txreq_mshr_won_sx1,
+    input  wire                                txreq_mshr_won_sx1,
 
     //inputs from hnf_link_txrsp_wrap
-    input wire txrsp_mshr_won_sx1,
+    input  wire                                txrsp_mshr_won_sx1,
 
     //inputs from hnf_link_txsnp_wrap
-    input wire txsnp_mshr_busy_sx1,
+    input  wire                                txsnp_mshr_busy_sx1,
 
     //inputs from hnf_link_txdat_wrap
-    input wire txdat_mshr_busy_sx,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_rd_idx_sx2,
-    input wire txdat_mshr_clr_dbf_busy_valid_sx3,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] txdat_mshr_clr_dbf_busy_idx_sx3,
+    input  wire                                txdat_mshr_busy_sx,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_rd_idx_sx2,
+    input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
 
     //inputs from hnf_cache_pipeline
-    input chie_pkg::req_opcode_e l3_opcode_sx7_q,
-    input wire [`MSHR_ENTRIES_WIDTH-1:0] l3_mshr_entry_sx7_q,
-    input wire l3_memrd_sx7_q,
-    input wire l3_hit_sx7_q,
-    input wire l3_sfhit_sx7_q,
-    input wire l3_pipeval_sx7_q,
-    input wire l3_mshr_wr_op_sx7_q,
-    input wire l3_snpdirect_sx7_q,
-    input wire l3_snpbrd_sx7_q,
-    input wire [HNF_MSHR_RNF_NUM_PARAM-1:0] l3_snp_bit_sx7_q,
-    input wire l3_replay_sx7_q,
-    input wire l3_hit_d_sx7_q,
-    input wire l3_evict_sx7_q,
+    input  chie_pkg::req_opcode_e              l3_opcode_sx7_q,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]      l3_mshr_entry_sx7_q,
+    input  wire                                l3_memrd_sx7_q,
+    input  wire                                l3_hit_sx7_q,
+    input  wire                                l3_sfhit_sx7_q,
+    input  wire                                l3_pipeval_sx7_q,
+    input  wire                                l3_mshr_wr_op_sx7_q,
+    input  wire                                l3_snpdirect_sx7_q,
+    input  wire                                l3_snpbrd_sx7_q,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   l3_snp_bit_sx7_q,
+    input  wire                                l3_replay_sx7_q,
+    input  wire                                l3_hit_d_sx7_q,
+    input  wire                                l3_evict_sx7_q,
 
     //outputs to hnf_data_buffer
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_rd_idx_sx1_q,
-    output logic mshr_dbf_rd_valid_sx1_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
+    output logic                               mshr_dbf_rd_valid_sx1_q,
     // Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data packets, so
     // the buffer is stamped present for an entry no fill will ever reach.
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_err_fill_idx_sx1_q,
-    output logic mshr_dbf_err_fill_valid_sx1_q,
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_retired_idx_sx1_q,
-    output logic mshr_dbf_retired_valid_sx1_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_err_fill_idx_sx1_q,
+    output logic                               mshr_dbf_err_fill_valid_sx1_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_retired_idx_sx1_q,
+    output logic                               mshr_dbf_retired_valid_sx1_q,
 
     //outputs to hnf_link_txreq_wrap
-    output logic mshr_txreq_valid_sx1_q,
-    output wire  [3:0] mshr_txreq_qos_sx1,
-    output logic  [11:0] mshr_txreq_txnid_sx1_q,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txreq_returnnid_sx1,
-    output wire [12-1:0] mshr_txreq_returntxnid_sx1,
-    output chie_pkg::req_opcode_e mshr_txreq_opcode_sx1,
-    output chie_pkg::size_e mshr_txreq_size_sx1,
-    output wire mshr_txreq_ns_sx1,
-    output wire mshr_txreq_allowretry_sx1,
-    output chie_pkg::order_e mshr_txreq_order_sx1,
-    output wire [3:0] mshr_txreq_pcrdtype_sx1,
-    output chie_pkg::memattr_s mshr_txreq_memattr_sx1,
-    output wire mshr_txreq_dodwt_sx1,
-    output wire mshr_txreq_tracetag_sx1,
+    output logic                               mshr_txreq_valid_sx1_q,
+    output wire [3:0]                          mshr_txreq_qos_sx1,
+    output logic [11:0]                        mshr_txreq_txnid_sx1_q,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_returnnid_sx1,
+    output wire [12-1:0]                       mshr_txreq_returntxnid_sx1,
+    output chie_pkg::req_opcode_e              mshr_txreq_opcode_sx1,
+    output chie_pkg::size_e                    mshr_txreq_size_sx1,
+    output wire                                mshr_txreq_ns_sx1,
+    output wire                                mshr_txreq_allowretry_sx1,
+    output chie_pkg::order_e                   mshr_txreq_order_sx1,
+    output wire [3:0]                          mshr_txreq_pcrdtype_sx1,
+    output chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
+    output wire                                mshr_txreq_dodwt_sx1,
+    output wire                                mshr_txreq_tracetag_sx1,
 
     //outputs to hnf_link_txrsp_wrap
-    output logic mshr_txrsp_valid_sx1_q,
-    output wire [3:0] mshr_txrsp_qos_sx1,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txrsp_tgtid_sx1,
-    output logic  [11:0] mshr_txrsp_txnid_sx1_q,
-    output chie_pkg::rsp_opcode_e mshr_txrsp_opcode_sx1,
-    output chie_pkg::resp_err_e mshr_txrsp_resperr_sx1,
-    output chie_pkg::resp_state_e mshr_txrsp_resp_sx1,
-    output wire [11:0] mshr_txrsp_dbid_sx1,
-    output wire mshr_txrsp_tracetag_sx1,
+    output logic                               mshr_txrsp_valid_sx1_q,
+    output wire [3:0]                          mshr_txrsp_qos_sx1,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txrsp_tgtid_sx1,
+    output logic [11:0]                        mshr_txrsp_txnid_sx1_q,
+    output chie_pkg::rsp_opcode_e              mshr_txrsp_opcode_sx1,
+    output chie_pkg::resp_err_e                mshr_txrsp_resperr_sx1,
+    output chie_pkg::resp_state_e              mshr_txrsp_resp_sx1,
+    output wire [11:0]                         mshr_txrsp_dbid_sx1,
+    output wire                                mshr_txrsp_tracetag_sx1,
 
     //outputs to hnf_link_txsnp_wrap
-    output logic mshr_txsnp_valid_sx1_q,
-    output wire [3:0] mshr_txsnp_qos_sx1,
-    output logic  [11:0] mshr_txsnp_txnid_sx1_q,
-    output wire [chie_pkg::NID_WIDTH-1:0] mshr_txsnp_fwdnid_sx1,
-    output wire [11:0] mshr_txsnp_fwdtxnid_sx1,
-    output chie_pkg::snp_opcode_e mshr_txsnp_opcode_sx1,
-    output wire mshr_txsnp_ns_sx1,
-    output wire mshr_txsnp_rettosrc_sx1,
-    output wire mshr_txsnp_tracetag_sx1,
-    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0] mshr_txsnp_rn_vec_sx1,
+    output logic                               mshr_txsnp_valid_sx1_q,
+    output wire [3:0]                          mshr_txsnp_qos_sx1,
+    output logic [11:0]                        mshr_txsnp_txnid_sx1_q,
+    output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txsnp_fwdnid_sx1,
+    output wire [11:0]                         mshr_txsnp_fwdtxnid_sx1,
+    output chie_pkg::snp_opcode_e              mshr_txsnp_opcode_sx1,
+    output wire                                mshr_txsnp_ns_sx1,
+    output wire                                mshr_txsnp_rettosrc_sx1,
+    output wire                                mshr_txsnp_tracetag_sx1,
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_rn_vec_sx1,
 
     //outputs to hnf_link_txdat_wrap
-    output logic  [chie_pkg::NID_WIDTH-1:0] mshr_txdat_tgtid_sx2,
-    output logic  [11:0] mshr_txdat_txnid_sx2,
-    output chie_pkg::dat_opcode_e mshr_txdat_opcode_sx2,
-    output chie_pkg::resp_state_e mshr_txdat_resp_sx2,
-    output chie_pkg::resp_err_e mshr_txdat_resperr_sx2,
-    output logic  [11:0] mshr_txdat_dbid_sx2,
-    output logic  [1:0] mshr_txdat_ccid_sx2,
-    output logic mshr_txdat_tracetag_sx2,
+    output logic [chie_pkg::NID_WIDTH-1:0]     mshr_txdat_tgtid_sx2,
+    output logic [11:0]                        mshr_txdat_txnid_sx2,
+    output chie_pkg::dat_opcode_e              mshr_txdat_opcode_sx2,
+    output chie_pkg::resp_state_e              mshr_txdat_resp_sx2,
+    output chie_pkg::resp_err_e                mshr_txdat_resperr_sx2,
+    output logic [11:0]                        mshr_txdat_dbid_sx2,
+    output logic [1:0]                         mshr_txdat_ccid_sx2,
+    output logic                               mshr_txdat_tracetag_sx2,
 
     //outputs to hnf_cache_pipeline
-    output logic mshr_l3_fill_sx1_q,
-    output logic  [CHIE_NID_WIDTH_PARAM-1:0] mshr_l3_rnf_sx1_q,
-    output logic mshr_l3_seq_retire_sx1_q,
-    output chie_pkg::req_opcode_e mshr_l3_opcode_sx1_q,
-    output logic mshr_l3_req_en_sx1_q,
-    output logic  [`MSHR_ENTRIES_WIDTH-1:0] mshr_l3_entry_idx_sx1_q,
-    output logic mshr_l3_fill_dirty_sx1_q,
+    output logic                               mshr_l3_fill_sx1_q,
+    output logic [CHIE_NID_WIDTH_PARAM-1:0]    mshr_l3_rnf_sx1_q,
+    output logic                               mshr_l3_seq_retire_sx1_q,
+    output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
+    output logic                               mshr_l3_req_en_sx1_q,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_l3_entry_idx_sx1_q,
+    output logic                               mshr_l3_fill_dirty_sx1_q,
 
 
 
-    output wire [`MSHR_ENTRIES_NUM-1:0] mshr_mem_busy_sx,  //outputs to hnf_mshr_addr_buffer
-    input wire [`MSHR_ENTRIES_NUM-1:0] abf_internal_evict_addr_valid_sx_q  //inputs from hnf_mshr_addr_buffer
+    output wire [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_busy_sx,                   //outputs to hnf_mshr_addr_buffer
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        abf_internal_evict_addr_valid_sx_q  //inputs from hnf_mshr_addr_buffer
     );
     //internal signals
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_entry_valid_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_entry_valid_sx_q;
     // only through this structure.
     // every sleeper but the last -- unrecoverably, since sleep_sx_q is cleared
     // writeback blocks every request to that line, and a single slot would lose
     // One bit per sleeper, not one successor index: an entry that owes a victim
-    logic [`MSHR_ENTRIES_NUM-1:0]                 need_to_wakeup_vec_sx_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 sleep_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_can_alloc_entry_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rdnosnp_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_ro_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rdnosd_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_ru_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rc_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wrnosnp_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wrnosnpp_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wu_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wup_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wuf_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wb_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wc_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_we_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_mu_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_cu_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_evi_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_cs_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_ci_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_seq_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_err_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_errrd_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_errwrdat_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_errgrant_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_fail_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_sn_order_s1_q;
-    chie_pkg::req_opcode_e       mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [3:0]          mshr_qos_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    chie_pkg::memattr_s      mshr_memattr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::NID_WIDTH-1:0]        mshr_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [11:0]        mshr_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_excl_s1_q;
-    chie_pkg::size_e         mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]         mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic     mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    chie_pkg::resp_err_e      mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic           mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    chie_pkg::order_e        mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_compack_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dwt_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3dat_sn_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_neednosnp_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3_entry_vec_sx8_q;
-    logic [`MSHR_SNPCNT_WIDTH-1:0]                l3_snp_cnt;
-    logic [`RNF_NUM-1:0]                          mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snpdirect_sx8_q;
-    logic [`MSHR_SNPCNT_WIDTH-1:0]                mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
-    chie_pkg::snp_opcode_e       mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retosrc_sx8_q;
-    chie_pkg::resp_state_e         mshr_l3_resp_sx8_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snprsp_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_wuf_neednosnp_vec_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snpdat_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snpdat_getone_s1_q;
-    logic [`MSHR_SNPCNT_WIDTH-1:0]                mshr_snp_getnum_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snp_d_s1_q;
-    logic [1:0]                                   mshr_snp_getid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dct_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_rngetone_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_memgetone_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_old_get_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_new_get_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_cancel_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dat_stop_cb_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_cb_wr_mem_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rn_dat_get_d_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_compack_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_dbid_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dbid_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_comp_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_comp_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_rd_receipt_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_get_retry_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retry_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_resent_s1_q;
-    logic [3:0]     mshr_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_pcrdtype_cnt_s1_q[0:`MSHR_PCRDTYPE_NUMS-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dmt_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dct_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 l3_rd_busy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 l3_fill_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 l3_rd_rdy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 l3_fill_rdy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 l3_fill_data_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_snp_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_txsnp_rdy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_mem_rd_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_mem_wr_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_mem_rd_rdy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_mem_wr_rdy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rn_data_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_sn_data_busy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_txdat_rn_rdy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_txdat_sn_rdy_sx_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_dbid_rdy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_rd_receipt_rdy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_comp_rdy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_comp_busy_s2_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_compack_busy_sx_q;
-    chie_pkg::snp_opcode_e       mshr_snpcode_sx7;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshrageq_v_sx2_q;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshrageq_mshr_idx_sx2_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshrageq_alloc_entry_ptr_sx1;
-    logic                                         found_mshrageq_alloc_entry;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshrageq_shift;
-    logic                                         mshr_dbf_retired_valid_sx2_q;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshrageq_mshr_idx_sx1[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               rxreq_cam_hazard_idx_s1;
-    logic                                         found_rxreq_cam_hazard_idx;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               pipe_sleep_idx_sx3;
-    logic                                         found_pipe_sleep_idx;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               pipe_cam_hazard_idx_sx3;
-    logic                                         found_pipe_cam_hazard_idx;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_sx8_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_l3hit_d_sx8_q;
-    logic [11:0]         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [11:0]         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_txrsp_idx_sx1_q;
-    logic                                         mshr_retire_busy_sx1_q;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_retire_min_idx_sx;
-    logic                                         found_retire_min_idx;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               mshr_retire_oldest_idx_sx;
-    logic                                         found_retire_oldest_idx;
-    logic                                         mshr_oldest_is_retire;
-    logic                                         mshr_l3_seq_min_idx_retire_sx1;
-    logic                                         mshr_l3_seq_oldest_idx_retire_sx1;
-    logic                                         mshr_pcrdgrant_frist_s0;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txdat_wrap_other_ptr;
-    logic                                         found_txdat_wrap_other_ptr;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               txdat_wrap_other_idx;
-    logic  [`MSHR_ENTRIES_NUM-1:0]                txdat_wrap_other_ptr_vector;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 cpl_wrap_other_ptr;
-    logic                                         found_cpl_wrap_other_ptr;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               cpl_rob;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               cpl_wrap_other_idx;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 cpl_wrap_other_ptr_vector;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txsnp_wrap_other_ptr;
-    logic                                         found_txsnp_wrap_other_ptr;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               txsnp_wrap_other_idx;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txsnp_wrap_other_ptr_vector;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txrsp_wrap_other_ptr;
-    logic                                         found_txrsp_wrap_other_ptr;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               txrsp_wrap_other_idx;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txrsp_wrap_other_ptr_vector;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txreq_wrap_other_ptr;
-    logic                                         found_txreq_wrap_other_ptr;
-    logic [`MSHR_ENTRIES_WIDTH-1:0]               txreq_wrap_other_idx;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 txreq_wrap_other_ptr_vector;
-    logic                                         mshr_retry_ageq_sel_success;
-    logic [`MSHR_ENTRIES_NUM-1:0]                 mshr_retry_rdy_entry_s1_q;
-    wire                                        op_rdnosnp;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosnp_s0_w;
-    wire                                        op_ro;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ro_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ro_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ro_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ro_s0_w;
-    wire                                        op_rdnosd;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosd_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosd_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosd_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rdnosd_s0_w;
-    wire                                        op_ru;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ru_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ru_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ru_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ru_s0_w;
-    wire                                        op_rc;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rc_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rc_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rc_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rc_s0_w;
-    wire                                        op_wrnosnpf;
-    wire                                        op_wrnosnp;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnp_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnp_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnp_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnp_s0_w;
-    wire                                        op_wrnosnpp;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnpp_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnpp_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnpp_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wrnosnpp_s0_w;
-    wire                                        op_wu;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wu_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wu_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wu_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wu_s0_w;
-    wire                                        op_wuf;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wuf_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wuf_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wuf_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wuf_s0_w;
-    wire                                        op_wup;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wup_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wup_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wup_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wup_s0_w;
-    wire                                        op_wb;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wb_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wb_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wb_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wb_s0_w;
-    wire                                        op_wc;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wc_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wc_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wc_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wc_s0_w;
-    wire                                        op_we;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_we_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_we_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_we_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_we_s0_w;
-    wire                                        op_mu;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mu_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mu_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mu_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mu_s0_w;
-    wire                                        op_cu;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cu_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cu_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cu_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cu_s0_w;
-    wire                                        op_evi;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_evi_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_evi_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_evi_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_evi_s0_w;
-    wire                                        op_cs;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cs_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cs_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cs_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_cs_s0_w;
-    wire                                        op_ci;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ci_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ci_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ci_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_ci_s0_w;
-    wire                                        op_seq;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_seq_s0_w;
-    wire                                        op_drop;
-    wire                                        op_serviced;
-    wire                                        op_err;
-    wire                                        op_errrd;
-    wire                                        op_errwrdat;
-    wire                                        op_cw;
-    wire                                        op_errgrant;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_err_upd_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errrd_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errwrdat_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_errgrant_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dbf_err_fill_entry_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_req_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_req_clr_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_set_sx8;
-    wire                                        mshr_sn_order_set_s1;
-    wire                                        mshr_order_reqord;
-    wire                                        mshr_order_owo;
-    wire                                        mshr_request_excl;
-    wire                                        mshr_excl_or_owo;
-    wire                                        mshr_excl_or_reqord;
-    wire                                        mshr_request_order;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_memattr_allocate_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_l3rd_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_memrd_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_memwr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_datbuf_sn_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_dbid_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_rd_receipt_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_comp_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_dmt_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_dwt_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_l3fill_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_alloc_snp_s1;
-    wire                                        mshr_snprsp_s0;
-    wire                                        mshr_snprspfwd_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snprsp_entry_vec_s0;
-    wire [11:0]       mshr_snprsp_entry_s0;
-    wire                                        mshr_snprsp_v_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snprsp_getone_s0;
-    wire                                        mshr_snpdat_s0;
-    wire                                        mshr_snpdatfwd_s0;
-    wire                                        mshr_snpdat_v_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snpdat_entry_vec_s0;
-    wire [11:0]       mshr_snpdat_entry_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snpdat_gettwo_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_d_set_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_d_clr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_getid_set_0_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_getid_set_1_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_getid_clr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_set_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dct_clr_s1;
-    wire                                        mshr_snp_d_s0;
-    wire [1:0]      mshr_snpdatid_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3dat_rn_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3dat_sn_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_evict_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dat_entry_vec_s0;
-    wire [11:0]       mshr_dat_entry_s0;
-    wire                                        mshr_dat_v_s0;
-    wire                                        mshr_mem_dat_s0;
-    wire                                        mshr_rn_dat_s0;
-    wire                                        mshr_cb_dat_s0;
-    wire                                        mshr_ncb_dat_s0;
-    wire                                        mshr_snp_get_64B_s0;
-    wire                                        mshr_rn_dat_getall_s0;
-    wire                                        mshr_datcancel_s0;
-    wire                                        mshr_set_stop_cb_s0;
-    wire                                        mshr_rn_dat_get_i_sc_s0;
-    wire                                        mshr_rn_dat_get_i_s0;
-    wire                                        mshr_rn_dat_get_uc_s0;
-    wire                                        mshr_rn_dat_get_sc_s0;
-    chie_pkg::resp_state_e        mshr_data_state_s0;
-    wire                                        mshr_rn_dat_get_d_s0;
-    wire                                        mshr_rsp_v_s0;
-    wire                                        mshr_getrsp_compack_s0;
-    wire                                        mshr_getdat_compack_s0;
-    wire [11:0]       mshr_rsp_entry_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rsp_entry_vec_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retosrc_entry_vec_sx8;
-    wire                                        mshr_get_dbid_s0;
-    wire                                        mshr_get_comp_s0;
-    wire                                        mshr_get_rd_receipt_s0;
-    wire                                        mshr_get_retry_s0;
-    wire                                        mshr_retry_alloc_s0;
-    wire                                        mshr_get_pcrd_s0;
-    wire                                        mshr_pcrd_alloc_s0;
-    wire [3:0]    mshr_pcrd_type_get_s0;
-    wire [`MSHR_PCRDTYPE_NUMS-1:0]              mshr_pcrdtype_cnt_upd_s1;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_pcrdtype_cnt_s1[0:`MSHR_PCRDTYPE_NUMS-1];
-    wire                                        mshr_l3_dmt_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_dmt_s1;
+    logic [`MSHR_ENTRIES_NUM-1:0]        need_to_wakeup_vec_sx_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        sleep_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_can_alloc_entry_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdnosnp_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_ro_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdnosd_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_ru_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rc_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wrnosnp_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wrnosnpp_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wu_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wup_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wb_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wc_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_we_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mu_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cu_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_evi_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cs_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_ci_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_seq_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_err_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errrd_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errwrdat_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errgrant_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_excl_fail_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_order_s1_q;
+    chie_pkg::req_opcode_e               mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [3:0]                          mshr_qos_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::memattr_s                  mshr_memattr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::NID_WIDTH-1:0]      mshr_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]                         mshr_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_excl_s1_q;
+    chie_pkg::size_e                     mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic                                mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::resp_err_e                 mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic                                mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::order_e                    mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_compack_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dwt_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3dat_sn_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_neednosnp_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_entry_vec_sx8_q;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]       l3_snp_cnt;
+    logic [`RNF_NUM-1:0]                 mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdirect_sx8_q;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::snp_opcode_e               mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_retosrc_sx8_q;
+    chie_pkg::resp_state_e               mshr_l3_resp_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snprsp_entry_vec_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_neednosnp_vec_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdat_entry_vec_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdat_getone_s1_q;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snp_getnum_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_d_s1_q;
+    logic [1:0]                          mshr_snp_getid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dct_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_entry_vec_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_rngetone_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_memgetone_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_old_get_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_new_get_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cancel_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_stop_cb_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cb_wr_mem_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rn_dat_get_d_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_compack_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_dbid_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dbid_entry_vec_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_entry_vec_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_comp_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_rd_receipt_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_retry_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_retry_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_resent_s1_q;
+    logic [3:0]                          mshr_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_pcrdtype_cnt_s1_q[0:`MSHR_PCRDTYPE_NUMS-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dmt_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dct_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        l3_rd_busy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        l3_rd_rdy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_rdy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_data_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txsnp_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_rd_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_rd_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rn_data_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_data_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_rn_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_sn_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dbid_rdy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rd_receipt_rdy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_rdy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_busy_s2_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_compack_busy_sx_q;
+    chie_pkg::snp_opcode_e               mshr_snpcode_sx7;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshrageq_v_sx2_q;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshrageq_mshr_idx_sx2_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshrageq_alloc_entry_ptr_sx1;
+    logic                                found_mshrageq_alloc_entry;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshrageq_shift;
+    logic                                mshr_dbf_retired_valid_sx2_q;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshrageq_mshr_idx_sx1[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      rxreq_cam_hazard_idx_s1;
+    logic                                found_rxreq_cam_hazard_idx;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      pipe_sleep_idx_sx3;
+    logic                                found_pipe_sleep_idx;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      pipe_cam_hazard_idx_sx3;
+    logic                                found_pipe_cam_hazard_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3hit_sx8_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3hit_d_sx8_q;
+    logic [11:0]                         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]                         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_txrsp_idx_sx1_q;
+    logic                                mshr_retire_busy_sx1_q;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_retire_min_idx_sx;
+    logic                                found_retire_min_idx;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_retire_oldest_idx_sx;
+    logic                                found_retire_oldest_idx;
+    logic                                mshr_oldest_is_retire;
+    logic                                mshr_l3_seq_min_idx_retire_sx1;
+    logic                                mshr_l3_seq_oldest_idx_retire_sx1;
+    logic                                mshr_pcrdgrant_frist_s0;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txdat_wrap_other_ptr;
+    logic                                found_txdat_wrap_other_ptr;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      txdat_wrap_other_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txdat_wrap_other_ptr_vector;
+    logic [`MSHR_ENTRIES_NUM-1:0]        cpl_wrap_other_ptr;
+    logic                                found_cpl_wrap_other_ptr;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      cpl_rob;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      cpl_wrap_other_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        cpl_wrap_other_ptr_vector;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txsnp_wrap_other_ptr;
+    logic                                found_txsnp_wrap_other_ptr;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      txsnp_wrap_other_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txsnp_wrap_other_ptr_vector;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txrsp_wrap_other_ptr;
+    logic                                found_txrsp_wrap_other_ptr;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      txrsp_wrap_other_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txrsp_wrap_other_ptr_vector;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txreq_wrap_other_ptr;
+    logic                                found_txreq_wrap_other_ptr;
+    logic [`MSHR_ENTRIES_WIDTH-1:0]      txreq_wrap_other_idx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        txreq_wrap_other_ptr_vector;
+    logic                                mshr_retry_ageq_sel_success;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_retry_rdy_entry_s1_q;
+    wire                                 op_rdnosnp;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosnp_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosnp_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosnp_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosnp_s0_w;
+    wire                                 op_ro;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ro_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ro_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ro_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ro_s0_w;
+    wire                                 op_rdnosd;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosd_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosd_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosd_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rdnosd_s0_w;
+    wire                                 op_ru;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ru_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ru_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ru_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ru_s0_w;
+    wire                                 op_rc;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rc_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rc_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rc_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rc_s0_w;
+    wire                                 op_wrnosnpf;
+    wire                                 op_wrnosnp;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnp_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnp_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnp_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnp_s0_w;
+    wire                                 op_wrnosnpp;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnpp_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnpp_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnpp_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wrnosnpp_s0_w;
+    wire                                 op_wu;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wu_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wu_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wu_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wu_s0_w;
+    wire                                 op_wuf;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wuf_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wuf_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wuf_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wuf_s0_w;
+    wire                                 op_wup;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wup_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wup_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wup_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wup_s0_w;
+    wire                                 op_wb;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wb_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wb_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wb_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wb_s0_w;
+    wire                                 op_wc;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wc_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wc_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wc_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_wc_s0_w;
+    wire                                 op_we;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_we_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_we_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_we_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_we_s0_w;
+    wire                                 op_mu;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mu_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mu_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mu_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_mu_s0_w;
+    wire                                 op_cu;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cu_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cu_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cu_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cu_s0_w;
+    wire                                 op_evi;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_evi_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_evi_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_evi_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_evi_s0_w;
+    wire                                 op_cs;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cs_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cs_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cs_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_cs_s0_w;
+    wire                                 op_ci;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_s0_w;
+    wire                                 op_seq;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_s0_w;
+    wire                                 op_drop;
+    wire                                 op_serviced;
+    wire                                 op_err;
+    wire                                 op_errrd;
+    wire                                 op_errwrdat;
+    wire                                 op_cw;
+    wire                                 op_errgrant;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_upd_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errrd_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errwrdat_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errgrant_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dbf_err_fill_entry_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_set_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_clr_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_set_sx8;
+    wire                                 mshr_sn_order_set_s1;
+    wire                                 mshr_order_reqord;
+    wire                                 mshr_order_owo;
+    wire                                 mshr_request_excl;
+    wire                                 mshr_excl_or_owo;
+    wire                                 mshr_excl_or_reqord;
+    wire                                 mshr_request_order;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_memattr_allocate_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_l3rd_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_memrd_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_memwr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_datbuf_sn_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dbid_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_rd_receipt_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_comp_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dmt_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dwt_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_l3fill_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_snp_s1;
+    wire                                 mshr_snprsp_s0;
+    wire                                 mshr_snprspfwd_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snprsp_entry_vec_s0;
+    wire [11:0]                          mshr_snprsp_entry_s0;
+    wire                                 mshr_snprsp_v_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snprsp_getone_s0;
+    wire                                 mshr_snpdat_s0;
+    wire                                 mshr_snpdatfwd_s0;
+    wire                                 mshr_snpdat_v_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snpdat_entry_vec_s0;
+    wire [11:0]                          mshr_snpdat_entry_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snpdat_gettwo_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_d_set_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_d_clr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_set_0_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_set_1_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_clr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_set_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_clr_s1;
+    wire                                 mshr_snp_d_s0;
+    wire [1:0]                           mshr_snpdatid_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_l3dat_rn_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_l3dat_sn_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_l3_evict_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dat_entry_vec_s0;
+    wire [11:0]                          mshr_dat_entry_s0;
+    wire                                 mshr_dat_v_s0;
+    wire                                 mshr_mem_dat_s0;
+    wire                                 mshr_rn_dat_s0;
+    wire                                 mshr_cb_dat_s0;
+    wire                                 mshr_ncb_dat_s0;
+    wire                                 mshr_snp_get_64B_s0;
+    wire                                 mshr_rn_dat_getall_s0;
+    wire                                 mshr_datcancel_s0;
+    wire                                 mshr_set_stop_cb_s0;
+    wire                                 mshr_rn_dat_get_i_sc_s0;
+    wire                                 mshr_rn_dat_get_i_s0;
+    wire                                 mshr_rn_dat_get_uc_s0;
+    wire                                 mshr_rn_dat_get_sc_s0;
+    chie_pkg::resp_state_e               mshr_data_state_s0;
+    wire                                 mshr_rn_dat_get_d_s0;
+    wire                                 mshr_rsp_v_s0;
+    wire                                 mshr_getrsp_compack_s0;
+    wire                                 mshr_getdat_compack_s0;
+    wire [11:0]                          mshr_rsp_entry_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rsp_entry_vec_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_retosrc_entry_vec_sx8;
+    wire                                 mshr_get_dbid_s0;
+    wire                                 mshr_get_comp_s0;
+    wire                                 mshr_get_rd_receipt_s0;
+    wire                                 mshr_get_retry_s0;
+    wire                                 mshr_retry_alloc_s0;
+    wire                                 mshr_get_pcrd_s0;
+    wire                                 mshr_pcrd_alloc_s0;
+    wire [3:0]                           mshr_pcrd_type_get_s0;
+    wire [`MSHR_PCRDTYPE_NUMS-1:0]       mshr_pcrdtype_cnt_upd_s1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_pcrdtype_cnt_s1[0:`MSHR_PCRDTYPE_NUMS-1];
+    wire                                 mshr_l3_dmt_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_dmt_s1;
     // `MSHR_ENTRIES_WIDTH. Named once here rather than truncated at every use.
     // Sec 13.10.5 (p.13-427) makes TxnID 12 bits; an MSHR index is
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_snpdat_entry_idx_s0;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dat_entry_idx_s0;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_txreq_entry_idx_sx1;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_txsnp_entry_idx_sx1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_snpdat_entry_idx_s0;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_dat_entry_idx_s0;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_txreq_entry_idx_sx1;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]       mshr_txsnp_entry_idx_sx1;
     assign mshr_snpdat_entry_idx_s0 = mshr_snpdat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
     assign mshr_dat_entry_idx_s0    = mshr_dat_entry_s0[`MSHR_ENTRIES_WIDTH-1:0];
     assign mshr_txreq_entry_idx_sx1 = mshr_txreq_txnid_sx1_q[`MSHR_ENTRIES_WIDTH-1:0];
     assign mshr_txsnp_entry_idx_sx1 = mshr_txsnp_txnid_sx1_q[`MSHR_ENTRIES_WIDTH-1:0];
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_memrd_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_getall_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_get_64B_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_clr_l3busy_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_rd_l3fill_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_replay_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_all_dat_alloc_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_new_dat_l3fill_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_old_dat_l3fill_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_neednosnp_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_needsnp_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_memrd_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dat_to_rn_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_memwr_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_memwr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_wup_memwr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_rd_l3fill_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_entry_vec_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_can_retire_entry_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_can_alloc_entry_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_rd_busy_set_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_rd_busy_clr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_rd_rdy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_rd_rdy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_rdy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_rdy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_data_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                l3_fill_data_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_snp_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_rd_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_rd_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_wr_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_wr_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_rd_rdy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_rd_rdy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_wr_rdy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_mem_wr_rdy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rn_data_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rn_data_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_sn_data_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_sn_data_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rn_rdy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rn_rdy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_sn_rdy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_sn_rdy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dbid_rdy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dbid_rdy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rd_receipt_rdy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rd_receipt_rdy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_comp_rdy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_comp_rdy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_comp_busy_set_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_comp_busy_clr_s2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_compack_busy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_compack_busy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txsnp_rdy_set_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txsnp_rdy_clr_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_busy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_pipeline_rdy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txreq_rdy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_datbuf_busy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txdat_rdy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_rsp_busy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txrsp_rdy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_entry_busy_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retire_rdy;
-    wire                                        mshr_retire_sx;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_resent_entry_vec_s0;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]              mshr_dbf_retired_idx_sx;
-    wire                                        mshr_l3_seq_retire_sx;
-    wire                                        mshr_l3_val_sx7;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_alloc_entry_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_retire_entry_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_shift_sx2;
-    wire                                        ageq_needs_shift_sx2;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_load_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_v_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshrageq_flop_en_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txreq_wrap_ageq_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txreq_wrap_other_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txreq_entry_vec_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txrsp_wrap_ageq_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txrsp_wrap_other_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txrsp_entry_vec_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txsnp_wrap_ageq_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txsnp_wrap_other_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_txsnp_entry_vec_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txdat_wrap_ageq_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txdat_wrap_other_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_dbf_rd_entry_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                cpl_wrap_ageq_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                cpl_wrap_other_vec;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_l3_entry_vec_sx1;
-    wire [`MSHR_ENTRIES_NUM-1:0]                txdat_mshr_clr_dbf_busy_entry_vec_sx3;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retry_rdy_ageq_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retry_rdy_vec_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]                mshr_retry_rdy_entry_s0;
-    wire                                        retry_entry_found;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_memrd_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_getall_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_get_64B_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_clr_l3busy_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_rd_l3fill_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_replay_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_all_dat_alloc_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_new_dat_l3fill_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_old_dat_l3fill_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_neednosnp_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_needsnp_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_memrd_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dat_to_rn_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_memwr_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_memwr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_wup_memwr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_rd_l3fill_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_entry_vec_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_can_retire_entry_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_can_alloc_entry_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_rd_busy_set_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_rd_busy_clr_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_rd_rdy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_rd_rdy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_rdy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_rdy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_data_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   l3_fill_data_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_rd_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_rd_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_rd_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_rd_rdy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_rdy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rn_data_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rn_data_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_sn_data_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_sn_data_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_rn_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_rn_rdy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_rdy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dbid_rdy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dbid_rdy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rd_receipt_rdy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rd_receipt_rdy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_comp_rdy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_comp_rdy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_comp_busy_set_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_comp_busy_clr_s2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_compack_busy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_compack_busy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txsnp_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txsnp_rdy_clr_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_pipeline_busy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_pipeline_rdy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txreq_rdy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_datbuf_busy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_rdy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rsp_busy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txrsp_rdy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_entry_busy_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_retire_rdy;
+    wire                           mshr_retire_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_resent_entry_vec_s0;
+    wire [`MSHR_ENTRIES_WIDTH-1:0] mshr_dbf_retired_idx_sx;
+    wire                           mshr_l3_seq_retire_sx;
+    wire                           mshr_l3_val_sx7;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_alloc_entry_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_retire_entry_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_shift_sx2;
+    wire                           ageq_needs_shift_sx2;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_load_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_v_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_flop_en_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txreq_wrap_ageq_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txreq_wrap_other_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txreq_entry_vec_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txrsp_wrap_ageq_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txrsp_wrap_other_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txrsp_entry_vec_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txsnp_wrap_ageq_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txsnp_wrap_other_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txsnp_entry_vec_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txdat_wrap_ageq_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txdat_wrap_other_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dbf_rd_entry_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   cpl_wrap_ageq_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   cpl_wrap_other_vec;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_entry_vec_sx1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   txdat_mshr_clr_dbf_busy_entry_vec_sx3;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_retry_rdy_ageq_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_retry_rdy_vec_s0;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_retry_rdy_entry_s0;
+    wire                           retry_entry_found;
 
     //main function
-    genvar entry;
+    genvar                         entry;
 
     //************************************************************************//
 
@@ -1467,9 +1467,8 @@ module hnf_mshr_ctl `HNF_PARAM
     endgenerate
 
     always_comb begin:mshr_pcrdgrant_frist_s0_comb_logic
-        integer i;
         mshr_pcrdgrant_frist_s0 = mshr_pcrd_alloc_s0;
-        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+        for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(mshr_pcrd_alloc_s0 && (mshr_pcrdtype_s1_q[i] == mshr_pcrd_type_get_s0) && (mshr_get_retry_s1_q[i]))
                 mshr_pcrdgrant_frist_s0 = 1'b0;
             else
@@ -1950,9 +1949,8 @@ module hnf_mshr_ctl `HNF_PARAM
     endgenerate
 
     always_comb begin: compute_snp_cnt_comb_logic
-        integer i;
         l3_snp_cnt = 0;
-        for (i = 0; i < `RNF_NUM; i = i + 1) begin
+        for (int i = 0; i < `RNF_NUM; i = i + 1) begin
             if (l3_snp_bit_sx7_q[i] == 1'b1) begin
                 l3_snp_cnt = l3_snp_cnt + 1;
             end
@@ -2488,11 +2486,10 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     always_comb begin:find_mshr_retire_min_idx_comb_logic
-        integer i;
         mshr_retire_min_idx_sx             = {`MSHR_ENTRIES_WIDTH{1'b0}};
         found_retire_min_idx               = 1'b0;
         mshr_l3_seq_min_idx_retire_sx1     = 1'b0;
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1) begin:find_mshr_retire_min_idx
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1) begin:find_mshr_retire_min_idx
             if(mshr_retire_rdy[i] == 1'b1 && !found_retire_min_idx)begin
                 mshr_retire_min_idx_sx         = i[`MSHR_ENTRIES_WIDTH-1:0];
                 mshr_l3_seq_min_idx_retire_sx1 = mshr_seq_s1_q[i];
@@ -2533,12 +2530,11 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     always_comb begin:find_the_oldest_idx_entry
-        integer i;
         mshr_retire_oldest_idx_sx             = {`MSHR_ENTRIES_WIDTH{1'b0}};
         mshr_oldest_is_retire                 = 1'b0;
         found_retire_oldest_idx               = 1'b0;
         mshr_l3_seq_oldest_idx_retire_sx1     = 1'b0;
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin : find_mshr_retire_oldest_idx
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin : find_mshr_retire_oldest_idx
             if(mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0] == i[`MSHR_ENTRIES_WIDTH-1:0]) & ~mshr_entry_busy_sx[i] & ~sleep_sx_q[i] & !found_retire_oldest_idx)begin
                 mshr_retire_oldest_idx_sx         = i[`MSHR_ENTRIES_WIDTH-1:0];
                 mshr_l3_seq_oldest_idx_retire_sx1 = mshr_seq_s1_q[i];
@@ -2573,7 +2569,6 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //mshrageq valid logic
     always_comb begin: find_next_ageq_alloc_entry_comb_logic
-        integer entry;
         mshrageq_alloc_entry_ptr_sx1                 = {`MSHR_ENTRIES_NUM{1'b0}};
         found_mshrageq_alloc_entry                   = 1'b0;
         if (mshrageq_v_sx2_q[`MSHR_ENTRIES_NUM-1] == 1'b1)
@@ -2581,7 +2576,7 @@ module hnf_mshr_ctl `HNF_PARAM
         else if (mshrageq_v_sx2_q[`MSHR_ENTRIES_NUM-1:0] == {`MSHR_ENTRIES_NUM{1'b0}})
             mshrageq_alloc_entry_ptr_sx1[0]            = 1'b1;
         else begin
-            for (entry=`MSHR_ENTRIES_NUM-1; entry>=1; entry=entry-1) begin : nxt_ageq_alloc_entry
+            for (int entry = `MSHR_ENTRIES_NUM-1; entry>=1; entry=entry-1) begin : nxt_ageq_alloc_entry
                 if ((mshrageq_v_sx2_q[entry] == 1'b0) && (mshrageq_v_sx2_q[entry-1] == 1'b1) && !found_mshrageq_alloc_entry) begin
                     mshrageq_alloc_entry_ptr_sx1[entry] = 1'b1;
                     found_mshrageq_alloc_entry          = 1'b1;
@@ -2608,9 +2603,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //entry[0] no needs shift
 
     always_comb begin: mshrageq_shift_comb_logic
-        integer i;
         mshrageq_shift = {`MSHR_ENTRIES_NUM{1'b0}};
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1) begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1) begin
             if(i == 0)
                 mshrageq_shift[i] = ~mshrageq_v_sx2_q[i];
             else
@@ -2666,11 +2660,10 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //mshr_ageq index logic
     always_comb begin: mshrageq_idx_comb_logic
-        integer i;
         //last entry
         mshrageq_mshr_idx_sx1[`MSHR_ENTRIES_NUM-1] = mshrageq_load_sx1[`MSHR_ENTRIES_NUM-1]? mshr_entry_idx_alloc_s1_q: mshrageq_mshr_idx_sx2_q[`MSHR_ENTRIES_NUM-1];
         //rest entries
-        for(i=0; i<`MSHR_ENTRIES_NUM-1; i=i+1) begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM-1; i=i+1) begin
             mshrageq_mshr_idx_sx1[i] = mshrageq_load_sx1[i]? mshr_entry_idx_alloc_s1_q: mshrageq_mshr_idx_sx2_q[i+1];
         end
     end
@@ -2715,10 +2708,9 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     always_comb begin: rxreq_cam_hazard_entry_convert_to_idx
-        integer i;
         found_rxreq_cam_hazard_idx     = 1'b0;
         rxreq_cam_hazard_idx_s1        = {`MSHR_ENTRIES_WIDTH{1'b0}};
-        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+        for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(rxreq_cam_hazard_entry_s1_q[i] == 1'b1 && !found_rxreq_cam_hazard_idx)begin
                 rxreq_cam_hazard_idx_s1    = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_rxreq_cam_hazard_idx = 1'b1;
@@ -2731,10 +2723,9 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     always_comb begin: pipe_sleep_entry_convert_to_idx
-        integer i;
         found_pipe_sleep_idx     = 1'b0;
         pipe_sleep_idx_sx3       = {`MSHR_ENTRIES_WIDTH{1'b0}};
-        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+        for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(pipe_sleep_entry_sx3_q[i] == 1'b1 && !found_pipe_sleep_idx)begin
                 pipe_sleep_idx_sx3   = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_pipe_sleep_idx = 1'b1;
@@ -2747,10 +2738,9 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     always_comb begin: pipe_cam_hazard_entry_convert_to_idx
-        integer i;
         found_pipe_cam_hazard_idx     = 1'b0;
         pipe_cam_hazard_idx_sx3       = {`MSHR_ENTRIES_WIDTH{1'b0}};
-        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+        for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(pipe_cam_hazard_entry_sx3_q[i] == 1'b1 && !found_pipe_cam_hazard_idx)begin
                 pipe_cam_hazard_idx_sx3   = i[`MSHR_ENTRIES_WIDTH-1:0];
                 found_pipe_cam_hazard_idx = 1'b1;
@@ -2788,11 +2778,10 @@ module hnf_mshr_ctl `HNF_PARAM
             end
 
             always_ff @(posedge clk or posedge rst) begin : need_to_wakeup_vec_timing_logic
-                integer s;
                 if(rst)
                     need_to_wakeup_vec_sx_q[entry] <= {`MSHR_ENTRIES_NUM{1'b0}};
                 else
-                    for(s=0; s<`MSHR_ENTRIES_NUM; s=s+1)
+                    for (int s = 0; s<`MSHR_ENTRIES_NUM; s=s+1)
                         if((rxreq_hz_sx & (rxreq_cam_hazard_idx_s1 == entry) & (mshr_entry_idx_alloc_s1_q == s[`MSHR_ENTRIES_WIDTH-1:0]))
                          | (pipe_hz_sx  & (pipe_cam_hazard_idx_sx3 == entry) & (pipe_sleep_idx_sx3        == s[`MSHR_ENTRIES_WIDTH-1:0])))
                             need_to_wakeup_vec_sx_q[entry][s] <= 1'b1;
@@ -2849,17 +2838,16 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     always_comb begin: txreq_wrap_other_ptr_comb_logic
-        integer i;
         txreq_wrap_other_ptr_vector = {`MSHR_ENTRIES_NUM{1'b0}};
         txreq_wrap_other_ptr        = {`MSHR_ENTRIES_NUM{1'b0}};
         found_txreq_wrap_other_ptr  = 1'b0;
         txreq_wrap_other_idx        = {`MSHR_ENTRIES_WIDTH{1'b0}};
 
-        for (i=1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txreq_wrap_other_ptr_vector[i] = txreq_wrap_other_ptr_vector[i-1] | txreq_wrap_other_vec[i-1];
         end
 
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txreq_wrap_other_ptr[i] = ~txreq_wrap_other_ptr_vector[i] & txreq_wrap_other_vec[i];
             if(txreq_wrap_other_ptr[i] == 1'b1 & found_txreq_wrap_other_ptr == 1'b0)begin
                 txreq_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
@@ -2925,17 +2913,16 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     always_comb begin: txrsp_wrap_other_ptr_comb_logic
-        integer i;
         txrsp_wrap_other_ptr_vector = {`MSHR_ENTRIES_NUM{1'b0}};
         txrsp_wrap_other_ptr        = {`MSHR_ENTRIES_NUM{1'b0}};
         found_txrsp_wrap_other_ptr  = 1'b0;
         txrsp_wrap_other_idx        = {`MSHR_ENTRIES_WIDTH{1'b0}};
 
-        for (i=1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txrsp_wrap_other_ptr_vector[i] = txrsp_wrap_other_ptr_vector[i-1] | txrsp_wrap_other_vec[i-1];
         end
 
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txrsp_wrap_other_ptr[i] = ~txrsp_wrap_other_ptr_vector[i] & txrsp_wrap_other_vec[i];
             if(txrsp_wrap_other_ptr[i] == 1'b1 & found_txrsp_wrap_other_ptr == 1'b0)begin
                 txrsp_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
@@ -3012,17 +2999,16 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     always_comb begin: txsnp_wrap_other_ptr_comb_logic
-        integer i;
         txsnp_wrap_other_ptr_vector = {`MSHR_ENTRIES_NUM{1'b0}};
         txsnp_wrap_other_ptr        = {`MSHR_ENTRIES_NUM{1'b0}};
         found_txsnp_wrap_other_ptr  = 1'b0;
         txsnp_wrap_other_idx        = {`MSHR_ENTRIES_WIDTH{1'b0}};
 
-        for (i=1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txsnp_wrap_other_ptr_vector[i] = txsnp_wrap_other_ptr_vector[i-1] | txsnp_wrap_other_vec[i-1];
         end
 
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txsnp_wrap_other_ptr[i] = ~txsnp_wrap_other_ptr_vector[i] & txsnp_wrap_other_vec[i];
             if(txsnp_wrap_other_ptr[i] == 1'b1 & found_txsnp_wrap_other_ptr == 1'b0)begin
                 txsnp_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
@@ -3088,16 +3074,15 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     always_comb begin: cpl_wrap_other_ptr_comb_logic
-        integer i;
         cpl_wrap_other_ptr_vector   = {`MSHR_ENTRIES_NUM{1'b0}};
         cpl_wrap_other_ptr          = {`MSHR_ENTRIES_NUM{1'b0}};
         found_cpl_wrap_other_ptr    = 1'b0;
         cpl_wrap_other_idx          = {`MSHR_ENTRIES_WIDTH{1'b0}};
-        for (i=1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             cpl_wrap_other_ptr_vector[i] = cpl_wrap_other_ptr_vector[i-1] | cpl_wrap_other_vec[i-1];
         end
 
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             cpl_wrap_other_ptr[i] = ~cpl_wrap_other_ptr_vector[i] & cpl_wrap_other_vec[i];
             if(cpl_wrap_other_ptr[i] == 1'b1 & found_cpl_wrap_other_ptr == 1'b0)begin
                 cpl_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
@@ -3184,17 +3169,16 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     always_comb begin: txdat_wrap_other_ptr_comb_logic
-        integer i;
         txdat_wrap_other_ptr_vector = {`MSHR_ENTRIES_NUM{1'b0}};
         txdat_wrap_other_ptr        = {`MSHR_ENTRIES_NUM{1'b0}};
         found_txdat_wrap_other_ptr  = 1'b0;
         txdat_wrap_other_idx        = {`MSHR_ENTRIES_WIDTH{1'b0}};
 
-        for (i=1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 1; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txdat_wrap_other_ptr_vector[i] = txdat_wrap_other_ptr_vector[i-1] | txdat_wrap_other_vec[i-1];
         end
 
-        for(i=0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
+        for (int i = 0; i<`MSHR_ENTRIES_NUM; i=i+1)begin
             txdat_wrap_other_ptr[i] = ~txdat_wrap_other_ptr_vector[i] & txdat_wrap_other_vec[i];
             if(txdat_wrap_other_ptr[i] == 1'b1 & found_txdat_wrap_other_ptr == 1'b0)begin
                 txdat_wrap_other_idx = i[`MSHR_ENTRIES_WIDTH-1:0];
@@ -3270,8 +3254,7 @@ module hnf_mshr_ctl `HNF_PARAM
 `ifdef DISPLAY_INFO
 
     always_ff @(posedge clk)begin
-        integer i;
-        for(i=0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
+        for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             if(mshr_entry_valid_sx_q[i])begin
                 `display_info($sformatf("MSHR ENTRY %0h :\n sleep: %h\n need_to_wakeup_vec: %h\n l3_rd_busy: %h\n l3_rd_rdy: %h\n l3_fill_busy: %h\n l3_fill_rdy: %h\n mshr_snp_busy: %h\n mshr_txsnp_rdy: %h\n mshr_mem_rd_busy: %h\n mshr_mem_rd_rdy: %h\n mshr_mem_wr_busy: %h\n mshr_mem_wr_rdy: %h\n mshr_rn_data_busy: %h\n mshr_txdat_rn_rdy: %h\n mshr_sn_data_busy: %h\n mshr_txdat_sn_rdy: %h\n mshr_dbid_rdy: %h\n mshr_rd_receipt_rdy: %h\n mshr_comp_rdy: %h\n mshr_comp_busy: %h\n mshr_compack_busy: %h\n time:%0h\n",i,sleep_sx_q[i],need_to_wakeup_vec_sx_q[i],l3_rd_busy_s2_q[i],l3_rd_rdy_s2_q[i],l3_fill_busy_sx_q[i],l3_fill_rdy_s2_q[i],mshr_snp_busy_sx_q[i],mshr_txsnp_rdy_sx_q[i],mshr_mem_rd_busy_sx_q[i],mshr_mem_rd_rdy_sx_q[i],mshr_mem_wr_busy_sx_q[i],mshr_mem_wr_rdy_sx_q[i],mshr_rn_data_busy_sx_q[i],mshr_txdat_rn_rdy_sx_q[i],mshr_sn_data_busy_sx_q[i],mshr_txdat_sn_rdy_sx_q[i],mshr_dbid_rdy_s2_q[i],mshr_rd_receipt_rdy_s2_q[i],mshr_comp_rdy_s2_q[i],mshr_comp_busy_s2_q[i],mshr_compack_busy_sx_q[i],$time()));
             end

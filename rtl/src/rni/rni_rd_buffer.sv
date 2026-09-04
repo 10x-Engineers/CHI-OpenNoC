@@ -24,107 +24,107 @@
 module rni_rd_buffer `RNI_PARAM
     (
     //global port
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                               clk_i,
+    input  wire                               rst_i,
 
     //from rni_link_ctl
-    input wire rxdatflitv_d1_i,
-    input chie_pkg::dat_flit_s rxdatflit_d1_i,
+    input  wire                               rxdatflitv_d1_i,
+    input  chie_pkg::dat_flit_s               rxdatflit_d1_i,
 
     //to rni_arctrl
-    output wire rxdatflitv_d1_o,
-    output wire [11:0] rxdatflit_txnid_d1_o,
-    output wire [1:0] rxdatflit_dataid_d1_o,
-    output wire rp_fifo_acpt_d4_o,
+    output wire                               rxdatflitv_d1_o,
+    output wire [11:0]                        rxdatflit_txnid_d1_o,
+    output wire [1:0]                         rxdatflit_dataid_d1_o,
+    output wire                               rp_fifo_acpt_d4_o,
 
     //from rni_arctrl
-    input wire arctrl_rb_valid_d4_i,
-    input wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] arctrl_rb_idx_d4_i,
-    input wire [`RNI_DMASK_CT_WIDTH-1:0] arctrl_rb_ctmask_d4_i,
-    input wire arctrl_rb_rlast_d4_i,
-    input wire [`AXI4_RID_WIDTH-1:0] arctrl_rb_rid_d4_i,
-    input wire [`RNI_BC_WIDTH-1:0] arctrl_rb_bc_d4_i,
+    input  wire                               arctrl_rb_valid_d4_i,
+    input  wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] arctrl_rb_idx_d4_i,
+    input  wire [`RNI_DMASK_CT_WIDTH-1:0]     arctrl_rb_ctmask_d4_i,
+    input  wire                               arctrl_rb_rlast_d4_i,
+    input  wire [`AXI4_RID_WIDTH-1:0]         arctrl_rb_rid_d4_i,
+    input  wire [`RNI_BC_WIDTH-1:0]           arctrl_rb_bc_d4_i,
 
     //to rni_axi_bus
-    output wire [`AXI4_R_WIDTH-1:0] R_CH_S0,
-    output wire RVALID0,
-    input wire RREADY0
+    output opennoc_rni_pkg::r_ch_s            R_CH_S0,
+    output wire                               RVALID0,
+    input  wire                               RREADY0
     );
 
     //wire
-    wire [11:0]           txnid_d1_w;
-    wire [1:0]          dataid_d1_w;
-    wire [chie_pkg::DATA_WIDTH-1:0]            data_d1_w;
-    chie_pkg::resp_err_e         resperr_d1_w;
-    wire                                            rdata_last_d4_w;
-    wire [`AXI4_RID_WIDTH-1:0]                      rdata_rid_d4_w;
-    wire [`RNI_BC_WIDTH-1:0]                        rdata_bc_d4_w;
-    wire                                            bank0_wr_en_d2_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank0_wr_addr_d2_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank0_wr_data_d2_w;
-    wire                                            bank1_wr_en_d2_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank1_wr_addr_d2_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank1_wr_data_d2_w;
-    wire                                            bank2_wr_en_d2_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank2_wr_addr_d2_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank2_wr_data_d2_w;
-    wire                                            bank3_wr_en_d2_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank3_wr_addr_d2_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank3_wr_data_d2_w;
-    wire                                            bank0_rd_en_d4_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank0_rd_addr_d4_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank0_rd_data_d4_w;
-    wire                                            bank1_rd_en_d4_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank1_rd_addr_d4_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank1_rd_data_d4_w;
-    wire                                            bank2_rd_en_d4_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank2_rd_addr_d4_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank2_rd_data_d4_w;
-    wire                                            bank3_rd_en_d4_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              bank3_rd_addr_d4_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              bank3_rd_data_d4_w;
-    wire [`RNI_RD_BANK_DATA_WIDTH-1:0]              data_bank_out_d4_w [`RNI_RD_BANK_NUM-1:0];
-    wire [`RNI_RD_BANK_NUM-1:0]                     data_bank_vec_d4_w;
-    wire [`RNI_DMASK_CT_WIDTH-1:0]                  data_bank_ctmask_d4_w;
-    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0]              data_bank_idx_d4_w [`RNI_RD_BANK_NUM-1:0];
-    chie_pkg::resp_err_e         data_bank_resperr_d4_w [`RNI_RD_BANK_NUM-1:0];
-    wire [`RNI_RD_BANK_NUM-1:0]                     resperr_bank_wren_d2_w [RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    wire [`AXI4_RDATA_WIDTH-1:0]                    rdata_128_d4_w [`RNI_RD_BANK_NUM-1:0];
-    wire [`AXI4_RDATA_WIDTH-1:0]                    rdata_256_d4_w [(`RNI_RD_BANK_NUM/2)-1:0];
-    wire [`AXI4_RRESP_WIDTH-1:0]                    resperr_128_d4_w [`RNI_RD_BANK_NUM-1:0];
-    wire [`AXI4_RRESP_WIDTH-1:0]                    resperr_256_d4_w [(`RNI_RD_BANK_NUM/2)-1:0];
-    wire [`AXI4_RDATA_WIDTH-1:0]                    rdata_data_d4_w;
-    wire [`AXI4_RRESP_WIDTH-1:0]                    rdata_resperr_d4_w;
-    wire                                            rp_fifo_avail_d4_w;
-    wire                                            rp_fifo_push_d4_w;
-    wire                                            rp_fifo_pop_d5_w;
-    wire [`AXI4_R_WIDTH+`RNI_BC_WIDTH-1:0]          rp_fifo_data_in_d4_w;
-    wire [`AXI4_R_WIDTH+`RNI_BC_WIDTH-1:0]          rp_fifo_data_out_d5_w;
-    wire                                            rp_fifo_empty_w;
-    wire                                            rp_fifo_full_w;
-    wire                                            bcount_v_d5_w;
-    wire [`RNI_BC_WIDTH-1:0]                        bcount_d5_w;
-    wire [`RNI_BC_WIDTH-1:0]                        bcount_w;
-    wire                                            bcount_zero_w;
-    wire                                            bcount_done_w;
-    wire [`AXI4_R_WIDTH-1:0]                        rd_fifo_data_in_d5_w;
-    wire [`AXI4_R_WIDTH-1:0]                        rd_fifo_data_out_d6_w;
-    wire                                            rd_fifo_empty_w;
-    wire                                            rd_fifo_full_w;
-    wire                                            rd_fifo_push_d5_w;
-    wire                                            rd_fifo_pop_d5_w;
+    wire [11:0]                        txnid_d1_w;
+    wire [1:0]                         dataid_d1_w;
+    wire [chie_pkg::DATA_WIDTH-1:0]    data_d1_w;
+    chie_pkg::resp_err_e               resperr_d1_w;
+    wire                               rdata_last_d4_w;
+    wire [`AXI4_RID_WIDTH-1:0]         rdata_rid_d4_w;
+    wire [`RNI_BC_WIDTH-1:0]           rdata_bc_d4_w;
+    wire                               bank0_wr_en_d2_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank0_wr_addr_d2_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank0_wr_data_d2_w;
+    wire                               bank1_wr_en_d2_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank1_wr_addr_d2_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank1_wr_data_d2_w;
+    wire                               bank2_wr_en_d2_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank2_wr_addr_d2_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank2_wr_data_d2_w;
+    wire                               bank3_wr_en_d2_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank3_wr_addr_d2_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank3_wr_data_d2_w;
+    wire                               bank0_rd_en_d4_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank0_rd_addr_d4_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank0_rd_data_d4_w;
+    wire                               bank1_rd_en_d4_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank1_rd_addr_d4_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank1_rd_data_d4_w;
+    wire                               bank2_rd_en_d4_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank2_rd_addr_d4_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank2_rd_data_d4_w;
+    wire                               bank3_rd_en_d4_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] bank3_rd_addr_d4_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] bank3_rd_data_d4_w;
+    wire [`RNI_RD_BANK_DATA_WIDTH-1:0] data_bank_out_d4_w [`RNI_RD_BANK_NUM-1:0];
+    wire [`RNI_RD_BANK_NUM-1:0]        data_bank_vec_d4_w;
+    wire [`RNI_DMASK_CT_WIDTH-1:0]     data_bank_ctmask_d4_w;
+    wire [`RNI_RD_BANK_ADDR_WIDTH-1:0] data_bank_idx_d4_w [`RNI_RD_BANK_NUM-1:0];
+    chie_pkg::resp_err_e               data_bank_resperr_d4_w [`RNI_RD_BANK_NUM-1:0];
+    wire [`RNI_RD_BANK_NUM-1:0]        resperr_bank_wren_d2_w [RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    wire [`AXI4_RDATA_WIDTH-1:0]       rdata_128_d4_w [`RNI_RD_BANK_NUM-1:0];
+    wire [`AXI4_RDATA_WIDTH-1:0]       rdata_256_d4_w [(`RNI_RD_BANK_NUM/2)-1:0];
+    wire [`AXI4_RRESP_WIDTH-1:0]       resperr_128_d4_w [`RNI_RD_BANK_NUM-1:0];
+    wire [`AXI4_RRESP_WIDTH-1:0]       resperr_256_d4_w [(`RNI_RD_BANK_NUM/2)-1:0];
+    wire [`AXI4_RDATA_WIDTH-1:0]       rdata_data_d4_w;
+    wire [`AXI4_RRESP_WIDTH-1:0]       rdata_resperr_d4_w;
+    wire                               rp_fifo_avail_d4_w;
+    wire                               rp_fifo_push_d4_w;
+    wire                               rp_fifo_pop_d5_w;
+    opennoc_rni_pkg::r_bc_s            rp_fifo_data_in_d4_w;
+    opennoc_rni_pkg::r_bc_s            rp_fifo_data_out_d5_w;
+    wire                               rp_fifo_empty_w;
+    wire                               rp_fifo_full_w;
+    wire                               bcount_v_d5_w;
+    wire [`RNI_BC_WIDTH-1:0]           bcount_d5_w;
+    wire [`RNI_BC_WIDTH-1:0]           bcount_w;
+    wire                               bcount_zero_w;
+    wire                               bcount_done_w;
+    opennoc_rni_pkg::r_ch_s            rd_fifo_data_in_d5_w;
+    opennoc_rni_pkg::r_ch_s            rd_fifo_data_out_d6_w;
+    wire                               rd_fifo_empty_w;
+    wire                               rd_fifo_full_w;
+    wire                               rd_fifo_push_d5_w;
+    wire                               rd_fifo_pop_d5_w;
 
     //reg
-    logic                                             rxdatflitv_d2_q;
-    logic  [1:0]          dataid_d2_q;
-    logic  [chie_pkg::DATA_WIDTH-1:0]            data_d2_q;
-    logic  [11:0]           txnid_d2_q;
-    chie_pkg::resp_err_e         resperr_d2_q;
-    chie_pkg::resp_err_e         resperr_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
-    logic  [`RNI_BC_WIDTH-1:0]                        bcount_q;
+    logic                              rxdatflitv_d2_q;
+    logic [1:0]                        dataid_d2_q;
+    logic [chie_pkg::DATA_WIDTH-1:0]   data_d2_q;
+    logic [11:0]                       txnid_d2_q;
+    chie_pkg::resp_err_e               resperr_d2_q;
+    chie_pkg::resp_err_e               resperr_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
+    logic [`RNI_BC_WIDTH-1:0]          bcount_q;
 
-    genvar bank;
-    genvar entry;
+    genvar                             bank;
+    genvar                             entry;
 
     //rxdatflit decode
     assign txnid_d1_w   = rxdatflit_d1_i.txnid;
@@ -351,14 +351,14 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
     assign rp_fifo_push_d4_w = rp_fifo_acpt_d4_o;
     assign rp_fifo_pop_d5_w  = ~rp_fifo_empty_w & bcount_done_w;
 
-    assign rp_fifo_data_in_d4_w[`AXI4_RID_RANGE]   = rdata_rid_d4_w;
-    assign rp_fifo_data_in_d4_w[`AXI4_RDATA_RANGE] = rdata_data_d4_w;
-    assign rp_fifo_data_in_d4_w[`AXI4_RRESP_RANGE] = rdata_resperr_d4_w;
-    assign rp_fifo_data_in_d4_w[`AXI4_RLAST_RANGE] = rdata_last_d4_w;
-    assign rp_fifo_data_in_d4_w[`AXI4_RLAST_MSB+`RNI_BC_WIDTH:`AXI4_RLAST_MSB+1] = rdata_bc_d4_w;
+    assign rp_fifo_data_in_d4_w.r.id   = rdata_rid_d4_w;
+    assign rp_fifo_data_in_d4_w.r.data = rdata_data_d4_w;
+    assign rp_fifo_data_in_d4_w.r.resp = rdata_resperr_d4_w;
+    assign rp_fifo_data_in_d4_w.r.last = rdata_last_d4_w;
+    assign rp_fifo_data_in_d4_w.bc = rdata_bc_d4_w;
 
     sync_fifo #(
-                  .FIFO_ENTRIES_WIDTH ( `RNI_RP_FIFO_WIDTH    )
+                  .FIFO_ENTRIES_WIDTH ( $bits(opennoc_rni_pkg::r_bc_s)    )
                   ,.FIFO_ENTRIES_DEPTH ( `RNI_RP_FIFO_DEPTH    )
                   ,.FIFO_BYP_ENABLE    ( 1'b0                  )
               ) rp_fifo_inst (
@@ -375,7 +375,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
 
     //data beat count control
     assign bcount_v_d5_w = ~rp_fifo_empty_w & ~rd_fifo_full_w;
-    assign bcount_d5_w   = rp_fifo_data_out_d5_w [`AXI4_RLAST_MSB+`RNI_BC_WIDTH:`AXI4_RLAST_MSB+1];
+    assign bcount_d5_w   = rp_fifo_data_out_d5_w.bc;
     assign bcount_w      = (bcount_q == {`RNI_BC_WIDTH{1'b0}}) ? bcount_d5_w : (bcount_q - 1'b1);
 
     always_ff @(posedge clk_i or posedge rst_i) begin
@@ -392,10 +392,10 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
     assign rd_fifo_pop_d5_w  = RREADY0 & RVALID0;
     assign rd_fifo_push_d5_w = bcount_v_d5_w & ~rd_fifo_full_w;
 
-    assign rd_fifo_data_in_d5_w[`AXI4_RID_RANGE]   = rp_fifo_data_out_d5_w[`AXI4_RID_RANGE];
-    assign rd_fifo_data_in_d5_w[`AXI4_RDATA_RANGE] = rp_fifo_data_out_d5_w[`AXI4_RDATA_RANGE];
-    assign rd_fifo_data_in_d5_w[`AXI4_RRESP_RANGE] = rp_fifo_data_out_d5_w[`AXI4_RRESP_RANGE];
-    assign rd_fifo_data_in_d5_w[`AXI4_RLAST_RANGE] = rp_fifo_data_out_d5_w[`AXI4_RLAST_RANGE] & bcount_v_d5_w & bcount_zero_w;
+    assign rd_fifo_data_in_d5_w.id   = rp_fifo_data_out_d5_w.r.id;
+    assign rd_fifo_data_in_d5_w.data = rp_fifo_data_out_d5_w.r.data;
+    assign rd_fifo_data_in_d5_w.resp = rp_fifo_data_out_d5_w.r.resp;
+    assign rd_fifo_data_in_d5_w.last = rp_fifo_data_out_d5_w.r.last & bcount_v_d5_w & bcount_zero_w;
 
     sync_fifo #(
                   .FIFO_ENTRIES_WIDTH ( `RNI_RD_FIFO_WIDTH    )

@@ -24,44 +24,44 @@ module chi_ring_channel #(
         localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM
     )
     (
-    input wire clk,
-    input wire rst,
-    input wire [CHIE_NID_WIDTH-1:1] my_xid,
+    input  wire                      clk,
+    input  wire                      rst,
+    input  wire [CHIE_NID_WIDTH-1:1] my_xid,
 
-    input wire TXLINKACTIVEREQ_P0,
-    input wire TXLINKACTIVEACK_P0,
-    input wire TXLINKACTIVEREQ_P1,
-    input wire TXLINKACTIVEACK_P1,
+    input  wire                      TXLINKACTIVEREQ_P0,
+    input  wire                      TXLINKACTIVEACK_P0,
+    input  wire                      TXLINKACTIVEREQ_P1,
+    input  wire                      TXLINKACTIVEACK_P1,
 
-    input wire RXFLITV_E,
-    input wire RXFLITV_W,
-    input wire RXFLITV_P0,
-    input wire RXFLITV_P1,
+    input  wire                      RXFLITV_E,
+    input  wire                      RXFLITV_W,
+    input  wire                      RXFLITV_P0,
+    input  wire                      RXFLITV_P1,
 
-    input wire [FLIT_WIDTH-1:0] RXFLIT_E,
-    input wire [FLIT_WIDTH-1:0] RXFLIT_W,
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P0,
-    input wire [FLIT_WIDTH-1:0] RXFLIT_P1,
+    input  wire [FLIT_WIDTH-1:0]     RXFLIT_E,
+    input  wire [FLIT_WIDTH-1:0]     RXFLIT_W,
+    input  wire [FLIT_WIDTH-1:0]     RXFLIT_P0,
+    input  wire [FLIT_WIDTH-1:0]     RXFLIT_P1,
 
-    output wire RXLCRDV_E,
-    output wire RXLCRDV_W,
-    output wire RXLCRDV_P0,
-    output wire RXLCRDV_P1,
+    output wire                      RXLCRDV_E,
+    output wire                      RXLCRDV_W,
+    output wire                      RXLCRDV_P0,
+    output wire                      RXLCRDV_P1,
 
-    output wire TXFLITV_E,
-    output wire TXFLITV_W,
-    output wire TXFLITV_P0,
-    output wire TXFLITV_P1,
+    output wire                      TXFLITV_E,
+    output wire                      TXFLITV_W,
+    output wire                      TXFLITV_P0,
+    output wire                      TXFLITV_P1,
 
-    output wire [FLIT_WIDTH-1:0] TXFLIT_E,
-    output wire [FLIT_WIDTH-1:0] TXFLIT_W,
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P0,
-    output wire [FLIT_WIDTH-1:0] TXFLIT_P1,
+    output wire [FLIT_WIDTH-1:0]     TXFLIT_E,
+    output wire [FLIT_WIDTH-1:0]     TXFLIT_W,
+    output wire [FLIT_WIDTH-1:0]     TXFLIT_P0,
+    output wire [FLIT_WIDTH-1:0]     TXFLIT_P1,
 
-    input wire TXLCRDV_E,
-    input wire TXLCRDV_W,
-    input wire TXLCRDV_P0,
-    input wire TXLCRDV_P1
+    input  wire                      TXLCRDV_E,
+    input  wire                      TXLCRDV_W,
+    input  wire                      TXLCRDV_P0,
+    input  wire                      TXLCRDV_P1
     );
     localparam LCRD_MAX_NUM = ($pow(2, LCRD_NUM_WIDTH) - 1);
     localparam RX_MAX_ENTRY = 2'h2;
@@ -78,99 +78,99 @@ module chi_ring_channel #(
                    CHIE_NID_WIDTH_PARAM);
     end
 
-    wire [XP_INTF_MAX-1:0] rxactive_run;
-    logic [XP_INTF_MAX-1:0] rxactive_run_q;
+    wire [XP_INTF_MAX-1:0]                                     rxactive_run;
+    logic [XP_INTF_MAX-1:0]                                    rxactive_run_q;
 
-    wire [XP_INTF_MAX-1:0] rxflitv_r1;
-    wire [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] rxflit_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflitv_r1;
+    wire [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                     rxflit_r1;
 
-    logic [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0] rxlcrd_cnt_q;
-    wire [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0] rxlcrd_cnt_ns;
-    wire [XP_INTF_MAX-1:0] rxlcrd_empty;
-    wire [XP_INTF_MAX-1:0] rxlcrd_inc;
-    wire [XP_INTF_MAX-1:0] rxlcrd_dec;
-    logic [XP_INTF_MAX-1:0] rxlcrdv_q;
+    logic [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0]                rxlcrd_cnt_q;
+    wire [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0]                 rxlcrd_cnt_ns;
+    wire [XP_INTF_MAX-1:0]                                     rxlcrd_empty;
+    wire [XP_INTF_MAX-1:0]                                     rxlcrd_inc;
+    wire [XP_INTF_MAX-1:0]                                     rxlcrd_dec;
+    logic [XP_INTF_MAX-1:0]                                    rxlcrdv_q;
 
-    logic [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0] txlcrd_cnt_q;
-    wire [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0] txlcrd_cnt_ns;
-    wire [XP_INTF_MAX-1:0] txlcrdv;
-    wire [XP_INTF_MAX-1:0] txlcrd_empty;
-    wire [XP_INTF_MAX-1:0] txlcrd_inc;
-    wire [XP_INTF_MAX-1:0] txlcrd_dec;
-    wire [XP_INTF_MAX-1:0] txflit_next_avail;
+    logic [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0]                txlcrd_cnt_q;
+    wire [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0]                 txlcrd_cnt_ns;
+    wire [XP_INTF_MAX-1:0]                                     txlcrdv;
+    wire [XP_INTF_MAX-1:0]                                     txlcrd_empty;
+    wire [XP_INTF_MAX-1:0]                                     txlcrd_inc;
+    wire [XP_INTF_MAX-1:0]                                     txlcrd_dec;
+    wire [XP_INTF_MAX-1:0]                                     txflit_next_avail;
 
-    logic [XP_INTF_MAX-1:0] txflitv_q;
-    wire [XP_INTF_MAX-1:0] txflitv_d1;
-    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_q;
+    logic [XP_INTF_MAX-1:0]                                    txflitv_q;
+    wire [XP_INTF_MAX-1:0]                                     txflitv_d1;
+    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                    txflit_q;
 
     //buffer rxflit
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_valid_q;
-    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_valid_ns;
-    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_valid_upd;
-    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_valid_set;
-    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_valid_clr;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_valid_q;
+    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                   rxflit_buffer_entry_valid_ns;
+    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                   rxflit_buffer_valid_upd;
+    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                   rxflit_buffer_valid_set;
+    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                   rxflit_buffer_valid_clr;
 
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_qos_hh_q;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_qos_h_q;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_qos_m_q;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_qos_l_q;
-    wire [XP_INTF_MAX-1:0] rxflit_qos_hh_r1;
-    wire [XP_INTF_MAX-1:0] rxflit_qos_h_r1;
-    wire [XP_INTF_MAX-1:0] rxflit_qos_m_r1;
-    wire [XP_INTF_MAX-1:0] rxflit_qos_l_r1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_qos_hh_q;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_qos_h_q;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_qos_m_q;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_qos_l_q;
+    wire [XP_INTF_MAX-1:0]                                     rxflit_qos_hh_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflit_qos_h_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflit_qos_m_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflit_qos_l_r1;
 
     logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0][XP_INTF_MAX-1:0] rxflit_buffer_entry_tgt_q;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_rdy_q;
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0] rxflit_buffer_entry_tgt_r1;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_rdy_clr_r1;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_rdy_set_d1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_entry_rdy_q;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0]                    rxflit_buffer_entry_tgt_r1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_entry_rdy_clr_r1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_entry_rdy_set_d1;
 
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0][FLIT_WIDTH-1:0] rxflit_buffer_entry_q;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0][FLIT_WIDTH-1:0]  rxflit_buffer_entry_q;
 
     //Route rxflit
-    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0][XP_INTF_MAX-1:0] rxflit_buffer_entries_rdy_d1;
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] txflit_buffer_entries_rdy_d1;
+    wire [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0][XP_INTF_MAX-1:0]  rxflit_buffer_entries_rdy_d1;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]  txflit_buffer_entries_rdy_d1;
 
     //pending arb qos, [dst][src][entry];
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] txflit_qos_hh_d1;
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] txflit_qos_h_d1;
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] txflit_qos_m_d1;
-    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] txflit_qos_l_d1;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]  txflit_qos_hh_d1;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]  txflit_qos_h_d1;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]  txflit_qos_m_d1;
+    wire [XP_INTF_MAX-1:0][XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]  txflit_qos_l_d1;
 
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_hh_invec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_h_invec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_m_invec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_l_invec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_hh_outvec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_h_outvec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_m_outvec_d1;
-    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_qos_l_outvec_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_hh_found_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_h_found_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_m_found_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_l_found_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_hh_invec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_h_invec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_m_invec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_l_invec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_hh_outvec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_h_outvec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_m_outvec_d1;
+    wire [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]     txflit_qos_l_outvec_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_hh_found_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_h_found_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_m_found_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_l_found_d1;
 
-    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_arb_hh_nxt_q;
-    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_arb_h_nxt_q;
-    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_arb_m_nxt_q;
-    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] txflit_arb_l_nxt_q;
-    wire [XP_INTF_MAX-1:0] txflit_arb_hh_nxt_upd_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_h_nxt_upd_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_m_nxt_upd_d1;
-    wire [XP_INTF_MAX-1:0] txflit_arb_l_nxt_upd_d1;
+    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]    txflit_arb_hh_nxt_q;
+    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]    txflit_arb_h_nxt_q;
+    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]    txflit_arb_m_nxt_q;
+    logic [XP_INTF_MAX-1:0][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0]    txflit_arb_l_nxt_q;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_hh_nxt_upd_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_h_nxt_upd_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_m_nxt_upd_d1;
+    wire [XP_INTF_MAX-1:0]                                     txflit_arb_l_nxt_upd_d1;
 
-    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_hh_d1;
-    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_h_d1;
-    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_m_d1;
-    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_l_d1;
-    wire [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0] txflit_d1;
+    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                    txflit_hh_d1;
+    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                    txflit_h_d1;
+    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                    txflit_m_d1;
+    logic [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                    txflit_l_d1;
+    wire [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                     txflit_d1;
 
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_enq_r1;
-    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0] rxflit_buffer_entry_deq_d1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_entry_enq_r1;
+    logic [XP_INTF_MAX-1:0][RX_MAX_ENTRY-1:0]                  rxflit_buffer_entry_deq_d1;
 
-    wire [XP_INTF_MAX-1:0][CHIE_NID_WIDTH-1:0] rxflit_tgtid_r1;
+    wire [XP_INTF_MAX-1:0][CHIE_NID_WIDTH-1:0]                 rxflit_tgtid_r1;
 
-    integer i_src, i_entry, i_dst;
+    int i_src, i_entry, i_dst;
     genvar g_src, g_entry, g_dst;
 
     logic linkactive_p0, linkactive_p1;
@@ -583,7 +583,7 @@ module chi_ring_channel #(
         end
     endgenerate
 
-    function [XP_INTF_MAX-1:0] route_x(input [CHIE_NID_WIDTH-1:0] tgtid);
+    function automatic logic [XP_INTF_MAX-1:0] route_x(input logic [CHIE_NID_WIDTH-1:0] tgtid);
 
         route_x[XP_INTF_E]  = (tgtid[1+:XP_VALID_NID_WIDTH] > my_xid[1+:XP_VALID_NID_WIDTH]) ?
 							  (tgtid[1+:XP_VALID_NID_WIDTH] - my_xid[1+:XP_VALID_NID_WIDTH] < ROUTER_NODE_NUM/2 + 1):

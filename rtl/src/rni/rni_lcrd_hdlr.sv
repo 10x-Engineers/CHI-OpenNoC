@@ -20,12 +20,12 @@ module rni_lcrd_hdlr #(
     )
     (
     // global inputs
-    input wire clk,
-    input wire rst,
+    input  wire clk,
+    input  wire rst,
 
     // inputs
-    input wire lcrd_inc,
-    input wire lcrd_dec,
+    input  wire lcrd_inc,
+    input  wire lcrd_dec,
 
     // outputs
     output wire lcrd_full,
@@ -39,8 +39,8 @@ module rni_lcrd_hdlr #(
                                      (LCRD_MAX_CNT_VAL < 16)? 4 : 5);
 
     // internal wire
-    wire                         lcrd_cnt_upd_s0;
-    wire                         lcrd_cnt_not_zero;
+    wire                           lcrd_cnt_upd_s0;
+    wire                           lcrd_cnt_not_zero;
 
     // internal reg
     logic [LCRD_MAX_CNT_WIDTH-1:0] lcrd_cnt_s0;
@@ -48,8 +48,11 @@ module rni_lcrd_hdlr #(
     logic                          lcrd_idle;
 
     // main function
+    // Plain case, not unique: the four arms already cover a 2-bit selector, so
+    // unique adds no coverage -- and with no default it reports a violation
+    // every cycle before reset, when the selector is still X.
     always_comb begin
-        casez({lcrd_inc,lcrd_dec})
+        case({lcrd_inc,lcrd_dec})
             2'b00 :
                 lcrd_cnt_s0 = lcrd_cnt_s1_q;
             2'b01 :

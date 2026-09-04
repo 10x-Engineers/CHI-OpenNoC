@@ -23,234 +23,234 @@
 
 module snf_mshr `SNF_PARAM
     (
-        input  wire                               clk,
-        input  wire                               rst,
-        input  wire                               rxreq_alloc_en_s0,
-        input  chie_pkg::req_flit_s               rxreq_alloc_flit_s0,
-        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_entry_idx_alloc_s0,
+        input  wire                                 clk,
+        input  wire                                 rst,
+        input  wire                                 rxreq_alloc_en_s0,
+        input  chie_pkg::req_flit_s                 rxreq_alloc_flit_s0,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_entry_idx_alloc_s0,
 
-        output  wire                               txrsp_valid_sx,
-        output  logic [3:0]                        txrsp_qos_sx,
-        output  logic [chie_pkg::NID_WIDTH-1:0]    txrsp_tgtid_sx,
-        output  logic [11:0]                       txrsp_txnid_sx,
-        output  chie_pkg::rsp_opcode_e             txrsp_opcode_sx,
-        output  chie_pkg::resp_err_e               txrsp_resperr_sx,
-        output  chie_pkg::resp_state_e             txrsp_resp_sx,
-        output  logic [11:0]                       txrsp_dbid_sx,
-        output  logic [chie_pkg::NID_WIDTH-1:0]    txrsp_srcid_sx,
-        output  logic                              txrsp_tracetag_sx,
+        output wire                                 txrsp_valid_sx,
+        output logic [3:0]                          txrsp_qos_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      txrsp_tgtid_sx,
+        output logic [11:0]                         txrsp_txnid_sx,
+        output chie_pkg::rsp_opcode_e               txrsp_opcode_sx,
+        output chie_pkg::resp_err_e                 txrsp_resperr_sx,
+        output chie_pkg::resp_state_e               txrsp_resp_sx,
+        output logic [11:0]                         txrsp_dbid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      txrsp_srcid_sx,
+        output logic                                txrsp_tracetag_sx,
 
-        input  wire                               txrsp_won_sx,
-        output  wire                               rxreq_dbf_en_s1,
-        output  logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s1,
-        output  wire                               rxreq_dbf_wr_s1,
-        output  wire                               rxreq_dbf_wrzero_s1,
-        output  chie_pkg::size_e                   rxreq_dbf_size_s1,
-        output  wire [`AXI4_ARLEN_WIDTH-1:0]       rxreq_dbf_axlen_s1,
-        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] rxreq_dbf_entry_idx_s1,
-        input  wire                               dbf_mshr_rdata_en_sx,
-        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rdata_idx_sx,
-        input  wire [`SNF_MASK_CD_WIDTH-1:0]      dbf_mshr_rdata_cdmask_sx,
-        input  wire                               dbf_mshr_rxdat_ok_sx,
-        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rxdat_ok_idx_sx,
-        input  wire                               dbf_mshr_rxdat_cancel_sx,
-        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] dbf_mshr_rxdat_cancel_idx_sx,
-        output  wire                               mshr_txdat_en_sx,
-        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_txdat_entry_idx_sx,
-        output  logic [1:0]                        mshr_txdat_dataid_sx,
-        output  logic [11:0]                       mshr_txdat_txnid_sx,
-        output  chie_pkg::dat_opcode_e             mshr_txdat_opcode_sx,
-        output  chie_pkg::resp_state_e             mshr_txdat_resp_sx,
-        output  chie_pkg::resp_err_e               mshr_txdat_resperr_sx,
-        output  logic [11:0]                       mshr_txdat_dbid_sx,
-        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_tgtid_sx,
-        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_srcid_sx,
-        output  logic [chie_pkg::NID_WIDTH-1:0]    mshr_txdat_homenid_sx,
-        output  logic                              mshr_txdat_tracetag_sx,
-        input  wire                               mshr_txdat_won_sx,
-        output  wire                               mshr_wdat_en_sx,
-        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_wdat_entry_idx_sx,
-        output  wire                               mshr_retired_valid_sx,
-        output  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0] mshr_retired_idx_sx,
-        output  wire [`AXI4_ARID_WIDTH-1:0]        arid_sx,
-        output  wire [`AXI4_ARADDR_WIDTH-1:0]      araddr_sx,
-        output  wire [`AXI4_ARLEN_WIDTH-1:0]       arlen_sx,
-        output  wire [`AXI4_ARSIZE_WIDTH-1:0]      arsize_sx,
-        output  wire [`AXI4_ARBURST_WIDTH-1:0]     arburst_sx,
-        output  wire [`AXI4_ARLOCK_WIDTH-1:0]      arlock_sx,
-        output  wire [`AXI4_ARCACHE_WIDTH-1:0]     arcache_sx,
-        output  wire [`AXI4_ARPROT_WIDTH-1:0]      arprot_sx,
-        output  wire [`AXI4_ARQOS_WIDTH-1:0]       arqos_sx,
-        output  wire [`AXI4_ARREGION_WIDTH-1:0]    arregion_sx,
-        output  logic                              arvalid_sx,
-        input  wire                               arready_sx,
-        output  wire [`AXI4_AWID_WIDTH-1:0]        awid_sx,
-        output  wire [`AXI4_AWADDR_WIDTH-1:0]      awaddr_sx,
-        output  wire [`AXI4_AWLEN_WIDTH-1:0]       awlen_sx,
-        output  wire [`AXI4_AWSIZE_WIDTH-1:0]      awsize_sx,
-        output  wire [`AXI4_AWBURST_WIDTH-1:0]     awburst_sx,
-        output  wire [`AXI4_AWLOCK_WIDTH-1:0]      awlock_sx,
-        output  wire [`AXI4_AWCACHE_WIDTH-1:0]     awcache_sx,
-        output  wire [`AXI4_AWPROT_WIDTH-1:0]      awprot_sx,
-        output  wire [`AXI4_AWQOS_WIDTH-1:0]       awqos_sx,
-        output  wire [`AXI4_AWREGION_WIDTH-1:0]    awregion_sx,
-        output  logic                              awvalid_sx,
-        input  wire                               awready_sx,
-        input  wire [`AXI4_BID_WIDTH-1:0]         bid_sx,
-        input  wire [`AXI4_BRESP_WIDTH-1:0]       bresp_sx,
-        input  wire                               bvalid_sx,
-        output  wire                               bready_sx
+        input  wire                                 txrsp_won_sx,
+        output wire                                 rxreq_dbf_en_s1,
+        output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s1,
+        output wire                                 rxreq_dbf_wr_s1,
+        output wire                                 rxreq_dbf_wrzero_s1,
+        output chie_pkg::size_e                     rxreq_dbf_size_s1,
+        output wire [`AXI4_ARLEN_WIDTH-1:0]         rxreq_dbf_axlen_s1,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   rxreq_dbf_entry_idx_s1,
+        input  wire                                 dbf_mshr_rdata_en_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rdata_idx_sx,
+        input  wire [`SNF_MASK_CD_WIDTH-1:0]        dbf_mshr_rdata_cdmask_sx,
+        input  wire                                 dbf_mshr_rxdat_ok_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rxdat_ok_idx_sx,
+        input  wire                                 dbf_mshr_rxdat_cancel_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rxdat_cancel_idx_sx,
+        output wire                                 mshr_txdat_en_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_txdat_entry_idx_sx,
+        output logic [1:0]                          mshr_txdat_dataid_sx,
+        output logic [11:0]                         mshr_txdat_txnid_sx,
+        output chie_pkg::dat_opcode_e               mshr_txdat_opcode_sx,
+        output chie_pkg::resp_state_e               mshr_txdat_resp_sx,
+        output chie_pkg::resp_err_e                 mshr_txdat_resperr_sx,
+        output logic [11:0]                         mshr_txdat_dbid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_tgtid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_srcid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_homenid_sx,
+        output logic                                mshr_txdat_tracetag_sx,
+        input  wire                                 mshr_txdat_won_sx,
+        output wire                                 mshr_wdat_en_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_wdat_entry_idx_sx,
+        output wire                                 mshr_retired_valid_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_retired_idx_sx,
+        output wire [`AXI4_ARID_WIDTH-1:0]          arid_sx,
+        output wire [`AXI4_ARADDR_WIDTH-1:0]        araddr_sx,
+        output wire [`AXI4_ARLEN_WIDTH-1:0]         arlen_sx,
+        output wire [`AXI4_ARSIZE_WIDTH-1:0]        arsize_sx,
+        output wire [`AXI4_ARBURST_WIDTH-1:0]       arburst_sx,
+        output wire [`AXI4_ARLOCK_WIDTH-1:0]        arlock_sx,
+        output wire [`AXI4_ARCACHE_WIDTH-1:0]       arcache_sx,
+        output wire [`AXI4_ARPROT_WIDTH-1:0]        arprot_sx,
+        output wire [`AXI4_ARQOS_WIDTH-1:0]         arqos_sx,
+        output wire [`AXI4_ARREGION_WIDTH-1:0]      arregion_sx,
+        output logic                                arvalid_sx,
+        input  wire                                 arready_sx,
+        output wire [`AXI4_AWID_WIDTH-1:0]          awid_sx,
+        output wire [`AXI4_AWADDR_WIDTH-1:0]        awaddr_sx,
+        output wire [`AXI4_AWLEN_WIDTH-1:0]         awlen_sx,
+        output wire [`AXI4_AWSIZE_WIDTH-1:0]        awsize_sx,
+        output wire [`AXI4_AWBURST_WIDTH-1:0]       awburst_sx,
+        output wire [`AXI4_AWLOCK_WIDTH-1:0]        awlock_sx,
+        output wire [`AXI4_AWCACHE_WIDTH-1:0]       awcache_sx,
+        output wire [`AXI4_AWPROT_WIDTH-1:0]        awprot_sx,
+        output wire [`AXI4_AWQOS_WIDTH-1:0]         awqos_sx,
+        output wire [`AXI4_AWREGION_WIDTH-1:0]      awregion_sx,
+        output logic                                awvalid_sx,
+        input  wire                                 awready_sx,
+        input  wire [`AXI4_BID_WIDTH-1:0]           bid_sx,
+        input  wire [`AXI4_BRESP_WIDTH-1:0]         bresp_sx,
+        input  wire                                 bvalid_sx,
+        output wire                                 bready_sx
     );
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   mshr_entry_idx_alloc_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     mshr_entry_valid_sx_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     sleep_s2_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   hazard_idx_s2_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     hazard_sx_q;
-    logic                                                 rxreq_alloc_en_s1_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  mshr_entry_idx_alloc_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    mshr_entry_valid_sx_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    sleep_s2_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  hazard_idx_s2_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    hazard_sx_q;
+    logic                                rxreq_alloc_en_s1_q;
     chie_pkg::req_opcode_e               rxreq_opcode_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [3:0]                  rxreq_qos_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::memattr_s              rxreq_memattr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::NID_WIDTH-1:0]                rxreq_srcid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [11:0]                rxreq_txnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::size_e                 rxreq_size_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]                 rxreq_addr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic                   rxreq_ns_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::order_e                rxreq_order_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [11:0]          rxreq_returntxnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic             rxreq_tracetag_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::NID_WIDTH-1:0]            rxreq_returnnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [1:0]                 rxreq_ccid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AXID_WIDTH-1:0]                          rxreq_axid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_ARLEN_WIDTH-1:0]                         rxreq_axlen_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_ARSIZE_WIDTH-1:0]                        rxreq_axsize_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AXADDR_WIDTH-1:0]                        rxreq_axaddr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_wr_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_wrzero_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_rd_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_dodmt_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_dodwt_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxreq_ewa_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     txrsp_comp_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     txrsp_comp_sent_sx_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     txrsp_rdreceipt_valid_sx_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     txrsp_rdy_sx_q;
+    logic [3:0]                          rxreq_qos_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::memattr_s                  rxreq_memattr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_srcid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [11:0]                         rxreq_txnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::size_e                     rxreq_size_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_addr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic                                rxreq_ns_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::order_e                    rxreq_order_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [11:0]                         rxreq_returntxnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic                                rxreq_tracetag_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [1:0]                          rxreq_ccid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_AXID_WIDTH-1:0]         rxreq_axid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_ARLEN_WIDTH-1:0]        rxreq_axlen_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_ARSIZE_WIDTH-1:0]       rxreq_axsize_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`AXI4_AXADDR_WIDTH-1:0]       rxreq_axaddr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wr_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wrzero_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rd_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_dodmt_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_dodwt_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_ewa_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_comp_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_comp_sent_sx_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_rdreceipt_valid_sx_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_rdy_sx_q;
     chie_pkg::rsp_opcode_e               txrsp_opcode_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   txrsp_entry_idx_sx;
-    logic [1:0]                                           txdat_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   txdat_entry_idx_sx;
-    logic                                                 txdat_en_sx_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   txdat_entry_idx_sx_q;
-    logic [1:0]                                           txdat_sent_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     arvalid_fifo_s1_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   arvalid_fifo_idx_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   arvalid_fifo_set_vec;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   arvalid_fifo_vec;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   arvalid_entry_idx_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rdat_valid_s1_q;
-    logic [3:0]                                           rdat_pdmask_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     awvalid_fifo_valid_s2_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_fifo_idx_s2_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_fifo_cnt_sx_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_fifo_vec_sx;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   awvalid_entry_idx_s2_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     bresp_ok_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     bresp_err_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     retired_entry_sx1_q;
-    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]                   retired_entry_idx_sx1_q;
-    logic                                                 mshr_wdat_en_rst;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]                     rxdat_cancel_s1_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txrsp_entry_idx_sx;
+    logic [1:0]                          txdat_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx;
+    logic                                txdat_en_sx_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx_q;
+    logic [1:0]                          txdat_sent_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_s1_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_idx_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_set_vec;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_vec;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_entry_idx_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rdat_valid_s1_q;
+    logic [3:0]                          rdat_pdmask_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    awvalid_fifo_valid_s2_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_idx_s2_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_cnt_sx_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_vec_sx;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  awvalid_entry_idx_s2_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    bresp_ok_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    bresp_err_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    retired_entry_sx1_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  retired_entry_idx_sx1_q;
+    logic                                mshr_wdat_en_rst;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxdat_cancel_s1_q;
 
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    mshr_entry_alloc_sx;
-    logic [3:0]                                        rxreq_qos_s0;
-    logic [chie_pkg::NID_WIDTH-1:0]                    rxreq_srcid_s0;
-    logic [11:0]                                       rxreq_txnid_s0;
-    chie_pkg::req_opcode_e                             rxreq_opcode_s0;
-    chie_pkg::size_e                                   rxreq_size_s0;
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0]               rxreq_addr_s0;
-    logic [chie_pkg::NID_WIDTH-1:0]                    rxreq_returnnid_s0;
-    logic [11:0]                                       rxreq_returntxnid_s0;
-    wire                                                rxreq_dodmt_s0;
-    wire                                                rxreq_dodwt_s0;
-    logic                                              rxreq_ns_s0;
-    chie_pkg::order_e                                  rxreq_order_s0;
-    logic [3:0]                                        rxreq_pcrdtype_s0;
-    chie_pkg::memattr_s                                rxreq_memattr_s0;
-    logic                                              rxreq_tracetag_s0;
-    wire                                                rxreq_ewa_s0;
-    wire                                                rxreq_rd_s0;
-    wire                                                rxreq_wr_s0;
-    wire                                                rxreq_rdsep_s0;
-    wire                                                rxreq_cmo_s0;
-    wire                                                rxreq_cmopersist_s0;
-    wire                                                rxreq_cw_s0;
-    wire                                                rxreq_cwpersist_s0;
-    wire                                                rxreq_atomic_s0;
-    wire                                                rxreq_atomicdat_s0;
-    wire                                                rxreq_wrzero_s0;
-    wire                                                rxreq_drop_s0;
-    wire                                                rxreq_errwr_s0;
-    wire                                                rxreq_errdat_s0;
-    wire                                                rxreq_errrsp_s0;
-    wire                                                rxreq_err_s0;
-    wire                                                rxreq_rsponly_s0;
-    chie_pkg::rsp_opcode_e              rxreq_rsponly_opcode_s0;
-    wire                                                rxreq_errgrant_s0;
-    wire                                                txrsp_rsponly_en_s1;
-    wire                                                txrsp_errgrant_en_s1;
-    wire                                                txrsp_rsponly_en_sx;
-    wire                                                txrsp_errgrant_en_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat_errdat_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    all_rsp_sent_sx;
-    wire                                                txrsp_sent_sx;
-    wire                                                txrsp_en_s1;
-    wire                                                txrsp_en_sx;
-    wire                                                txrsp_readreceipt_en_s1;
-    wire                                                txrsp_compdbidresp_en_s1;
-    wire                                                txrsp_dbidresp_en_s1;
-    chie_pkg::rsp_opcode_e              txrsp_opcode_en_s1;
-    wire                                                txrsp_compdbidresp_en_sx;
-    wire                                                txrsp_dbidresp_en_sx;
-    wire                                                txrsp_ewa_dwt_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]                  txrsp_ewa_dwt_rdy_entry_sx;
-    wire                                                txrsp_noewa_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]                  txrsp_noewa_rdy_entry_sx;
-    chie_pkg::rsp_opcode_e              txrsp_opcode_en_sx;
-    wire                                                txrsp_update_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_valid_idx_sx;
-    wire                                                txrsp_comp_wrdatcancel_sx;
-    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]                  txrsp_comp_wrcancel_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat1_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat2_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    rdat_allrcvd_sx;
-    wire                                                arvalid_en_s1;
-    wire                                                arvalid_en2_s1;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    bresp_ok_sx;
-    wire                                                wakeup_valid;
-    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]                  wakeup_idx_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    retired_entry_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txdat_valid_sx;
-    wire                                                mshr_txdat_update;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    mshr_txdat_idx_vec;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    hazard_sx;
-    wire                                                sel_idx_valid;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     mshr_entry_alloc_sx;
+    logic [3:0]                          rxreq_qos_s0;
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_srcid_s0;
+    logic [11:0]                         rxreq_txnid_s0;
+    chie_pkg::req_opcode_e               rxreq_opcode_s0;
+    chie_pkg::size_e                     rxreq_size_s0;
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_addr_s0;
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s0;
+    logic [11:0]                         rxreq_returntxnid_s0;
+    wire                                 rxreq_dodmt_s0;
+    wire                                 rxreq_dodwt_s0;
+    logic                                rxreq_ns_s0;
+    chie_pkg::order_e                    rxreq_order_s0;
+    logic [3:0]                          rxreq_pcrdtype_s0;
+    chie_pkg::memattr_s                  rxreq_memattr_s0;
+    logic                                rxreq_tracetag_s0;
+    wire                                 rxreq_ewa_s0;
+    wire                                 rxreq_rd_s0;
+    wire                                 rxreq_wr_s0;
+    wire                                 rxreq_rdsep_s0;
+    wire                                 rxreq_cmo_s0;
+    wire                                 rxreq_cmopersist_s0;
+    wire                                 rxreq_cw_s0;
+    wire                                 rxreq_cwpersist_s0;
+    wire                                 rxreq_atomic_s0;
+    wire                                 rxreq_atomicdat_s0;
+    wire                                 rxreq_wrzero_s0;
+    wire                                 rxreq_drop_s0;
+    wire                                 rxreq_errwr_s0;
+    wire                                 rxreq_errdat_s0;
+    wire                                 rxreq_errrsp_s0;
+    wire                                 rxreq_err_s0;
+    wire                                 rxreq_rsponly_s0;
+    chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s0;
+    wire                                 rxreq_errgrant_s0;
+    wire                                 txrsp_rsponly_en_s1;
+    wire                                 txrsp_errgrant_en_s1;
+    wire                                 txrsp_rsponly_en_sx;
+    wire                                 txrsp_errgrant_en_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_errdat_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     all_rsp_sent_sx;
+    wire                                 txrsp_sent_sx;
+    wire                                 txrsp_en_s1;
+    wire                                 txrsp_en_sx;
+    wire                                 txrsp_readreceipt_en_s1;
+    wire                                 txrsp_compdbidresp_en_s1;
+    wire                                 txrsp_dbidresp_en_s1;
+    chie_pkg::rsp_opcode_e               txrsp_opcode_en_s1;
+    wire                                 txrsp_compdbidresp_en_sx;
+    wire                                 txrsp_dbidresp_en_sx;
+    wire                                 txrsp_ewa_dwt_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   txrsp_ewa_dwt_rdy_entry_sx;
+    wire                                 txrsp_noewa_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   txrsp_noewa_rdy_entry_sx;
+    chie_pkg::rsp_opcode_e               txrsp_opcode_en_sx;
+    wire                                 txrsp_update_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_valid_idx_sx;
+    wire                                 txrsp_comp_wrdatcancel_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   txrsp_comp_wrcancel_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat1_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat2_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     rdat_allrcvd_sx;
+    wire                                 arvalid_en_s1;
+    wire                                 arvalid_en2_s1;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     bresp_ok_sx;
+    wire                                 wakeup_valid;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   wakeup_idx_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     retired_entry_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_valid_sx;
+    wire                                 mshr_txdat_update;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     mshr_txdat_idx_vec;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     hazard_sx;
+    wire                                 sel_idx_valid;
 
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_rdsep_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errwr_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errdat_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_err_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_rsponly_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_errgrant_s1_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    errwr_data_done_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    rxreq_drop_s1_q;
-    chie_pkg::rsp_opcode_e              rxreq_rsponly_opcode_s1_q [`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_q2_valid_q;
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_cmo_owed_q;
-    chie_pkg::rsp_opcode_e              txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic  [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_any_sent_q;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_comp_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]                    txrsp_comp_queued_sx;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rdsep_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errwr_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errdat_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_err_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rsponly_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errgrant_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    errwr_data_done_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_drop_s1_q;
+    chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s1_q [`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_q2_valid_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_cmo_owed_q;
+    chie_pkg::rsp_opcode_e               txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_any_sent_q;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_queued_sx;
 
-    genvar entry;
+    genvar                               entry;
 
     localparam [31:0]                          ENTRIES_M1 = `SNF_MSHR_ENTRIES_NUM-1;
     localparam [31:0]                          ENTRIES_M2 = `SNF_MSHR_ENTRIES_NUM-2;
@@ -1331,9 +1331,8 @@ module snf_mshr `SNF_PARAM
     endgenerate
 
     always_comb begin
-        integer k;
         retired_entry_idx_sx1_q = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
-        for (k=0; k < `SNF_MSHR_ENTRIES_NUM; k=k+1) begin
+        for (int k=0; k < `SNF_MSHR_ENTRIES_NUM; k=k+1) begin
             if(retired_entry_sx1_q[k])
                 retired_entry_idx_sx1_q = k[`SNF_MSHR_ENTRIES_WIDTH-1:0];
         end

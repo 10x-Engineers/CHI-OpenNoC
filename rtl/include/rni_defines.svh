@@ -28,7 +28,6 @@
 //rni_ctl
 `define RNI_AW_ENTRIES_WIDTH            ((RNI_AW_ENTRIES_NUM_PARAM == 1)? 1 : $clog2(RNI_AW_ENTRIES_NUM_PARAM))
 `define RNI_AR_ENTRIES_WIDTH            ((RNI_AR_ENTRIES_NUM_PARAM == 1)? 1 : $clog2(RNI_AR_ENTRIES_NUM_PARAM))
-`define RNI_DMASK_CT_RANGE              3:0
 `define RNI_DMASK_CT_LSB                0
 `define RNI_DMASK_CT_MSB                3
 `define RNI_DMASK_CT_WIDTH              4

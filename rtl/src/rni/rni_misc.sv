@@ -21,48 +21,48 @@
 module rni_misc `RNI_PARAM
     (
     // global inputs
-    input wire clk_i,
-    input wire rst_i,
+    input  wire                             clk_i,
+    input  wire                             rst_i,
 
     // rni_link_ctl Interface
-    input wire rxrspflitv_d1_i,
-    input chie_pkg::rsp_flit_s rxrspflit_d1_q_i,
+    input  wire                             rxrspflitv_d1_i,
+    input  chie_pkg::rsp_flit_s             rxrspflit_d1_q_i,
 
     // rni_aw_ctl Interface
-    output wire pcrdgnt_pkt_v_d2_o,
+    output wire                             pcrdgnt_pkt_v_d2_o,
     output opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_pkt_d2_o,
-    input wire ar_pcrdgnt_l_present_d3_i,
-    input wire ar_pcrdgnt_h_present_d3_i,
-    input wire aw_pcrdgnt_l_present_d3_i,
-    input wire aw_pcrdgnt_h_present_d3_i,
-    output wire ar_pcrdgnt_l_win_d3_o,
-    output wire ar_pcrdgnt_h_win_d3_o,
-    output wire aw_pcrdgnt_l_win_d3_o,
-    output wire aw_pcrdgnt_h_win_d3_o
+    input  wire                             ar_pcrdgnt_l_present_d3_i,
+    input  wire                             ar_pcrdgnt_h_present_d3_i,
+    input  wire                             aw_pcrdgnt_l_present_d3_i,
+    input  wire                             aw_pcrdgnt_h_present_d3_i,
+    output wire                             ar_pcrdgnt_l_win_d3_o,
+    output wire                             ar_pcrdgnt_h_win_d3_o,
+    output wire                             aw_pcrdgnt_l_win_d3_o,
+    output wire                             aw_pcrdgnt_h_win_d3_o
     );
 
     //wire
-    wire                                     pcrdgnt_fifo_push_d1_w;
-    wire                                     pcrdgnt_fifo_pop_d3_w;
-    wire [3:0] pcrdgnt_pcrdtype_d1_w;
-    wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_srcid_d1_w;
-    wire [chie_pkg::NID_WIDTH-1:0]    pcrdgnt_tgtid_d1_w;
-    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_in_d1_w;
-    opennoc_rni_pkg::pcrdgrant_pkt_s          pcrdgnt_fifo_out_d2_w;
-    wire                                     pcrdgnt_fifo_empty_d2_w;
-    wire                                     nxt_h_pcrdgnt_ptr_w;
-    wire                                     nxt_l_pcrdgnt_ptr_w;
-    wire                                     l_arb_lost_w;
-    wire                                     l_disable_h_cnt_inc_w;
-    wire                                     l_disable_h_cnt_rst_w;
-    wire                                     l_disable_h_cnt_upd_w;
-    wire [`L_DISABLE_CNT_WIDTH-1:0]          nxt_l_disable_h_cnt_w;
-    wire                                     l_disable_h_w;
+    wire                             pcrdgnt_fifo_push_d1_w;
+    wire                             pcrdgnt_fifo_pop_d3_w;
+    wire [3:0]                       pcrdgnt_pcrdtype_d1_w;
+    wire [chie_pkg::NID_WIDTH-1:0]   pcrdgnt_srcid_d1_w;
+    wire [chie_pkg::NID_WIDTH-1:0]   pcrdgnt_tgtid_d1_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_fifo_in_d1_w;
+    opennoc_rni_pkg::pcrdgrant_pkt_s pcrdgnt_fifo_out_d2_w;
+    wire                             pcrdgnt_fifo_empty_d2_w;
+    wire                             nxt_h_pcrdgnt_ptr_w;
+    wire                             nxt_l_pcrdgnt_ptr_w;
+    wire                             l_arb_lost_w;
+    wire                             l_disable_h_cnt_inc_w;
+    wire                             l_disable_h_cnt_rst_w;
+    wire                             l_disable_h_cnt_upd_w;
+    wire [`L_DISABLE_CNT_WIDTH-1:0]  nxt_l_disable_h_cnt_w;
+    wire                             l_disable_h_w;
 
     //reg
-    logic                                      h_pcrdgnt_ptr_q;
-    logic                                      l_pcrdgnt_ptr_q;
-    logic  [`L_DISABLE_CNT_WIDTH-1:0]          l_disable_h_cnt_q;
+    logic                            h_pcrdgnt_ptr_q;
+    logic                            l_pcrdgnt_ptr_q;
+    logic [`L_DISABLE_CNT_WIDTH-1:0] l_disable_h_cnt_q;
 
     //local param
     localparam FIFO_ENTRIES_DEPTH = 32;

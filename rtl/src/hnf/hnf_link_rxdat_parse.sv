@@ -20,51 +20,51 @@
 module hnf_link_rxdat_parse `HNF_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                            clk,
+    input  wire                            rst,
 
     //inputs from hnf_link
-    input wire rxdatflitv,
-    input chie_pkg::dat_flit_s rxdatflit,
-    input wire rxdatflitpend,
+    input  wire                            rxdatflitv,
+    input  chie_pkg::dat_flit_s            rxdatflit,
+    input  wire                            rxdatflitpend,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire rxcrd_en,
-    output wire rxdat_crd_cnt_full,
+    input  wire                            rxcrd_en,
+    output wire                            rxdat_crd_cnt_full,
 
     //outputs to hnf_link
-    output wire rxdat_lcrdv,
+    output wire                            rxdat_lcrdv,
 
     //outputs to hnf_mshr
-    output wire li_mshr_rxdat_valid_s0,
-    output wire [11:0] li_mshr_rxdat_txnid_s0,
-    output chie_pkg::dat_opcode_e li_mshr_rxdat_opcode_s0,
-    output chie_pkg::resp_state_e li_mshr_rxdat_resp_s0,
-    output chie_pkg::resp_err_e li_mshr_rxdat_resperr_s0,
-    output wire [3:0] li_mshr_rxdat_fwdstate_s0,
-    output wire [1:0] li_mshr_rxdat_dataid_s0,
+    output wire                            li_mshr_rxdat_valid_s0,
+    output wire [11:0]                     li_mshr_rxdat_txnid_s0,
+    output chie_pkg::dat_opcode_e          li_mshr_rxdat_opcode_s0,
+    output chie_pkg::resp_state_e          li_mshr_rxdat_resp_s0,
+    output chie_pkg::resp_err_e            li_mshr_rxdat_resperr_s0,
+    output wire [3:0]                      li_mshr_rxdat_fwdstate_s0,
+    output wire [1:0]                      li_mshr_rxdat_dataid_s0,
 
     //outputs to hnf_data_buffer
-    output wire li_dbf_rxdat_valid_s0,
-    output wire [`MSHR_ENTRIES_WIDTH-1:0] li_dbf_rxdat_txnid_s0,
-    output chie_pkg::dat_opcode_e li_dbf_rxdat_opcode_s0,
-    output wire [1:0] li_dbf_rxdat_dataid_s0,
-    output wire [chie_pkg::BE_WIDTH-1:0] li_dbf_rxdat_be_s0,
+    output wire                            li_dbf_rxdat_valid_s0,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]  li_dbf_rxdat_txnid_s0,
+    output chie_pkg::dat_opcode_e          li_dbf_rxdat_opcode_s0,
+    output wire [1:0]                      li_dbf_rxdat_dataid_s0,
+    output wire [chie_pkg::BE_WIDTH-1:0]   li_dbf_rxdat_be_s0,
     output wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0
     );
 
     //internal reg signals
-    logic                                             rxdatflitv_en_q;
-    logic  [`HNF_LCRD_DAT_CNT_WIDTH-1:0]            rxdat_crd_cnt_s1_q;
-    logic                                             rxdatcrdv_s1_q;
+    logic                               rxdatflitv_en_q;
+    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] rxdat_crd_cnt_s1_q;
+    logic                               rxdatcrdv_s1_q;
 
     //internal wire signals
-    wire [11:0]           li_dbf_rxdat_txnid_s0_raw;
-    wire                                            rxdat_crd_cnt_zero;
-    wire                                            rxdat_crd_cnt_upd_s0;
-    wire                                            rxdat_crd_grant_s0;
-    wire [`HNF_LCRD_DAT_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
-    wire                                            rxdatcrdv_ns_s0;
+    wire [11:0]                         li_dbf_rxdat_txnid_s0_raw;
+    wire                                rxdat_crd_cnt_zero;
+    wire                                rxdat_crd_cnt_upd_s0;
+    wire                                rxdat_crd_grant_s0;
+    wire [`HNF_LCRD_DAT_CNT_WIDTH-1:0]  rxdat_crd_cnt_nxt_s0;
+    wire                                rxdatcrdv_ns_s0;
 
     //main function
     always_ff @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t

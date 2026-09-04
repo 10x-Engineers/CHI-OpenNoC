@@ -38,8 +38,9 @@ anything around it.
 
 | | |
 | :-- | :-- |
-| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR. |
+| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR. The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, so that code cannot rot unnoticed — see [#117](https://github.com/10x-Engineers/CHI-OpenNoC/issues/117) for enabling them at simulation. |
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Roughly 60 protocol defects have been found and fixed this way; see [Verification](#verification). |
+| ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. See [Types, not bit ranges](#types-not-bit-ranges). |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
 | ⚠️ **Feature-incomplete against the spec** | Atomics, Stash, MTE, MPAM and DVM are not implemented. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
@@ -273,27 +274,63 @@ passes them down a hierarchy.
 | Parameter | Default | Notes |
 | :-- | --: | :-- |
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | CHI request address width. |
-| `CHIE_NID_WIDTH_PARAM` | 7 (**11** on RN-I) | NodeID width. §16.1 allows 7..11; only the crosspoint range-checks it. |
+| `CHIE_NID_WIDTH_PARAM` | `chie_pkg::NID_WIDTH` (7) | NodeID width. §16.1 allows 7..11; only the crosspoint range-checks it. |
 | `CHIE_DATA_WIDTH_PARAM` | 256 | CHI data width. **Not currently configurable** — 256 is the only value exercised. |
-| `CHIE_BE_WIDTH_PARAM` | 32 | Must equal `CHIE_DATA_WIDTH_PARAM/8`. |
-| `CHIE_POISON_WIDTH_PARAM` | 4 (**0** on RN-I) | Must equal `CHIE_DATA_WIDTH_PARAM/64`. |
-| `CHIE_DATACHECK_WIDTH_PARAM` | 32 (**0** on RN-I) | Must equal `CHIE_DATA_WIDTH_PARAM/8`. |
+| `CHIE_BE_WIDTH_PARAM` | `chie_pkg::BE_WIDTH` (32) | Derived as `DATA_WIDTH/8`; no longer settable independently. |
+| `CHIE_POISON_WIDTH_PARAM` | `chie_pkg::POISON_WIDTH` (4) | Derived as `DATA_WIDTH/64`; no longer settable independently. |
+| `CHIE_DATACHECK_WIDTH_PARAM` | `chie_pkg::DATACHECK_WIDTH` (32) | Derived as `DATA_WIDTH/8`; no longer settable independently. |
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | AXI data width on HN-I / RN-I / SN-F. |
-| `AXI4_PA_WIDTH_PARAM` | 44 on RN-I, **32** on HN-I and SN-F | AXI address width. |
+| `AXI4_PA_WIDTH_PARAM` | `opennoc_rni_pkg::PA_WIDTH` (44) on RN-I, **32** on HN-I and SN-F | AXI address width. Deliberately different: RN-I is a manager port, the others face memory. |
 | `HNF_MSHR_RNF_NUM_PARAM` + `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | How many coherent Requesters the Home serves, and their NodeIDs. |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | L3 geometry. Line size is fixed at 64 B. |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | Snoop filter geometry. |
 | `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Outstanding transactions per node. |
 | `XP_LCRD_NUM_PARAM` | 15 | Maximum outstanding L-Credits per channel. §14.2.1 caps this at 15; the counters are 4 bits wide, so a larger value will not fit. |
 
+### Types, not bit ranges
+
+Flits and AXI channels are **packed structs**, not vectors sliced by macro:
+
+```systemverilog
+input  chie_pkg::req_flit_s  rxreqflit;          // not [`CHIE_REQ_FLIT_RANGE]
+assign rxreq_valid_s0 = rxreqflit.opcode != chie_pkg::REQ_REQLCRDRETURN;
+```
+
+`rtl/include/chie_pkg.sv` carries the REQ/RSP/DAT/SNP layouts, the opcode enums
+for each channel, and enums for RespErr, Resp, Order, Size and MemAttr. Fields the
+spec overlays on one another — Table 13-6's Excl/SnoopMe, §13.10.24's SnpAttr/DoDWT,
+§13.10.54's DataSource/FwdState/DataPull, §13.10.11's FwdTxnID/StashLPID/VMIDExt —
+are `union packed`, which is what makes them one set of bits with several names
+rather than several fields.
+
+Three consequences worth knowing:
+
+- **Field access is tool-checked.** A TxnID slice can no longer be written with a
+  DBID value, and an opcode constant cannot be compared against another channel's
+  encoding — the enums are distinct types.
+- **The §16.1 widths are seeded by `` `define ``.** `CHIE_NID_WIDTH`,
+  `CHIE_REQ_ADDR_WIDTH` and `CHIE_DATA_WIDTH` default in `chie_pkg.sv` and are
+  overridable at compile time; each node's `*_param.svh` derives its own
+  `CHIE_*_WIDTH_PARAM` from them, so a node cannot disagree with the package.
+- **RSVDC is absent from the layout.** §16.1 makes its width implementation
+  defined and every node here declares it zero. `chie_flit_rsvdc_check` refuses a
+  build that declares otherwise rather than letting the layout silently shift.
+
+`chi_chan_if.sv` bundles one channel's link-layer signals (flit, FLITV, FLITPEND,
+LCRDV) with `tx`/`rx` modports. Node **port lists stay flat** — an integrator wires
+those — so the interface is for use inside a node.
+
 ### Sharp edges
 
 These are real, and none of them is checked at elaboration:
 
-- **The RN-I's CHI defaults deliberately differ** from the other three nodes —
-  NodeID width 11 vs 7, Poison and DataCheck 0 vs 4/32. A system built from
-  every node's defaults does **not** have consistent link widths. Set them
-  explicitly.
+- **The AXI address width differs by node** — 44 bits on RN-I (a manager port
+  carrying the full PA) against 32 on HN-I and SN-F (memory-side ports). That
+  one is deliberate: they are different buses. The **CHI** widths no longer
+  diverge — every node's `CHIE_*_WIDTH_PARAM` default now derives from
+  `chie_pkg`, so four nodes on one link can no longer default to different flit
+  widths the way they used to (RN-I once defaulted NodeID to 11 against the
+  others' 7, and Poison/DataCheck to 0 against 4/32).
 - **`*_MSHR_ENTRIES_WIDTH_PARAM` must be kept equal to `$clog2` of its
   `_NUM_PARAM` by hand.** Nothing checks it.
 - **The HN-F's QoS pool sizes are baked into a `HNF_MSHR_ENTRIES_NUM_PARAM == 32`
@@ -379,12 +416,16 @@ filed against this fork have been closed as *not a defect* on exactly that basis
 ├── doc/
 │   └── hnf/                   HN-F design overview + datapath diagram (Chinese)
 ├── rtl/
-│   ├── include/               Parameter macros and field/opcode definitions
-│   │   ├── chie_defines.svh       CHI E.b flit layouts and opcode constants
-│   │   ├── axi4_defines.svh       AXI4 channel field definitions
-│   │   └── {hnf,hni,rni,snf}_{param,defines}.v
+│   ├── include/               Types, parameter macros and field definitions
+│   │   ├── chie_pkg.sv            CHI E.b flit structs, opcode/Resp/Order enums
+│   │   ├── chi_chan_if.sv         One channel's flit/FLITV/FLITPEND/LCRDV bundle
+│   │   ├── opennoc_hnf_pkg.sv     HN-F's snoop routing envelope
+│   │   ├── opennoc_rni_pkg.sv     RN-I's AXI4 channel structs + PCrdGrant/B-resp
+│   │   ├── axi4_defines.svh       AXI4 field widths for HN-I and SN-F
+│   │   └── {hnf,hni,rni,snf}_{param,defines}.svh
 │   ├── misc/                  Shared modules: chi_link_handshake (Chapter 14 FSM),
-│   │                          crosspoint channels, FIFO, arbiters, BIQ
+│   │                          crosspoint channels, FIFO, arbiters, BIQ,
+│   │                          assert_checker, chie_flit_rsvdc_check
 │   ├── src/
 │   │   ├── hnf/               HN-F  (24 files) — link, MSHR, cache pipeline, SRAMs
 │   │   ├── hni/               HN-I  (10 files)

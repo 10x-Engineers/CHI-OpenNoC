@@ -23,39 +23,39 @@
 module hni_rxdat `HNI_PARAM
     (
     //global inputs
-    input wire clk,
-    input wire rst,
+    input  wire                 clk,
+    input  wire                 rst,
 
     //inputs from hni_link
-    input wire rxdatflitv,
-    input chie_pkg::dat_flit_s rxdatflit,
-    input wire rxdatflitpend,
+    input  wire                 rxdatflitv,
+    input  chie_pkg::dat_flit_s rxdatflit,
+    input  wire                 rxdatflitpend,
 
     //outputs to hni_link
-    output wire rxdat_lcrdv,
+    output wire                 rxdat_lcrdv,
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
-    input wire rxcrd_en,
+    input  wire                 rxcrd_en,
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    output wire rxdat_crd_cnt_full,
+    output wire                 rxdat_crd_cnt_full,
 
     //outputs to hni_data_buffer
-    output wire rxdat_valid_s0,
+    output wire                 rxdat_valid_s0,
     output chie_pkg::dat_flit_s rxdatflit_s0
     );
 
     //internal reg signals
-    logic                                             rxdatflitv_en_q;
-    logic  [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]            rxdat_crd_cnt_s1_q;
-    logic                                             rxdatcrdv_s1_q;
+    logic                                 rxdatflitv_en_q;
+    logic [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0] rxdat_crd_cnt_s1_q;
+    logic                                 rxdatcrdv_s1_q;
 
     //internal wire signals
-    wire                                            rxdat_crd_grant_sx;
-    wire                                            rxdat_crd_cnt_zero;
-    wire                                            rxdat_crd_cnt_upd_s0;
-    wire [`HNI_LL_DAT_CRD_CNT_RANGE]                rxdat_crd_cnt_nxt_s0;
-    wire                                            rxdatcrdv_ns_s0;
+    wire                                  rxdat_crd_grant_sx;
+    wire                                  rxdat_crd_cnt_zero;
+    wire                                  rxdat_crd_cnt_upd_s0;
+    wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]  rxdat_crd_cnt_nxt_s0;
+    wire                                  rxdatcrdv_ns_s0;
 
     //main function
     always_ff @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t

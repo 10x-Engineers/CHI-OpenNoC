@@ -22,174 +22,174 @@
 
 module hni `HNI_PARAM
     (
-    input wire CLK,
-    input wire RST,
+    input  wire                          CLK,
+    input  wire                          RST,
 
     //CHIE interface
-    output wire TXLINKACTIVEREQ,
-    input wire TXLINKACTIVEACK,
-    input wire RXLINKACTIVEREQ,
-    output wire RXLINKACTIVEACK,
-    output wire TXSACTIVE,
-    input wire RXSACTIVE,
+    output wire                          TXLINKACTIVEREQ,
+    input  wire                          TXLINKACTIVEACK,
+    input  wire                          RXLINKACTIVEREQ,
+    output wire                          RXLINKACTIVEACK,
+    output wire                          TXSACTIVE,
+    input  wire                          RXSACTIVE,
 
-    input wire RXREQFLITV,
-    input chie_pkg::req_flit_s RXREQFLIT,
-    input wire RXREQFLITPEND,
-    output wire RXREQLCRDV,
+    input  wire                          RXREQFLITV,
+    input  chie_pkg::req_flit_s          RXREQFLIT,
+    input  wire                          RXREQFLITPEND,
+    output wire                          RXREQLCRDV,
 
-    input wire RXRSPFLITV,
-    input chie_pkg::rsp_flit_s RXRSPFLIT,
-    input wire RXRSPFLITPEND,
-    output wire RXRSPLCRDV,
+    input  wire                          RXRSPFLITV,
+    input  chie_pkg::rsp_flit_s          RXRSPFLIT,
+    input  wire                          RXRSPFLITPEND,
+    output wire                          RXRSPLCRDV,
 
-    input wire RXDATFLITV,
-    input chie_pkg::dat_flit_s RXDATFLIT,
-    input wire RXDATFLITPEND,
-    output wire RXDATLCRDV,
+    input  wire                          RXDATFLITV,
+    input  chie_pkg::dat_flit_s          RXDATFLIT,
+    input  wire                          RXDATFLITPEND,
+    output wire                          RXDATLCRDV,
 
-    output wire TXRSPFLITV,
-    output chie_pkg::rsp_flit_s TXRSPFLIT,
-    output wire TXRSPFLITPEND,
-    input wire TXRSPLCRDV,
+    output wire                          TXRSPFLITV,
+    output chie_pkg::rsp_flit_s          TXRSPFLIT,
+    output wire                          TXRSPFLITPEND,
+    input  wire                          TXRSPLCRDV,
 
-    output wire TXDATFLITV,
-    output chie_pkg::dat_flit_s TXDATFLIT,
-    output wire TXDATFLITPEND,
-    input wire TXDATLCRDV,
+    output wire                          TXDATFLITV,
+    output chie_pkg::dat_flit_s          TXDATFLIT,
+    output wire                          TXDATFLITPEND,
+    input  wire                          TXDATLCRDV,
 
     //AXI interface
-    output wire [10:0] ARID,
+    output wire [10:0]                   ARID,
     output wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
-    output wire [7:0] ARLEN,
-    output wire [2:0] ARSIZE,
-    output wire [1:0] ARBURST,
-    output wire [0:0] ARLOCK,
-    output wire [3:0] ARCACHE,
-    output wire [2:0] ARPROT,
-    output wire [3:0] ARQOS,
-    output wire [3:0] ARREGION,
-    output wire ARVALID,
-    input wire ARREADY,
+    output wire [7:0]                    ARLEN,
+    output wire [2:0]                    ARSIZE,
+    output wire [1:0]                    ARBURST,
+    output wire [0:0]                    ARLOCK,
+    output wire [3:0]                    ARCACHE,
+    output wire [2:0]                    ARPROT,
+    output wire [3:0]                    ARQOS,
+    output wire [3:0]                    ARREGION,
+    output wire                          ARVALID,
+    input  wire                          ARREADY,
 
-    input wire [10:0] RID,
-    input wire [`AXI4_RDATA_WIDTH-1:0] RDATA,
-    input wire [1:0] RRESP,
-    input wire RLAST,
-    input wire RVALID,
-    output wire RREADY,
+    input  wire [10:0]                   RID,
+    input  wire [`AXI4_RDATA_WIDTH-1:0]  RDATA,
+    input  wire [1:0]                    RRESP,
+    input  wire                          RLAST,
+    input  wire                          RVALID,
+    output wire                          RREADY,
 
-    output wire [10:0] AWID,
+    output wire [10:0]                   AWID,
     output wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
-    output wire [7:0] AWLEN,
-    output wire [2:0] AWSIZE,
-    output wire [1:0] AWBURST,
-    output wire [0:0] AWLOCK,
-    output wire [3:0] AWCACHE,
-    output wire [2:0] AWPROT,
-    output wire [3:0] AWQOS,
-    output wire [3:0] AWREGION,
-    output wire AWVALID,
-    input wire AWREADY,
+    output wire [7:0]                    AWLEN,
+    output wire [2:0]                    AWSIZE,
+    output wire [1:0]                    AWBURST,
+    output wire [0:0]                    AWLOCK,
+    output wire [3:0]                    AWCACHE,
+    output wire [2:0]                    AWPROT,
+    output wire [3:0]                    AWQOS,
+    output wire [3:0]                    AWREGION,
+    output wire                          AWVALID,
+    input  wire                          AWREADY,
 
-    output wire [`AXI4_WDATA_WIDTH-1:0] WDATA,
-    output wire [`AXI4_WSTRB_WIDTH-1:0] WSTRB,
-    output wire WLAST,
-    output wire WVALID,
-    input wire WREADY,
+    output wire [`AXI4_WDATA_WIDTH-1:0]  WDATA,
+    output wire [`AXI4_WSTRB_WIDTH-1:0]  WSTRB,
+    output wire                          WLAST,
+    output wire                          WVALID,
+    input  wire                          WREADY,
 
-    input wire [10:0] BID,
-    input wire [1:0] BRESP,
-    input wire BVALID,
-    output wire BREADY
+    input  wire [10:0]                   BID,
+    input  wire [1:0]                    BRESP,
+    input  wire                          BVALID,
+    output wire                          BREADY
     );
 
-    wire                                        rxreq_retry_enable_s0;
-    wire                                        txrsp_retryack_won_s1;
-    wire                                        rxreq_valid_s0;
-    chie_pkg::req_flit_s                 rxreqflit_s0;
-    wire                                        rxrsp_valid_s0;
-    chie_pkg::rsp_flit_s                 rxrspflit_s0;
-    wire                                        rxreq_alloc_en_s0;
-    chie_pkg::req_flit_s                 rxreq_alloc_flit_s0;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          mshr_entry_idx_alloc_s0;
-    wire                                        qos_txrsp_retryack_valid_s1;
-    chie_pkg::retry_ackq_s           qos_txrsp_retryack_fifo_s1;
-    wire                                        qos_txrsp_pcrdgnt_valid_s2;
-    chie_pkg::pcrdgrantq_s           qos_txrsp_pcrdgnt_fifo_s2;
-    wire                                        mshr_entry_sleep_s1;   
-    wire                                        txrsp_valid_sx_q;
-    wire [3:0]         txrsp_qos_sx;
-    wire [chie_pkg::NID_WIDTH-1:0]       txrsp_tgtid_sx;
-    wire [11:0]       txrsp_txnid_sx;
-    chie_pkg::rsp_opcode_e      txrsp_opcode_sx;
-    chie_pkg::resp_err_e     txrsp_resperr_sx;
-    chie_pkg::resp_state_e        txrsp_resp_sx;
-    wire [11:0]        txrsp_dbid_sx;
-    wire    txrsp_tracetag_sx;
-    wire                                        txrsp_pcrdgnt_won_s2;
-    wire                                        txrsp_won_sx;
-    wire                                        txrsp_fp_won_s1;
-    wire                                        rxdat_valid_s0;
-    chie_pkg::dat_flit_s                 rxdatflit_s0;
-    wire                                        dbf_txdat_valid_sx;
-    chie_pkg::dat_flit_s                 txdat_flit;
-    wire                                        txdat_dbf_rdy_s1;
-    wire                                        txdat_dbf_won_sx;
-    wire                                        mshr_retired_valid_sx;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          mshr_retired_idx_sx;
-    wire                                        excl_pass_s1;
-    wire                                        excl_fail_s1;
-    wire                                        rxreq_dbf_en_s0;
-    wire [10:0]                                 rxreq_dbf_axid_s0;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          rxreq_dbf_entry_idx_s0;
-    wire                                        rxreq_dbf_wr_s0;  
-    wire                                        rxreq_dbf_wrzero_s0;
-    wire                                        mshr_txdat_be_ovr_en_sx;
-    wire [chie_pkg::BE_WIDTH-1:0]          mshr_txdat_be_ovr_sx;
-    wire [chie_pkg::REQ_ADDR_WIDTH-1:0]        rxreq_dbf_addr_s0;
-    wire                                        rxreq_dbf_device_s0;
-    chie_pkg::size_e        rxreq_dbf_size_s0; 
-    wire [`AXI4_AWLEN_WIDTH-1:0]                rxreq_dbf_axlen_s0;
-    wire                                        mshr_rdat_en_sx;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          mshr_rdat_entry_idx_sx;
-    wire                                        mshr_txdat_en_sx;
-    wire [chie_pkg::NID_WIDTH-1:0]       mshr_txdat_tgtid_sx;
-    wire [11:0]       mshr_txdat_txnid_sx;
-    chie_pkg::dat_opcode_e      mshr_txdat_opcode_sx;
-    chie_pkg::resp_state_e        mshr_txdat_resp_sx; 
-    chie_pkg::resp_err_e     mshr_txdat_resperr_sx;
-    wire [11:0]        mshr_txdat_dbid_sx;  
-    wire [1:0]      mshr_txdat_dataid_sx;
-    wire    mshr_txdat_tracetag_sx;
-    wire                                        mshr_wdat_en_sx;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          mshr_wdat_entry_idx_sx;
-    wire                                        dbf_wdat_last; 
-    wire                                        mshr_txdat_won_sx;
-    wire                                        dbf_rxdat_valid_s0;
-    wire [11:0]       dbf_rxdat_txnid_s0;
-    chie_pkg::dat_opcode_e      dbf_rxdat_opcode_s0;
-    wire [1:0]      dbf_rxdat_dataid_s0;
-    wire                                        dbf_rvalid_sx;
-    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]          dbf_rvalid_entry_idx_sx;
-    wire [3:0]                                  dbf_cdmask_sx;
+    wire                                rxreq_retry_enable_s0;
+    wire                                txrsp_retryack_won_s1;
+    wire                                rxreq_valid_s0;
+    chie_pkg::req_flit_s                rxreqflit_s0;
+    wire                                rxrsp_valid_s0;
+    chie_pkg::rsp_flit_s                rxrspflit_s0;
+    wire                                rxreq_alloc_en_s0;
+    chie_pkg::req_flit_s                rxreq_alloc_flit_s0;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_entry_idx_alloc_s0;
+    wire                                qos_txrsp_retryack_valid_s1;
+    chie_pkg::retry_ackq_s              qos_txrsp_retryack_fifo_s1;
+    wire                                qos_txrsp_pcrdgnt_valid_s2;
+    chie_pkg::pcrdgrantq_s              qos_txrsp_pcrdgnt_fifo_s2;
+    wire                                mshr_entry_sleep_s1;
+    wire                                txrsp_valid_sx_q;
+    wire [3:0]                          txrsp_qos_sx;
+    wire [chie_pkg::NID_WIDTH-1:0]      txrsp_tgtid_sx;
+    wire [11:0]                         txrsp_txnid_sx;
+    chie_pkg::rsp_opcode_e              txrsp_opcode_sx;
+    chie_pkg::resp_err_e                txrsp_resperr_sx;
+    chie_pkg::resp_state_e              txrsp_resp_sx;
+    wire [11:0]                         txrsp_dbid_sx;
+    wire                                txrsp_tracetag_sx;
+    wire                                txrsp_pcrdgnt_won_s2;
+    wire                                txrsp_won_sx;
+    wire                                txrsp_fp_won_s1;
+    wire                                rxdat_valid_s0;
+    chie_pkg::dat_flit_s                rxdatflit_s0;
+    wire                                dbf_txdat_valid_sx;
+    chie_pkg::dat_flit_s                txdat_flit;
+    wire                                txdat_dbf_rdy_s1;
+    wire                                txdat_dbf_won_sx;
+    wire                                mshr_retired_valid_sx;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_retired_idx_sx;
+    wire                                excl_pass_s1;
+    wire                                excl_fail_s1;
+    wire                                rxreq_dbf_en_s0;
+    wire [10:0]                         rxreq_dbf_axid_s0;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  rxreq_dbf_entry_idx_s0;
+    wire                                rxreq_dbf_wr_s0;
+    wire                                rxreq_dbf_wrzero_s0;
+    wire                                mshr_txdat_be_ovr_en_sx;
+    wire [chie_pkg::BE_WIDTH-1:0]       mshr_txdat_be_ovr_sx;
+    wire [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s0;
+    wire                                rxreq_dbf_device_s0;
+    chie_pkg::size_e                    rxreq_dbf_size_s0;
+    wire [`AXI4_AWLEN_WIDTH-1:0]        rxreq_dbf_axlen_s0;
+    wire                                mshr_rdat_en_sx;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_rdat_entry_idx_sx;
+    wire                                mshr_txdat_en_sx;
+    wire [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_tgtid_sx;
+    wire [11:0]                         mshr_txdat_txnid_sx;
+    chie_pkg::dat_opcode_e              mshr_txdat_opcode_sx;
+    chie_pkg::resp_state_e              mshr_txdat_resp_sx;
+    chie_pkg::resp_err_e                mshr_txdat_resperr_sx;
+    wire [11:0]                         mshr_txdat_dbid_sx;
+    wire [1:0]                          mshr_txdat_dataid_sx;
+    wire                                mshr_txdat_tracetag_sx;
+    wire                                mshr_wdat_en_sx;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_wdat_entry_idx_sx;
+    wire                                dbf_wdat_last;
+    wire                                mshr_txdat_won_sx;
+    wire                                dbf_rxdat_valid_s0;
+    wire [11:0]                         dbf_rxdat_txnid_s0;
+    chie_pkg::dat_opcode_e              dbf_rxdat_opcode_s0;
+    wire [1:0]                          dbf_rxdat_dataid_s0;
+    wire                                dbf_rvalid_sx;
+    wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  dbf_rvalid_entry_idx_sx;
+    wire [3:0]                          dbf_cdmask_sx;
 
-    wire                                        hni_rxcrd_en;
-    wire                                        hni_lcrd_return_en;
-    wire                                        hni_txlink_run;
-    wire                                        rxreq_crd_cnt_full;
-    wire                                        rxrsp_crd_cnt_full;
-    wire                                        rxdat_crd_cnt_full;
-    wire                                        txrsp_flit_avail;
-    wire                                        txdat_flit_avail;
+    wire                                hni_rxcrd_en;
+    wire                                hni_lcrd_return_en;
+    wire                                hni_txlink_run;
+    wire                                rxreq_crd_cnt_full;
+    wire                                rxrsp_crd_cnt_full;
+    wire                                rxdat_crd_cnt_full;
+    wire                                txrsp_flit_avail;
+    wire                                txdat_flit_avail;
 
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
     // credits to be returned before deasserting LINKACTIVEACK".
-    wire hni_rxcrd_cnt_full = rxreq_crd_cnt_full & rxrsp_crd_cnt_full & rxdat_crd_cnt_full;
+    wire                                hni_rxcrd_cnt_full = rxreq_crd_cnt_full & rxrsp_crd_cnt_full & rxdat_crd_cnt_full;
     // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
     // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
-    wire hni_txflit_avail   = txrsp_flit_avail | txdat_flit_avail;
-    wire hni_qos_active_sx;
+    wire                                hni_txflit_avail   = txrsp_flit_avail | txdat_flit_avail;
+    wire                                hni_qos_active_sx;
 
     chi_link_handshake u_chi_link_handshake(
         .clk                (CLK                ),

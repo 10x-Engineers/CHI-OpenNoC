@@ -21,36 +21,36 @@
 module rni_bcount_ctl
     (
     // global input
-    input wire clk,
-    input wire rst,
+    input  wire          clk,
+    input  wire          rst,
 
     // input
-    input wire rq_valid,
-    input wire wd_valid,
-    input wire [16-1:0] bcount_vec,
-    input wire [4-1:0] ctmask,
-    input wire [4-1:0] pdmask,
+    input  wire          rq_valid,
+    input  wire          wd_valid,
+    input  wire [16-1:0] bcount_vec,
+    input  wire [4-1:0]  ctmask,
+    input  wire [4-1:0]  pdmask,
 
     // output
-    output wire [4-1:0] fdmask,
-    output wire bk_done,
-    output wire rq_done
+    output wire [4-1:0]  fdmask,
+    output wire          bk_done,
+    output wire          rq_done
     );
 
     // wire
-    wire [4-1:0]                fdmask_nxt;
-    wire                        bcount_upd;
-    wire [4-1:0]                bcount_nxt;
-    wire [4-1:0]                bcount_int;
-    wire                        bcount_zero;
-    wire [4-1:0]                pdmask_nxt;
-    wire                        fdmask_upd;
-    wire                        pdmask_upd;
+    wire [4-1:0]  fdmask_nxt;
+    wire          bcount_upd;
+    wire [4-1:0]  bcount_nxt;
+    wire [4-1:0]  bcount_int;
+    wire          bcount_zero;
+    wire [4-1:0]  pdmask_nxt;
+    wire          fdmask_upd;
+    wire          pdmask_upd;
 
     // reg
-    logic  [4-1:0]                fdmask_q;
-    logic  [4-1:0]                bcount_q;
-    logic  [4-1:0]                pdmask_q;
+    logic [4-1:0] fdmask_q;
+    logic [4-1:0] bcount_q;
+    logic [4-1:0] pdmask_q;
 
     // main function
     // pdmask update

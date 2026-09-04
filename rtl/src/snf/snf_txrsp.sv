@@ -24,66 +24,66 @@
 module snf_txrsp `SNF_PARAM
     (
         //global inputs
-        input  wire                            clk,
-        input  wire                            rst,
+        input  wire                           clk,
+        input  wire                           rst,
 
         //inputs from snf_link
-        input  wire                            txrsp_lcrdv,
-        input  wire                            tx_deactivate,
-        input  wire                            txlink_run,
+        input  wire                           txrsp_lcrdv,
+        input  wire                           tx_deactivate,
+        input  wire                           txlink_run,
 
-        input  wire                            qos_txrsp_retryack_valid_s1,
-        input chie_pkg::retry_ackq_s qos_txrsp_retryack_fifo_s1,
+        input  wire                           qos_txrsp_retryack_valid_s1,
+        input  chie_pkg::retry_ackq_s         qos_txrsp_retryack_fifo_s1,
 
-        input  wire                            qos_txrsp_pcrdgnt_valid_s2,
-        input chie_pkg::pcrdgrantq_s qos_txrsp_pcrdgnt_fifo_s2,
+        input  wire                           qos_txrsp_pcrdgnt_valid_s2,
+        input  chie_pkg::pcrdgrantq_s         qos_txrsp_pcrdgnt_fifo_s2,
 
         //inputs from snf_mshr
-        input  wire                                 txrsp_valid_sx,
-        input  wire [3:0]                           txrsp_qos_sx,
-        input  wire [chie_pkg::NID_WIDTH-1:0]       txrsp_tgtid_sx,
-        input  wire [11:0]                          txrsp_txnid_sx,
-        input  wire [4:0]                           txrsp_opcode_sx,
-        input  wire [1:0]                           txrsp_resperr_sx,
-        input  wire [2:0]                           txrsp_resp_sx,
-        input  wire [11:0]                          txrsp_dbid_sx,
-        input  wire                                 txrsp_tracetag_sx,
-        input  wire [chie_pkg::NID_WIDTH-1:0]       txrsp_srcid_sx,
+        input  wire                           txrsp_valid_sx,
+        input  wire [3:0]                     txrsp_qos_sx,
+        input  wire [chie_pkg::NID_WIDTH-1:0] txrsp_tgtid_sx,
+        input  wire [11:0]                    txrsp_txnid_sx,
+        input  wire [4:0]                     txrsp_opcode_sx,
+        input  wire [1:0]                     txrsp_resperr_sx,
+        input  wire [2:0]                     txrsp_resp_sx,
+        input  wire [11:0]                    txrsp_dbid_sx,
+        input  wire                           txrsp_tracetag_sx,
+        input  wire [chie_pkg::NID_WIDTH-1:0] txrsp_srcid_sx,
 
         //outputs to snf_link
-        output logic                           txrspflitv,
-        output chie_pkg::rsp_flit_s            txrspflit,
-        output wire                            txrspflitpend,
+        output logic                          txrspflitv,
+        output chie_pkg::rsp_flit_s           txrspflit,
+        output wire                           txrspflitpend,
 
         //outputs to snf_qos
-        output wire                            txrsp_retryack_won_s1,
-        output wire                            txrsp_pcrdgnt_won_s2,
+        output wire                           txrsp_retryack_won_s1,
+        output wire                           txrsp_pcrdgnt_won_s2,
 
         //outputs to snf_mshr
-        output wire                            txrsp_won_sx
+        output wire                           txrsp_won_sx
     );
 
     //internal reg signals
-    logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]            txrsp_crd_cnt_q;
+    logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0] txrsp_crd_cnt_q;
 
-    chie_pkg::rsp_flit_s                             txrspflit_retyack_s1;
-    chie_pkg::rsp_flit_s                             txrspflit_pcrdgnt_s2;
-    chie_pkg::rsp_flit_s                             txrspflit_mshr_sx1;
-    logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]            rsp_crd_cnt_ns_s0;
-    wire                                           txrsp_crd_avail_s1;
-    wire                                           txrsp_busy_sx;
-    wire                                           txrspcrdv_s0;
-    wire                                           txrsp_req_s0;
-    wire                                           txrspflitv_s0;
-    chie_pkg::rsp_flit_s                           txrspflit_s0;
-    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_s1;
-    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_inc_s0;
-    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]           rsp_crd_cnt_dec_s0;
-    wire                                           update_rsp_crd_cnt_s0;
-    wire                                           txrsp_crd_cnt_inc_sx;
-    wire                                           txrsp_crd_cnt_dec_sx;
-    wire                                           rsp_crd_cnt_not_zero_sx;
-    wire                                           txrsp_lcrd_rtn_s0;
+    chie_pkg::rsp_flit_s                  txrspflit_retyack_s1;
+    chie_pkg::rsp_flit_s                  txrspflit_pcrdgnt_s2;
+    chie_pkg::rsp_flit_s                  txrspflit_mshr_sx1;
+    logic [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0] rsp_crd_cnt_ns_s0;
+    wire                                  txrsp_crd_avail_s1;
+    wire                                  txrsp_busy_sx;
+    wire                                  txrspcrdv_s0;
+    wire                                  txrsp_req_s0;
+    wire                                  txrspflitv_s0;
+    chie_pkg::rsp_flit_s                  txrspflit_s0;
+    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_s1;
+    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_inc_s0;
+    wire [`SNF_LL_RSP_CRD_CNT_WIDTH-1:0]  rsp_crd_cnt_dec_s0;
+    wire                                  update_rsp_crd_cnt_s0;
+    wire                                  txrsp_crd_cnt_inc_sx;
+    wire                                  txrsp_crd_cnt_dec_sx;
+    wire                                  rsp_crd_cnt_not_zero_sx;
+    wire                                  txrsp_lcrd_rtn_s0;
 
     //arb and lcrd_avail
     assign rsp_crd_cnt_not_zero_sx     = (txrsp_crd_cnt_q != 0);
@@ -203,7 +203,7 @@ module snf_txrsp `SNF_PARAM
     assign rsp_crd_cnt_dec_s0      = (rsp_crd_cnt_s1 - 1'b1);
 
     always_comb begin: rsp_crd_cnt_ns_s0_logic_c
-        casez({txrsp_crd_cnt_inc_sx, txrsp_crd_cnt_dec_sx})
+        unique case({txrsp_crd_cnt_inc_sx, txrsp_crd_cnt_dec_sx})
             2'b00:
                 rsp_crd_cnt_ns_s0   = txrsp_crd_cnt_q;     // hold
             2'b01:

@@ -29,26 +29,21 @@
 `define HNI_AXI4_AXADDR_WIDTH              AXI4_PA_WIDTH_PARAM
 
 //hni_dbf
-`define HNI_MASK_CD_WIDTH 4 
-`define HNI_MASK_CD_LSB 0 
-`define HNI_MASK_CD_MSB 3 
-`define HNI_MASK_CD_RANGE 3:0 
-`define HNI_MASK_WL_WIDTH 4 
-`define HNI_MASK_WL_LSB 0 
-`define HNI_MASK_WL_MSB 3 
-`define HNI_MASK_WL_RANGE 3:0
-`define HNI_MASK_RD_WIDTH 4 
-`define HNI_MASK_RD_LSB 0 
-`define HNI_MASK_RD_MSB 3 
-`define HNI_MASK_RD_RANGE 3:0 
-`define HNI_MASK_PD_WIDTH 4 
-`define HNI_MASK_PD_LSB 0 
-`define HNI_MASK_PD_MSB 3 
-`define HNI_MASK_PD_RANGE 3:0
+`define HNI_MASK_CD_WIDTH                  4
+`define HNI_MASK_CD_LSB                    0
+`define HNI_MASK_CD_MSB                    3
+`define HNI_MASK_WL_WIDTH                  4
+`define HNI_MASK_WL_LSB                    0
+`define HNI_MASK_WL_MSB                    3
+`define HNI_MASK_RD_WIDTH                  4
+`define HNI_MASK_RD_LSB                    0
+`define HNI_MASK_RD_MSB                    3
+`define HNI_MASK_PD_WIDTH                  4
+`define HNI_MASK_PD_LSB                    0
+`define HNI_MASK_PD_MSB                    3
 
 //hni_link_req_channel_lcredit
 `define HNI_LL_REQ_CRD_CNT_WIDTH           4
-`define HNI_LL_REQ_CRD_CNT_RANGE           3:0
 `define HNI_LL_REQ_CRD_CNT_MSB             3
 `define HNI_LL_REQ_CRD_CNT_LSB             0
 `define HNI_LL_REQ_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
@@ -58,14 +53,12 @@
 
 //hni_link_rsp_channel_lcredit
 `define HNI_LL_RSP_CRD_CNT_WIDTH           4
-`define HNI_LL_RSP_CRD_CNT_RANGE           3:0
 `define HNI_LL_RSP_CRD_CNT_MSB             3
 `define HNI_LL_RSP_CRD_CNT_LSB             0
 `define HNI_LL_RSP_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
 
 //hni_link_dat_channel_lcredit
 `define HNI_LL_DAT_CRD_CNT_WIDTH           4
-`define HNI_LL_DAT_CRD_CNT_RANGE           3:0
 `define HNI_LL_DAT_CRD_CNT_MSB             3
 `define HNI_LL_DAT_CRD_CNT_LSB             0
 `define HNI_LL_DAT_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM

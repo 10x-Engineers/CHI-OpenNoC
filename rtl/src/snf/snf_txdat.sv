@@ -24,45 +24,45 @@
 module snf_txdat `SNF_PARAM
     (
         //global inputs
-        input  wire                  clk,
-        input  wire                  rst,
+        input  wire                 clk,
+        input  wire                 rst,
 
         //inputs from snf_link
-        input  wire                  txdat_lcrdv,
-        input  wire                  tx_deactivate,
-        input  wire                  txlink_run,
+        input  wire                 txdat_lcrdv,
+        input  wire                 tx_deactivate,
+        input  wire                 txlink_run,
 
         //inputs from snf_data_buffer
-        input  wire                  dbf_txdat_valid_sx,
-        input  chie_pkg::dat_flit_s  txdat_flit,
+        input  wire                 dbf_txdat_valid_sx,
+        input  chie_pkg::dat_flit_s txdat_flit,
 
         //outputs to snf_link
-        output logic                 txdatflitv,
-        output chie_pkg::dat_flit_s  txdatflit,
-        output wire                  txdatflitpend,
+        output logic                txdatflitv,
+        output chie_pkg::dat_flit_s txdatflit,
+        output wire                 txdatflitpend,
 
         //outputs to snf_dbf
-        output wire                  txdat_dbf_rdy_s1,
-        output wire                  txdat_dbf_won_sx
+        output wire                 txdat_dbf_rdy_s1,
+        output wire                 txdat_dbf_won_sx
     );
 
     //internal reg signals
-    logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]           txdat_crd_cnt_q;
-    logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]           dat_crd_cnt_ns_s0;
-    logic                                           txdat_dbf_won_q;
+    logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0] txdat_crd_cnt_q;
+    logic [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
+    logic                                 txdat_dbf_won_q;
 
     //internal wire signals
-    wire                                          dat_crd_cnt_not_zero_sx;
-    wire                                          txdat_lcrd_rtn_s0;
-    wire                                          txdat_crd_avail_s1;
-    wire                                          txdatcrdv_s0;
-    wire                                          txdat_crd_cnt_inc_sx;
-    wire                                          txdat_crd_cnt_dec_sx;
-    wire                                          update_dat_crd_cnt_s0;
-    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_s1;
-    wire                                          txdat_send_ok_sx;
-    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_inc_s0;
-    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]          dat_crd_cnt_dec_s0;
+    wire                                  dat_crd_cnt_not_zero_sx;
+    wire                                  txdat_lcrd_rtn_s0;
+    wire                                  txdat_crd_avail_s1;
+    wire                                  txdatcrdv_s0;
+    wire                                  txdat_crd_cnt_inc_sx;
+    wire                                  txdat_crd_cnt_dec_sx;
+    wire                                  update_dat_crd_cnt_s0;
+    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]  dat_crd_cnt_s1;
+    wire                                  txdat_send_ok_sx;
+    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]  dat_crd_cnt_inc_s0;
+    wire [`SNF_LL_DAT_CRD_CNT_WIDTH-1:0]  dat_crd_cnt_dec_s0;
 
     //main function
     assign dat_crd_cnt_not_zero_sx = (txdat_crd_cnt_q != {`SNF_LL_DAT_CRD_CNT_WIDTH{1'b0}});
@@ -121,7 +121,7 @@ module snf_txdat `SNF_PARAM
     assign dat_crd_cnt_dec_s0      = (dat_crd_cnt_s1 - 1'b1);
 
     always_comb begin: dat_crd_cnt_ns_s0_logic_c
-        casez({txdat_crd_cnt_inc_sx, txdat_crd_cnt_dec_sx})
+        unique case({txdat_crd_cnt_inc_sx, txdat_crd_cnt_dec_sx})
             2'b00:
                 dat_crd_cnt_ns_s0 = txdat_crd_cnt_q;     // hold
             2'b01:
