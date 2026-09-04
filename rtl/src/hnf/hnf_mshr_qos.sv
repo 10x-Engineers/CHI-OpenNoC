@@ -130,6 +130,8 @@ module hnf_mshr_qos `HNF_PARAM
     wire                                             qos_l_can_alloc_s0;
     wire                                             li_req_dyn_alloc_s0;
     wire                                             li_req_static_alloc_s0;
+    wire                                             li_req_static_avail_s0;
+    wire                                             li_req_noalloc_s0;
     wire                                             li_req_dyn_alloc_fail_s0;
     wire [`CHIE_RSP_FLIT_PCRDTYPE_WIDTH-1:0]         li_mshr_rxreq_pcrdtype_s0;
     wire                                             mshr_dyn_or_seq_alloc_s0;
@@ -360,13 +362,30 @@ module hnf_mshr_qos `HNF_PARAM
            (qpc_med_s0   & qos_m_can_alloc_s0 ) | (qpc_low_s0   & qos_l_can_alloc_s0 ) ;
 
     //qos allocate logic
-    assign li_req_dyn_s0            = li_mshr_rxreq_valid_s0 & li_mshr_rxreq_allowretry_s0;
-    assign li_req_static_s0         = li_mshr_rxreq_valid_s0 & ~li_mshr_rxreq_allowretry_s0;
+    // Sec 13.3 (p.13-396) makes a Link flit link maintenance rather than a protocol
+    // packet and Sec 13.10.13 (p.13-420, MUST) forces its TxnID to zero, so a
+    // ReqLCrdReturn is not a transaction and owns no entry; Sec 4.5.1 (p.4-197)
+    // gives PCrdReturn and PrefetchTgt no completion, so neither owns one either.
+    // Their AllowRetry is zero or unconstrained (Table A-2 p.A-483), which is what
+    // put them on the static path below, spending slots reserved for the retried
+    // requests that path exists for. Dropped here, as snf_rxreq and hni_mshr
+    // already drop them.
+    assign li_req_noalloc_s0        = (li_mshr_rxreq_opcode_s0 == `CHIE_REQLCRDRETURN)
+                                    | (li_mshr_rxreq_opcode_s0 == `CHIE_PCRDRETURN)
+                                    | (li_mshr_rxreq_opcode_s0 == `CHIE_PREFETCHTGT);
+
+    assign li_req_dyn_s0            = li_mshr_rxreq_valid_s0 & li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
+    assign li_req_static_s0         = li_mshr_rxreq_valid_s0 & ~li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
 
     assign li_req_dyn_alloc_s0      = li_req_dyn_s0 & li_req_qos_can_alloc_s0 & (li_mshr_rxreq_opcode_s0 != `SF_EVICT);
     assign li_req_dyn_alloc_fail_s0 = li_req_dyn_s0 & ~li_req_qos_can_alloc_s0;
 
-    assign li_req_static_alloc_s0   = li_req_static_s0 & !(li_mshr_rxreq_opcode_s0 == `SF_EVICT);
+    // The static path has an occupancy check for the same reason the dynamic one
+    // has li_req_qos_can_alloc_s0: with none, mshr_static_idx_alloc_s0 falls
+    // through to its initial 0 and hnf_mshr_ctl's mshr_can_alloc_entry_s0 -- which
+    // compares the index, not the pointer -- allocates entry 0 over its occupant.
+    assign li_req_static_avail_s0   = |mshr_static_entry_idx_ptr_s0;
+    assign li_req_static_alloc_s0   = li_req_static_s0 & li_req_static_avail_s0 & !(li_mshr_rxreq_opcode_s0 == `SF_EVICT);
 
     assign li_seq_alloc_s0          = li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == `SF_EVICT) && qos_seq_pool_avail_s0;
 

@@ -210,11 +210,13 @@ module hnf_link_rxreq_parse `HNF_PARAM
 `ifdef DISPLAY_FATAL
     // hnf_mshr_ctl classifies every admitted opcode and answers an unserviced one
     // with Sec 9.1's (p.9-334) NDERR, which is what Sec 4.5.1 (p.4-197, MUST)
-    // requires of every transaction but PCrdReturn and PrefetchTgt -- so the only
-    // opcode this rejects is the link flit, which FLITV must never carry
-    // (Sec 13.11 p.13-442).
+    // requires of every transaction but PCrdReturn and PrefetchTgt. A link flit is
+    // carried on FLITV like any other -- Sec 13.3 (p.13-396) makes it a flit, and
+    // Table 14-2 (p.14-450, MUST) has the Transmitter send one per credit on
+    // entering DEACTIVATE -- so the only thing left to reject is TxnID, which
+    // Sec 13.10.13 (p.13-420, MUST) requires to be zero in a link flit.
     always_comb begin
-        `display_fatal( (!((rxreqflitv == 1'b1))) || (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] != `CHIE_REQLCRDRETURN),$sformatf("Fatal info: RXREQ received a link flit with FLITV asserted, opcode: %h",rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE]));
+        `display_fatal( (!((rxreqflitv == 1'b1) && (rxreqflit[`CHIE_REQ_FLIT_OPCODE_RANGE] == `CHIE_REQLCRDRETURN))) || (rxreqflit[`CHIE_REQ_FLIT_TXNID_RANGE] == {`CHIE_REQ_FLIT_TXNID_WIDTH{1'b0}}),$sformatf("Fatal info: RXREQ received a link flit with a non-zero TxnID: %h",rxreqflit[`CHIE_REQ_FLIT_TXNID_RANGE]));
     end
 `endif
 endmodule
