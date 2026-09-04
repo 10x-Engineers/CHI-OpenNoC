@@ -58,6 +58,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     wire                                rxrsp_crd_grant_s0;
     wire [`HNF_LCRD_RSP_CNT_WIDTH-1:0]  rxrsp_crd_cnt_nxt_s0;
     wire                                rxrspcrdv_ns_s0;
+    wire                                rxrsp_link_flit_s0;
 
     //main function
     //receive rxrspflitpend
@@ -71,15 +72,20 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     end
 
     //rxrsp decode
-    assign li_mshr_rxrsp_valid_s0      = (rxrspflitv == 1'b1);
-    assign li_mshr_rxrsp_srcid_s0      = (rxrspflitv == 1'b1)? rxrspflit.srcid     :'0;
-    assign li_mshr_rxrsp_txnid_s0      = (rxrspflitv == 1'b1)? rxrspflit.txnid     :'0;
-    assign li_mshr_rxrsp_opcode_s0     = (rxrspflitv == 1'b1)? rxrspflit.opcode    :chie_pkg::RSP_RSPLCRDRETURN;
-    assign li_mshr_rxrsp_resp_s0       = (rxrspflitv == 1'b1)? rxrspflit.resp      :chie_pkg::RESP_I;
-    assign li_mshr_rxrsp_resperr_s0    = (rxrspflitv == 1'b1)? rxrspflit.resperr   :chie_pkg::RESP_ERR_NORM_OK;
-    assign li_mshr_rxrsp_fwdstate_s0   = (rxrspflitv == 1'b1)? rxrspflit.fwdstate  :'0;
-    assign li_mshr_rxrsp_dbid_s0       = (rxrspflitv == 1'b1)? rxrspflit.dbid      :'0;
-    assign li_mshr_rxrsp_pcrdtype_s0   = (rxrspflitv == 1'b1)? rxrspflit.pcrdtype  :'0;
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no response, only the L-Credit it returns, so the
+    // credit accounting below is the only thing that may see it.
+    assign rxrsp_link_flit_s0          = (rxrspflitv == 1'b1) &&
+                                         (rxrspflit.opcode == chie_pkg::RSP_RSPLCRDRETURN);
+    assign li_mshr_rxrsp_valid_s0      = (rxrspflitv == 1'b1) && !rxrsp_link_flit_s0;
+    assign li_mshr_rxrsp_srcid_s0      = li_mshr_rxrsp_valid_s0? rxrspflit.srcid     :'0;
+    assign li_mshr_rxrsp_txnid_s0      = li_mshr_rxrsp_valid_s0? rxrspflit.txnid     :'0;
+    assign li_mshr_rxrsp_opcode_s0     = li_mshr_rxrsp_valid_s0? rxrspflit.opcode    :chie_pkg::RSP_RSPLCRDRETURN;
+    assign li_mshr_rxrsp_resp_s0       = li_mshr_rxrsp_valid_s0? rxrspflit.resp      :chie_pkg::RESP_I;
+    assign li_mshr_rxrsp_resperr_s0    = li_mshr_rxrsp_valid_s0? rxrspflit.resperr   :chie_pkg::RESP_ERR_NORM_OK;
+    assign li_mshr_rxrsp_fwdstate_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.fwdstate  :'0;
+    assign li_mshr_rxrsp_dbid_s0       = li_mshr_rxrsp_valid_s0? rxrspflit.dbid      :'0;
+    assign li_mshr_rxrsp_pcrdtype_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.pcrdtype  :'0;
 
     //if lcrd is zero
     assign rxrsp_crd_cnt_zero = (rxrsp_crd_cnt_s1_q == {`HNF_LCRD_RSP_CNT_WIDTH{1'b0}});
@@ -87,10 +93,10 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     // A credit returned in the cycle the pool reads empty is re-granted at once.
     // Returns are counted even when rxcrd_en is low, or the pool could never
     // refill for a re-activation after a DEACTIVATE.
-    assign rxrsp_crd_grant_s0   = rxcrd_en & ((~rxrsp_crd_cnt_zero) | li_mshr_rxrsp_valid_s0);
+    assign rxrsp_crd_grant_s0   = rxcrd_en & ((~rxrsp_crd_cnt_zero) | rxrspflitv);
     assign rxrspcrdv_ns_s0      = rxrsp_crd_grant_s0;
-    assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_s0 | li_mshr_rxrsp_valid_s0;
-    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, rxrsp_crd_grant_s0} + {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, li_mshr_rxrsp_valid_s0};
+    assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_s0 | rxrspflitv;
+    assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, rxrsp_crd_grant_s0} + {{(`HNF_LCRD_RSP_CNT_WIDTH-1){1'b0}}, rxrspflitv};
     assign rxrsp_crd_cnt_full   = (rxrsp_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_RSP_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxrsp_crd_cnt_s1_q_logic_t
