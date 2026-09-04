@@ -895,7 +895,13 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_we              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL);
+    // Sec 2.3.2 (p.2-55): "This alternative can be used for WriteEvictOrEvict
+    // transactions" -- the CompDBIDResp form WriteEvictFull already takes, which is
+    // the Home electing to cache the line. Sec 4.2.3 (p.4-177) makes LikelyShared
+    // the initial UC/SC distinction, which changes nothing the Home does with the
+    // data; Table 4-24 (p.4-195) gives the CopyBack row no snoop, as for its twin.
+    assign op_we              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)
+                              | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
     assign mshr_we_set_s0     = {`MSHR_ENTRIES_NUM{op_we}} & mshr_can_alloc_entry_s0;
     assign mshr_we_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_we_upd_sx     = mshr_we_set_s0 | mshr_we_clr_sx1;
@@ -1071,7 +1077,6 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
     // a DBID and consume their write data before completing.
     assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
-                                  | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT)
                                   | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
                                   | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
                                   | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
@@ -2168,7 +2173,13 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_alloc_dwt_s1[entry]) ||
                    (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_comp_busy_clr_s2[entry]      = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_comp_rdy_s2_q[entry]);
-            assign mshr_compack_busy_set_sx[entry]   = (mshr_can_alloc_entry_s0[entry] & li_mshr_rxreq_expcompack_s0);
+            // Sec 2.8.3 (p.2-116, MUST) makes WriteEvictOrEvict's ExpCompAck a one
+            // regardless -- "indicating the transaction will include a CompAck when
+            // the Completer sends a Comp instead of a CompDBIDResp". This Home takes
+            // Sec 2.3.2's (p.2-55) CompDBIDResp alternative, whose CopyBackWrData is
+            // the implicit CompAck, so waiting on one would never retire the entry.
+            assign mshr_compack_busy_set_sx[entry]   = (mshr_can_alloc_entry_s0[entry] & li_mshr_rxreq_expcompack_s0
+                                                        & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_WRITEEVICTOREVICT));
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
                    (mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);

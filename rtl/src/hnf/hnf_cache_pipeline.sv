@@ -800,7 +800,8 @@ module hnf_cache_pipeline `HNF_PARAM
     assign op_wufull_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEUNIQUEFULL);
     assign op_wuptl_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEUNIQUEPTL);
     assign op_wbfull_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEBACKFULL);
-    assign op_wevict_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEEVICTFULL);
+    assign op_wevict_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_WRITEEVICTFULL)
+                           | (pipe_opcode_sx3 == chie_pkg::REQ_WRITEEVICTOREVICT);
     assign op_dl_cu_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_CLEANUNIQUE);
     assign op_dl_mu_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_MAKEUNIQUE);
     assign op_dl_evict_sx3 = (pipe_opcode_sx3 == chie_pkg::REQ_EVICT);
@@ -2201,13 +2202,14 @@ module hnf_cache_pipeline `HNF_PARAM
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEPTL) ||
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_EVICT) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANSHARED) ||
-                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID))begin
+                        (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANINVALID) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT))begin
                 end
                 else begin
                     $fatal("mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
                 end
                 //mshr_l3_fill_sx1_q check
-                if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
+                if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) ||
+                    (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
                     $fatal("mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end
                 else if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||

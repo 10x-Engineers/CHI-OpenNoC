@@ -136,7 +136,10 @@ module hnf_mshr_bypass `HNF_PARAM
     logic                                              mshr_alloc_en_s1_q;
 
     assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
-    assign req_cb_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL);
+    // Table 4-16 (Sec 4.2.3 p.4-181)'s CopyBack set, which is what hnf_mshr_ctl's
+    // op_wb/op_wc/op_we cover -- an opcode missing here never has its CompDBIDResp
+    // released, because mshr_dbid_rdy_set_s2 hangs off txrsp_mshr_bypass_lost_s1.
+    assign req_cb_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
     assign req_wuf_s0            = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL);
     assign req_wup_s0            = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL);
     assign req_rdnosnp_s0        = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
