@@ -145,26 +145,28 @@ one of those sites is visibly a change to this table.
 | :--- | ---: | :--- |
 | **SN-F** | 16 | ⚪ NDERR catch-all — `snf_mshr.sv:389` |
 | **HN-I** | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.sv:515` |
-| **HN-F** | 27, plus 7 snoops and their 4 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
+| **HN-F** | 31, plus 7 snoops and their 4 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
 | **RN-I** | generates 4 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
 
 All three Completers now answer everything they do not implement. The HN-F count
 includes `SnoopFilterEvict`, whose encoding its internal back-invalidate shares
-(`hnf_defines.svh:184`), and the eight requests `opennoc_hnf_pkg.sv`'s
+(`hnf_defines.svh:184`), and the ten requests `opennoc_hnf_pkg.sv`'s
 `hnf_serviced_as()` maps onto a twin the MSHR already decodes — each mapping a
-permission the spec gives the Home outright, cited beside it.
+permission the spec gives the Home outright, cited beside it. Two of them,
+MakeReadUnique(Excl) and ReadPreferUnique, pick their twin from the PoC
+monitor's same-cycle verdict.
 
 ### Request opcodes
 
 | Request | SN-F | HN-I | HN-F |
 | :--- | :---: | :---: | :---: |
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 |
-| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadNoSnpSep` | 🟢 | — | — Table B-1 (p.B-492) gives it no Requester row: a Home only ever issues it, so a Home receiving one answers §9.1's NDERR |
 | `ReadOnce` | — | 🟢 | 🟢 |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 ReadOnce's non-allocating data return with `SnpUnique` to every holder (Table 4-24 p.4-194) and the Dirty copy written back (§4.2.1 p.4-163) |
 | `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 |
 | `ReadShared` | — | ⚪ | 🟢 served as `ReadNotSharedDirty` — Table 4-33 (p.4-212) gives it those rows, §4.4.2 (p.4-196) permits that snoop |
-| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | ⚪ [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) |
+| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 served as `ReadUnique` — Table 4-34 (p.4-213) permits `CompData_UC`/`_UD_PD` for MakeReadUnique, §4.7.1 (p.4-214) the `SnpUnique`; a failed MakeReadUnique(Excl) and a ReadPreferUnique while another Requester's exclusive sequence is live take `ReadNotSharedDirty`'s Shared path (§6.3.1 p.6-289, §4.2.1 p.4-164); neither carries EXOK (§6.3.1 p.6-287) |
 | `WriteNoSnpFull`, `WriteNoSnpPtl` | 🟢 | 🟢 | 🟢 |
 | `WriteNoSnpZero` | 🟢 | 🟢 | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 |
@@ -197,11 +199,11 @@ neither issues a snoop and neither has a SNP port.
 
 | Snoop | | Where |
 | :--- | :---: | :--- |
-| `SnpOnce`, `SnpClean`, `SnpNotSharedDirty`, `SnpUnique` | 🟢 | `hnf_mshr_ctl.sv:1963-1986` |
+| `SnpOnce`, `SnpClean`, `SnpNotSharedDirty`, `SnpUnique` | 🟢 | `hnf_mshr_ctl.sv`'s `l3_opcode_decode_comb_logic` |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | the CMO- and back-invalidate-driven snoops |
-| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16`, elected on a snoop-direct L3 miss for a non-Exclusive allocating read (`hnf_mshr_ctl.sv:1149`) |
-| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67); a `ReadShared` is snooped with `SnpNotSharedDirty(Fwd)`, which §4.4.2 (p.4-196) permits |
-| Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv:1299-1300`, `:1319-1320` |
+| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16`, elected on a snoop-direct L3 miss for a non-Exclusive allocating read (`hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8`); never for `ReadOnce{CleanInvalid,MakeInvalid}`, whose only Forwarding shape is `SnpOnceFwd` (§4.4.2 p.4-196) |
+| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67); a `ReadShared` is snooped with `SnpNotSharedDirty(Fwd)`, which §4.4.2 (p.4-196) permits, and a `ReadPreferUnique` with `SnpUnique(Fwd)` or, on its Shared path, `SnpNotSharedDirty(Fwd)` (§4.4.2 p.4-194) |
+| Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_snprspfwd_s0` / `mshr_snpdatfwd_s0` |
 | `SnpRespDataPtl` | 🔴 | neither whitelisted (`hnf_link_rxdat_parse.sv:167`) nor decoded — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
 
 ### Features
@@ -214,7 +216,7 @@ neither issues a snoop and neither has a SNP port.
 | QoS | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes at the SN-F/HN-I (`snf_qos.sv:232`, `hni_qos.sv:220`), 4 at the HN-F (`hnf_mshr_qos.sv:327-336`); the RN-I passes `AxQOS` through |
 | DMT | 🟢 | — | — | 🟢 | `snf_mshr.sv:346` (`ReturnNID != SrcID`), `hnf_mshr_ctl.sv:2848` |
 | DWT | 🟢 | — | — | 🟢 | `hnf_mshr_bypass.sv:396`, `hnf_mshr_ctl.sv:2857`. Always elected, not a parameter |
-| DCT (forwarding snoops) | — | — | — | 🟢 | `hnf_mshr_ctl.sv:1149` |
+| DCT (forwarding snoops) | — | — | — | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8` |
 | Snoop filter | — | — | — | 🟢 | `hnf_sf_sram.sv` |
 | L3 / system cache | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
 | Exclusives | —² | 🟢³ | 🟢⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean` load, `WriteNoSnp*`/`CleanUnique` store; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
@@ -482,7 +484,7 @@ authoritative; this table is a snapshot.
 | [#47](https://github.com/10x-Engineers/CHI-OpenNoC/issues/47) | RN-I | Device reads assert EndpointOrder with no `ReadReceipt` / `RespSepData` issue gate |
 | [#23](https://github.com/10x-Engineers/CHI-OpenNoC/issues/23) | SN-F | `TXRSPFLITV` asserted while `TXSACTIVE` was low (§14.7.2) |
 | [#15](https://github.com/10x-Engineers/CHI-OpenNoC/issues/15) | HN-F | an L3 eviction's downstream write and a same-line bypass write are not serialised against each other (§2.8.1) |
-| [#65](https://github.com/10x-Engineers/CHI-OpenNoC/issues/65) [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) | — | the opcode and feature gaps the 🔴 / ⚪ cells above stand for, grouped by family |
+| [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) [#69](https://github.com/10x-Engineers/CHI-OpenNoC/issues/69) | — | the opcode and feature gaps the 🔴 / ⚪ cells above stand for, grouped by family |
 
 Two more that are not issues but are worth knowing:
 

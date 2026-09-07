@@ -199,6 +199,18 @@ module hnf_mshr `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   rxreq_cam_hazard_entry_s1_q;
     wire                           excl_pass_s1;
     wire                           excl_fail_s1;
+    wire                           excl_store_fail_s0;
+    wire                           excl_seq_other_rn_s0;
+    // The request the MSHR and bypass stages service; the monitor and QoS stages
+    // see the one the Requester sent.
+    chie_pkg::req_opcode_e         req_opcode_serviced_s0;
+    wire                           req_excl_noexok_s0;
+
+    assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
+                                                                     li_mshr_rxreq_excl_s0,
+                                                                     excl_store_fail_s0,
+                                                                     excl_seq_other_rn_s0);
+    assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
@@ -213,7 +225,7 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_qos_s0                            (li_mshr_rxreq_qos_s0                 ),
                         .li_mshr_rxreq_srcid_s0                          (li_mshr_rxreq_srcid_s0               ),
                         .li_mshr_rxreq_txnid_s0                          (li_mshr_rxreq_txnid_s0               ),
-                        .li_mshr_rxreq_opcode_s0                         (li_mshr_rxreq_opcode_s0              ),
+                        .li_mshr_rxreq_opcode_s0                         (req_opcode_serviced_s0               ),
                         .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0                ),
                         .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0                ),
                         .li_mshr_rxreq_ns_s0                             (li_mshr_rxreq_ns_s0                  ),
@@ -270,7 +282,9 @@ module hnf_mshr `HNF_PARAM
                                 .li_mshr_rxreq_lpid_s0                           (li_mshr_rxreq_lpid_s0             ),
                                 .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0             ),
                                 .excl_pass_s1                                    (excl_pass_s1                      ),
-                                .excl_fail_s1                                    (excl_fail_s1                      )
+                                .excl_fail_s1                                    (excl_fail_s1                      ),
+                                .excl_store_fail_s0                              (excl_store_fail_s0                ),
+                                .excl_seq_other_rn_s0                            (excl_seq_other_rn_s0              )
                             );
 
     hnf_mshr_qos `HNF_PARAM_INST
@@ -351,7 +365,8 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_qos_s0                            (li_mshr_rxreq_qos_s0              ),
                      .li_mshr_rxreq_srcid_s0                          (li_mshr_rxreq_srcid_s0            ),
                      .li_mshr_rxreq_txnid_s0                          (li_mshr_rxreq_txnid_s0            ),
-                     .li_mshr_rxreq_opcode_s0                         (li_mshr_rxreq_opcode_s0           ),
+                     .li_mshr_rxreq_opcode_s0                         (req_opcode_serviced_s0            ),
+                     .li_mshr_rxreq_excl_noexok_s0                    (req_excl_noexok_s0                ),
                      .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),

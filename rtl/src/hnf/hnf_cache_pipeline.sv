@@ -200,6 +200,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // Prepare decode stage for SX4
     chie_pkg::req_opcode_e                   pipe_opcode_sx3;
     wire                                     op_rdonce_sx3;
+    wire                                     op_roinv_sx3;
     wire                                     op_rdnsd_sx3;
     wire                                     op_rdclean_sx3;
     wire                                     op_rdunique_sx3;
@@ -280,6 +281,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [ADDR_WIDTH-1:0]                    pipe_addr_sx4;
     wire                                     pipe_fill_sx4;
     logic                                    op_rdonce_sx4_q;
+    logic                                    op_roinv_sx4_q;
     logic                                    op_rdnsd_sx4_q;
     logic                                    op_rdclean_sx4_q;
     logic                                    op_rdunique_sx4_q;
@@ -793,6 +795,8 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_opcode_sx3 = pipe_req_valid_sx[SX3] ? pipe_opcode_sx_q[SX3]
                                                     : chie_pkg::REQ_REQLCRDRETURN;
     assign op_rdonce_sx3   = (pipe_opcode_sx3 == chie_pkg::REQ_READONCE);
+    assign op_roinv_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_READONCECLEANINVALID)
+                           | (pipe_opcode_sx3 == chie_pkg::REQ_READONCEMAKEINVALID);
     assign op_rdnsd_sx3    = (pipe_opcode_sx3 == chie_pkg::REQ_READNOTSHAREDDIRTY);
     assign op_rdclean_sx3  = (pipe_opcode_sx3 == chie_pkg::REQ_READCLEAN);
     assign op_rdunique_sx3 = (pipe_opcode_sx3 == chie_pkg::REQ_READUNIQUE);
@@ -810,6 +814,7 @@ module hnf_cache_pipeline `HNF_PARAM
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
             op_rdonce_sx4_q   <= 1'b0;
+            op_roinv_sx4_q    <= 1'b0;
             op_rdnsd_sx4_q    <= 1'b0;
             op_rdclean_sx4_q  <= 1'b0;
             op_rdunique_sx4_q <= 1'b0;
@@ -825,6 +830,7 @@ module hnf_cache_pipeline `HNF_PARAM
         end
         else begin
             op_rdonce_sx4_q   <= op_rdonce_sx3;
+            op_roinv_sx4_q    <= op_roinv_sx3;
             op_rdnsd_sx4_q    <= op_rdnsd_sx3;
             op_rdclean_sx4_q  <= op_rdclean_sx3;
             op_rdunique_sx4_q <= op_rdunique_sx3;
@@ -958,7 +964,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     assign pipe_sf_other_match_sx3 = |(pipe_sf_other_valid_vec_sx3[`SF_WAY_NUM-1:0] & pipe_sf_match_vec_sx3[`SF_WAY_NUM-1:0]);
 
-    assign pipe_mem_rd_sx3 = ~pipe_fill_sx_q[SX3] & (op_rdonce_sx3 | op_rdnsd_sx3 | op_rdclean_sx3 | op_rdunique_sx3 | op_wuptl_sx3) & ~pipe_tag_match_sx3 & ~pipe_sf_other_match_sx3;
+    assign pipe_mem_rd_sx3 = ~pipe_fill_sx_q[SX3] & (op_rdonce_sx3 | op_roinv_sx3 | op_rdnsd_sx3 | op_rdclean_sx3 | op_rdunique_sx3 | op_wuptl_sx3) & ~pipe_tag_match_sx3 & ~pipe_sf_other_match_sx3;
 
     //LRU match
     generate
@@ -1221,7 +1227,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     //invalid tag needs to be inserted
     assign pipe_insert_slc_nofill_sx4 = 1'b0;
-    assign pipe_insert_slc_fill_sx4 = ~pipe_tag_match_sx4_q & (op_rdonce_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_wufull_sx4_q | op_wuptl_sx4_q | op_wbfull_sx4_q | op_wevict_sx4_q);
+    assign pipe_insert_slc_fill_sx4 = ~pipe_tag_match_sx4_q & (op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_wufull_sx4_q | op_wuptl_sx4_q | op_wbfull_sx4_q | op_wevict_sx4_q);
     assign pipe_insert_slc_sx4 = (~pipe_fill_sx4 & pipe_insert_slc_nofill_sx4)|(pipe_fill_sx4 & pipe_insert_slc_fill_sx4);
 
     //clean or dirty tag needs to be updated
@@ -1248,7 +1254,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //tag hits and needs to read
     assign pipe_read_slc_nofill_sx4 = pipe_tag_match_sx4_q & (
                // ReadOnce/ReadNoShareDirty/ReadClean/ReadUnique will get data if SLC hit
-               op_rdonce_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q |
+               op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q |
                // WriteUniqePtl read SLC data for further merge data
                op_wuptl_sx4_q | op_dl_cu_sx4_q | op_cmo_ci_sx4_q | op_dl_mu_sx4_q |
                // Dirty Read when CleanUnique/CleanShared
@@ -1431,7 +1437,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //////////////////////////////////////////////////////////////////////////////
 
     // Clear is for all RNF
-    assign pipe_sf_clear_valid_sx4                       = (op_wufull_sx4_q | op_wuptl_sx4_q | op_cmo_ci_sx4_q);
+    assign pipe_sf_clear_valid_sx4                       = (op_wufull_sx4_q | op_wuptl_sx4_q | op_cmo_ci_sx4_q | op_roinv_sx4_q);
     assign pipe_sf_all_invalid_sx4[`RNF_NUM*2-1:0]       = {(`RNF_NUM*2){1'b0}};
 
     // unique for requester
@@ -1459,7 +1465,7 @@ module hnf_cache_pipeline `HNF_PARAM
                 gi = gi + 1)begin
             assign pipe_sf_snp_tgt_vec_sx4[gi]
                    = |(pipe_sf_match_state_sx4_q[gi*2+:2] & ~pipe_sf_self_mask_sx4_q[gi*2+:2]) & ~pipe_fill_sx4 &
-                   ((~pipe_tag_match_sx4_q & (op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdonce_sx4_q)) | op_rdunique_sx4_q | op_wufull_sx4_q | op_wuptl_sx4_q | op_dl_cu_sx4_q |
+                   ((~pipe_tag_match_sx4_q & (op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdonce_sx4_q)) | op_rdunique_sx4_q | op_roinv_sx4_q | op_wufull_sx4_q | op_wuptl_sx4_q | op_dl_cu_sx4_q |
                     op_cmo_ci_sx4_q | op_dl_mu_sx4_q) & ~op_dl_evict_sx4_q;
         end
     endgenerate
@@ -1514,7 +1520,7 @@ module hnf_cache_pipeline `HNF_PARAM
     //////////////////////////////////////////////////////////////////////////////
     assign pipe_read_l3_nofill_sx4 = pipe_tag_match_sx4_q & (
                // ReadOnce/ReadNoShareDirty/ReadClean/ReadUnique will get l3 data if SLC hit
-               op_rdonce_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q |
+               op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q |
                // WriteUniqePtl read l3 data for further merge data
                op_wuptl_sx4_q |
                // Dirty Read l3 data
@@ -1544,7 +1550,7 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_sf_wr_sx4   = (((pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) && (pipe_sf_wr_state_sx4 != pipe_sf_match_state_sx4_q)) | pipe_sf_insert_sx4) & (~op_rdonce_sx4_q);
 
     // when no fill read miss in slc and sf
-    assign pipe_mem_rd_sx4 = ~pipe_tag_match_sx4_q & ~pipe_sf_other_match_sx4 & ~pipe_fill_sx4 & (op_rdonce_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q | op_wuptl_sx4_q);
+    assign pipe_mem_rd_sx4 = ~pipe_tag_match_sx4_q & ~pipe_sf_other_match_sx4 & ~pipe_fill_sx4 & (op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q | op_wuptl_sx4_q);
 
     //=============================================================================
     // Stage 5
@@ -1682,7 +1688,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_addr_idx_sx5_q             <= {`MSHR_ENTRIES_WIDTH{1'b0}};
         end
         else begin
-            pipe_mshr_addr_valid_sx5_q           <= pipe_mem_rd_sx3 || ((op_rdonce_sx3 | op_rdnsd_sx3 | op_rdclean_sx3 | op_rdunique_sx3 | op_wuptl_sx3) &&
+            pipe_mshr_addr_valid_sx5_q           <= pipe_mem_rd_sx3 || ((op_rdonce_sx3 | op_roinv_sx3 | op_rdnsd_sx3 | op_rdclean_sx3 | op_rdunique_sx3 | op_wuptl_sx3) &&
                                                  ~pipe_tag_match_sx3 && ~pipe_fill_sx_q[SX3] && pipe_sf_other_match_sx3);
 
             pipe_mshr_addr_sx5_q[ADDR_WIDTH-1:0] <= pipe_addr_sx_q[SX3][ADDR_WIDTH-1:0];
@@ -1705,7 +1711,7 @@ module hnf_cache_pipeline `HNF_PARAM
 
     assign biq_req_valid_s0_q  = ~biq_fifo_empty;
     assign biq_find_valid_sx5  = ~pipe_sf_hit_sx5_q && pipe_req_valid_sx[SX5];
-    assign biq_hit = biq_hit_raw & ( (pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEFULL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEPTL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_MAKEUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANSHARED)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANINVALID) );
+    assign biq_hit = biq_hit_raw & ( (pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCECLEANINVALID)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCEMAKEINVALID)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEFULL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_WRITEUNIQUEPTL)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_MAKEUNIQUE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANSHARED)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_CLEANINVALID) );
 
     hnf_biq #(
                 .BIQ_WIDTH (BIQ_DATA_WIDTH           ),
@@ -2143,7 +2149,7 @@ module hnf_cache_pipeline `HNF_PARAM
             #1;
             if(mshr_l3_req_en_sx1_q)begin
                 //mshr_l3_opcode_sx1_q check
-                if((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READONCE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READCLEAN) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READNOTSHAREDDIRTY) ||
+                if((mshr_l3_opcode_sx1_q == chie_pkg::REQ_READONCE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READONCECLEANINVALID) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READONCEMAKEINVALID) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READCLEAN) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READNOTSHAREDDIRTY) ||
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_READUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEUNIQUEPTL) ||
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANUNIQUE) ||
                         (mshr_l3_opcode_sx1_q == chie_pkg::REQ_MAKEUNIQUE) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_EVICT) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_CLEANSHARED) ||

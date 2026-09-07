@@ -37,7 +37,12 @@ module hnf_mshr_global_monitor `HNF_PARAM
 
     //outputs to hnf_mshr_ctl and hnf_mshr_bypass
     output wire                                excl_pass_s1,
-    output wire                                excl_fail_s1
+    output wire                                excl_fail_s1,
+    // Same-cycle verdicts for hnf_serviced_as(): the Exclusive Store's PoC
+    // verdict (Table 6-1 p.6-287), and whether another Request Node holds a
+    // monitor on the line (SS4.2.1 p.4-164).
+    output wire                                excl_store_fail_s0,
+    output wire                                excl_seq_other_rn_s0
     );
 
 
@@ -58,6 +63,9 @@ module hnf_mshr_global_monitor `HNF_PARAM
     wire                                 req_rdclean_s0;
     wire                                 req_wrnosnp_s0;
     wire                                 req_cleanunique_s0;
+    wire                                 req_excl_load_as_s0;
+    wire                                 req_excl_store_as_s0;
+    logic                                seq_other_rn_s0;
     wire                                 store_notmatch_wrnosnp_s0;  //req writenosnp not match
     wire                                 store_notmatch_cu_s0;       //req writenosnp not match
     logic                                excl_pass_s1_q;
@@ -76,8 +84,21 @@ module hnf_mshr_global_monitor `HNF_PARAM
     assign req_wrnosnp_s0        = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)&&mshr_alloc_en_s0;
     assign req_cleanunique_s0    = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_CLEANUNIQUE)&&mshr_alloc_en_s0;
 
-    assign excl_load_s0  = (req_rdnosnp_s0 || req_rdnosharedirty_s0 || req_rdclean_s0);
-    assign excl_store_s0 = (req_wrnosnp_s0 || req_cleanunique_s0);
+    assign req_excl_load_as_s0  = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_excl_load_as(li_mshr_rxreq_opcode_s0)&&mshr_alloc_en_s0;
+    assign req_excl_store_as_s0 = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_excl_store_as(li_mshr_rxreq_opcode_s0)&&mshr_alloc_en_s0;
+    assign excl_load_s0  = (req_rdnosnp_s0 || req_rdnosharedirty_s0 || req_rdclean_s0 || req_excl_load_as_s0);
+    assign excl_store_s0 = (req_wrnosnp_s0 || req_cleanunique_s0 || req_excl_store_as_s0);
+    assign excl_store_fail_s0 = excl_store_s0 && !store_match_s0;
+
+    always_comb begin :seq_other_rn_judge
+        seq_other_rn_s0 = 1'b0;
+        for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
+            if (gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 != gb_srcid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
+                seq_other_rn_s0 = 1'b1;
+            end
+        end
+    end
+    assign excl_seq_other_rn_s0 = li_mshr_rxreq_valid_s0 && seq_other_rn_s0;
     assign store_notmatch_wrnosnp_s0    = !store_match_s0&&req_wrnosnp_s0;
     assign store_notmatch_cu_s0 = !store_match_s0&&req_cleanunique_s0;
 
@@ -215,7 +236,7 @@ module hnf_mshr_global_monitor `HNF_PARAM
             excl_fail_s1_q <= 'd0;
         end
         else begin
-            if(excl_store_s0&&!store_match_s0)begin
+            if(excl_store_s0&&!store_match_s0&&!req_excl_store_as_s0)begin
                 excl_pass_s1_q <= 'd0;
                 excl_fail_s1_q <= 'd1;
             end
@@ -239,7 +260,7 @@ module hnf_mshr_global_monitor `HNF_PARAM
 `ifdef DISPLAY_FATAL
 
     always_comb begin
-        `display_fatal((!li_mshr_rxreq_valid_s0) || (!li_mshr_rxreq_excl_s0) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOSNP) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOTSHAREDDIRTY) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READCLEAN) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPFULL) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_CLEANUNIQUE) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPPTL),$sformatf("Fatal info: RXREQ received a unsupported excl flit with opcode: %h",li_mshr_rxreq_opcode_s0));
+        `display_fatal((!li_mshr_rxreq_valid_s0) || (!li_mshr_rxreq_excl_s0) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOSNP) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOTSHAREDDIRTY) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READCLEAN) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPFULL) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_CLEANUNIQUE) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPPTL) || opennoc_hnf_pkg::hnf_excl_load_as(li_mshr_rxreq_opcode_s0) || opennoc_hnf_pkg::hnf_excl_store_as(li_mshr_rxreq_opcode_s0),$sformatf("Fatal info: RXREQ received a unsupported excl flit with opcode: %h",li_mshr_rxreq_opcode_s0));
     end
 
     logic gm_full;

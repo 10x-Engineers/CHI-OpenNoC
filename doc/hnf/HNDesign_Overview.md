@@ -12,6 +12,11 @@
 - ReadClean
 - ReadNotSharedDirty
 - ReadUnique
+- ReadShared
+- ReadOnceCleanInvalid
+- ReadOnceMakeInvalid
+- ReadPreferUnique
+- MakeReadUnique
 - CleanUnique
 - MakeUnique
 - CleanShared
