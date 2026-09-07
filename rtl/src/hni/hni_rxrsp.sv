@@ -56,6 +56,7 @@ module hni_rxrsp `HNI_PARAM
     wire                                  rxrsp_crd_cnt_upd_s0;
     wire [`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]  rxrsp_crd_cnt_nxt_s0;
     wire                                  rxrspcrdv_ns_s0;
+    wire                                  rxrsp_link_flit_s0;
 
     //main function
     //receive rxrspflitpend
@@ -69,18 +70,23 @@ module hni_rxrsp `HNI_PARAM
     end
 
     //to mshr
-    assign rxrsp_valid_s0  = (rxrspflitv == 1'b1);
-    assign rxrspflit_s0    = (rxrspflitv == 1'b1) ? rxrspflit : '0;
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no protocol content, only the L-Credit it
+    // returns, so the credit accounting below is the only thing that may see it.
+    assign rxrsp_link_flit_s0 = (rxrspflitv == 1'b1) &&
+                                (rxrspflit.opcode == chie_pkg::RSP_RSPLCRDRETURN);
+    assign rxrsp_valid_s0  = (rxrspflitv == 1'b1) && !rxrsp_link_flit_s0;
+    assign rxrspflit_s0    = rxrsp_valid_s0 ? rxrspflit : '0;
 
     assign rxrsp_crd_cnt_zero  = (rxrsp_crd_cnt_s1_q == {`HNI_LL_RSP_CRD_CNT_WIDTH{1'b0}});
     // A credit returned in the cycle the pool reads empty is re-granted at once.
     // Returns are counted even when rxcrd_en is low, or the pool could never
     // refill for a re-activation after a DEACTIVATE.
-    assign rxrsp_crd_grant_sx  = rxcrd_en & ((~rxrsp_crd_cnt_zero) | rxrsp_valid_s0);
+    assign rxrsp_crd_grant_sx  = rxcrd_en & ((~rxrsp_crd_cnt_zero) | rxrspflitv);
     assign rxrspcrdv_ns_s0     = rxrsp_crd_grant_sx;
-    assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_sx | rxrsp_valid_s0;
+    assign rxrsp_crd_cnt_upd_s0 = rxrsp_crd_grant_sx | rxrspflitv;
     assign rxrsp_crd_cnt_nxt_s0 = rxrsp_crd_cnt_s1_q - {{(`HNI_LL_RSP_CRD_CNT_WIDTH-1){1'b0}}, rxrsp_crd_grant_sx}
-                                                  + {{(`HNI_LL_RSP_CRD_CNT_WIDTH-1){1'b0}}, rxrsp_valid_s0};
+                                                  + {{(`HNI_LL_RSP_CRD_CNT_WIDTH-1){1'b0}}, rxrspflitv};
     assign rxrsp_crd_cnt_full  = (rxrsp_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNI_LL_RSP_CRD_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxrsp_crd_cnt_s1_q_logic_t

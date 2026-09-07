@@ -110,8 +110,16 @@ module hnf_link_txrsp_wrap `HNF_PARAM
 
     // just received it or not zero
 
-    assign txrsp_crd_avail_s1          = (txrsp_lcrdv | rsp_crd_cnt_not_zero_sx);
-    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | (~txlink_run);
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." The counter already folds this cycle's grant in for the next one,
+    // so the counted credits are the whole of what is spendable.
+    assign txrsp_crd_avail_s1          = rsp_crd_cnt_not_zero_sx;
+    // Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return credits
+    // using Protocol flits or L-Credit return flits", and Table 14-3 (p.14-451)
+    // gives its DEACT row "Can send any flits" -- so a response queued when the
+    // link left RUN still goes out, and the credit it returns is the same credit.
+    // Only STOP and ACTIVATE are the states Table 14-3 bars a flit in.
+    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | ~(txlink_run | lcrd_return_en);
 
     //outputs to mshr
 
@@ -217,7 +225,10 @@ module hnf_link_txrsp_wrap `HNF_PARAM
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & ~txrsp_busy_sx;
     assign txrsp_crd_cnt_dec_sx    = txrspflitv_s0 & txrsp_crd_avail_s1 | txrsp_lcrd_rtn_sx;
-    assign txrsp_lcrd_rtn_sx  = lcrd_return_en & rsp_crd_cnt_not_zero_sx;
+    // A queued Protocol flit returns the credit itself, and the flop below gives
+    // this the higher priority -- so it must stand down for one, or the response
+    // is retired by the arbitration above and never reaches the wire.
+    assign txrsp_lcrd_rtn_sx  = lcrd_return_en & rsp_crd_cnt_not_zero_sx & ~txrspflitv_s0;
     assign txrsp_flit_avail   = txrsp_req_s0;
 
     assign txrspflitpend = 1'b1;

@@ -56,6 +56,7 @@ module hni_rxdat `HNI_PARAM
     wire                                  rxdat_crd_cnt_upd_s0;
     wire [`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]  rxdat_crd_cnt_nxt_s0;
     wire                                  rxdatcrdv_ns_s0;
+    wire                                  rxdat_link_flit_s0;
 
     //main function
     always_ff @(posedge clk or posedge rst) begin:rxdatflitv_en_q_logic_t
@@ -68,18 +69,23 @@ module hni_rxdat `HNI_PARAM
     end
 
     // to dbf
-    assign rxdat_valid_s0  = (rxdatflitv == 1'b1);
-    assign rxdatflit_s0    = (rxdatflitv == 1'b1)? rxdatflit : '0;
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no protocol content, only the L-Credit it
+    // returns, so the credit accounting below is the only thing that may see it.
+    assign rxdat_link_flit_s0 = (rxdatflitv == 1'b1) &&
+                                (rxdatflit.opcode == chie_pkg::DAT_DATLCRDRETURN);
+    assign rxdat_valid_s0  = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
+    assign rxdatflit_s0    = rxdat_valid_s0? rxdatflit : '0;
     
     assign rxdat_crd_cnt_zero  = (rxdat_crd_cnt_s1_q == {`HNI_LL_DAT_CRD_CNT_WIDTH{1'b0}});
     // A credit returned in the cycle the pool reads empty is re-granted at once.
     // Returns are counted even when rxcrd_en is low, or the pool could never
     // refill for a re-activation after a DEACTIVATE.
-    assign rxdat_crd_grant_sx  = rxcrd_en & ((~rxdat_crd_cnt_zero) | rxdat_valid_s0);
+    assign rxdat_crd_grant_sx  = rxcrd_en & ((~rxdat_crd_cnt_zero) | rxdatflitv);
     assign rxdatcrdv_ns_s0     = rxdat_crd_grant_sx;
-    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_sx | rxdat_valid_s0;
+    assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_sx | rxdatflitv;
     assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_sx}
-                                                  + {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdat_valid_s0};
+                                                  + {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdatflitv};
     assign rxdat_crd_cnt_full  = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t

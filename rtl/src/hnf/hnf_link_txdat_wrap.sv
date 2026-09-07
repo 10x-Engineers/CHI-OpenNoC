@@ -40,6 +40,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input  wire [1:0]                        mshr_txdat_ccid_sx2,
     input  wire                              mshr_txdat_tracetag_sx2,
 
+    //inputs from hnf_mshr -- the direction of the buffer read below, latched with
+    //the arbitration that granted it
+    input  wire                              mshr_dbf_rd_to_rn_sx1_q,
+
     //inputs from hnf_data_buffer
     input  wire                              dbf_txdat_valid_sx1,
     input  wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
@@ -56,6 +60,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     output logic                             txdat_mshr_clr_dbf_busy_valid_sx3,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]   txdat_mshr_clr_dbf_busy_idx_sx3,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]    txdat_mshr_rd_idx_sx2,
+    output wire                              txdat_mshr_rd_to_rn_sx2,
     output wire                              txdat_mshr_busy_sx
     );
 
@@ -66,11 +71,13 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry1_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry1_sx;
     logic [1:0]                         dbf_txdat_pe_entry1_sx;
+    logic                               dbf_txdat_to_rn_entry1_sx;
     logic                               dbf_txdat_valid_entry2_sx;
     logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry2_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry2_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry2_sx;
     logic [1:0]                         dbf_txdat_pe_entry2_sx;
+    logic                               dbf_txdat_to_rn_entry2_sx;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] txdat_crd_cnt_q;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
     logic                               dbf_txdat_valid_entry2_sx_ns;
@@ -99,7 +106,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     //main function
     assign dat_crd_cnt_not_zero_sx = (txdat_crd_cnt_q != 'd0);
-    assign txdat_crd_avail_s1      = (txdat_lcrdv | dat_crd_cnt_not_zero_sx);
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." The counter already folds this cycle's grant in for the next one,
+    // so the counted credits are the whole of what is spendable.
+    assign txdat_crd_avail_s1      = dat_crd_cnt_not_zero_sx;
     assign txdat_busy_sx           = ~txdat_crd_avail_s1 | (~txlink_run);
 
     assign txdatcrdv_s0            = txdat_lcrdv;
@@ -280,7 +290,28 @@ module hnf_link_txdat_wrap `HNF_PARAM
         end
     end
 
+    //the read's direction rides the same two slots as its index, so it survives
+    //both packets of a 64B CompData and cannot be re-derived from entry state
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_to_rn_entry1_sx_logic_t
+        if(rst == 1'b1)
+            dbf_txdat_to_rn_entry1_sx <= 1'b0;
+        else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
+            dbf_txdat_to_rn_entry1_sx <= mshr_dbf_rd_to_rn_sx1_q;
+        else begin
+        end
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_to_rn_entry2_sx_logic_t
+        if(rst == 1'b1)
+            dbf_txdat_to_rn_entry2_sx <= 1'b0;
+        else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
+            dbf_txdat_to_rn_entry2_sx <= mshr_dbf_rd_to_rn_sx1_q;
+        else begin
+        end
+    end
+
     assign txdat_mshr_rd_idx_sx2 = dbf_txdat_valid_entry2_sx_ns? dbf_txdat_idx_entry2_sx : dbf_txdat_valid_entry1_sx? dbf_txdat_idx_entry1_sx : {`MSHR_ENTRIES_WIDTH{1'b0}};
+    assign txdat_mshr_rd_to_rn_sx2 = dbf_txdat_valid_entry2_sx_ns? dbf_txdat_to_rn_entry2_sx : dbf_txdat_to_rn_entry1_sx;
 
     //receive dbf_txdat_valid_sx1, pass data
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_data_entry1_sx_logic_t

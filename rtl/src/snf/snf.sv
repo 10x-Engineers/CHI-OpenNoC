@@ -168,6 +168,8 @@ module snf `SNF_PARAM
     wire                                  rx_deact_done_sx;
     wire                                  tx_deactivate_sx;
     wire                                  txlink_run_sx;
+    wire                                  txrsp_flit_avail_sx;
+    wire                                  txflit_avail_sx;
 
     // L-Credits this Receiver has granted and not yet seen consumed. CHI E.b
     // Sec 14.2 (MUST): every flit transfer consumes exactly one L-Credit, an
@@ -240,8 +242,17 @@ module snf `SNF_PARAM
         else if (txlinkactivereq_q)
             txlinkactivereq_q <= RXLINKACTIVEREQ | ~TXLINKACTIVEACK;
         else
-            txlinkactivereq_q <= RXLINKACTIVEREQ & ~rxlinkactiveack_q & ~TXLINKACTIVEACK;
+            txlinkactivereq_q <= (RXLINKACTIVEREQ | txflit_avail_sx) &
+                                 ~rxlinkactiveack_q & ~TXLINKACTIVEACK;
     end
+
+    // Table 14-2 STOP (p.14-450, MUST): "The Transmitter must assert LINKACTIVEREQ
+    // to move to the ACTIVATE state if it has flits to send", which Sec 14.5.1
+    // (p.14-452) makes this node's own responsibility -- "the Transmitter is always
+    // responsible for initiating the state change from RUN to STOP, or from STOP to
+    // RUN". Taken before each channel's link gate: dbf_txdat_valid_sx is itself
+    // qualified by txlink_run, so it can never report work while the link is down.
+    assign txflit_avail_sx = txrsp_flit_avail_sx | mshr_txdat_en_sx;
 
     assign RXLINKACTIVEACK = rxlinkactiveack_q;
     assign TXLINKACTIVEREQ = txlinkactivereq_q;
@@ -305,6 +316,7 @@ module snf `SNF_PARAM
             .txrspflitv(TXRSPFLITV),
             .txrspflit(TXRSPFLIT),
             .txrspflitpend(TXRSPFLITPEND),
+            .txrsp_flit_avail_sx(txrsp_flit_avail_sx),
             .txrsp_retryack_won_s1(txrsp_retryack_won_s1),
             .txrsp_pcrdgnt_won_s2(txrsp_pcrdgnt_won_s2),
             .txrsp_won_sx(txrsp_won_sx)

@@ -230,6 +230,7 @@ module hnf `HNF_PARAM
     wire                                     txdat_mshr_clr_dbf_busy_valid_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_clr_dbf_busy_idx_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_rd_idx_sx2;
+    wire                                     txdat_mshr_rd_to_rn_sx2;
     wire                                     txdat_mshr_busy_sx;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      pipe_mshr_addr_sx2_q;
     wire                                     pipe_mshr_addr_valid_sx2_q;
@@ -256,6 +257,7 @@ module hnf `HNF_PARAM
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      mshr_l3_addr_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_rd_idx_sx1_q;
     wire                                     mshr_dbf_rd_valid_sx1_q;
+    wire                                     mshr_dbf_rd_to_rn_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_err_fill_idx_sx1_q;
     wire                                     mshr_dbf_err_fill_valid_sx1_q;
     wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_err_fill_be_sx1_q;
@@ -450,6 +452,7 @@ module hnf `HNF_PARAM
                  .dbf_txdat_idx_sx1                            (dbf_txdat_idx_sx1                 ),
                  .dbf_txdat_be_sx1                             (dbf_txdat_be_sx1                  ),
                  .dbf_txdat_pe_sx1                             (dbf_txdat_pe_sx1                  ),
+                 .mshr_dbf_rd_to_rn_sx1_q                      (mshr_dbf_rd_to_rn_sx1_q           ),
                  .dbf_txdat_valid_sx1                          (dbf_txdat_valid_sx1               ),
 
                  //outputs
@@ -517,6 +520,7 @@ module hnf `HNF_PARAM
                  .txdat_mshr_clr_dbf_busy_valid_sx3            (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                  .txdat_mshr_clr_dbf_busy_idx_sx3              (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                  .txdat_mshr_rd_idx_sx2                        (txdat_mshr_rd_idx_sx2             ),
+                 .txdat_mshr_rd_to_rn_sx2                      (txdat_mshr_rd_to_rn_sx2           ),
                  .txdat_mshr_busy_sx                           (txdat_mshr_busy_sx                )
              );
 
@@ -573,6 +577,7 @@ module hnf `HNF_PARAM
                  .txsnp_mshr_busy_sx1                          (txsnp_mshr_busy_sx1               ),
                  .txdat_mshr_busy_sx                           (txdat_mshr_busy_sx                ),
                  .txdat_mshr_rd_idx_sx2                        (txdat_mshr_rd_idx_sx2             ),
+                 .txdat_mshr_rd_to_rn_sx2                      (txdat_mshr_rd_to_rn_sx2           ),
                  .txdat_mshr_clr_dbf_busy_valid_sx3            (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                  .txdat_mshr_clr_dbf_busy_idx_sx3              (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                  .l3_opcode_sx7_q                              (l3_opcode_sx7_q                   ),
@@ -634,6 +639,7 @@ module hnf `HNF_PARAM
                  .mshr_l3_addr_sx1                             (mshr_l3_addr_sx1                  ),
                  .mshr_dbf_rd_idx_sx1_q                        (mshr_dbf_rd_idx_sx1_q             ),
                  .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
+                 .mshr_dbf_rd_to_rn_sx1_q                      (mshr_dbf_rd_to_rn_sx1_q           ),
                  .mshr_dbf_err_fill_idx_sx1_q                  (mshr_dbf_err_fill_idx_sx1_q       ),
                  .mshr_dbf_err_fill_valid_sx1_q                (mshr_dbf_err_fill_valid_sx1_q     ),
                  .mshr_dbf_err_fill_be_sx1_q                   (mshr_dbf_err_fill_be_sx1_q        ),

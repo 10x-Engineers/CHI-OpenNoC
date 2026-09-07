@@ -54,6 +54,10 @@ module snf_txrsp `SNF_PARAM
         output logic                          txrspflitv,
         output chie_pkg::rsp_flit_s           txrspflit,
         output wire                           txrspflitpend,
+        // Table 14-2 STOP (p.14-450, MUST): "The Transmitter must assert
+        // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send."
+        // Reported before the link gate, or a link in STOP could never learn of it.
+        output wire                           txrsp_flit_avail_sx,
 
         //outputs to snf_qos
         output wire                           txrsp_retryack_won_s1,
@@ -92,15 +96,16 @@ module snf_txrsp `SNF_PARAM
     // received." txrsp_crd_cnt_q already folds this cycle's grant in for the next
     // one, so the counted credits are the whole of what is spendable.
     assign txrsp_crd_avail_s1          = rsp_crd_cnt_not_zero_sx;
-    // Table 14-3 (p.14-451, MUST): the Transmitter "must not send flits" in STOP
-    // or ACTIVATE. Holding a credit is not that gate -- Sec 14.6.3 (p.14-459) has
-    // the peer's ack legally in flight while it is already granting, so the link
-    // state this node has itself observed is what a Protocol flit waits on. Busy
-    // rather than the flitv term alone, so the arbitration feedback to QoS and
-    // the MSHR cannot retire a response the link is not entitled to carry. The
-    // L-Credit return below is deliberately outside it: Table 14-2 DEACTIVATE
-    // requires those flits in a state that is not RUN.
-    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | ~txlink_run;
+    // Table 14-3 (p.14-451, MUST) bars a flit in STOP and ACTIVATE only; its DEACT
+    // row reads "Can send any flits", and Table 14-2 (p.14-450, MUST) has that
+    // Transmitter "return credits using Protocol flits or L-Credit return flits"
+    // -- so a response queued when the link left RUN still goes out, and the
+    // credit it returns is the same credit. Holding a credit is not the gate:
+    // Sec 14.6.3 (p.14-459) has the peer's ack legally in flight while it is
+    // already granting, so what a flit waits on is the link state this node has
+    // itself observed. Busy rather than the flitv term alone, so the arbitration
+    // feedback to QoS and the MSHR cannot retire a response the link cannot carry.
+    assign txrsp_busy_sx               = ~txrsp_crd_avail_s1 | ~(txlink_run | tx_deactivate);
 
     //output to qos
     assign txrsp_retryack_won_s1 = (qos_txrsp_retryack_valid_s1) &
@@ -166,6 +171,7 @@ module snf_txrsp `SNF_PARAM
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & (~txrsp_busy_sx);
+    assign txrsp_flit_avail_sx     = txrsp_req_s0;
 
     // CHI E.b Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return
     // credits using Protocol flits or L-Credit return flits", and Sec 14.6.3
