@@ -185,7 +185,10 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     end
 
     //just received it or not zero
-    assign txsnp_crd_avail_s1      = txsnpcrdv_s0 | snp_crd_cnt_not_zero_sx;
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." The counter already folds this cycle's grant in for the next one,
+    // so the counted credits are the whole of what is spendable.
+    assign txsnp_crd_avail_s1      = snp_crd_cnt_not_zero_sx;
     assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run);
     assign txsnpflitv_s0           = (txsnp_req_s0 == 1'b1 | txsnp_cnt_q>0) & (txsnp_busy_sx == 1'b0);
 

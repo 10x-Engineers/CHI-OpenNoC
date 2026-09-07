@@ -106,6 +106,7 @@ module hnf_mshr_ctl `HNF_PARAM
     //inputs from hnf_link_txdat_wrap
     input  wire                                txdat_mshr_busy_sx,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_rd_idx_sx2,
+    input  wire                                txdat_mshr_rd_to_rn_sx2,
     input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
 
@@ -127,6 +128,11 @@ module hnf_mshr_ctl `HNF_PARAM
     //outputs to hnf_data_buffer
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
     output logic                               mshr_dbf_rd_valid_sx1_q,
+    // Whether this buffer read is the entry's RN-bound CompData or its SN-bound
+    // NonCopyBackWrData. An entry can owe both, so the direction belongs to the
+    // read that won arbitration and not to the entry -- it is latched here and
+    // returned as txdat_mshr_rd_to_rn_sx2 with the read it describes.
+    output logic                               mshr_dbf_rd_to_rn_sx1_q,
     // Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data packets, so
     // the buffer is stamped present for an entry no fill will ever reach.
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_err_fill_idx_sx1_q,
@@ -2995,8 +3001,10 @@ module hnf_mshr_ctl `HNF_PARAM
     // interconnect due to a Prefetch from Home or an eviction from the System
     // cache" carries EWA, Cacheable and Allocate all 1 and Device 0.
     // mshr_seq_s1_q = snoop-filter evict; mshr_txreq_evict_wr_sx1 = SLC victim,
-    // which is the entry's write request once its own read has gone out.
-    assign mshr_txreq_evict_wr_sx1    = mshr_evict_pending_sx_q[mshr_txreq_entry_idx_sx1] & ~mshr_mem_rd_busy_sx_q[mshr_txreq_entry_idx_sx1];
+    // which is the entry's write request rather than its own read -- told apart by
+    // the same ready bit mshr_txreq_is_rd_sx1 selects the flit with, so neither the
+    // attributes nor the Size can describe a flit other than the arbitrated one.
+    assign mshr_txreq_evict_wr_sx1    = mshr_evict_pending_sx_q[mshr_txreq_entry_idx_sx1] & ~mshr_txreq_is_rd_sx1;
     assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_evict_wr_sx1) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
@@ -3249,16 +3257,20 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //************************************************************************//
 
+    // The flit follows the direction latched with the buffer read that won
+    // arbitration. mshr_rn_data_busy_sx_q cannot stand in for it: it is a property
+    // of the ENTRY, cleared three stages later by the send itself, so an entry that
+    // owes both a CompData and a NonCopyBackWrData reports RN for both.
     always_comb begin
-        mshr_txdat_tgtid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2]:SNF_NID_PARAM);
-        mshr_txdat_txnid_sx2   = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
-        mshr_txdat_opcode_sx2  = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
-        mshr_txdat_resp_sx2    = (mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2]?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
+        mshr_txdat_tgtid_sx2   = (txdat_mshr_rd_to_rn_sx2?mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2]:SNF_NID_PARAM);
+        mshr_txdat_txnid_sx2   = (txdat_mshr_rd_to_rn_sx2?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
+        mshr_txdat_opcode_sx2  = (txdat_mshr_rd_to_rn_sx2?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
+        mshr_txdat_resp_sx2    = (txdat_mshr_rd_to_rn_sx2?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
         // Table 9-7 (Sec 9.4.3 p.9-340, MUST): a Write transaction's data packets
         // carry OK or DERR only. An NDERR is the Completer's verdict on the access,
         // so it rides out upstream on the Comp and never on the NonCopyBackWrData
         // the Home sends its Subordinate.
-        mshr_txdat_resperr_sx2 = ~mshr_rn_data_busy_sx_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NORM_OK :
+        mshr_txdat_resperr_sx2 = ~txdat_mshr_rd_to_rn_sx2 ? chie_pkg::RESP_ERR_NORM_OK :
                                  mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
                                  mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :
                                  ((mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & ~mshr_excl_noexok_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
@@ -3361,22 +3373,28 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
+    // The RN-bound read is taken first where an entry owes both, which is the
+    // order mshr_txdat_sn_rdy_clr_sx already retires the two ready bits in.
     always_ff @(posedge clk or posedge rst)begin : mshr_dbf_rd_timing_logic
         if(rst == 1'b1) begin
             mshr_dbf_rd_valid_sx1_q <= 1'b0;
             mshr_dbf_rd_idx_sx1_q   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
+            mshr_dbf_rd_to_rn_sx1_q <= 1'b0;
         end
         else if(txdat_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
             mshr_dbf_rd_valid_sx1_q <= 1'b1;
             mshr_dbf_rd_idx_sx1_q   <= mshrageq_mshr_idx_sx2_q[0];
+            mshr_dbf_rd_to_rn_sx1_q <= mshr_txdat_rn_rdy_sx_q[mshrageq_mshr_idx_sx2_q[0]];
         end
         else if(txdat_wrap_other_ptr[txdat_wrap_other_idx])begin
             mshr_dbf_rd_valid_sx1_q <= 1'b1;
             mshr_dbf_rd_idx_sx1_q   <= txdat_wrap_other_idx;
+            mshr_dbf_rd_to_rn_sx1_q <= mshr_txdat_rn_rdy_sx_q[txdat_wrap_other_idx];
         end
         else if(!txdat_mshr_busy_sx && mshr_dbf_rd_valid_sx1_q)begin
             mshr_dbf_rd_valid_sx1_q <= 1'b0;
             mshr_dbf_rd_idx_sx1_q   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
+            mshr_dbf_rd_to_rn_sx1_q <= 1'b0;
         end
     end
 

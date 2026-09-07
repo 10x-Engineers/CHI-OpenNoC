@@ -119,6 +119,7 @@ module hnf_link `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      dbf_txdat_idx_sx1,
     input  wire [1:0]                          dbf_txdat_pe_sx1,
     input  wire [chie_pkg::BE_WIDTH*2-1:0]     dbf_txdat_be_sx1,
+    input  wire                                mshr_dbf_rd_to_rn_sx1_q,
     input  wire                                dbf_txdat_valid_sx1,
 
     //outputs
@@ -195,6 +196,7 @@ module hnf_link `HNF_PARAM
     output wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_rd_idx_sx2,
+    output wire                                txdat_mshr_rd_to_rn_sx2,
     output wire                                txdat_mshr_busy_sx
     );
 
@@ -427,6 +429,7 @@ module hnf_link `HNF_PARAM
                             .dbf_txdat_idx_sx1                              (dbf_txdat_idx_sx1                 ),
                             .dbf_txdat_be_sx1                               (dbf_txdat_be_sx1                  ),
                             .dbf_txdat_pe_sx1                               (dbf_txdat_pe_sx1                  ),
+                            .mshr_dbf_rd_to_rn_sx1_q                        (mshr_dbf_rd_to_rn_sx1_q           ),
                             .dbf_txdat_valid_sx1                            (dbf_txdat_valid_sx1               ),
                             .txdatflitv                                     (txdatflitv                        ),
                             .txdatflit                                      (txdatflit                         ),
@@ -434,6 +437,7 @@ module hnf_link `HNF_PARAM
                             .txdat_mshr_clr_dbf_busy_valid_sx3              (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                             .txdat_mshr_clr_dbf_busy_idx_sx3                (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                             .txdat_mshr_rd_idx_sx2                          (txdat_mshr_rd_idx_sx2             ),
+                            .txdat_mshr_rd_to_rn_sx2                        (txdat_mshr_rd_to_rn_sx2           ),
                             .txdat_mshr_busy_sx                             (txdat_mshr_busy_sx                )
                         );
 

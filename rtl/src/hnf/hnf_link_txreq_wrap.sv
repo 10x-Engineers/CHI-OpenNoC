@@ -118,7 +118,10 @@ module hnf_link_txreq_wrap `HNF_PARAM
                                           mshr_txreq_memattr_sx1[0]};
 
     assign req_crd_cnt_not_zero_sx = (txreq_crd_cnt_q != 'd0);
-    assign txreq_crd_avail_s1      = (txreq_lcrdv | req_crd_cnt_not_zero_sx);
+    // Sec 14.2.1 (p.14-445, MUST): "An L-Credit cannot be used in the cycle it is
+    // received." The counter already folds this cycle's grant in for the next one,
+    // so the counted credits are the whole of what is spendable.
+    assign txreq_crd_avail_s1      = req_crd_cnt_not_zero_sx;
     assign txreq_busy_sx           = ~txreq_crd_avail_s1 | (~txlink_run);
 
     assign txreq_mshr_bypass_won_s1    = (mshr_txreq_bypass_valid_s1 == 1'b1) && (~txreq_busy_sx);
