@@ -119,6 +119,7 @@ module snf_mshr `SNF_PARAM
     logic [11:0]                         rxreq_returntxnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic                                rxreq_tracetag_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [$bits(rxreq_alloc_flit_s0.lpid)-1:0] rxreq_pgroupid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [1:0]                          rxreq_ccid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`AXI4_AXID_WIDTH-1:0]         rxreq_axid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`AXI4_ARLEN_WIDTH-1:0]        rxreq_axlen_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
@@ -169,6 +170,10 @@ module snf_mshr `SNF_PARAM
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_addr_s0;
     logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s0;
     logic [11:0]                         rxreq_returntxnid_s0;
+    logic [$bits(rxreq_alloc_flit_s0.lpid)-1:0] rxreq_pgroupid_s0;
+    wire                                 rxreq_persist_fold_s0;
+    wire                                 txrsp_persist_sx;
+    wire                                 txrsp_dwt_grant_sx;
     wire                                 rxreq_dodmt_s0;
     wire                                 rxreq_dodwt_s0;
     logic                                rxreq_ns_s0;
@@ -276,6 +281,10 @@ module snf_mshr `SNF_PARAM
     assign rxreq_tracetag_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.tracetag     : '0;
     assign rxreq_returnnid_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returnnid    : '0;
     assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returntxnid  : '0;
+    // Sec 13.10.7 (p.13-418): in a request the PGroupID occupies the bits the
+    // packet otherwise gives LPID; Sec 13.10.16 (p.13-420) puts it in the DBID
+    // bits of the Persist and CompPersist that reflect it.
+    assign rxreq_pgroupid_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.lpid         : '0;
     assign rxreq_dodmt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_rd_s0 == 1'b1) && (rxreq_alloc_flit_s0.srcid != rxreq_alloc_flit_s0.returnnid) :1'b0;
     // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
     // in WriteNoSnpZero and WriteUniqueZero is never permitted."
@@ -322,7 +331,12 @@ module snf_mshr `SNF_PARAM
     assign rxreq_errdat_s0      = rxreq_err_s0 && rxreq_atomicdat_s0;
     assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errwr_s0 && ~rxreq_wrzero_s0;
     assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
-    assign rxreq_rsponly_opcode_s0 = rxreq_cmopersist_s0 ? chie_pkg::RSP_COMPPERSIST : chie_pkg::RSP_COMP;
+    // Sec 2.6.2 step 7 (p.2-102): the Subordinate may fold Comp and Persist into a
+    // combined CompPersist "if the ReturnNID and SrcID of the request are the same
+    // value" -- otherwise step 6 owes the Persist to ReturnNID, which a CompPersist
+    // addressed to SrcID never reaches (Table B-3 p.B-495 gives it no other target).
+    assign rxreq_persist_fold_s0   = rxreq_cmopersist_s0 && (rxreq_returnnid_s0 == rxreq_srcid_s0);
+    assign rxreq_rsponly_opcode_s0 = rxreq_persist_fold_s0 ? chie_pkg::RSP_COMPPERSIST : chie_pkg::RSP_COMP;
     assign rxreq_errgrant_s0    = rxreq_errwr_s0;
     assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.memattr.early_wr_ack  : 1'b0;
 
@@ -421,8 +435,13 @@ module snf_mshr `SNF_PARAM
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
                     txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0 & ~rxreq_ewa_s0;
-                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0;
-                    txrsp_cmo_opcode_q[entry] <= rxreq_cwpersist_s0 ? chie_pkg::RSP_COMPPERSIST : chie_pkg::RSP_COMPCMO;
+                    // Sec 2.6.2 step 6 (p.2-102): an unfolded CleanSharedPersistSep
+                    // owes a Persist after its Comp, which is the same "one more
+                    // response" slot a Combined Write's CMO leg uses.
+                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0 | (rxreq_cmopersist_s0 & ~rxreq_persist_fold_s0);
+                    txrsp_cmo_opcode_q[entry] <= rxreq_cwpersist_s0 ? chie_pkg::RSP_COMPPERSIST
+                                               : rxreq_cmopersist_s0 ? chie_pkg::RSP_PERSIST
+                                               : chie_pkg::RSP_COMPCMO;
                 end
                 else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
                     if (txrsp_comp_queued_sx[entry])
@@ -595,6 +614,19 @@ module snf_mshr `SNF_PARAM
                     rxreq_returnnid_s1_q[entry] <= '0;
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)
                     rxreq_returnnid_s1_q[entry] <= rxreq_returnnid_s0;
+                else
+                    ;
+            end
+
+            // Sec 2.6.2 steps 6/7 (p.2-102, MUST): "The PGroupID is set to the same
+            // value as the PGroupID of the request."
+            always_ff @(posedge clk or posedge rst)begin : mshr_pgroupid_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_pgroupid_s1_q[entry] <= '0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_pgroupid_s1_q[entry] <= '0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_pgroupid_s1_q[entry] <= rxreq_pgroupid_s0;
                 else
                     ;
             end
@@ -877,8 +909,15 @@ module snf_mshr `SNF_PARAM
     assign txrsp_update_sx              = (|txrsp_rdy_sx_q) & (~txrsp_valid_sx);
     assign txrsp_valid_sx               = (|txrsp_valid_idx_sx) & txrsp_rdy_sx_q[txrsp_entry_idx_sx];
     assign txrsp_qos_sx                 = (rxreq_qos_s1_q[txrsp_entry_idx_sx]);
-    assign txrsp_tgtid_sx               = ((rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP)) == 1'b1) ? rxreq_returnnid_s1_q[txrsp_entry_idx_sx] : rxreq_srcid_s1_q[txrsp_entry_idx_sx];
-    assign txrsp_txnid_sx               = ((rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP)) == 1'b1) ? rxreq_returntxnid_s1_q[txrsp_entry_idx_sx] : rxreq_txnid_s1_q[txrsp_entry_idx_sx];
+    // Table 3-1 (p.3-153) routes a standalone Persist to Request.ReturnNID, and
+    // Table A-8 (p.A-488) makes its TxnID inapplicable and zero; DoDWT moves only
+    // the DBIDResp (Table 13-21 p.13-430).
+    assign txrsp_persist_sx             = (txrsp_opcode_sx == chie_pkg::RSP_PERSIST);
+    assign txrsp_dwt_grant_sx           = rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP);
+    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_dwt_grant_sx) ? rxreq_returnnid_s1_q[txrsp_entry_idx_sx] : rxreq_srcid_s1_q[txrsp_entry_idx_sx];
+    assign txrsp_txnid_sx               = txrsp_persist_sx   ? 12'd0
+                                        : txrsp_dwt_grant_sx ? rxreq_returntxnid_s1_q[txrsp_entry_idx_sx]
+                                                             : rxreq_txnid_s1_q[txrsp_entry_idx_sx];
     assign txrsp_opcode_sx              = txrsp_opcode_rdy_sx_q[txrsp_entry_idx_sx];
     // Sec 9.1 (p.9-334): NDERR reports "an attempt to use a transaction type that
     // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
@@ -889,7 +928,11 @@ module snf_mshr `SNF_PARAM
                                         && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)) ? chie_pkg::RESP_ERR_NON_DATA
                                                                                    : chie_pkg::RESP_ERR_NORM_OK;
     assign txrsp_resp_sx                = chie_pkg::RESP_I;
-    assign txrsp_dbid_sx                = {{(12-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_sx};
+    // Table A-8 (p.A-488): Persist and CompPersist carry no DBID -- those bits are
+    // the PGroupID they reflect from the request (Sec 13.10.16 p.13-420).
+    assign txrsp_dbid_sx                = (txrsp_persist_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
+                                        ? 12'(rxreq_pgroupid_s1_q[txrsp_entry_idx_sx])
+                                        : {{(12-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_sx};
     assign txrsp_tracetag_sx            = rxreq_tracetag_s1_q[txrsp_entry_idx_sx];
     // Sec 2.6.1 (p.2-94, MUST): "the SrcID is a fixed value for the Subordinate.
     // This also matches the TgtID received." Echoing the request's TgtID instead

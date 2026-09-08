@@ -115,6 +115,9 @@ module rni_awctrl `RNI_PARAM
     logic [`AXI4_AWCACHE_WIDTH-1:0]      aw_axcache_r;
     wire                                 aw_device_w;
     wire                                 aw_cacheable_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_ordered_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_ordered_pending_ns_w;
+    wire                                 awctrl_ordered_pending_any_w;
     wire                                 awctrl_new_entry_req_dep_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_is_req_dep_v_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_req_dep_v_ns_w;
@@ -239,6 +242,7 @@ module rni_awctrl `RNI_PARAM
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_bresp_dep_v_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_is_bresp_dep_num_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_bresp_dep_chain_young_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_ordered_pending_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_ptr_q;
     logic                                awctrl_entry_req_select_success_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_req_select_vec_q;
@@ -768,7 +772,16 @@ module rni_awctrl `RNI_PARAM
     assign awctrl_req_retry_ready_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_pcrdgrant_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_hi_retry_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_retry_ready_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_lo_retry_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_retry_ready_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // Sec 2.8.5 (p.2-119, MUST): "The Requester requires a DBIDResp or DBIDRespOrd
+    // to determine when it can send the next ordered request", and the Streaming
+    // Ordered Write form (p.2-122, MUST) says the same. The dependency chain above
+    // keys on AWID alone, which leaves two ordered writes under different AWIDs
+    // free to go out back to back. Gated per Requester rather than per address:
+    // Sec 2.8.2's Note (p.2-115) leaves the endpoint address range IMPLEMENTATION
+    // DEFINED, so the scope cannot be narrowed below what this bridge can prove --
+    // the same choice the AR path makes.
+    assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]
+             & ~({RNI_AW_ENTRIES_NUM_PARAM{awctrl_ordered_pending_any_w}} & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign awctrl_entry_req_hi_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_lo_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     //deassert select_vec when receiving retryack
@@ -893,6 +906,11 @@ module rni_awctrl `RNI_PARAM
 
     assign aw_device_w    = ~aw_axcache_r[1];
     assign aw_cacheable_w = aw_axcache_r[1] & (|aw_axcache_r[3:2]);
+    // "This entry's request is ordered", per entry so the gate narrows if the
+    // Order election below ever does. It gives a Device row EndpointOrder and
+    // every other row RequestOrder/OWO (Table 2-11, Sec 2.9.4 p.2-129), so every
+    // write this bridge sends carries a non-zero Order today.
+    assign awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{1'b1}};
 
     always_comb begin
         aw_excl_r = 1'b0;
@@ -994,6 +1012,11 @@ module rni_awctrl `RNI_PARAM
 
     assign rxrsp_retryack_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_retryack_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_dbid_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_dbid_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // Set when the ordered write is actually sent, cleared only by its own
+    // DBIDResp/DBIDRespOrd/CompDBIDResp or by dealloc -- so a RetryAck'd ordered
+    // write keeps blocking the next one, which is Figure 2-34 step 5 (p.2-121).
+    assign awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_entry_req_select_success_flag_w}} & awctrl_entry_req_ptr_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign awctrl_ordered_pending_any_w = |awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
@@ -1158,6 +1181,15 @@ module rni_awctrl `RNI_PARAM
             if(rxrsp_retryack_recv_flag_w | awctrl_entry_dealloc_v_w)begin
                 rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= rxrsp_retryack_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
+        end
+    end
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
+        end
+        else begin
+            awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
         end
     end
 
