@@ -304,7 +304,7 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     //dwt judgment
-    // Sec 4.2.1 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
+    // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // write data this Home sources itself and so has nothing to direct.
     assign do_dwt_wrnosnpfull_s0 =(!li_mshr_rxreq_wrzero_s0) &&
            ((!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)) ||

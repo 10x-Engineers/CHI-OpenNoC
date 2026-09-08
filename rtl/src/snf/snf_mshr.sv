@@ -277,7 +277,7 @@ module snf_mshr `SNF_PARAM
     assign rxreq_returnnid_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returnnid    : '0;
     assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returntxnid  : '0;
     assign rxreq_dodmt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_rd_s0 == 1'b1) && (rxreq_alloc_flit_s0.srcid != rxreq_alloc_flit_s0.returnnid) :1'b0;
-    // Sec 4.2.1 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
+    // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
     // in WriteNoSnpZero and WriteUniqueZero is never permitted."
     assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (rxreq_alloc_flit_s0.snpattr.dodwt)      :1'b0;
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all

@@ -53,10 +53,9 @@ module hnf_mshr_ctl `HNF_PARAM
     // module decodes is the one hnf_serviced_as() maps it to, so nothing else
     // here can still tell a Write Zero from the *Full write it is serviced as.
     input  wire                                li_mshr_rxreq_wrzero_s0,
-    // The CMO leg of a Combined Write, as opennoc_hnf_pkg::hnf_combined_write_rsp()
-    // names it; the opcode this module decodes is the write leg alone.
+    // opennoc_hnf_pkg::hnf_combined_write() of the request as sent; the opcode this
+    // module decodes is the write leg alone, and the CMO leg is answered CompCMO.
     input  wire                                li_mshr_rxreq_cw_s0,
-    input  chie_pkg::rsp_opcode_e              li_mshr_rxreq_cw_rsp_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  wire                                li_mshr_rxreq_stash_sep_s0,
@@ -246,7 +245,6 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_err_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errrd_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errwrdat_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_errgrant_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_excl_fail_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_order_s1_q;
     chie_pkg::req_opcode_e               mshr_opcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
@@ -262,7 +260,6 @@ module hnf_mshr_ctl `HNF_PARAM
     logic                                mshr_stash_sep_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wrzero_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_s1_q;
-    chie_pkg::rsp_opcode_e               mshr_cw_rsp_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_owed_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_sx_q;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_set_sx;
@@ -499,13 +496,11 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                 op_errrd;
     wire                                 op_errwrdat;
     wire                                 op_cwpersist;
-    wire                                 op_errgrant;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_upd_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errrd_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errwrdat_set_s0;
-    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_errgrant_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dbf_home_fill_entry_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_clr_sx1;
@@ -1136,10 +1131,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                   | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD)
                                    & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
                                   );
-    // The six Combined Writes opennoc_hnf_pkg::hnf_combined_write_rsp() leaves
-    // unserved, enumerated rather than taken as an opcode range: the gaps inside
-    // that range are RESERVED, and a reserved opcode answered write-shaped would
-    // wait for data no Requester owes it.
+    // The six of Table 4-17's (p.4-182) Combined Writes
+    // opennoc_hnf_pkg::hnf_combined_write() leaves unserved, enumerated rather than
+    // taken as an opcode range: the gaps inside that range are RESERVED, and a
+    // reserved opcode answered write-shaped would wait for data no Requester owes.
     assign op_cwpersist = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
                         | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
                         | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
@@ -1152,12 +1147,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                   | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
                                    & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
                                   | op_cwpersist);
-    assign op_errgrant  = op_errwrdat;
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
     assign mshr_errwrdat_set_s0 = {`MSHR_ENTRIES_NUM{op_errwrdat}} & mshr_can_alloc_entry_s0;
-    assign mshr_errgrant_set_s0 = {`MSHR_ENTRIES_NUM{op_errgrant}} & mshr_can_alloc_entry_s0;
     assign mshr_err_clr_sx1     = mshr_can_retire_entry_sx1;
     assign mshr_err_upd_sx      = mshr_err_set_s0 | mshr_err_clr_sx1;
 
@@ -1168,13 +1161,11 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_err_s1_q[entry]       <= 1'b0;
                     mshr_errrd_s1_q[entry]     <= 1'b0;
                     mshr_errwrdat_s1_q[entry]  <= 1'b0;
-                    mshr_errgrant_s1_q[entry]  <= 1'b0;
                 end
                 else if(mshr_err_upd_sx[entry] == 1'b1)begin
                     mshr_err_s1_q[entry]       <= mshr_err_set_s0[entry];
                     mshr_errrd_s1_q[entry]     <= mshr_errrd_set_s0[entry];
                     mshr_errwrdat_s1_q[entry]  <= mshr_errwrdat_set_s0[entry];
-                    mshr_errgrant_s1_q[entry]  <= mshr_errgrant_set_s0[entry];
                 end
                 else
                     ;
@@ -1280,14 +1271,10 @@ module hnf_mshr_ctl `HNF_PARAM
             end
 
             always_ff @(posedge clk)begin : mshr_cw_s1_q_timing_logic
-                if(mshr_req_clr_sx1[entry] == 1'b1)begin
-                    mshr_cw_s1_q[entry]      <= 1'b0;
-                    mshr_cw_rsp_s1_q[entry]  <= chie_pkg::RSP_RSPLCRDRETURN;
-                end
-                else if(mshr_req_set_s0[entry] == 1'b1)begin
-                    mshr_cw_s1_q[entry]      <= li_mshr_rxreq_cw_s0;
-                    mshr_cw_rsp_s1_q[entry]  <= li_mshr_rxreq_cw_rsp_s0;
-                end
+                if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_cw_s1_q[entry] <= 1'b0;
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_cw_s1_q[entry] <= li_mshr_rxreq_cw_s0;
                 else
                     ;
             end
@@ -1406,10 +1393,10 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q)));
     assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
-    assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errgrant_s1_q);
+    assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
     assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q));
     assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_excl_or_reqord}}));
-    // Sec 4.2.1 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
+    // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
     // the buffer entry until it has, the way an Exclusive or OWO write does.
     assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1)) & ~mshr_wrzero_s1_q & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
@@ -1605,7 +1592,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // The write-data event a Write Zero raises for itself carries no flit, so it
     // names its own entry and delivers the whole line at once.
     assign mshr_dat_entry_s0       = li_mshr_rxdat_valid_s0 ? li_mshr_rxdat_txnid_s0
-                                                            : {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_wrzero_inject_idx_sx};
+                                                            : 12'(mshr_wrzero_inject_idx_sx);
     assign mshr_getdat_compack_s0  = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK);
     assign mshr_mem_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA);
     assign mshr_cb_dat_s0          = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA);
@@ -2287,7 +2274,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // The err class is invisible to hnf_mshr_bypass, so txrsp_mshr_bypass_lost_s1
             // is never asserted for it; its arms hang off the allocation instead.
             assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]) ||
-                   (mshr_errgrant_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   (mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_dbid_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
@@ -3154,7 +3141,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_qos_sx1      = (mshr_qos_s1_q[mshr_txrsp_idx_sx1_q]);
     assign mshr_txrsp_tgtid_sx1    = (mshr_srcid_s1_q[mshr_txrsp_idx_sx1_q]);
     // Table 4-38 (SS4.7.2 p.4-218): a StashOnceSep* completes with CompStashDone.
-    assign mshr_txrsp_opcode_sx1   = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?mshr_cw_rsp_s1_q[mshr_txrsp_idx_sx1_q]:(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):chie_pkg::RSP_DBIDRESP);
+    assign mshr_txrsp_opcode_sx1   = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):chie_pkg::RSP_DBIDRESP);
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
@@ -3397,7 +3384,7 @@ module hnf_mshr_ctl `HNF_PARAM
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_home_fill_pend_logic
             assign mshr_home_fill_req_sx[entry] = (mshr_errrd_s1_q[entry] &
-                   (mshr_errgrant_s1_q[entry] ? (mshr_dat_entry_vec_s1_q[entry] & mshr_dat_new_get_s1_q[entry])
+                   (mshr_errwrdat_s1_q[entry] ? (mshr_dat_entry_vec_s1_q[entry] & mshr_dat_new_get_s1_q[entry])
                                               : mshr_can_alloc_entry_s1_q[entry]))
                  | (mshr_wrzero_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             always_ff @(posedge clk or posedge rst)begin : mshr_home_fill_pend_sx_q_timing_logic

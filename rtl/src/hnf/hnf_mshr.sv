@@ -209,7 +209,6 @@ module hnf_mshr `HNF_PARAM
     wire                           req_excl_noexok_s0;
     wire                           req_wrzero_s0;
     wire                           req_cw_s0;
-    chie_pkg::rsp_opcode_e         req_cw_rsp_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      li_mshr_rxreq_excl_s0,
@@ -217,7 +216,6 @@ module hnf_mshr `HNF_PARAM
                                                                      excl_seq_other_rn_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
     assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
-    assign req_cw_rsp_s0          = opennoc_hnf_pkg::hnf_combined_write_rsp(li_mshr_rxreq_opcode_s0);
     assign req_cw_s0              = opennoc_hnf_pkg::hnf_combined_write(li_mshr_rxreq_opcode_s0);
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
@@ -378,7 +376,6 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_excl_noexok_s0                    (req_excl_noexok_s0                ),
                      .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                     ),
                      .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
-                     .li_mshr_rxreq_cw_rsp_s0                         (req_cw_rsp_s0                     ),
                      .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),

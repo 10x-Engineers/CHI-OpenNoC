@@ -39,9 +39,8 @@ module hnf_data_buffer `HNF_PARAM
     // A line of zeros the Home sources itself, for the two transactions that get
     // no data from anywhere else: an errored read, which Sec 9.4.4 (p.9-342, MUST)
     // still owes its data packets, and a Write Zero, whose WriteData response
-    // Table 4-39 (p.4-219) gives as None. The BE and the presence bits are what
-    // tell the two apart -- the TXDAT wrapper derives DataID and the beat count
-    // from the presence bits alone.
+    // Table 4-39 (p.4-219) gives as None. The TXDAT wrapper derives DataID and the
+    // beat count from the presence bits alone.
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     input  wire                               mshr_dbf_home_fill_valid_sx1_q,
     input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
