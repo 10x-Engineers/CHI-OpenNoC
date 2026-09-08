@@ -38,6 +38,9 @@ module hnf_mshr_bypass `HNF_PARAM
     input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
+    // opennoc_hnf_pkg::hnf_write_zero() of the request as sent, alongside the
+    // opcode this stage services it as (opennoc_hnf_pkg::hnf_serviced_as()).
+    input  wire                                li_mshr_rxreq_wrzero_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
 
     //inputs from hnf_mshr_qos
@@ -246,7 +249,12 @@ module hnf_mshr_bypass `HNF_PARAM
     //valid judgment
     assign rd_receipt_s0        = req_rd_s0&&req_ord_s0&&mshr_alloc_en_s0;
     assign wr_compdbid_s0       = (req_cb_s0||(req_wrnosnp_s0&&(li_mshr_rxreq_excl_s0 == 1||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0 == 1))))&&mshr_alloc_en_s0;
-    assign wr_dbid_s0           = (req_wup_s0||(req_wuf_s0&&(req_memattr_allocate||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0))))&&mshr_alloc_en_s0;
+    // Table 4-39 (p.4-219) still gives a Write Zero a DBID -- "DBIDResp + Comp or
+    // CompDBIDResp" -- even though its WriteData response is None. It cannot come
+    // from the Subordinate the way a DWT write's does (Sec 4.2.1 p.4-176 forbids
+    // DWT here), so this Home sources it, and Sec 2.5.9 (p.2-91) leaves its value
+    // free: "not required to utilize the DBID field" in a Write Zero.
+    assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||req_wup_s0||(req_wuf_s0&&(req_memattr_allocate||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0))))&&mshr_alloc_en_s0;
     assign tx_rdnosnp_s0        = req_rdnosnp_s0&&mshr_alloc_en_s0;
     assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!req_memattr_allocate&&mshr_alloc_en_s0;
 
@@ -296,8 +304,11 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     //dwt judgment
-    assign do_dwt_wrnosnpfull_s0 =(!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)) ||
-           (!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL) && (!req_memattr_allocate));
+    // Sec 4.2.1 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
+    // write data this Home sources itself and so has nothing to direct.
+    assign do_dwt_wrnosnpfull_s0 =(!li_mshr_rxreq_wrzero_s0) &&
+           ((!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)) ||
+            (!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL) && (!req_memattr_allocate)));
 
     assign do_dwt_wrnosnpptl_s0 = (!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1) && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL));
 

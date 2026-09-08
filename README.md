@@ -317,16 +317,16 @@ monitor's same-cycle verdict.
 | `ReadShared` | — | ⚪ | 🟢 served as `ReadNotSharedDirty` — Table 4-33 (p.4-212) gives it those rows, section 4.4.2 (p.4-196) permits that snoop |
 | `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 served as `ReadUnique` — Table 4-34 (p.4-213) permits `CompData_UC`/`_UD_PD` for MakeReadUnique, section 4.7.1 (p.4-214) the `SnpUnique`; a failed MakeReadUnique(Excl) and a ReadPreferUnique while another Requester's exclusive sequence is live take `ReadNotSharedDirty`'s Shared path (section 6.3.1 p.6-289, section 4.2.1 p.4-164); neither carries EXOK (section 6.3.1 p.6-287) |
 | `WriteNoSnpFull`, `WriteNoSnpPtl` | 🟢 | 🟢 | 🟢 |
-| `WriteNoSnpZero` | 🟢 | 🟢 | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 served as `WriteNoSnpFull` over a line of zeros the Home sources — §4.2.3 (p.4-176), Table 4-39 (p.4-219) |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 |
-| `WriteUniqueZero` | ⚪ | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUniqueZero` | ⚪ | ⚪ | 🟢 served as `WriteUniqueFull` over a line of zeros the Home sources — §4.2.3 (p.4-176), Table 4-39 (p.4-219) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
 | `WriteEvictOrEvict` | — | ⚪ | 🟢 on section 2.3.2's (p.2-55) `CompDBIDResp` alternative |
 | `WriteBackPtl` | — | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 served as `WriteUniqueFull`/`Ptl` — section 7.2 (p.7-296) permits ignoring the hint |
 | `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 completed `Comp_I` / `CompStashDone` without stashing — section 2.3.4 (p.2-71), section 7.3 (p.7-297), Table 4-38 (p.4-218) |
-| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
-| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🟡 the four non-persistent forms served, write leg + `CompCMO`; the two `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🟡 the five non-persistent forms served, write leg + `CompCMO`; the four `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
 | `MakeInvalid` | 🟢 | 🟢 | 🟢 served as `CleanInvalid` — section 4.2.2 (p.4-170) only permits the Dirty copy to be dropped, Table 4-38 (p.4-218) gives both `Comp_I` |
 | `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | ⚪ [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
@@ -370,8 +370,8 @@ neither issues a snoop and neither has a SNP port.
 | L3 / system cache | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
 | Exclusives | —² | 🟢³ | 🟢⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean` load, `WriteNoSnp*`/`CleanUnique` store; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
 | CMOs | 🟢 | 🟢 | — | 🟡 | all five at the SN-F and HN-I; the HN-F decodes `CleanShared`, `CleanInvalid` and `MakeInvalid`, and error-completes the two persistent ones |
-| Combined Writes | 🟡 | 🟡 | — | ⚪ | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the rest, and all fifteen at the HN-F, are error-completed |
-| Write Zero | 🟡 | 🟡 | — | ⚪ | `WriteNoSnpZero` is serviced at the SN-F and HN-I; `WriteUniqueZero`, and both at the HN-F, are error-completed |
+| Combined Writes | 🟡 | 🟡 | — | 🟡 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves the nine whose CMO leg is not persistent, and error-completes the six `*CleanShPerSep` |
+| Write Zero | 🟡 | 🟢 | — | 🟢 | both are serviced at the HN-F; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
 | Atomics | ⚪ | ⚪ | — | ⚪ | section 16.1 leaves `Atomic_Transactions` False when undeclared, and section 16.3.3 then makes the error response the correct answer |
 | Stash | ⚪ | ⚪ | — | 🟡 | the HN-F completes every Stash request without stashing and without an error (section 2.3.4 p.2-71, section 9.4.6 p.9-344); no Stash snoop is generated |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero |

@@ -50,6 +50,19 @@ package opennoc_hnf_pkg;
   //   WriteUnique*Stash -> WriteUnique*: SS7.2 (p.7-296) "Permitted to ignore
   //     the stash hint in the Write request and process the request as a
   //     regular WriteUnique"; Table 4-39 (p.4-219) shares their completion row.
+  //   a Combined Write -> its write leg: SS4.2.4 (p.4-183) defines the fifteen as
+  //     "for each Write request" plus a CMO, and lets the receiver "separate the
+  //     write and the CMO request and process them separately" provided "the CMO
+  //     request must be ordered behind the write". The write is serviced as the
+  //     Write it names; the CMO leg is the second response
+  //     hnf_combined_write_rsp() names, and hnf_combined_write() is what stops
+  //     the line being allocated so that leg has nothing left to do.
+  //   Write Zero -> the *Full write of the same address region: SS4.2.3 (p.4-176)
+  //     is "write data value of zero without transferring data bytes", and
+  //     Table 4-13 (p.4-178) gives it Size=64, so it is that write over a line the
+  //     Home sources itself. Table 4-39 (p.4-219) shares the completion row -- the
+  //     only delta is the WriteData response of None, which hnf_write_zero() below
+  //     is what the MSHR reads to source the bytes and to withhold DWT.
   //   StashOnce* -> Evict: SS2.3.4 (p.2-71) permits the Home to ignore a Stash
   //     request, SS7.3 (p.7-297, MUST) still owes the Comp, Comp_I when the
   //     Home did not look up its cache; Table 4-38 gives Evict that same Comp_I
@@ -72,6 +85,17 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_MAKEINVALID          : return chie_pkg::REQ_CLEANINVALID;
       chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return chie_pkg::REQ_WRITEUNIQUEFULL;
       chie_pkg::REQ_WRITEUNIQUEPTLSTASH  : return chie_pkg::REQ_WRITEUNIQUEPTL;
+      chie_pkg::REQ_WRITEUNIQUEZERO      : return chie_pkg::REQ_WRITEUNIQUEFULL;
+      chie_pkg::REQ_WRITENOSNPZERO       : return chie_pkg::REQ_WRITENOSNPFULL;
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANINV       : return chie_pkg::REQ_WRITENOSNPFULL;
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANINV        : return chie_pkg::REQ_WRITENOSNPPTL;
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH       : return chie_pkg::REQ_WRITEUNIQUEFULL;
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH        : return chie_pkg::REQ_WRITEUNIQUEPTL;
+      chie_pkg::REQ_WRITEBACKFULLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANINV        : return chie_pkg::REQ_WRITEBACKFULL;
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH        : return chie_pkg::REQ_WRITECLEANFULL;
       chie_pkg::REQ_STASHONCESHARED,
       chie_pkg::REQ_STASHONCEUNIQUE,
       chie_pkg::REQ_STASHONCESEPSHARED,
@@ -96,6 +120,39 @@ package opennoc_hnf_pkg;
   endfunction
   function automatic logic hnf_excl_store_as(chie_pkg::req_opcode_e op);
     return op == chie_pkg::REQ_MAKEREADUNIQUE;
+  endfunction
+
+  // The CMO leg of a Combined Write, as the response that answers it: SS2.3.2
+  // (p.2-58/p.2-66) gives it CompCMO. RspLCrdReturn (opcode 0) is the no-CMO
+  // sentinel, and it is what the six *CleanShPerSep forms take: SS4.2.4 (p.4-182,
+  // MUST) makes their CMO leg a CleanSharedPersistSep, whose Persist response
+  // this Home cannot honour -- it has no path to a Point of Persistence, which is
+  // the same gap that leaves CleanSharedPersist(Sep) unserved (CHI-OpenNoC#67).
+  // They stay on SS9.1's (p.9-334) NDERR until it closes.
+  function automatic chie_pkg::rsp_opcode_e hnf_combined_write_rsp(chie_pkg::req_opcode_e op);
+    case (op)
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANINV,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANINV,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH        : return chie_pkg::RSP_COMPCMO;
+      default                                    : return chie_pkg::RSP_RSPLCRDRETURN;
+    endcase
+  endfunction
+
+  function automatic logic hnf_combined_write(chie_pkg::req_opcode_e op);
+    return hnf_combined_write_rsp(op) != chie_pkg::RSP_RSPLCRDRETURN;
+  endfunction
+
+  // SS4.2.1 (p.4-176, MUST): "DWT flow between a Request Node and a Subordinate
+  // Node in WriteNoSnpZero and WriteUniqueZero is never permitted" -- and there is
+  // no write data to direct anywhere, the Home sourcing the line itself.
+  function automatic logic hnf_write_zero(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_WRITEUNIQUEZERO || op == chie_pkg::REQ_WRITENOSNPZERO;
   endfunction
 
   // Table 4-38 (SS4.7.2 p.4-218): StashOnceSep* completes with "Comp + StashDone

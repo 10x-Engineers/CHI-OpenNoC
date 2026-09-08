@@ -258,10 +258,10 @@ module hnf `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_rd_idx_sx1_q;
     wire                                     mshr_dbf_rd_valid_sx1_q;
     wire                                     mshr_dbf_rd_to_rn_sx1_q;
-    wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_err_fill_idx_sx1_q;
-    wire                                     mshr_dbf_err_fill_valid_sx1_q;
-    wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_err_fill_be_sx1_q;
-    wire [1:0]                               mshr_dbf_err_fill_pe_sx1_q;
+    wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_home_fill_idx_sx1_q;
+    wire                                     mshr_dbf_home_fill_valid_sx1_q;
+    wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_home_fill_be_sx1_q;
+    wire [1:0]                               mshr_dbf_home_fill_pe_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_retired_idx_sx1_q;
     wire                                     mshr_dbf_retired_valid_sx1_q;
     wire                                     mshr_l3_req_en_sx1_q;
@@ -640,10 +640,10 @@ module hnf `HNF_PARAM
                  .mshr_dbf_rd_idx_sx1_q                        (mshr_dbf_rd_idx_sx1_q             ),
                  .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
                  .mshr_dbf_rd_to_rn_sx1_q                      (mshr_dbf_rd_to_rn_sx1_q           ),
-                 .mshr_dbf_err_fill_idx_sx1_q                  (mshr_dbf_err_fill_idx_sx1_q       ),
-                 .mshr_dbf_err_fill_valid_sx1_q                (mshr_dbf_err_fill_valid_sx1_q     ),
-                 .mshr_dbf_err_fill_be_sx1_q                   (mshr_dbf_err_fill_be_sx1_q        ),
-                 .mshr_dbf_err_fill_pe_sx1_q                   (mshr_dbf_err_fill_pe_sx1_q        ),
+                 .mshr_dbf_home_fill_idx_sx1_q                  (mshr_dbf_home_fill_idx_sx1_q       ),
+                 .mshr_dbf_home_fill_valid_sx1_q                (mshr_dbf_home_fill_valid_sx1_q     ),
+                 .mshr_dbf_home_fill_be_sx1_q                   (mshr_dbf_home_fill_be_sx1_q        ),
+                 .mshr_dbf_home_fill_pe_sx1_q                   (mshr_dbf_home_fill_pe_sx1_q        ),
                  .mshr_dbf_retired_idx_sx1_q                   (mshr_dbf_retired_idx_sx1_q        ),
                  .mshr_dbf_retired_valid_sx1_q                 (mshr_dbf_retired_valid_sx1_q      ),
                  .mshr_txreq_valid_sx1_q                       (mshr_txreq_valid_sx1_q            ),
@@ -774,10 +774,10 @@ module hnf `HNF_PARAM
                         .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
                         .mshr_dbf_retired_idx_sx1_q                   (mshr_dbf_retired_idx_sx1_q        ),
                         .mshr_dbf_retired_valid_sx1_q                 (mshr_dbf_retired_valid_sx1_q      ),
-                        .mshr_dbf_err_fill_idx_sx1_q                  (mshr_dbf_err_fill_idx_sx1_q       ),
-                        .mshr_dbf_err_fill_valid_sx1_q                (mshr_dbf_err_fill_valid_sx1_q     ),
-                 .mshr_dbf_err_fill_be_sx1_q                   (mshr_dbf_err_fill_be_sx1_q        ),
-                 .mshr_dbf_err_fill_pe_sx1_q                   (mshr_dbf_err_fill_pe_sx1_q        ),
+                        .mshr_dbf_home_fill_idx_sx1_q                  (mshr_dbf_home_fill_idx_sx1_q       ),
+                        .mshr_dbf_home_fill_valid_sx1_q                (mshr_dbf_home_fill_valid_sx1_q     ),
+                 .mshr_dbf_home_fill_be_sx1_q                   (mshr_dbf_home_fill_be_sx1_q        ),
+                 .mshr_dbf_home_fill_pe_sx1_q                   (mshr_dbf_home_fill_pe_sx1_q        ),
                         .pipe_dbf_wr_valid_sx9_q                      (pipe_dbf_wr_valid_sx9_q           ),
                         .pipe_dbf_wr_idx_sx9_q                        (pipe_dbf_wr_idx_sx9_q             ),
                         .pipe_dbf_wr_data_sx9_q                       (l3_rd_data_q                      ),
