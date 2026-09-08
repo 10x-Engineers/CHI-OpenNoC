@@ -58,6 +58,13 @@ module hnf_data_buffer `HNF_PARAM
     output logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx7_q,
 
     //outputs to hnf_link_txdat_wrap
+    //outputs to hnf_mshr_ctl
+    // Sec 2.10.3 (p.2-135) lets a SnpRespDataPtl assert "any combination of byte
+    // enables", all of them included, so whether the line this entry holds is
+    // complete is a property of the accumulated BE, not of the opcode that
+    // delivered it.
+    output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_be_full_sx,
+
     output wire                               dbf_txdat_valid_sx1,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
     output wire [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_sx1,
@@ -119,7 +126,7 @@ module hnf_data_buffer `HNF_PARAM
                             temp_li_be[i]        = dbf_be_q[li_dbf_rxdat_txnid_s0][i];
                         end
                     end
-                    else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED))) begin//merge
+                    else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAPTL))) begin//merge
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
                             temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&!dbf_be_q[li_dbf_rxdat_txnid_s0][i])?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
@@ -230,6 +237,12 @@ module hnf_data_buffer `HNF_PARAM
     assign dbf_txdat_valid_sx1 = mshr_dbf_rd_valid_sx1_q;//tx read
     assign dbf_txdat_idx_sx1   = mshr_dbf_rd_idx_sx1_q;
     assign dbf_txdat_be_sx1    = dbf_be_q[mshr_dbf_rd_idx_sx1_q];
+
+    generate
+        for (genvar be_e = 0; be_e < `MSHR_ENTRIES_NUM; be_e = be_e + 1) begin : dbf_be_full
+            assign dbf_mshr_be_full_sx[be_e] = &dbf_be_q[be_e];
+        end
+    endgenerate
     assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_pe_sx1    = dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
 

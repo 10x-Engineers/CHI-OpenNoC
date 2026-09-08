@@ -52,7 +52,11 @@ module rni_arctrl
     output wire                             arctrl_pcrdgnt_h_present_d3_o,
     output wire                             arctrl_pcrdgnt_l_present_d3_o,
     input  wire                             ar_pcrdgnt_h_win_d3_i,
-    input  wire                             ar_pcrdgnt_l_win_d3_i
+    input  wire                             ar_pcrdgnt_l_win_d3_i,
+
+    // rni_aw_ctl Interface -- Sec 2.9.4's (p.2-130) cross-kind Device ordering
+    output wire                             arctrl_device_ordered_pending_o,
+    input  wire                             awctrl_device_ordered_pending_i
     );
 
     wire                                 alloc_busy_s1_w;
@@ -542,7 +546,8 @@ module rni_arctrl
     // Gated per Requester rather than per stream: Sec 2.8's Note (p.2-122)
     // permits the narrower per-ARID form, which this does not attempt.
     assign arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_req_select_rdy_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_dep_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_req_select_vec_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]
-             & ~({RNI_AR_ENTRIES_NUM_PARAM{arctrl_ordered_pending_any_w}} & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
+             & ~({RNI_AR_ENTRIES_NUM_PARAM{arctrl_ordered_pending_any_w}} & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0])
+             & ~({RNI_AR_ENTRIES_NUM_PARAM{awctrl_device_ordered_pending_i}} & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
     assign arctrl_entry_req_hi_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_req_lo_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_req_new_rdy_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_qos_hi_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     //deassert select_vec when receiving retryack
@@ -781,6 +786,17 @@ module rni_arctrl
     assign rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_ordrsp_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | ({RNI_AR_ENTRIES_NUM_PARAM{arctrl_entry_req_select_success_flag_w}} & arctrl_entry_req_ptr_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_any_w = |arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    // Sec 2.9.4 (p.2-130, MUST): the Device nRnE and Device nRE required behaviour
+    // is that "All Read and Write transactions from the same source to the same
+    // endpoint must remain ordered" -- across the two kinds, not within each. The
+    // per-channel gates below are Sec 2.8.5's, one transaction family apiece, so
+    // this pair is what orders a read against a write. Device-qualified on both
+    // sides: Table 2-11 (p.2-129) gives Device RE Order[0]=0 and p.2-130 drops the
+    // endpoint clause for it, and a Normal write owes a read nothing at all.
+    // The flopped term: the write channel's gate must not depend on this channel's
+    // own gate, or the two close a combinational loop. See rni_awctrl's next-state
+    // twin, which is the half that resolves a same-cycle selection.
+    assign arctrl_device_ordered_pending_o = |(arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
     assign arctrl_pcrdgnt_h_present_d3_o = rxrsp_pcrdtype_hi_match_d3_q;

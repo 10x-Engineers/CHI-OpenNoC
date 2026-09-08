@@ -141,7 +141,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
     always_comb begin
-        `display_fatal( (!li_mshr_rxdat_valid_s0) || (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_DATLCRDRETURN)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK),$sformatf("Fatal info: RXDAT received a unsupported flit with opcode: %h",li_mshr_rxdat_opcode_s0));
+        `display_fatal( (!li_mshr_rxdat_valid_s0) || (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_DATLCRDRETURN)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAPTL)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL)||(li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK),$sformatf("Fatal info: RXDAT received a unsupported flit with opcode: %h",li_mshr_rxdat_opcode_s0));
     end
 `endif
 

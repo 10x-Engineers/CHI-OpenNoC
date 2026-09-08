@@ -251,6 +251,7 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_q2_valid_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_cmo_owed_q;
     chie_pkg::rsp_opcode_e               txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_persist_owed_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_any_sent_q;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_queued_sx;
@@ -335,7 +336,9 @@ module snf_mshr `SNF_PARAM
     // combined CompPersist "if the ReturnNID and SrcID of the request are the same
     // value" -- otherwise step 6 owes the Persist to ReturnNID, which a CompPersist
     // addressed to SrcID never reaches (Table B-3 p.B-495 gives it no other target).
-    assign rxreq_persist_fold_s0   = rxreq_cmopersist_s0 && (rxreq_returnnid_s0 == rxreq_srcid_s0);
+    // Sec 4.2.4 (p.4-182, MUST) makes a Write*CleanShPerSep's CMO leg a
+    // CleanSharedPersistSep, so step 7's condition binds it as well.
+    assign rxreq_persist_fold_s0   = (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) && (rxreq_returnnid_s0 == rxreq_srcid_s0);
     assign rxreq_rsponly_opcode_s0 = rxreq_persist_fold_s0 ? chie_pkg::RSP_COMPPERSIST : chie_pkg::RSP_COMP;
     assign rxreq_errgrant_s0    = rxreq_errwr_s0;
     assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.memattr.early_wr_ack  : 1'b0;
@@ -429,25 +432,29 @@ module snf_mshr `SNF_PARAM
             // (Sec 2.3.9 p.2-80, Sec 9.4.3 p.9-341).
             always_ff @(posedge clk or posedge rst)begin : txrsp_queue_alloc_timing_logic
                 if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
-                    txrsp_q2_valid_q[entry]   <= 1'b0;
-                    txrsp_cmo_owed_q[entry]   <= 1'b0;
-                    txrsp_cmo_opcode_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
+                    txrsp_q2_valid_q[entry]     <= 1'b0;
+                    txrsp_cmo_owed_q[entry]     <= 1'b0;
+                    txrsp_cmo_opcode_q[entry]   <= chie_pkg::RSP_RSPLCRDRETURN;
+                    txrsp_persist_owed_q[entry] <= 1'b0;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
                     txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0 & ~rxreq_ewa_s0;
-                    // Sec 2.6.2 step 6 (p.2-102): an unfolded CleanSharedPersistSep
-                    // owes a Persist after its Comp, which is the same "one more
-                    // response" slot a Combined Write's CMO leg uses.
-                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0 | (rxreq_cmopersist_s0 & ~rxreq_persist_fold_s0);
-                    txrsp_cmo_opcode_q[entry] <= rxreq_cwpersist_s0 ? chie_pkg::RSP_COMPPERSIST
-                                               : rxreq_cmopersist_s0 ? chie_pkg::RSP_PERSIST
-                                               : chie_pkg::RSP_COMPCMO;
+                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0;
+                    txrsp_cmo_opcode_q[entry] <= (rxreq_cwpersist_s0 & rxreq_persist_fold_s0) ? chie_pkg::RSP_COMPPERSIST
+                                                                                             : chie_pkg::RSP_COMPCMO;
+                    // Sec 2.6.2 step 6 (p.2-102): an unfolded persistent CMO owes a
+                    // Persist of its own, and a Combined Write owes it on top of the
+                    // write leg's Comp and the CMO leg's CompCMO -- three responses,
+                    // so the Persist holds a slot of its own.
+                    txrsp_persist_owed_q[entry] <= (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) & ~rxreq_persist_fold_s0;
                 end
                 else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
                     if (txrsp_comp_queued_sx[entry])
-                        txrsp_q2_valid_q[entry]   <= 1'b0;
+                        txrsp_q2_valid_q[entry]     <= 1'b0;
+                    else if (txrsp_cmo_owed_q[entry])
+                        txrsp_cmo_owed_q[entry]     <= 1'b0;
                     else
-                        txrsp_cmo_owed_q[entry]   <= 1'b0;
+                        txrsp_persist_owed_q[entry] <= 1'b0;
                 end
                 else if(txrsp_comp_rdy_sx[entry] && txrsp_rdy_sx_q[entry])
                     txrsp_q2_valid_q[entry]   <= 1'b1;
@@ -858,9 +865,10 @@ module snf_mshr `SNF_PARAM
                     txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
-                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry];
+                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry];
                     txrsp_opcode_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] ? chie_pkg::RSP_COMP
                                                   : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
+                                                  : txrsp_persist_owed_q[entry] ? chie_pkg::RSP_PERSIST
                                                   : chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))begin
@@ -1342,7 +1350,8 @@ module snf_mshr `SNF_PARAM
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign all_rsp_sent_sx[entry] = txrsp_any_sent_q[entry] && (~txrsp_rdy_sx_q[entry])
-                                         && (~txrsp_comp_queued_sx[entry]) && (~txrsp_cmo_owed_q[entry]);
+                                         && (~txrsp_comp_queued_sx[entry]) && (~txrsp_cmo_owed_q[entry])
+                                         && (~txrsp_persist_owed_q[entry]);
         end
     endgenerate
 

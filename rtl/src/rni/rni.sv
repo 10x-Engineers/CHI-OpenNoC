@@ -132,6 +132,11 @@ module rni `RNI_PARAM
     wire                                aw_txreqflitv_s0;
     wire                                aw_txreqflit_sent_s0;
     wire                                arctrl_pcrdgnt_l_present_d3;
+    // Sec 2.9.4 (p.2-130, MUST): a Device read and a Device write from one source
+    // to one endpoint stay ordered against each other, so each channel's issue
+    // gate has to see the other's outstanding ordering response.
+    wire                                arctrl_device_ordered_pending;
+    wire                                awctrl_device_ordered_pending;
     wire                                arctrl_pcrdgnt_h_present_d3;
     wire                                aw_pcrdgnt_l_present_d3;
     wire                                aw_pcrdgnt_h_present_d3;
@@ -271,6 +276,8 @@ module rni `RNI_PARAM
                    ,.arctrl_pcrdgnt_l_present_d3_o         ( arctrl_pcrdgnt_l_present_d3   )
                    ,.ar_pcrdgnt_h_win_d3_i                 ( ar_pcrdgnt_h_win_d3           )
                    ,.ar_pcrdgnt_l_win_d3_i                 ( ar_pcrdgnt_l_win_d3           )
+                   ,.arctrl_device_ordered_pending_o       ( arctrl_device_ordered_pending )
+                   ,.awctrl_device_ordered_pending_i       ( awctrl_device_ordered_pending )
                );
 
     rni_misc `RNI_PARAM_INST
@@ -342,6 +349,8 @@ module rni `RNI_PARAM
                    ,.awctrl_brsp_last_v_d2_o               ( awctrl_brsp_last_v_d2         )
                    ,.awctrl_brsp_axid_d2_o                 ( awctrl_brsp_axid_d2           )
                    ,.awctrl_brsp_resperr_d2_o              ( awctrl_brsp_resperr_d2        )
+                   ,.awctrl_device_ordered_pending_o       ( awctrl_device_ordered_pending )
+                   ,.arctrl_device_ordered_pending_i       ( arctrl_device_ordered_pending )
                );
 
     rni_wr_buffer `RNI_PARAM_INST
