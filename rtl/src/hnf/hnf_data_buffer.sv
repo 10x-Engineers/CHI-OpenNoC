@@ -36,14 +36,15 @@ module hnf_data_buffer `HNF_PARAM
     input  wire                               mshr_dbf_rd_valid_sx1_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_retired_idx_sx1_q,
     input  wire                               mshr_dbf_retired_valid_sx1_q,
-    // CHI E.b Sec 9.4.4 (p.9-342, MUST): an errored read still returns its data
-    // packets. This stamps an entry present with no fill behind it, so the TXDAT
-    // wrapper -- which derives DataID and the beat count from the presence bits
-    // alone -- emits them.
-    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_err_fill_idx_sx1_q,
-    input  wire                               mshr_dbf_err_fill_valid_sx1_q,
-    input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_err_fill_be_sx1_q,
-    input  wire [1:0]                         mshr_dbf_err_fill_pe_sx1_q,
+    // A line of zeros the Home sources itself, for the two transactions that get
+    // no data from anywhere else: an errored read, which Sec 9.4.4 (p.9-342, MUST)
+    // still owes its data packets, and a Write Zero, whose WriteData response
+    // Table 4-39 (p.4-219) gives as None. The TXDAT wrapper derives DataID and the
+    // beat count from the presence bits alone.
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
+    input  wire                               mshr_dbf_home_fill_valid_sx1_q,
+    input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
+    input  wire [1:0]                         mshr_dbf_home_fill_pe_sx1_q,
 
     //inputs from hnf_cache_pipeline
     input  wire                               pipe_dbf_wr_valid_sx9_q,
@@ -191,10 +192,10 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_be_q[i]   <= temp_pipe_be;
                         dbf_pe_q[i]   <= 2'b11;
                     end
-                    else if (mshr_dbf_err_fill_valid_sx1_q && i == mshr_dbf_err_fill_idx_sx1_q)begin
+                    else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
                         dbf_data_q[i] <= 'd0;
-                        dbf_be_q[i]   <= mshr_dbf_err_fill_be_sx1_q;
-                        dbf_pe_q[i]   <= mshr_dbf_err_fill_pe_sx1_q;
+                        dbf_be_q[i]   <= mshr_dbf_home_fill_be_sx1_q;
+                        dbf_pe_q[i]   <= mshr_dbf_home_fill_pe_sx1_q;
                     end
                     else begin
                     end

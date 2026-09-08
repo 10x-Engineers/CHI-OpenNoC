@@ -135,10 +135,10 @@ module hnf_mshr `HNF_PARAM
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_rd_idx_sx1_q,
     output wire                                mshr_dbf_rd_valid_sx1_q,
     output wire                                mshr_dbf_rd_to_rn_sx1_q,
-    output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_err_fill_idx_sx1_q,
-    output wire                                mshr_dbf_err_fill_valid_sx1_q,
-    output wire [`CACHE_BE_WIDTH-1:0]          mshr_dbf_err_fill_be_sx1_q,
-    output wire [1:0]                          mshr_dbf_err_fill_pe_sx1_q,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_home_fill_idx_sx1_q,
+    output wire                                mshr_dbf_home_fill_valid_sx1_q,
+    output wire [`CACHE_BE_WIDTH-1:0]          mshr_dbf_home_fill_be_sx1_q,
+    output wire [1:0]                          mshr_dbf_home_fill_pe_sx1_q,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_retired_idx_sx1_q,
     output wire                                mshr_dbf_retired_valid_sx1_q,
     output wire                                mshr_txreq_valid_sx1_q,
@@ -207,12 +207,16 @@ module hnf_mshr `HNF_PARAM
     // see the one the Requester sent.
     chie_pkg::req_opcode_e         req_opcode_serviced_s0;
     wire                           req_excl_noexok_s0;
+    wire                           req_wrzero_s0;
+    wire                           req_cw_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      li_mshr_rxreq_excl_s0,
                                                                      excl_store_fail_s0,
                                                                      excl_seq_other_rn_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
+    assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
+    assign req_cw_s0              = opennoc_hnf_pkg::hnf_combined_write(li_mshr_rxreq_opcode_s0);
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
@@ -236,6 +240,7 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_memattr_s0                        (li_mshr_rxreq_memattr_s0             ),
                         .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0                ),
                         .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0          ),
+                        .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                        ),
                         .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0            ),
                         .mshr_entry_idx_alloc_s1_q                       (mshr_entry_idx_alloc_s1_q            ),
                         .mshr_alloc_en_s0                                (mshr_alloc_en_s0                     ),
@@ -369,6 +374,8 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_txnid_s0                          (li_mshr_rxreq_txnid_s0            ),
                      .li_mshr_rxreq_opcode_s0                         (req_opcode_serviced_s0            ),
                      .li_mshr_rxreq_excl_noexok_s0                    (req_excl_noexok_s0                ),
+                     .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                     ),
+                     .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
                      .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),
@@ -435,10 +442,10 @@ module hnf_mshr `HNF_PARAM
                      .mshr_dbf_rd_idx_sx1_q                           (mshr_dbf_rd_idx_sx1_q             ),
                      .mshr_dbf_rd_valid_sx1_q                         (mshr_dbf_rd_valid_sx1_q           ),
                      .mshr_dbf_rd_to_rn_sx1_q                         (mshr_dbf_rd_to_rn_sx1_q           ),
-                     .mshr_dbf_err_fill_idx_sx1_q                     (mshr_dbf_err_fill_idx_sx1_q       ),
-                     .mshr_dbf_err_fill_valid_sx1_q                   (mshr_dbf_err_fill_valid_sx1_q     ),
-                     .mshr_dbf_err_fill_be_sx1_q                      (mshr_dbf_err_fill_be_sx1_q        ),
-                     .mshr_dbf_err_fill_pe_sx1_q                      (mshr_dbf_err_fill_pe_sx1_q        ),
+                     .mshr_dbf_home_fill_idx_sx1_q                     (mshr_dbf_home_fill_idx_sx1_q       ),
+                     .mshr_dbf_home_fill_valid_sx1_q                   (mshr_dbf_home_fill_valid_sx1_q     ),
+                     .mshr_dbf_home_fill_be_sx1_q                      (mshr_dbf_home_fill_be_sx1_q        ),
+                     .mshr_dbf_home_fill_pe_sx1_q                      (mshr_dbf_home_fill_pe_sx1_q        ),
                      .mshr_dbf_retired_idx_sx1_q                      (mshr_dbf_retired_idx_sx1_q        ),
                      .mshr_dbf_retired_valid_sx1_q                    (mshr_dbf_retired_valid_sx1_q      ),
                      .mshr_txreq_valid_sx1_q                          (mshr_txreq_valid_sx1_q            ),
