@@ -676,6 +676,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                           mshr_l3_seq_retire_sx;
     wire                           mshr_l3_val_sx7;
     wire                           mshr_txreq_evict_wr_sx1;
+    wire                           mshr_txreq_icn_wr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_home_fill_req_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]  mshr_home_fill_pend_sx_q;
     logic                          mshr_home_fill_pick_valid_sx;
@@ -3103,7 +3104,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 2.10.3 (p.2-135, MUST): a WriteNoSnpFull must assert every byte enable, so
     // a write-back whose only source was a partial Snoop response is Ptl.
     assign mshr_txreq_opcode_sx1      = (mshr_txreq_is_rd_sx1?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
-    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1)? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_size_sx1        = (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3]) | (~mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1][3] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1)? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
@@ -3116,7 +3117,17 @@ module hnf_mshr_ctl `HNF_PARAM
     // the same ready bit mshr_txreq_is_rd_sx1 selects the flit with, so neither the
     // attributes nor the Size can describe a flit other than the arbitrated one.
     assign mshr_txreq_evict_wr_sx1    = mshr_evict_pending_sx_q[mshr_txreq_entry_idx_sx1] & ~mshr_txreq_is_rd_sx1;
-    assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_evict_wr_sx1) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
+    // The same eviction, reached the other way: an entry that is not a Write
+    // request has no write data of its own, so a downstream write on its account
+    // is the System cache line leaving. Sec 2.9.3 (p.2-128) preserves MemAttr only
+    // for the request the Home is propagating, and this is not one.
+    assign mshr_txreq_icn_wr_sx1      = ~mshr_txreq_is_rd_sx1
+                                      & ~( mshr_wrnosnp_s1_q[mshr_txreq_entry_idx_sx1]
+                                         | mshr_wu_s1_q[mshr_txreq_entry_idx_sx1]
+                                         | mshr_wb_s1_q[mshr_txreq_entry_idx_sx1]
+                                         | mshr_wc_s1_q[mshr_txreq_entry_idx_sx1]
+                                         | mshr_we_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 

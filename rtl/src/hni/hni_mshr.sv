@@ -1518,7 +1518,10 @@ module hni_mshr `HNI_PARAM
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             // One AXI ID is live at one entry at a time: need_to_sleep_s0 parks a
             // second request on the same axid, and ~sleep_sx_q selects the live one.
-            assign bresp_hit_sx[entry] = bvalid_sx & bready_sx & (~sleep_sx_q[entry])
+            // An entry holding no request carries AXI ID zero and owns no access, so
+            // it is excluded here as it is from the hazard match above.
+            assign bresp_hit_sx[entry] = bvalid_sx & bready_sx & mshr_entry_valid_sx_q[entry]
+                                       & (~sleep_sx_q[entry])
                                        & (bid_sx == rxreq_axid_s1_q[entry]);
 
             always_ff @(posedge clk or posedge rst)begin : mshr_B_logic
@@ -1552,7 +1555,12 @@ module hni_mshr `HNI_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            assign need_to_sleep_s0[entry] = rxreq_alloc_en_s0 && (~need_to_wakeup_q[entry]) && (rxreq_axid_s0 == rxreq_axid_s1_q[entry]);
+            // A hazard exists only against a request that is still live. An entry
+            // holding none carries AXI ID zero, which is also the ID hni_param gives
+            // every address outside its region table, so the two would otherwise match.
+            assign need_to_sleep_s0[entry] = rxreq_alloc_en_s0 && mshr_entry_valid_sx_q[entry]
+                                          && (~need_to_wakeup_q[entry])
+                                          && (rxreq_axid_s0 == rxreq_axid_s1_q[entry]);
         end
     endgenerate
 
