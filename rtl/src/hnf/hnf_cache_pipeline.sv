@@ -2159,7 +2159,10 @@ module hnf_cache_pipeline `HNF_PARAM
                     $fatal(1, "mshr_l3_opcode_sx1_q ERROR:  %h.",mshr_l3_opcode_sx1_q);
                 end
                 //mshr_l3_fill_sx1_q check
-                if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEBACKFULL) || (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) ||
+                // WriteBackFull is off this list: a non-allocating one takes a LOOKUP
+                // pass, since the Snoop Filter bit it owes (Table 4-16 p.4-181) is not
+                // the L3's business and the Allocate hint (Sec 2.9.3 p.2-128) is.
+                if(((mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTFULL) ||
                     (mshr_l3_opcode_sx1_q == chie_pkg::REQ_WRITEEVICTOREVICT)) && mshr_l3_fill_sx1_q == 1'b0 && mshr_l3_req_en_sx1_q)begin
                     $fatal(1, "mshr_l3_fill_sx1_q ERROR:  opcode = %h , fill = %h.",mshr_l3_opcode_sx1_q,mshr_l3_fill_sx1_q);
                 end

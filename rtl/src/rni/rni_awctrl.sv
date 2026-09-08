@@ -89,7 +89,11 @@ module rni_awctrl `RNI_PARAM
     output wire                                awctrl_brsp_rdy_v_d2_o,
     output wire                                awctrl_brsp_last_v_d2_o,
     output wire [`AXI4_BID_WIDTH-1:0]          awctrl_brsp_axid_d2_o,
-    output chie_pkg::resp_err_e                awctrl_brsp_resperr_d2_o
+    output chie_pkg::resp_err_e                awctrl_brsp_resperr_d2_o,
+
+    // rni_ar_ctl Interface -- Sec 2.9.4's (p.2-130) cross-kind Device ordering
+    output wire                                awctrl_device_ordered_pending_o,
+    input  wire                                arctrl_device_ordered_pending_i
     );
 
     opennoc_rni_pkg::ax_ch_s             awlink_awbus_s1_w;
@@ -116,6 +120,7 @@ module rni_awctrl `RNI_PARAM
     wire                                 aw_device_w;
     wire                                 aw_cacheable_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_ordered_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_device_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_ordered_pending_ns_w;
     wire                                 awctrl_ordered_pending_any_w;
     wire                                 awctrl_new_entry_req_dep_w;
@@ -781,7 +786,8 @@ module rni_awctrl `RNI_PARAM
     // DEFINED, so the scope cannot be narrowed below what this bridge can prove --
     // the same choice the AR path makes.
     assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]
-             & ~({RNI_AW_ENTRIES_NUM_PARAM{awctrl_ordered_pending_any_w}} & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+             & ~({RNI_AW_ENTRIES_NUM_PARAM{awctrl_ordered_pending_any_w}} & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])
+             & ~({RNI_AW_ENTRIES_NUM_PARAM{arctrl_device_ordered_pending_i}} & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign awctrl_entry_req_hi_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_lo_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     //deassert select_vec when receiving retryack
@@ -912,6 +918,15 @@ module rni_awctrl `RNI_PARAM
     // write this bridge sends carries a non-zero Order today.
     assign awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{1'b1}};
 
+    // The same AxCACHE[1] decode as aw_device_w above, held per entry: AXI4
+    // (IHI 0022) Table A4-5's two Device rows are the ones Table 2-11 (p.2-129)
+    // gives Order=0b11, which is Sec 2.9.4's Device nRnE and nRE.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:aw_entry_device
+            assign awctrl_entry_device_w[entry] = ~awctrl_entry_info_q[entry].cache[1];
+        end
+    endgenerate
+
     always_comb begin
         aw_excl_r = 1'b0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
@@ -1017,6 +1032,22 @@ module rni_awctrl `RNI_PARAM
     // write keeps blocking the next one, which is Figure 2-34 step 5 (p.2-121).
     assign awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_entry_req_select_success_flag_w}} & awctrl_entry_req_ptr_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_ordered_pending_any_w = |awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // Sec 2.9.4 (p.2-130, MUST): the Device nRnE and Device nRE required behaviour
+    // is that "All Read and Write transactions from the same source to the same
+    // endpoint must remain ordered" -- across the two kinds, not within each. The
+    // per-channel gates below are Sec 2.8.5's, one transaction family apiece, so
+    // this pair is what orders a read against a write. Device-qualified on both
+    // sides: Table 2-11 (p.2-129) gives Device RE Order[0]=0 and p.2-130 drops the
+    // endpoint clause for it, and a Normal write owes a read nothing at all.
+    // The NEXT-state term, not the flopped one, so a Device write selected THIS
+    // cycle already blocks the read channel. Both channels select independently
+    // and only then arbitrate for the one TXREQ port, so the flop's one-cycle
+    // latency -- which is exact within a channel, where the poll picks one entry
+    // per cycle -- lets a read and a write be selected together. The asymmetry
+    // with the read channel's flopped term below is what breaks the combinational
+    // loop the two gates would otherwise form; which side wins a same-cycle tie is
+    // arbitrary, and Sec 2.9.4 (p.2-130) constrains only that one of them backs off.
+    assign awctrl_device_ordered_pending_o = |(awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;

@@ -239,8 +239,16 @@ module snf `SNF_PARAM
         // TXLINKACTIVEREQ is held until TXLINKACTIVEACK arrives, however early the
         // peer lowers its own request. The same ack holds it low through
         // DEACTIVATE, whose only successor is STOP.
+        //
+        // ~rxlinkactiveack_q is the rest of that rule, and Sec 14.6.3's (p.14-458,
+        // MUST) "the deassertion of TXREQ must not occur before the assertion of
+        // RXACK" as well: TXREQ drops only for the RXLINK state Table 14-1 calls
+        // DEACTIVATE, its own request down AND its own ack still up. RXSTOP with the
+        // TXLINK in RUN is Figure 14-5's (p.14-455) TxRun+/RxStop input race, whose
+        // only permitted exit is the peer raising RXLINKACTIVEREQ -- not this node
+        // moving an output.
         else if (txlinkactivereq_q)
-            txlinkactivereq_q <= RXLINKACTIVEREQ | ~TXLINKACTIVEACK;
+            txlinkactivereq_q <= RXLINKACTIVEREQ | ~TXLINKACTIVEACK | ~rxlinkactiveack_q;
         else
             txlinkactivereq_q <= (RXLINKACTIVEREQ | txflit_avail_sx) &
                                  ~rxlinkactiveack_q & ~TXLINKACTIVEACK;

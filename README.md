@@ -353,7 +353,7 @@ neither issues a snoop and neither has a SNP port.
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16`, elected on a snoop-direct L3 miss for a non-Exclusive allocating read (`hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8`); never for `ReadOnce{CleanInvalid,MakeInvalid}`, whose only Forwarding shape is `SnpOnceFwd` (section 4.4.2 p.4-196) |
 | `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67); a `ReadShared` is snooped with `SnpNotSharedDirty(Fwd)`, which section 4.4.2 (p.4-196) permits, and a `ReadPreferUnique` with `SnpUnique(Fwd)` or, on its Shared path, `SnpNotSharedDirty(Fwd)` (section 4.4.2 p.4-194) |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_snprspfwd_s0` / `mshr_snpdatfwd_s0` |
-| `SnpRespDataPtl` | 🔴 | neither whitelisted (`hnf_link_rxdat_parse.sv:167`) nor decoded — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
+| `SnpRespDataPtl` | 🟡 | decoded and merged under its byte enables (`hnf_mshr_ctl.sv`'s `mshr_snpdat_v_s0`, `hnf_data_buffer.sv`); a response whose byte enables are not all asserted is still completed without the section 5.1.5 merge — [#143](https://github.com/10x-Engineers/CHI-OpenNoC/issues/143) |
 
 ### Features
 
