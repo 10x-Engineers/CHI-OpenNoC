@@ -44,9 +44,16 @@ package opennoc_hnf_pkg;
   //     sequence using the same address", in which case -> ReadNotSharedDirty,
   //     Table 4-33's (p.4-212) CompData_SC row. SS4.4.2 (p.4-194) permits any
   //     snoop that reaches Table 4-6's (p.4-168) required peer state.
+  //   CleanSharedPersist(Sep) -> CleanShared: Table 4-24 (SS4.4.2 p.4-195) gives all
+  //     three SnpCleanShared and Table 4-38 (p.4-218) the same no-change rows; what
+  //     the Home owes after it is hnf_persist_cmo()'s.
   //   MakeInvalid -> CleanInvalid: SS4.2.2 (p.4-170) only permits the Dirty copy
   //     to be discarded, Table 4-38 (p.4-218) gives both Comp_I, and SS4.4.2
   //     (p.4-196) permits SnpCleanInvalid for any invalidating snoop.
+  //   WriteBackPtl -> WriteBackFull: Table 4-39 (SS4.7.3 p.4-219) gives both the
+  //     same CompDBIDResp and the same final I. SS4.1 (p.4-160, MUST) leaves the
+  //     merge of its partial data to the Completer of the WriteNoSnpPtl the Home
+  //     forwards.
   //   WriteUnique*Stash -> WriteUnique*: SS7.2 (p.7-296) "Permitted to ignore
   //     the stash hint in the Write request and process the request as a
   //     regular WriteUnique"; Table 4-39 (p.4-219) shares their completion row.
@@ -82,6 +89,8 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_READPREFERUNIQUE     : return excl_seq_other_rn ? chie_pkg::REQ_READNOTSHAREDDIRTY
                                                                     : chie_pkg::REQ_READUNIQUE;
       chie_pkg::REQ_MAKEINVALID          : return chie_pkg::REQ_CLEANINVALID;
+      chie_pkg::REQ_CLEANSHAREDPERSIST,
+      chie_pkg::REQ_CLEANSHAREDPERSISTSEP: return chie_pkg::REQ_CLEANSHARED;
       chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return chie_pkg::REQ_WRITEUNIQUEFULL;
       chie_pkg::REQ_WRITEUNIQUEPTLSTASH  : return chie_pkg::REQ_WRITEUNIQUEPTL;
       chie_pkg::REQ_WRITEUNIQUEZERO      : return chie_pkg::REQ_WRITEUNIQUEFULL;
@@ -92,6 +101,7 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_WRITENOSNPPTLCLEANINV        : return chie_pkg::REQ_WRITENOSNPPTL;
       chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH       : return chie_pkg::REQ_WRITEUNIQUEFULL;
       chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH        : return chie_pkg::REQ_WRITEUNIQUEPTL;
+      chie_pkg::REQ_WRITEBACKPTL,
       chie_pkg::REQ_WRITEBACKFULLCLEANSH,
       chie_pkg::REQ_WRITEBACKFULLCLEANINV        : return chie_pkg::REQ_WRITEBACKFULL;
       chie_pkg::REQ_WRITECLEANFULLCLEANSH        : return chie_pkg::REQ_WRITECLEANFULL;
@@ -121,13 +131,27 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_MAKEREADUNIQUE;
   endfunction
 
-  // The nine non-persistent Combined Writes, whose CMO leg SS2.3.2 (p.2-58/p.2-66)
-  // answers with CompCMO -- enumerated rather than taken as an opcode range, the
-  // gaps inside that range being RESERVED. The six *CleanShPerSep forms are absent:
-  // SS4.2.4 (p.4-182, MUST) makes their CMO leg a CleanSharedPersistSep, whose
-  // Persist response this Home cannot honour with no path to a Point of
-  // Persistence -- the same gap that leaves CleanSharedPersist(Sep) unserved. They
-  // stay on SS9.1's (p.9-334) NDERR until it closes.
+  // The requests whose completion has to reach the Point of Persistence. SS4.2.2
+  // (p.4-171, MUST) makes that a downstream obligation for a Home that is not the
+  // PoP, and SS16.1 (p.16-471, MUST) fixes the shape when the Subordinate's own
+  // CleanSharedPersistSep support is not declared, which SS16.1 (p.16-470) says to
+  // assume: a substituted CleanSharedPersist whose Comp the Home's own Persist
+  // waits on.
+  function automatic logic hnf_persist_cmo(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_CLEANSHAREDPERSIST
+        || op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+  endfunction
+
+  // Of those, the one that owes a Persist on top of its completion: Table 4-38
+  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
+  // "Comp + Persist or CompPersist".
+  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+  endfunction
+
+  // The nine Combined Writes whose CMO leg SS2.3.2 (p.2-58/p.2-66) answers with
+  // CompCMO -- enumerated rather than taken as an opcode range, the gaps inside that
+  // range being RESERVED.
   function automatic logic hnf_combined_write(chie_pkg::req_opcode_e op);
     case (op)
       chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
@@ -148,6 +172,12 @@ package opennoc_hnf_pkg;
   // transferring data bytes".
   function automatic logic hnf_write_zero(chie_pkg::req_opcode_e op);
     return op == chie_pkg::REQ_WRITEUNIQUEZERO || op == chie_pkg::REQ_WRITENOSNPZERO;
+  endfunction
+
+  // The CopyBack whose data is partial: Table 4-16 (SS4.2.3 p.4-181) gives a UDP
+  // line WriteBackPtl and nothing else.
+  function automatic logic hnf_write_partial(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_WRITEBACKPTL;
   endfunction
 
   // Table 4-38 (SS4.7.2 p.4-218): StashOnceSep* completes with "Comp + StashDone
