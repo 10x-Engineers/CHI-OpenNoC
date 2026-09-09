@@ -37,9 +37,19 @@ module assert_checker #(
     input logic cond
 );
 
+  // `disable iff (rst)` is false while `rst` is X, so at power-up the property is
+  // live over an X `cond` and `~x` reports a failure. Arm only once reset has
+  // actually been seen asserted; the level 0/1 arm below has no reset gate of its
+  // own and takes the same qualifier.
+  logic rst_applied = 1'b0;
+  always @(posedge clk or posedge rst)
+    if (rst === 1'b1) rst_applied <= 1'b1;
+
+  wire armed = (rst === 1'b0) && (rst_applied === 1'b1);
+
   // Property to check the test expression for different security levels
   property check_condition;
-    @(posedge clk) disable iff (rst) (~cond);  // Assert when condition is false
+    @(posedge clk) disable iff (!armed) (~cond);  // Assert when condition is false
   endproperty
 
   // Function to handle errors based on security level
@@ -61,7 +71,7 @@ module assert_checker #(
     end
     else if (security_level >= 0 && security_level <= 1) begin
       always_ff @(posedge clk or posedge rst) begin
-        if (cond) begin
+        if (armed && cond) begin
           level_handler(security_level, message);
         end
       end

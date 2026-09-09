@@ -255,6 +255,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
+    `display_fatal_arm
     always_ff @(posedge clk or posedge rst)begin
         `display_fatal(!((mshr_alloc_en_s1_q==1) && (mshr_dbf_retired_valid_sx1_q==1) && (mshr_entry_idx_alloc_s1_q==mshr_dbf_retired_idx_sx1_q)),$sformatf("Fatal info: a mshr entry %0h enqueue and dequeue at the same time\n",mshr_entry_idx_alloc_s1_q));
         `display_fatal(!((mshr_alloc_en_s1_q==1) && (l3_evict_sx7_q==1) && (mshr_entry_idx_alloc_s1_q==l3_mshr_entry_sx7_q)),$sformatf("Fatal info: a mshr entry %0h enqueue and L3 evict at the same time\n",mshr_entry_idx_alloc_s1_q));
