@@ -3031,12 +3031,10 @@ module hnf_mshr_ctl `HNF_PARAM
 
     // "The Home Node must not send a Snoop request to the Requester for the same
     // address until it receives the CompAck response." mshr_compack_busy_sx_q is
-    // armed at allocation off ExpCompAck; the window this rule states opens at the
-    // completion, so the entry must also have elected one -- an entry that has not
-    // still owes its own snoops, and blocking on it would let two entries on one
-    // line hold each other's fan-out. mshr_addr_s1_q is the address to compare on:
-    // unlike the address buffer's copy it is not rewritten by an SLC eviction pass,
-    // which is what leaves the line unguarded once the sleepers are released.
+    // armed at allocation, so mshr_comp_sent_sx_q is what narrows it to the window
+    // the rule states -- an entry that has not completed still owes its own snoops.
+    // The address is mshr_addr_s1_q, not the address buffer's copy: that one is
+    // rewritten to the victim's on an SLC eviction pass.
     generate
         for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_compack_owed_comb_logic
             always_comb begin
@@ -3051,11 +3049,9 @@ module hnf_mshr_ctl `HNF_PARAM
                             mshr_compack_owed_rn_sx[entry][r] = 1'b1;
             end
 
-            // Held, not dropped: mshr_txsnp_rdy_sx_q is a level, so the fan-out
-            // re-arbitrates once the CompAck clears the blocking entry. That entry
-            // has sent its completion and owes no snoop, so all it waits on is the
-            // CompAck -- an RXRSP that Sec 13.4.1 (p.13-397, MUST) makes independent
-            // of every other channel.
+            // Held, not dropped -- mshr_txsnp_rdy_sx_q is a level. No cycle: the
+            // blocking entry waits only on its CompAck, an RXRSP that Sec 13.4.1
+            // (p.13-397, MUST) makes independent of every other channel.
             always_comb begin
                 mshr_snp_compack_block_sx[entry] = {`RNF_NUM{1'b0}};
                 for(int o = 0; o < `MSHR_ENTRIES_NUM; o = o+1)
