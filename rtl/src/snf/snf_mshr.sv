@@ -107,24 +107,33 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  hazard_idx_s2_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    hazard_sx_q;
     logic                                rxreq_alloc_en_s1_q;
-    chie_pkg::req_opcode_e               rxreq_opcode_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [3:0]                          rxreq_qos_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::memattr_s                  rxreq_memattr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_srcid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [11:0]                         rxreq_txnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::size_e                     rxreq_size_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_addr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic                                rxreq_ns_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    chie_pkg::order_e                    rxreq_order_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [11:0]                         rxreq_returntxnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic                                rxreq_tracetag_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [$bits(rxreq_alloc_flit_s0.lpid)-1:0] rxreq_pgroupid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [1:0]                          rxreq_ccid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AXID_WIDTH-1:0]         rxreq_axid_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_ARLEN_WIDTH-1:0]        rxreq_axlen_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_ARSIZE_WIDTH-1:0]       rxreq_axsize_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
-    logic [`AXI4_AXADDR_WIDTH-1:0]       rxreq_axaddr_s1_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    // SS13.10.7 (p.13-418): in a request the PGroupID occupies the LPID bits.
+    localparam int PGROUPID_W = $bits(rxreq_alloc_flit_s0.lpid);
+
+    // One record per MSHR entry: every field is written at allocation and cleared
+    // at retirement, in one flop block.
+    typedef struct packed {
+        chie_pkg::req_opcode_e               opcode;
+        logic [3:0]                          qos;
+        chie_pkg::memattr_s                  memattr;
+        logic [chie_pkg::NID_WIDTH-1:0]      srcid;
+        logic [11:0]                         txnid;
+        chie_pkg::size_e                     size;
+        logic [chie_pkg::REQ_ADDR_WIDTH-1:0] addr;
+        logic                                ns;
+        chie_pkg::order_e                    order;
+        logic [11:0]                         returntxnid;
+        logic                                tracetag;
+        logic [chie_pkg::NID_WIDTH-1:0]      returnnid;
+        logic [PGROUPID_W-1:0]               pgroupid;
+        logic [1:0]                          ccid;
+        logic [`AXI4_AXID_WIDTH-1:0]         axid;
+        logic [`AXI4_ARLEN_WIDTH-1:0]        axlen;
+        logic [`AXI4_ARSIZE_WIDTH-1:0]       axsize;
+        logic [`AXI4_AXADDR_WIDTH-1:0]       axaddr;
+    } mshr_entry_s;
+
+    mshr_entry_s                         mshr_entry_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wr_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wrzero_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rd_s1_q;
@@ -502,163 +511,6 @@ module snf_mshr `SNF_PARAM
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)
                     rxreq_ewa_s1_q[entry] <= rxreq_ewa_s0;
             end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_qos_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_qos_s1_q[entry] <= {4{1'b0}};
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_qos_s1_q[entry] <= {4{1'b0}};
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_qos_s1_q[entry] <= rxreq_qos_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_srcid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_srcid_s1_q[entry] <= {chie_pkg::NID_WIDTH{1'b0}};
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_srcid_s1_q[entry] <= {chie_pkg::NID_WIDTH{1'b0}};
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_srcid_s1_q[entry] <= rxreq_srcid_s0;
-                else
-                    ;
-            end
-
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_txnid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_txnid_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_txnid_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_txnid_s1_q[entry] <= rxreq_txnid_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_opcode_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_opcode_s1_q[entry] <= chie_pkg::REQ_REQLCRDRETURN;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_opcode_s1_q[entry] <= chie_pkg::REQ_REQLCRDRETURN;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_opcode_s1_q[entry] <= rxreq_opcode_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_size_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_size_s1_q[entry] <= chie_pkg::SIZE_1B;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_size_s1_q[entry] <= chie_pkg::SIZE_1B;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_size_s1_q[entry] <= rxreq_size_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_addr_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_addr_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_addr_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_addr_s1_q[entry] <= rxreq_addr_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_ns_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_ns_s1_q[entry] <= 1'b0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_ns_s1_q[entry] <= 1'b0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_ns_s1_q[entry] <= rxreq_ns_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_order_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_order_s1_q[entry] <= chie_pkg::ORDER_NONE;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_order_s1_q[entry] <= chie_pkg::ORDER_NONE;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_order_s1_q[entry] <= rxreq_order_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_memattr_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_memattr_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_memattr_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_memattr_s1_q[entry] <= rxreq_memattr_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_tracetag_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_tracetag_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_tracetag_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_tracetag_s1_q[entry] <= rxreq_tracetag_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_returnnid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_returnnid_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_returnnid_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_returnnid_s1_q[entry] <= rxreq_returnnid_s0;
-                else
-                    ;
-            end
-
-            // Sec 2.6.2 steps 6/7 (p.2-102, MUST): "The PGroupID is set to the same
-            // value as the PGroupID of the request."
-            always_ff @(posedge clk or posedge rst)begin : mshr_pgroupid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_pgroupid_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_pgroupid_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_pgroupid_s1_q[entry] <= rxreq_pgroupid_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_returntxnid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_returntxnid_s1_q[entry] <= '0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_returntxnid_s1_q[entry] <= '0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_returntxnid_s1_q[entry] <= rxreq_returntxnid_s0;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_ccid_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_ccid_s1_q[entry] <= 2'b00;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_ccid_s1_q[entry] <= 2'b00;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_ccid_s1_q[entry] <= rxreq_addr_s0[5:4];
-                else
-                    ;
-            end
         end
     endgenerate
 
@@ -709,58 +561,41 @@ module snf_mshr `SNF_PARAM
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            always_ff @(posedge clk or posedge rst) begin
-                if (rst) begin
-                        rxreq_axaddr_s1_q[entry] <= {`AXI4_AXADDR_WIDTH{1'b0}};
-                end
-                else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))begin
-                        rxreq_axaddr_s1_q[entry] <= {`AXI4_AXADDR_WIDTH{1'b0}};
-                end
-                else if (rxreq_alloc_en_s0 && (entry == mshr_entry_idx_alloc_s0))begin
-                    rxreq_axaddr_s1_q[entry] <= rxreq_axaddr_s0;
-                end
-                else begin
-                        rxreq_axaddr_s1_q[entry] <= rxreq_axaddr_s1_q[entry];
-                end
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : mshr_axid_timing_logic
-                if(rst == 1'b1)
-                    rxreq_axid_s1_q[entry] <= 0;
-                else if (retired_entry_sx[entry] == 1'b1)
-                    rxreq_axid_s1_q[entry] <= {`AXI4_AXID_WIDTH{1'b0}};
-                else if (rxreq_alloc_en_s0 && (entry == mshr_entry_idx_alloc_s0))
-                    rxreq_axid_s1_q[entry] <= {{(`AXI4_AXID_WIDTH-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s0};
-            end
-        end
-    endgenerate
-
-    generate
-        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            always_ff @(posedge clk or posedge rst) begin
-                if (rst) begin
-                    rxreq_axlen_s1_q[entry]  <= {`AXI4_ARLEN_WIDTH{1'b0}};
-                    rxreq_axsize_s1_q[entry] <= {`AXI4_AWSIZE_WIDTH{1'b0}};
-                end
-                else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))begin
-                    rxreq_axlen_s1_q[entry]  <= {`AXI4_ARLEN_WIDTH{1'b0}};
-                    rxreq_axsize_s1_q[entry] <= {`AXI4_AWSIZE_WIDTH{1'b0}};
-                end
-                else if (rxreq_alloc_en_s0 && (entry == mshr_entry_idx_alloc_s0))begin
-                    rxreq_axlen_s1_q[entry]  <= rxreq_axlen_s0;
-                    rxreq_axsize_s1_q[entry] <= rxreq_axsize_s0;
-                end
+            always_ff @(posedge clk or posedge rst)begin : mshr_entry_record_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    mshr_entry_q[entry] <= '0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    mshr_entry_q[entry] <= '{ opcode      : rxreq_opcode_s0,
+                                              qos         : rxreq_qos_s0,
+                                              memattr     : rxreq_memattr_s0,
+                                              srcid       : rxreq_srcid_s0,
+                                              txnid       : rxreq_txnid_s0,
+                                              size        : rxreq_size_s0,
+                                              addr        : rxreq_addr_s0,
+                                              ns          : rxreq_ns_s0,
+                                              order       : rxreq_order_s0,
+                                              returntxnid : rxreq_returntxnid_s0,
+                                              tracetag    : rxreq_tracetag_s0,
+                                              returnnid   : rxreq_returnnid_s0,
+                                              // SS2.6.2 steps 6/7 (p.2-102, MUST): the PGroupID
+                                              // is set to the request's own.
+                                              pgroupid    : rxreq_pgroupid_s0,
+                                              ccid        : rxreq_addr_s0[5:4],
+                                              axid        : {{(`AXI4_AXID_WIDTH-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s0},
+                                              axlen       : rxreq_axlen_s0,
+                                              axsize      : rxreq_axsize_s0,
+                                              axaddr      : rxreq_axaddr_s0 };
             end
         end
     endgenerate
 
     // to databuffer
     assign rxreq_dbf_en_s1         = rxreq_alloc_en_s1_q;
-    assign rxreq_dbf_addr_s1       = rxreq_addr_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_addr_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].addr;
     assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_wrzero_s1     = rxreq_wrzero_s1_q[mshr_entry_idx_alloc_s1_q];
-    assign rxreq_dbf_size_s1       = rxreq_size_s1_q[mshr_entry_idx_alloc_s1_q];
-    assign rxreq_dbf_axlen_s1      = rxreq_axlen_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_size_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].size;
+    assign rxreq_dbf_axlen_s1      = mshr_entry_q[mshr_entry_idx_alloc_s1_q].axlen;
     assign rxreq_dbf_entry_idx_s1  = mshr_entry_idx_alloc_s1_q;
 
     //************************************************************************//
@@ -820,7 +655,7 @@ module snf_mshr `SNF_PARAM
                                        | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1;
     // Sec 2.8.5 (p.2-120): the ReadReceipt is owed whenever Order is non-zero,
     // whether or not the read data goes back direct to the Requester.
-    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_order_s1_q[mshr_entry_idx_alloc_s1_q] != 2'b00);
+    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] && (mshr_entry_q[mshr_entry_idx_alloc_s1_q].order != 2'b00);
     assign txrsp_rsponly_en_s1         = rxreq_alloc_en_s1_q && rxreq_rsponly_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
     // Table 9-6 (p.9-340) keeps DBIDResp at OK, so an errored write still grants
     // normally and carries its NDERR on the completion that follows. Table 9-9
@@ -916,16 +751,16 @@ module snf_mshr `SNF_PARAM
     assign txrsp_sent_sx                = txrsp_valid_sx & txrsp_won_sx;
     assign txrsp_update_sx              = (|txrsp_rdy_sx_q) & (~txrsp_valid_sx);
     assign txrsp_valid_sx               = (|txrsp_valid_idx_sx) & txrsp_rdy_sx_q[txrsp_entry_idx_sx];
-    assign txrsp_qos_sx                 = (rxreq_qos_s1_q[txrsp_entry_idx_sx]);
+    assign txrsp_qos_sx                 = (mshr_entry_q[txrsp_entry_idx_sx].qos);
     // Table 3-1 (p.3-153) routes a standalone Persist to Request.ReturnNID, and
     // Table A-8 (p.A-488) makes its TxnID inapplicable and zero; DoDWT moves only
     // the DBIDResp (Table 13-21 p.13-430).
     assign txrsp_persist_sx             = (txrsp_opcode_sx == chie_pkg::RSP_PERSIST);
     assign txrsp_dwt_grant_sx           = rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP);
-    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_dwt_grant_sx) ? rxreq_returnnid_s1_q[txrsp_entry_idx_sx] : rxreq_srcid_s1_q[txrsp_entry_idx_sx];
+    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_dwt_grant_sx) ? mshr_entry_q[txrsp_entry_idx_sx].returnnid : mshr_entry_q[txrsp_entry_idx_sx].srcid;
     assign txrsp_txnid_sx               = txrsp_persist_sx   ? 12'd0
-                                        : txrsp_dwt_grant_sx ? rxreq_returntxnid_s1_q[txrsp_entry_idx_sx]
-                                                             : rxreq_txnid_s1_q[txrsp_entry_idx_sx];
+                                        : txrsp_dwt_grant_sx ? mshr_entry_q[txrsp_entry_idx_sx].returntxnid
+                                                             : mshr_entry_q[txrsp_entry_idx_sx].txnid;
     assign txrsp_opcode_sx              = txrsp_opcode_rdy_sx_q[txrsp_entry_idx_sx];
     // Sec 9.1 (p.9-334): NDERR reports "an attempt to use a transaction type that
     // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
@@ -939,9 +774,9 @@ module snf_mshr `SNF_PARAM
     // Table A-8 (p.A-488): Persist and CompPersist carry no DBID -- those bits are
     // the PGroupID they reflect from the request (Sec 13.10.16 p.13-420).
     assign txrsp_dbid_sx                = (txrsp_persist_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
-                                        ? 12'(rxreq_pgroupid_s1_q[txrsp_entry_idx_sx])
+                                        ? 12'(mshr_entry_q[txrsp_entry_idx_sx].pgroupid)
                                         : {{(12-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_sx};
-    assign txrsp_tracetag_sx            = rxreq_tracetag_s1_q[txrsp_entry_idx_sx];
+    assign txrsp_tracetag_sx            = mshr_entry_q[txrsp_entry_idx_sx].tracetag;
     // Sec 2.6.1 (p.2-94, MUST): "the SrcID is a fixed value for the Subordinate.
     // This also matches the TgtID received." Echoing the request's TgtID instead
     // leaves the Subordinate answering under whatever identity it was addressed by.
@@ -1011,19 +846,19 @@ module snf_mshr `SNF_PARAM
         end
     end
 
-    assign arid_sx          = rxreq_axid_s1_q[arvalid_entry_idx_s1_q];
-    assign araddr_sx        = rxreq_axaddr_s1_q[arvalid_entry_idx_s1_q];
-    assign arcache_sx[0]    = rxreq_memattr_s1_q[arvalid_entry_idx_s1_q][0];
-    assign arcache_sx[1]    = ~rxreq_memattr_s1_q[arvalid_entry_idx_s1_q][1];
-    assign arcache_sx[2]    = rxreq_memattr_s1_q[arvalid_entry_idx_s1_q][2];
-    assign arcache_sx[3]    = rxreq_memattr_s1_q[arvalid_entry_idx_s1_q][3];
+    assign arid_sx          = mshr_entry_q[arvalid_entry_idx_s1_q].axid;
+    assign araddr_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axaddr;
+    assign arcache_sx[0]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[0];
+    assign arcache_sx[1]    = ~mshr_entry_q[arvalid_entry_idx_s1_q].memattr[1];
+    assign arcache_sx[2]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[2];
+    assign arcache_sx[3]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[3];
     assign arburst_sx       = 2'b01;
     assign arlock_sx        = 1'b0;
-    assign arprot_sx        = {1'b0,rxreq_ns_s1_q[arvalid_entry_idx_s1_q],1'b0};
-    assign arqos_sx         = rxreq_qos_s1_q[arvalid_entry_idx_s1_q];
+    assign arprot_sx        = {1'b0,mshr_entry_q[arvalid_entry_idx_s1_q].ns,1'b0};
+    assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
-    assign arlen_sx         = rxreq_axlen_s1_q[arvalid_entry_idx_s1_q];
-    assign arsize_sx        = rxreq_axsize_s1_q[arvalid_entry_idx_s1_q];
+    assign arlen_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].axlen;
+    assign arsize_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axsize;
 
     //************************************************************************//
     //                                TXDAT                                   //
@@ -1070,17 +905,17 @@ module snf_mshr `SNF_PARAM
             // error is not final until the last beat is in. A two-packet transfer
             // therefore holds its first packet until the whole burst has arrived;
             // a single-packet one has nothing to hold.
-            assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == chie_pkg::SIZE_64B) ?
+            assign rdat_allrcvd_sx[entry] = (mshr_entry_q[entry].size == chie_pkg::SIZE_64B) ?
                                 (rdat_pdmask_q[entry] == 4'b1111) : 1'b1;
 
             assign txdat1_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (~txdat_rdy_sx_q[entry][0]) && rdat_allrcvd_sx[entry]) ?
-                                (((rxreq_ccid_s1_q[entry][1] == 1'b0) && (rdat_pdmask_q[entry][1:0] == 2'b11))
-                                | ((rxreq_ccid_s1_q[entry][1] == 1'b1) && (rdat_pdmask_q[entry][3:2] == 2'b11))
-                                | (rxreq_size_s1_q[entry] < chie_pkg::SIZE_32B) && (|(rdat_pdmask_q[entry])))
+                                (((mshr_entry_q[entry].ccid[1] == 1'b0) && (rdat_pdmask_q[entry][1:0] == 2'b11))
+                                | ((mshr_entry_q[entry].ccid[1] == 1'b1) && (rdat_pdmask_q[entry][3:2] == 2'b11))
+                                | (mshr_entry_q[entry].size < chie_pkg::SIZE_32B) && (|(rdat_pdmask_q[entry])))
                                 : 1'b0; // packet 1
 
             assign txdat2_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry][0]) && (~txdat_rdy_sx_q[entry][1]))? //packet 2
-                                 (((rxreq_ccid_s1_q[entry][1] == 1'b0) && (rdat_pdmask_q[entry][3:2] == 2'b11)) | ((rxreq_ccid_s1_q[entry][1] == 1'b1) && (rdat_pdmask_q[entry][1:0] == 2'b11))) : 1'b0;
+                                 (((mshr_entry_q[entry].ccid[1] == 1'b0) && (rdat_pdmask_q[entry][3:2] == 2'b11)) | ((mshr_entry_q[entry].ccid[1] == 1'b1) && (rdat_pdmask_q[entry][1:0] == 2'b11))) : 1'b0;
         end
     endgenerate
 
@@ -1108,9 +943,9 @@ module snf_mshr `SNF_PARAM
             always_ff @(posedge clk or posedge rst)begin: txdat_sent_logic
                 if (rst)
                     txdat_sent_sx_q[entry]      <= 2'b00;
-                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b00) && (rxreq_ccid_s1_q[entry][1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b10) && (rxreq_ccid_s1_q[entry][1] == 1'b1))))
+                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b00) && (mshr_entry_q[entry].ccid[1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b10) && (mshr_entry_q[entry].ccid[1] == 1'b1))))
                     txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | 2'b01;
-                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b10) && (rxreq_ccid_s1_q[entry][1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b00) && (rxreq_ccid_s1_q[entry][1] == 1'b1))) && (txdat_sent_sx_q[entry][0] == 1'b1))
+                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b10) && (mshr_entry_q[entry].ccid[1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b00) && (mshr_entry_q[entry].ccid[1] == 1'b1))) && (txdat_sent_sx_q[entry][0] == 1'b1))
                     txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | 2'b10;
                 else if (mshr_retired_valid_sx && entry == mshr_retired_idx_sx)
                     txdat_sent_sx_q[entry]      <= 2'b00;
@@ -1144,23 +979,23 @@ module snf_mshr `SNF_PARAM
     assign mshr_txdat_update        = (~mshr_txdat_en_sx) & (~txdat_valid_sx[txdat_entry_idx_sx]);
     assign mshr_txdat_entry_idx_sx  = txdat_entry_idx_sx;
     assign mshr_txdat_en_sx         = sel_idx_valid;
-    assign mshr_txdat_dataid_sx     = ((((rxreq_ccid_s1_q[mshr_txdat_entry_idx_sx][1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0))
-                                        | ((rxreq_ccid_s1_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1))) ? 2'b00 //ccid[1]=0,packet1;ccid[1]=1,packet2
-                                    : (((rxreq_ccid_s1_q[mshr_txdat_entry_idx_sx][1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx] == 2'b01))
-                                        | ((rxreq_ccid_s1_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0)) ? 2'b10 // ccid[1]=0,packet2;ccid[1]=1,packet1
+    assign mshr_txdat_dataid_sx     = ((((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0))
+                                        | ((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1))) ? 2'b00 //ccid[1]=0,packet1;ccid[1]=1,packet2
+                                    : (((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx] == 2'b01))
+                                        | ((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0)) ? 2'b10 // ccid[1]=0,packet2;ccid[1]=1,packet1
                                             : 2'b00));
-    assign mshr_txdat_txnid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? rxreq_returntxnid_s1_q[mshr_txdat_entry_idx_sx] : rxreq_txnid_s1_q[mshr_txdat_entry_idx_sx];
+    assign mshr_txdat_txnid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? mshr_entry_q[mshr_txdat_entry_idx_sx].returntxnid : mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
     // Sec 4.5.1 (p.4-197, MUST): "A Subordinate Node can send DataSepResp only in
     // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
     assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
     assign mshr_txdat_resp_sx       = chie_pkg::RESP_UC_UD;
     assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_ERR_NON_DATA
                                                                              : chie_pkg::RESP_ERR_NORM_OK;
-    assign mshr_txdat_dbid_sx       = rxreq_txnid_s1_q[mshr_txdat_entry_idx_sx];
-    assign mshr_txdat_tgtid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? rxreq_returnnid_s1_q[mshr_txdat_entry_idx_sx] : rxreq_srcid_s1_q[mshr_txdat_entry_idx_sx];
+    assign mshr_txdat_dbid_sx       = mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
+    assign mshr_txdat_tgtid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? mshr_entry_q[mshr_txdat_entry_idx_sx].returnnid : mshr_entry_q[mshr_txdat_entry_idx_sx].srcid;
     assign mshr_txdat_srcid_sx      = SNF_NID_PARAM; // Sec 2.6.1 (p.2-94, MUST), as txrsp_srcid_sx
-    assign mshr_txdat_homenid_sx    = rxreq_srcid_s1_q[mshr_txdat_entry_idx_sx];
-    assign mshr_txdat_tracetag_sx   = rxreq_tracetag_s1_q[mshr_txdat_entry_idx_sx];
+    assign mshr_txdat_homenid_sx    = mshr_entry_q[mshr_txdat_entry_idx_sx].srcid;
+    assign mshr_txdat_tracetag_sx   = mshr_entry_q[mshr_txdat_entry_idx_sx].tracetag;
 
     //************************************************************************//
     //                       mshr AW channel logic                            //
@@ -1216,16 +1051,16 @@ module snf_mshr `SNF_PARAM
         end
     end
 
-    assign awid_sx                = rxreq_axid_s1_q[awvalid_entry_idx_s2_q];
-    assign awaddr_sx              = rxreq_axaddr_s1_q[awvalid_entry_idx_s2_q];
-    assign awcache_sx[0]          = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][0];
-    assign awcache_sx[1]          = ~rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][1];
-    assign awcache_sx[2]          = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][2];
-    assign awcache_sx[3]          = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][3];
-    assign awqos_sx               = rxreq_qos_s1_q[awvalid_entry_idx_s2_q];
-    assign awprot_sx              = {1'b0,rxreq_ns_s1_q[awvalid_entry_idx_s2_q],1'b0};
-    assign awlen_sx               = rxreq_axlen_s1_q[awvalid_entry_idx_s2_q];
-    assign awsize_sx              = rxreq_axsize_s1_q[awvalid_entry_idx_s2_q];
+    assign awid_sx                = mshr_entry_q[awvalid_entry_idx_s2_q].axid;
+    assign awaddr_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axaddr;
+    assign awcache_sx[0]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[0];
+    assign awcache_sx[1]          = ~mshr_entry_q[awvalid_entry_idx_s2_q].memattr[1];
+    assign awcache_sx[2]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[2];
+    assign awcache_sx[3]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[3];
+    assign awqos_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].qos;
+    assign awprot_sx              = {1'b0,mshr_entry_q[awvalid_entry_idx_s2_q].ns,1'b0};
+    assign awlen_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].axlen;
+    assign awsize_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axsize;
     assign awburst_sx             = 2'b01;
     assign awlock_sx              = 1'b0;
     assign awregion_sx            = {`AXI4_AWREGION_WIDTH{1'b0}};
@@ -1290,7 +1125,7 @@ module snf_mshr `SNF_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            assign hazard_sx[entry] = rxreq_alloc_en_s0 & (~hazard_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (rxreq_addr_s1_q[entry][chie_pkg::REQ_ADDR_WIDTH-1:6] == rxreq_addr_s0[chie_pkg::REQ_ADDR_WIDTH-1:6]);
+            assign hazard_sx[entry] = rxreq_alloc_en_s0 & (~hazard_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (mshr_entry_q[entry].addr[chie_pkg::REQ_ADDR_WIDTH-1:6] == rxreq_addr_s0[chie_pkg::REQ_ADDR_WIDTH-1:6]);
         end
     endgenerate
 
@@ -1359,7 +1194,7 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
                                                 && (((rxreq_wr_s1_q[entry]) && all_rsp_sent_sx[entry] && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
-                                                    |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((rxreq_size_s1_q[entry] == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((rxreq_size_s1_q[entry] != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
+                                                    |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((mshr_entry_q[entry].size == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((mshr_entry_q[entry].size != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
                                                     // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
                                                     // entry is freed at once rather than leaked.
                                                     |(rxreq_drop_s1_q[entry])
