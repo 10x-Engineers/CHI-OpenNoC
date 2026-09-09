@@ -468,8 +468,11 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                        .cond  (rxdatflitv_d1_i & (rxdatflit_d1_i.tgtid !== RNI_NID_PARAM))
                    );
 
+    // Level 0, not 2: SS9.2 (p.9-335) gives a Completer DERR and NDERR to report an
+    // error condition with, and SS9.1 (p.9-334, MUST) makes the Home pass it back --
+    // so receiving one is the protocol working, not a violation.
     assert_checker #(
-                       2,  // security_level
+                       0,  // security_level
                        "RXDATFLIT receive Data Error!")
                    rxdatflit_data_error_check (
                        .clk   (clk_i),
@@ -478,7 +481,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    );
 
     assert_checker #(
-                       2,  // security_level
+                       0,  // security_level
                        "RXDATFLIT receive Non data Error!")
                    rxdatflit_non_data_error_check (
                        .clk   (clk_i),
