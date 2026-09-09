@@ -365,6 +365,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_data_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_rn_rdy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_sn_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_sn_sent_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dbid_rdy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rd_receipt_rdy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_rdy_s2_q;
@@ -683,6 +684,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_rn_rdy_set_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_rn_rdy_clr_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_rdy_set_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_owed_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_sent_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_txdat_sn_rdy_clr_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dbid_rdy_set_s2;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dbid_rdy_clr_s2;
@@ -2441,10 +2444,23 @@ module hnf_mshr_ctl `HNF_PARAM
                     (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry])) ||
                    (mshr_errrd_s1_q[entry] & mshr_dbf_home_fill_entry_sx1[entry]);
             assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
-            assign mshr_txdat_sn_rdy_set_sx[entry]   = (mshr_wu_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry] & (mshr_snp_getall_s1[entry] | ((mshr_snpcnt_sx_q[entry]==0) & (l3_rd_busy_s2_q[entry] == 0))) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry])) ||
-                   ((mshr_wrnosnp_s1_q[entry])&(mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry]) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry])) ||
-                   ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry]) & (mshr_dat_new_get_s1_q[entry] & mshr_rn_dat_get_d_s1_q[entry] & mshr_get_dbid_s1_q[entry]) & (mshr_dat_entry_vec_s1_q[entry] | mshr_dbid_entry_vec_s1_q[entry])) ||
-                   ((mshr_l3dat_sn_sx8_q[entry] | mshr_snp_memwr_s1[entry]) & mshr_get_dbid_s1_q[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry] | mshr_dbid_entry_vec_s1_q[entry]));
+            // What the entry owes the Subordinate, as a condition on its own state.
+            // Each conjunct comes true at its own time -- the Requester's data, the
+            // Subordinate's DBID, the snoop fan-out, the cache pass -- so qualifying
+            // the arm with a same-cycle arrival pulse sends only when the last of them
+            // happens to settle on a cycle one of those events lands. SS2.5.2 (p.2-87)
+            // keeps the entry taken until the write completes, so a missed send
+            // strands the entry rather than losing only the data.
+            assign mshr_txdat_sn_owed_sx[entry]      = (mshr_wu_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry] & (mshr_snp_getall_s1[entry] | ((mshr_snpcnt_sx_q[entry]==0) & (l3_rd_busy_s2_q[entry] == 0)))) ||
+                   ((mshr_wrnosnp_s1_q[entry]) & (mshr_dat_new_get_s1_q[entry] & mshr_get_dbid_s1_q[entry])) ||
+                   ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry]) & (mshr_dat_new_get_s1_q[entry] & mshr_rn_dat_get_d_s1_q[entry] & mshr_get_dbid_s1_q[entry])) ||
+                   ((mshr_l3dat_sn_sx8_q[entry] | mshr_snp_memwr_s1[entry]) & mshr_get_dbid_s1_q[entry]);
+            // One send per payload. mshr_sn_data_busy_sx_q is claimed when the payload
+            // is acquired and released once the buffer read consumes it, so the level
+            // on its own would re-arm inside that window.
+            assign mshr_txdat_sn_sent_sx[entry]      = mshr_txdat_sn_sent_sx_q[entry] | mshr_txdat_sn_rdy_clr_sx[entry];
+            assign mshr_txdat_sn_rdy_set_sx[entry]   = mshr_txdat_sn_owed_sx[entry] & mshr_sn_data_busy_sx_q[entry] &
+                   ~mshr_txdat_sn_sent_sx[entry] & ~mshr_txdat_sn_rdy_sx_q[entry];
             assign mshr_txdat_sn_rdy_clr_sx[entry]   = (~mshr_txdat_rn_rdy_sx_q[entry] & mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
             // The err class is invisible to hnf_mshr_bypass, so txrsp_mshr_bypass_lost_s1
             // is never asserted for it; its arms hang off the allocation instead.
@@ -2709,6 +2725,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_txdat_sn_rdy_sx_q[entry] <= 1'b1;
                 else if(mshr_txdat_sn_rdy_clr_sx[entry])
                     mshr_txdat_sn_rdy_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_txdat_sn_sent_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_txdat_sn_sent_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry] | mshr_sn_data_busy_set_sx[entry])
+                    mshr_txdat_sn_sent_sx_q[entry] <= 1'b0;
+                else if(mshr_txdat_sn_rdy_clr_sx[entry])
+                    mshr_txdat_sn_sent_sx_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -3811,6 +3838,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
+    `display_fatal_arm
     logic [`MSHR_ENTRIES_NUM-1:0] mshr_l3_pass_taken_sx_q;
 
     generate
@@ -3827,11 +3855,9 @@ module hnf_mshr_ctl `HNF_PARAM
             // Table 4-16 (p.4-181) leaves the Requester Invalid after a WriteBackFull,
             // so the Home owes its Snoop Filter bit that clear -- only a pipeline pass
             // does it.
-            always_comb begin
-                `display_fatal(!(mshr_can_retire_entry_sx1[entry] & mshr_wb_s1_q[entry]) ||
+            `display_fatal_sva(!(mshr_can_retire_entry_sx1[entry] & mshr_wb_s1_q[entry]) ||
                                mshr_l3_pass_taken_sx_q[entry],
-                               $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry));
-            end
+                               $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry))
         end
     endgenerate
 `endif
