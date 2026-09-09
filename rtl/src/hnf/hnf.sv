@@ -229,6 +229,7 @@ module hnf `HNF_PARAM
     wire                                     txsnp_mshr_busy_sx1;
     wire                                     txdat_mshr_clr_dbf_busy_valid_sx3;
     wire [`MSHR_ENTRIES_NUM-1:0]             dbf_mshr_be_full_sx;
+    wire                                     dbf_mshr_be_full_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_clr_dbf_busy_idx_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_rd_idx_sx2;
     wire                                     txdat_mshr_rd_to_rn_sx2;
@@ -581,6 +582,7 @@ module hnf `HNF_PARAM
                  .txdat_mshr_rd_to_rn_sx2                      (txdat_mshr_rd_to_rn_sx2           ),
                  .txdat_mshr_clr_dbf_busy_valid_sx3            (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                  .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
+                 .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               ),
                  .txdat_mshr_clr_dbf_busy_idx_sx3              (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                  .l3_opcode_sx7_q                              (l3_opcode_sx7_q                   ),
                  .l3_memrd_sx7_q                               (l3_memrd_sx7_q                    ),
@@ -793,7 +795,8 @@ module hnf `HNF_PARAM
                         .dbf_txdat_be_sx1                             (dbf_txdat_be_sx1                  ),
                         .dbf_txdat_pe_sx1                             (dbf_txdat_pe_sx1                  ),
                         .dbf_txdat_data_sx1                           (dbf_txdat_data_sx1                ),
-                        .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               )
+                        .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
+                        .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               )
                     );
 
     hnf_sf_sram `HNF_PARAM_INST
