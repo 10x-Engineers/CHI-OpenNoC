@@ -1237,7 +1237,21 @@ module hni_mshr `HNI_PARAM
     assign mshr_txdat_dataid_sx     = txdat_fifo_dataid_s1_q[txdat_fifo_cnt_sx_q];
     assign mshr_txdat_txnid_sx      = rxreq_txnid_s1_q[txdat_entry_idx_sx_q];
     assign mshr_txdat_opcode_sx     = chie_pkg::DAT_COMPDATA;
-    assign mshr_txdat_resp_sx       = chie_pkg::RESP_I;
+    // Sec 3.3.1 (p.3-152): "It is legal for a Snoopable transaction to be targeted at
+    // an HN-I ... the HN-I is required to respond to the transaction in a
+    // protocol-compliant manner, but coherency is not guaranteed" -- so the
+    // allocating reads this node serves still owe Table 4-33's (p.4-211) own cache
+    // states. RESP_I is one of them only for the non-allocating rows; Sec 9.3
+    // (p.9-336, MUST) makes it legal elsewhere solely alongside a Non-data Error,
+    // which the error class below carries and a served read does not.
+    always_comb begin
+        case (rxreq_opcode_s1_q[txdat_entry_idx_sx_q])
+            chie_pkg::REQ_READCLEAN,
+            chie_pkg::REQ_READNOTSHAREDDIRTY: mshr_txdat_resp_sx = chie_pkg::RESP_SC;
+            chie_pkg::REQ_READUNIQUE:         mshr_txdat_resp_sx = chie_pkg::RESP_UC_UD;
+            default:                          mshr_txdat_resp_sx = chie_pkg::RESP_I;
+        endcase
+    end
     // Sec 9.4.4 (p.9-342, MUST) / Table 9-10 (p.9-343): the errored read still returns
     // its packets, carrying the Non-data Error.
     assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[txdat_entry_idx_sx_q] ? chie_pkg::RESP_ERR_NON_DATA

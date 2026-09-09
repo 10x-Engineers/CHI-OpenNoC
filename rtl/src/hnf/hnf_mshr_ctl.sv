@@ -116,6 +116,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                txdat_mshr_rd_to_rn_sx2,
     input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_be_full_sx,
+    input  wire                                dbf_mshr_be_full_s0,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
 
     //inputs from hnf_cache_pipeline
@@ -284,6 +285,10 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_entry_vec_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]       l3_snp_cnt;
     logic [`RNF_NUM-1:0]                 mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`RNF_NUM-1:0]                 mshr_compack_owed_rn_sx[0:`MSHR_ENTRIES_NUM-1];
+    logic [`RNF_NUM-1:0]                 mshr_snp_compack_block_sx[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txsnp_compack_hold_sx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_sent_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdirect_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::snp_opcode_e               mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
@@ -1721,7 +1726,12 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dat_old_get_s1_q[entry] <= 1'b0;
                 else if(mshr_dat_entry_vec_s0[entry] && mshr_mem_dat_s0)
                     mshr_dat_old_get_s1_q[entry] <= mshr_dat_memgetone_s1_q[entry];
-                else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0)
+                // Sec 5.1.5 (p.5-251): where the Snoop response leaves bytes
+                // invalid the Home "waits for the data response from memory, merges
+                // the partial Snoop response data ... and sends the resultant data
+                // to the Requester" -- so holding the whole line is a property of
+                // the accumulated byte enables, not of the second packet arriving.
+                else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0 & dbf_mshr_be_full_s0)
                     mshr_dat_old_get_s1_q[entry] <= 1'b1;
                 else
                     ;
@@ -2587,6 +2597,26 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            // The completion this entry owes is on its way to the link wrapper,
+            // which is the "has sent a completion" Sec 2.8.3 (p.2-116) opens its
+            // window on -- electing one is several cycles earlier, and a snoop in
+            // that gap precedes the completion and is legal. Cleared with the
+            // entry; mshr_compack_busy_sx_q is what closes the window itself.
+            always_ff @(posedge clk or posedge rst)begin : mshr_comp_sent_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_comp_sent_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_comp_sent_sx_q[entry] <= 1'b0;
+                else if((mshr_dbf_rd_valid_sx1_q & mshr_dbf_rd_to_rn_sx1_q &
+                         (mshr_dbf_rd_idx_sx1_q == entry[`MSHR_ENTRIES_WIDTH-1:0])) |
+                        (mshr_txrsp_valid_sx1_q &
+                         (mshr_txrsp_idx_sx1_q == entry[`MSHR_ENTRIES_WIDTH-1:0]) &
+                         (mshr_txrsp_opcode_sx1 inside {chie_pkg::RSP_COMP,
+                                                        chie_pkg::RSP_COMPDBIDRESP,
+                                                        chie_pkg::RSP_COMPSTASHDONE})))
+                    mshr_comp_sent_sx_q[entry] <= 1'b1;
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_compack_busy_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_compack_busy_sx_q[entry] <= 1'b0;
@@ -2995,6 +3025,54 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //************************************************************************//
 
+    //                   Sec 2.8.3 CompAck window (p.2-116, MUST)
+
+    //************************************************************************//
+
+    // "The Home Node must not send a Snoop request to the Requester for the same
+    // address until it receives the CompAck response." mshr_compack_busy_sx_q is
+    // armed at allocation off ExpCompAck; the window this rule states opens at the
+    // completion, so the entry must also have elected one -- an entry that has not
+    // still owes its own snoops, and blocking on it would let two entries on one
+    // line hold each other's fan-out. mshr_addr_s1_q is the address to compare on:
+    // unlike the address buffer's copy it is not rewritten by an SLC eviction pass,
+    // which is what leaves the line unguarded once the sleepers are released.
+    generate
+        for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_compack_owed_comb_logic
+            always_comb begin
+                logic [`RNF_NUM*CHIE_NID_WIDTH_PARAM-1:0] compack_nid_list;
+                compack_nid_list           = RNF_NID_LIST_PARAM;
+                mshr_compack_owed_rn_sx[entry] = {`RNF_NUM{1'b0}};
+                if(mshr_entry_valid_sx_q[entry] & mshr_compack_busy_sx_q[entry] &
+                   mshr_comp_sent_sx_q[entry]   & ~mshr_txsnp_rdy_sx_q[entry])
+                    for(int r = 0; r < `RNF_NUM; r = r+1)
+                        if(compack_nid_list[r*CHIE_NID_WIDTH_PARAM +: CHIE_NID_WIDTH_PARAM] ==
+                           mshr_srcid_s1_q[entry])
+                            mshr_compack_owed_rn_sx[entry][r] = 1'b1;
+            end
+
+            // Held, not dropped: mshr_txsnp_rdy_sx_q is a level, so the fan-out
+            // re-arbitrates once the CompAck clears the blocking entry. That entry
+            // has sent its completion and owes no snoop, so all it waits on is the
+            // CompAck -- an RXRSP that Sec 13.4.1 (p.13-397, MUST) makes independent
+            // of every other channel.
+            always_comb begin
+                mshr_snp_compack_block_sx[entry] = {`RNF_NUM{1'b0}};
+                for(int o = 0; o < `MSHR_ENTRIES_NUM; o = o+1)
+                    if((o != entry) &&
+                       (mshr_addr_s1_q[o][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] ==
+                        mshr_addr_s1_q[entry][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]))
+                        mshr_snp_compack_block_sx[entry] = mshr_snp_compack_block_sx[entry] |
+                                                           mshr_compack_owed_rn_sx[o];
+            end
+
+            assign mshr_txsnp_compack_hold_sx[entry] =
+                   |(mshr_snp_bit_sx8_q[entry] & mshr_snp_compack_block_sx[entry]);
+        end
+    endgenerate
+
+    //************************************************************************//
+
     //                   mshr find 1 entry to send logic
 
     //************************************************************************//
@@ -3017,9 +3095,9 @@ module hnf_mshr_ctl `HNF_PARAM
                    (((~mshr_txrsp_valid_sx1_q)) | (mshr_txrsp_idx_sx1_q!=entry));
 
             assign txsnp_wrap_ageq_vec[entry] = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txsnp_rdy_sx_q[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (~txsnp_mshr_busy_sx1) &
-                   ((~mshr_txsnp_valid_sx1_q) | (mshr_txsnp_txnid_sx1_q!=entry));
+                   ((~mshr_txsnp_valid_sx1_q) | (mshr_txsnp_txnid_sx1_q!=entry)) & (~mshr_txsnp_compack_hold_sx[entry]);
 
-            assign txsnp_wrap_other_vec[entry] = mshr_txsnp_rdy_sx_q[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (~txsnp_mshr_busy_sx1) & ((~mshr_txsnp_valid_sx1_q) | (mshr_txsnp_txnid_sx1_q!=entry));
+            assign txsnp_wrap_other_vec[entry] = mshr_txsnp_rdy_sx_q[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (~txsnp_mshr_busy_sx1) & ((~mshr_txsnp_valid_sx1_q) | (mshr_txsnp_txnid_sx1_q!=entry)) & (~mshr_txsnp_compack_hold_sx[entry]);
 
             assign txdat_wrap_ageq_vec[entry] = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txdat_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (~txdat_mshr_busy_sx) &
                    ((~mshr_dbf_rd_valid_sx1_q) | (mshr_dbf_rd_idx_sx1_q!=entry));

@@ -57,6 +57,7 @@ module hni_rxreq `HNI_PARAM
     logic                                 rxreqcrdv_s1_q;
 
     //internal wire signals
+    wire                                  rxreq_link_flit_s0;
     wire                                  rxreq_crd_grant_sx;
     wire [1:0]                            rxreq_crd_rtn_sx;
     wire                                  rxreq_crd_cnt_zero_sx;
@@ -79,8 +80,13 @@ module hni_rxreq `HNI_PARAM
     end
 
     //rxreqflit decode
-    assign rxreq_valid_s0    = (rxreqflitv == 1'b1);
-    assign rxreqflit_s0      = (rxreqflitv == 1'b1) ? rxreqflit : '0;
+    // CHI E.b Sec 13.11 (p.13-442): "A link flit is identified by a zero value in
+    // the Opcode field." It carries no request -- only the L-Credit it returns --
+    // so the credit accounting below is the only thing that may see it.
+    assign rxreq_link_flit_s0 = (rxreqflitv == 1'b1) &&
+           (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN);
+    assign rxreq_valid_s0    = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;
+    assign rxreqflit_s0      = (rxreq_valid_s0 == 1'b1) ? rxreqflit : '0;
 
     //rxreq L-credit
     assign req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;

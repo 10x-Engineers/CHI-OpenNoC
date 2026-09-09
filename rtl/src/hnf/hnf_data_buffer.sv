@@ -64,6 +64,11 @@ module hnf_data_buffer `HNF_PARAM
     // complete is a property of the accumulated BE, not of the opcode that
     // delivered it.
     output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_be_full_sx,
+    // The same property one cycle earlier: whether the line WILL be complete once
+    // the RXDAT flit now on the wire is merged. dbf_mshr_be_full_sx only reflects
+    // it from the next cycle, and the MSHR decides at S0 whether the arriving
+    // packet leaves it holding the whole line.
+    output wire                               dbf_mshr_be_full_s0,
 
     output wire                               dbf_txdat_valid_sx1,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
@@ -243,6 +248,7 @@ module hnf_data_buffer `HNF_PARAM
             assign dbf_mshr_be_full_sx[be_e] = &dbf_be_q[be_e];
         end
     endgenerate
+    assign dbf_mshr_be_full_s0 = &temp_li_be;
     assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_pe_sx1    = dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
 
