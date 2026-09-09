@@ -253,6 +253,8 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [3:0]                          mshr_qos_s1_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::memattr_s                  mshr_memattr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::NID_WIDTH-1:0]      mshr_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`RNF_NUM-1:0]                 mshr_rxreq_srcid_onehot_s0;
+    logic [`RNF_NUM-1:0]                 mshr_srcid_onehot_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [11:0]                         mshr_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_excl_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_excl_noexok_s1_q;
@@ -287,8 +289,8 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`RNF_NUM-1:0]                 mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_compack_owed_rn_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_snp_compack_block_sx[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_same_line_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txsnp_compack_hold_sx;
-    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_comp_sent_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdirect_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::snp_opcode_e               mshr_snpcode_sx8_q[0:`MSHR_ENTRIES_NUM-1];
@@ -1195,6 +1197,16 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
     assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
+    always_comb begin : mshr_rxreq_srcid_onehot_s0_comb_logic
+        logic [`RNF_NUM*CHIE_NID_WIDTH_PARAM-1:0] alloc_nid_list;
+        alloc_nid_list             = RNF_NID_LIST_PARAM;
+        mshr_rxreq_srcid_onehot_s0 = {`RNF_NUM{1'b0}};
+        for(int r = 0; r < `RNF_NUM; r = r+1)
+            if(alloc_nid_list[r*CHIE_NID_WIDTH_PARAM +: CHIE_NID_WIDTH_PARAM] ==
+               li_mshr_rxreq_srcid_s0)
+                mshr_rxreq_srcid_onehot_s0[r] = 1'b1;
+    end
+
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk)begin : mshr_qos_s1_q_timing_logic
@@ -1207,10 +1219,14 @@ module hnf_mshr_ctl `HNF_PARAM
             end
 
             always_ff @(posedge clk)begin : mshr_srcid_s1_q_timing_logic
-                if(mshr_req_clr_sx1[entry] == 1'b1)
-                    mshr_srcid_s1_q[entry] <= '0;
-                else if(mshr_req_set_s0[entry] == 1'b1)
-                    mshr_srcid_s1_q[entry] <= li_mshr_rxreq_srcid_s0;
+                if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_srcid_s1_q[entry]        <= '0;
+                    mshr_srcid_onehot_s1_q[entry] <= {`RNF_NUM{1'b0}};
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1)begin
+                    mshr_srcid_s1_q[entry]        <= li_mshr_rxreq_srcid_s0;
+                    mshr_srcid_onehot_s1_q[entry] <= mshr_rxreq_srcid_onehot_s0;
+                end
                 else
                     ;
             end
@@ -2597,26 +2613,6 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
-            // The completion this entry owes is on its way to the link wrapper,
-            // which is the "has sent a completion" Sec 2.8.3 (p.2-116) opens its
-            // window on -- electing one is several cycles earlier, and a snoop in
-            // that gap precedes the completion and is legal. Cleared with the
-            // entry; mshr_compack_busy_sx_q is what closes the window itself.
-            always_ff @(posedge clk or posedge rst)begin : mshr_comp_sent_sx_q_timing_logic
-                if(rst == 1'b1)
-                    mshr_comp_sent_sx_q[entry] <= 1'b0;
-                else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_comp_sent_sx_q[entry] <= 1'b0;
-                else if((mshr_dbf_rd_valid_sx1_q & mshr_dbf_rd_to_rn_sx1_q &
-                         (mshr_dbf_rd_idx_sx1_q == entry[`MSHR_ENTRIES_WIDTH-1:0])) |
-                        (mshr_txrsp_valid_sx1_q &
-                         (mshr_txrsp_idx_sx1_q == entry[`MSHR_ENTRIES_WIDTH-1:0]) &
-                         (mshr_txrsp_opcode_sx1 inside {chie_pkg::RSP_COMP,
-                                                        chie_pkg::RSP_COMPDBIDRESP,
-                                                        chie_pkg::RSP_COMPSTASHDONE})))
-                    mshr_comp_sent_sx_q[entry] <= 1'b1;
-            end
-
             always_ff @(posedge clk or posedge rst)begin : mshr_compack_busy_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_compack_busy_sx_q[entry] <= 1'b0;
@@ -3029,25 +3025,31 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //************************************************************************//
 
-    // "The Home Node must not send a Snoop request to the Requester for the same
-    // address until it receives the CompAck response." mshr_compack_busy_sx_q is
-    // armed at allocation, so mshr_comp_sent_sx_q is what narrows it to the window
-    // the rule states -- an entry that has not completed still owes its own snoops.
     // The address is mshr_addr_s1_q, not the address buffer's copy: that one is
     // rewritten to the victim's on an SLC eviction pass.
+    always_comb begin : mshr_same_line_comb_logic
+        for(int e = 0; e < `MSHR_ENTRIES_NUM; e = e+1)
+            mshr_same_line_sx[e] = {`MSHR_ENTRIES_NUM{1'b0}};
+        for(int e = 1; e < `MSHR_ENTRIES_NUM; e = e+1)
+            for(int o = 0; o < e; o = o+1)
+                if(mshr_addr_s1_q[o][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] ==
+                   mshr_addr_s1_q[e][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET])begin
+                    mshr_same_line_sx[e][o] = 1'b1;
+                    mshr_same_line_sx[o][e] = 1'b1;
+                end
+    end
+
     generate
         for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_compack_owed_comb_logic
-            always_comb begin
-                logic [`RNF_NUM*CHIE_NID_WIDTH_PARAM-1:0] compack_nid_list;
-                compack_nid_list           = RNF_NID_LIST_PARAM;
-                mshr_compack_owed_rn_sx[entry] = {`RNF_NUM{1'b0}};
-                if(mshr_entry_valid_sx_q[entry] & mshr_compack_busy_sx_q[entry] &
-                   mshr_comp_sent_sx_q[entry]   & ~mshr_txsnp_rdy_sx_q[entry])
-                    for(int r = 0; r < `RNF_NUM; r = r+1)
-                        if(compack_nid_list[r*CHIE_NID_WIDTH_PARAM +: CHIE_NID_WIDTH_PARAM] ==
-                           mshr_srcid_s1_q[entry])
-                            mshr_compack_owed_rn_sx[entry][r] = 1'b1;
-            end
+            // "An HN-F ... waits for CompAck before sending a subsequent snoop to
+            // the same address" is stated over the CompAck alone, so
+            // mshr_compack_busy_sx_q is the window and how the completion was
+            // sourced does not narrow it. What does is the entry still owing snoops
+            // of its own, which is mshr_snp_busy_sx_q.
+            assign mshr_compack_owed_rn_sx[entry] =
+                   {`RNF_NUM{mshr_entry_valid_sx_q[entry] & mshr_compack_busy_sx_q[entry] &
+                             ~mshr_txsnp_rdy_sx_q[entry] & ~mshr_snp_busy_sx_q[entry]}}
+                   & mshr_srcid_onehot_s1_q[entry];
 
             // Held, not dropped -- mshr_txsnp_rdy_sx_q is a level. No cycle: the
             // blocking entry waits only on its CompAck, an RXRSP that Sec 13.4.1
@@ -3055,9 +3057,7 @@ module hnf_mshr_ctl `HNF_PARAM
             always_comb begin
                 mshr_snp_compack_block_sx[entry] = {`RNF_NUM{1'b0}};
                 for(int o = 0; o < `MSHR_ENTRIES_NUM; o = o+1)
-                    if((o != entry) &&
-                       (mshr_addr_s1_q[o][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] ==
-                        mshr_addr_s1_q[entry][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]))
+                    if(mshr_same_line_sx[entry][o])
                         mshr_snp_compack_block_sx[entry] = mshr_snp_compack_block_sx[entry] |
                                                            mshr_compack_owed_rn_sx[o];
             end
@@ -3648,6 +3648,35 @@ module hnf_mshr_ctl `HNF_PARAM
                    = (txdat_mshr_clr_dbf_busy_idx_sx3 == entry) & txdat_mshr_clr_dbf_busy_valid_sx3;
         end
     endgenerate
+
+    //-----------------------------------------------------------------------------
+    // DISPLAY FATAL
+    //-----------------------------------------------------------------------------
+`ifdef DISPLAY_FATAL
+    logic [`MSHR_ENTRIES_NUM-1:0] mshr_l3_pass_taken_sx_q;
+
+    generate
+        for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_l3_pass_taken_logic
+            always_ff @(posedge clk or posedge rst)begin
+                if(rst == 1'b1)
+                    mshr_l3_pass_taken_sx_q[entry] <= 1'b0;
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_l3_pass_taken_sx_q[entry] <= 1'b0;
+                else if(mshr_l3_entry_vec_sx1[entry] == 1'b1)
+                    mshr_l3_pass_taken_sx_q[entry] <= 1'b1;
+            end
+
+            // Table 4-16 (p.4-181) leaves the Requester Invalid after a WriteBackFull,
+            // so the Home owes its Snoop Filter bit that clear -- only a pipeline pass
+            // does it.
+            always_comb begin
+                `display_fatal(!(mshr_can_retire_entry_sx1[entry] & mshr_wb_s1_q[entry]) ||
+                               mshr_l3_pass_taken_sx_q[entry],
+                               $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry));
+            end
+        end
+    endgenerate
+`endif
 
     //-----------------------------------------------------------------------------
     // DISPLAY INFO
