@@ -174,6 +174,43 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_WRITEUNIQUEZERO || op == chie_pkg::REQ_WRITENOSNPZERO;
   endfunction
 
+  // The two reads whose own snoop this Home sends, told from the opcode as sent
+  // because hnf_serviced_as() folds both into another row. SS4.4.2 (p.4-196) permits
+  // "SnpNotSharedDirty or SnpShared or SnpClean for ReadNotSharedDirty, ReadShared,
+  // and ReadClean" interchangeably -- Table 4-42 (SS4.8.1 p.4-223) gives the three
+  // one row set -- but their forwarding twins are not: SnpSharedFwd is permitted for
+  // ReadShared alone, because Table 4-53 (SS4.8.3 p.4-234) lets it forward SD_PD and
+  // Table 4-33 (SS4.7.1 p.4-212) gives only ReadShared that row.
+  function automatic logic hnf_read_shared(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_READSHARED;
+  endfunction
+
+  // SS4.3 (p.4-192): "Home is expected to use SnpPreferUniqueFwd or SnpPreferUnique
+  // in response to ReadPreferUnique". Sent where this Home serves the line Shared --
+  // SS4.2.1 (p.4-164)'s "another Request Node is currently performing an exclusive
+  // sequence" -- because SS4.8.3 (p.4-237) lets the Snoopee choose whether to
+  // invalidate and says "the Snoop response must be inspected" to find out, which a
+  // directory written before that response cannot do. Serving the line Unique keeps
+  // SnpUnique, whose Table 4-43 (p.4-224) rows SnpPreferUnique shares there anyway.
+  function automatic logic hnf_read_prefer_unique(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_READPREFERUNIQUE;
+  endfunction
+
+  // Table 13-15 (SS13.10 p.13-425) does not put every forwarding snoop one nibble
+  // above its own twin: SnpPreferUniqueFwd (0x16) is one above SnpPreferUnique
+  // (0x15), where the other five are +0x10.
+  function automatic chie_pkg::snp_opcode_e hnf_snp_fwd_of(chie_pkg::snp_opcode_e op);
+    case (op)
+      chie_pkg::SNP_SNPPREFERUNIQUE   : return chie_pkg::SNP_SNPPREFERUNIQUEFWD;
+      chie_pkg::SNP_SNPSHARED         : return chie_pkg::SNP_SNPSHAREDFWD;
+      chie_pkg::SNP_SNPCLEAN          : return chie_pkg::SNP_SNPCLEANFWD;
+      chie_pkg::SNP_SNPONCE           : return chie_pkg::SNP_SNPONCEFWD;
+      chie_pkg::SNP_SNPNOTSHAREDDIRTY : return chie_pkg::SNP_SNPNOTSHAREDDIRTYFWD;
+      chie_pkg::SNP_SNPUNIQUE         : return chie_pkg::SNP_SNPUNIQUEFWD;
+      default                         : return op;
+    endcase
+  endfunction
+
   // The CopyBack whose data is partial: Table 4-16 (SS4.2.3 p.4-181) gives a UDP
   // line WriteBackPtl and nothing else.
   function automatic logic hnf_write_partial(chie_pkg::req_opcode_e op);

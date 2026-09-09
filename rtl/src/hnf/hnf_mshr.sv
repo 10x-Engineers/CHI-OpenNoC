@@ -215,6 +215,8 @@ module hnf_mshr `HNF_PARAM
     wire                           req_persist_s0;
     wire                           req_persist_rsp_s0;
     wire                           req_l3_alloc_s0;
+    wire                           req_rdshared_s0;
+    wire                           req_prefunq_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      li_mshr_rxreq_excl_s0,
@@ -226,6 +228,8 @@ module hnf_mshr `HNF_PARAM
     assign req_wr_ptl_s0          = opennoc_hnf_pkg::hnf_write_partial(li_mshr_rxreq_opcode_s0);
     assign req_persist_s0         = opennoc_hnf_pkg::hnf_persist_cmo(li_mshr_rxreq_opcode_s0);
     assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
+    assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
+    assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
     // The Allocate hint as the L3 may act on it. Sec 2.10.3 (p.2-135, MUST) makes a
     // deasserted byte enable one that "must not be updated in memory or cache", and
     // hnf_sram_mask.sv has one write mask bit per way and none per byte -- so a
@@ -394,6 +398,8 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_persist_s0                        (req_persist_s0                    ),
                      .li_mshr_rxreq_persist_rsp_s0                    (req_persist_rsp_s0                ),
                      .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                   ),
+                     .li_mshr_rxreq_rdshared_s0                       (req_rdshared_s0                   ),
+                     .li_mshr_rxreq_prefunq_s0                        (req_prefunq_s0                    ),
                      .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),
