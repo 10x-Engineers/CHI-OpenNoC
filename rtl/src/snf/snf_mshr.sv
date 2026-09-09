@@ -976,7 +976,12 @@ module snf_mshr `SNF_PARAM
                         .sel_index         (txdat_entry_idx_sx  ) 
                     );
 
-    assign mshr_txdat_update        = (~mshr_txdat_en_sx) & (~txdat_valid_sx[txdat_entry_idx_sx]);
+    // poll_function's `upd` advances the round-robin pointer past the entry just
+    // consumed, so it is qualified by a selection having been made -- the contract
+    // snf_qos meets with h/l_present_win_sx. Asserting it when no entry is selected
+    // writes the next-entry mask from an all-zero vector, which pins the mask at 0
+    // and degenerates POLL_MODE=1 to fixed LSB-first priority.
+    assign mshr_txdat_update        = mshr_txdat_en_sx & mshr_txdat_won_sx;
     assign mshr_txdat_entry_idx_sx  = txdat_entry_idx_sx;
     assign mshr_txdat_en_sx         = sel_idx_valid;
     assign mshr_txdat_dataid_sx     = ((((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0))
