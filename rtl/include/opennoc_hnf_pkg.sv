@@ -131,6 +131,13 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_MAKEREADUNIQUE;
   endfunction
 
+  // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 has it
+  // displace Excl on the shared REQ bit -- so the Excl bit of an Atomic is not an
+  // Exclusive request and must not be read as one.
+  function automatic logic hnf_atomic(chie_pkg::req_opcode_e op);
+    return (op >= chie_pkg::REQ_ATOMICSTORE_ADD) && (op <= chie_pkg::REQ_ATOMICCOMPARE);
+  endfunction
+
   // The requests whose completion has to reach the Point of Persistence. SS4.2.2
   // (p.4-171, MUST) makes that a downstream obligation for a Home that is not the
   // PoP, and SS16.1 (p.16-471, MUST) fixes the shape when the Subordinate's own
