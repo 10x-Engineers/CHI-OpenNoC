@@ -96,15 +96,21 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_WRITEUNIQUEZERO      : return chie_pkg::REQ_WRITEUNIQUEFULL;
       chie_pkg::REQ_WRITENOSNPZERO       : return chie_pkg::REQ_WRITENOSNPFULL;
       chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPFULLCLEANINV       : return chie_pkg::REQ_WRITENOSNPFULL;
       chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPPTLCLEANINV        : return chie_pkg::REQ_WRITENOSNPPTL;
-      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH       : return chie_pkg::REQ_WRITEUNIQUEFULL;
-      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH        : return chie_pkg::REQ_WRITEUNIQUEPTL;
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP : return chie_pkg::REQ_WRITEUNIQUEFULL;
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP  : return chie_pkg::REQ_WRITEUNIQUEPTL;
       chie_pkg::REQ_WRITEBACKPTL,
       chie_pkg::REQ_WRITEBACKFULLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEBACKFULLCLEANINV        : return chie_pkg::REQ_WRITEBACKFULL;
-      chie_pkg::REQ_WRITECLEANFULLCLEANSH        : return chie_pkg::REQ_WRITECLEANFULL;
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP  : return chie_pkg::REQ_WRITECLEANFULL;
       chie_pkg::REQ_STASHONCESHARED,
       chie_pkg::REQ_STASHONCEUNIQUE,
       chie_pkg::REQ_STASHONCESEPSHARED,
@@ -138,6 +144,25 @@ package opennoc_hnf_pkg;
     return (op >= chie_pkg::REQ_ATOMICSTORE_ADD) && (op <= chie_pkg::REQ_ATOMICCOMPARE);
   endfunction
 
+  // The requests that owe a Persist response on top of their completion. Table 4-38
+  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
+  // "Comp + Persist or CompPersist"; SS4.2.4 (p.4-182) has a Persistent CMO combined
+  // with a write "treated as a CleanSharedPersistSep", so the six WriteCleanShPerSep
+  // forms owe one too -- which SS2.3.2 Alt 2a2 (p.2-67) lets the Home fold into a
+  // single CompPersist, exactly as the standalone request does.
+  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
+    case (op)
+      chie_pkg::REQ_CLEANSHAREDPERSISTSEP,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                                   : return 1'b0;
+    endcase
+  endfunction
+
   // The requests whose completion has to reach the Point of Persistence. SS4.2.2
   // (p.4-171, MUST) makes that a downstream obligation for a Home that is not the
   // PoP, and SS16.1 (p.16-471, MUST) fixes the shape when the Subordinate's own
@@ -145,32 +170,31 @@ package opennoc_hnf_pkg;
   // assume: a substituted CleanSharedPersist whose Comp the Home's own Persist
   // waits on.
   function automatic logic hnf_persist_cmo(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_CLEANSHAREDPERSIST
-        || op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+    return op == chie_pkg::REQ_CLEANSHAREDPERSIST || hnf_persist_response(op);
   endfunction
 
-  // Of those, the one that owes a Persist on top of its completion: Table 4-38
-  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
-  // "Comp + Persist or CompPersist".
-  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
-  endfunction
-
-  // The nine Combined Writes whose CMO leg SS2.3.2 (p.2-58/p.2-66) answers with
-  // CompCMO -- enumerated rather than taken as an opcode range, the gaps inside that
-  // range being RESERVED.
+  // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
+  // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
+  // range, the gaps inside that range being RESERVED. The six persistent forms fold
+  // that CompCMO into the CompPersist hnf_persist_response() elects.
   function automatic logic hnf_combined_write(chie_pkg::req_opcode_e op);
     case (op)
       chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
       chie_pkg::REQ_WRITENOSNPFULLCLEANINV,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
       chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEBACKFULLCLEANSH,
       chie_pkg::REQ_WRITEBACKFULLCLEANINV,
-      chie_pkg::REQ_WRITECLEANFULLCLEANSH : return 1'b1;
-      default                             : return 1'b0;
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                                   : return 1'b0;
     endcase
   endfunction
 
@@ -179,6 +203,43 @@ package opennoc_hnf_pkg;
   // transferring data bytes".
   function automatic logic hnf_write_zero(chie_pkg::req_opcode_e op);
     return op == chie_pkg::REQ_WRITEUNIQUEZERO || op == chie_pkg::REQ_WRITENOSNPZERO;
+  endfunction
+
+  // The two reads whose own snoop this Home sends, told from the opcode as sent
+  // because hnf_serviced_as() folds both into another row. SS4.4.2 (p.4-196) permits
+  // "SnpNotSharedDirty or SnpShared or SnpClean for ReadNotSharedDirty, ReadShared,
+  // and ReadClean" interchangeably -- Table 4-42 (SS4.8.1 p.4-223) gives the three
+  // one row set -- but their forwarding twins are not: SnpSharedFwd is permitted for
+  // ReadShared alone, because Table 4-53 (SS4.8.3 p.4-234) lets it forward SD_PD and
+  // Table 4-33 (SS4.7.1 p.4-212) gives only ReadShared that row.
+  function automatic logic hnf_read_shared(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_READSHARED;
+  endfunction
+
+  // SS4.3 (p.4-192): "Home is expected to use SnpPreferUniqueFwd or SnpPreferUnique
+  // in response to ReadPreferUnique". Sent where this Home serves the line Shared --
+  // SS4.2.1 (p.4-164)'s "another Request Node is currently performing an exclusive
+  // sequence" -- because SS4.8.3 (p.4-237) lets the Snoopee choose whether to
+  // invalidate and says "the Snoop response must be inspected" to find out, which a
+  // directory written before that response cannot do. Serving the line Unique keeps
+  // SnpUnique, whose Table 4-43 (p.4-224) rows SnpPreferUnique shares there anyway.
+  function automatic logic hnf_read_prefer_unique(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_READPREFERUNIQUE;
+  endfunction
+
+  // Table 13-15 (SS13.10 p.13-425) does not put every forwarding snoop one nibble
+  // above its own twin: SnpPreferUniqueFwd (0x16) is one above SnpPreferUnique
+  // (0x15), where the other five are +0x10.
+  function automatic chie_pkg::snp_opcode_e hnf_snp_fwd_of(chie_pkg::snp_opcode_e op);
+    case (op)
+      chie_pkg::SNP_SNPPREFERUNIQUE   : return chie_pkg::SNP_SNPPREFERUNIQUEFWD;
+      chie_pkg::SNP_SNPSHARED         : return chie_pkg::SNP_SNPSHAREDFWD;
+      chie_pkg::SNP_SNPCLEAN          : return chie_pkg::SNP_SNPCLEANFWD;
+      chie_pkg::SNP_SNPONCE           : return chie_pkg::SNP_SNPONCEFWD;
+      chie_pkg::SNP_SNPNOTSHAREDDIRTY : return chie_pkg::SNP_SNPNOTSHAREDDIRTYFWD;
+      chie_pkg::SNP_SNPUNIQUE         : return chie_pkg::SNP_SNPUNIQUEFWD;
+      default                         : return op;
+    endcase
   endfunction
 
   // The CopyBack whose data is partial: Table 4-16 (SS4.2.3 p.4-181) gives a UDP

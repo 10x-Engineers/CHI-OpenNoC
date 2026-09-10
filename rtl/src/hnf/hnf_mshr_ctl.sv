@@ -62,6 +62,11 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_persist_s0,
     input  wire                                li_mshr_rxreq_persist_rsp_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,
+    // opennoc_hnf_pkg::hnf_read_shared() / hnf_read_prefer_unique() of the request as
+    // sent: hnf_serviced_as() folds both into another read, and the snoop each owes
+    // is not that read's.
+    input  wire                                li_mshr_rxreq_rdshared_s0,
+    input  wire                                li_mshr_rxreq_prefunq_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  wire                                li_mshr_rxreq_stash_sep_s0,
@@ -272,6 +277,9 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_persist_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_persist_rsp_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdshared_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_prefunq_s1_q;
+    wire                                 mshr_snp_will_fwd_sx7;
     logic [7:0]                          mshr_pgroupid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_rdy_sx_q;
@@ -520,7 +528,6 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                 op_err;
     wire                                 op_errrd;
     wire                                 op_errwrdat;
-    wire                                 op_cwpersist;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_upd_sx;
@@ -1167,21 +1174,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                   | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD)
                                    & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
                                   );
-    // The six of Table 4-17's (p.4-182) Combined Writes opennoc_hnf_pkg leaves
-    // unserved, enumerated rather than taken as an opcode range: the gaps inside that
-    // range are RESERVED, and a reserved opcode answered write-shaped would wait for
-    // data no Requester owes.
-    assign op_cwpersist = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
     // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
     // a DBID and consume their write data before completing.
-    assign op_errwrdat  = op_err & (((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
-                                   & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
-                                  | op_cwpersist);
+    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
+                                  & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE));
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
@@ -1333,6 +1329,19 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_l3_alloc_s1_q[entry] <= 1'b0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_l3_alloc_s1_q[entry] <= li_mshr_rxreq_l3_alloc_s0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk)begin : mshr_snpsel_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_rdshared_s1_q[entry] <= 1'b0;
+                    mshr_prefunq_s1_q[entry]  <= 1'b0;
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1)begin
+                    mshr_rdshared_s1_q[entry] <= li_mshr_rxreq_rdshared_s0;
+                    mshr_prefunq_s1_q[entry]  <= li_mshr_rxreq_prefunq_s0;
+                end
                 else
                     ;
             end
@@ -2222,6 +2231,10 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // The same election mshr_dct_set_sx8 makes one stage later, needed here because
+    // which snoop is legal depends on whether it will be a forwarding one.
+    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
+
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)
             chie_pkg::REQ_READONCE           :
@@ -2238,8 +2251,19 @@ module hnf_mshr_ctl `HNF_PARAM
             chie_pkg::REQ_READONCECLEANINVALID,
             chie_pkg::REQ_READONCEMAKEINVALID :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPUNIQUE;
+            // Sec 4.4.2 (p.4-196) permits "SnpNotSharedDirty or SnpShared or SnpClean
+            // for ReadNotSharedDirty, ReadShared, and ReadClean" -- Table 4-42
+            // (Sec 4.8.1 p.4-223) gives the three one row set at the Snoopee, so a
+            // ReadShared takes SnpShared. Its forwarding twin is not interchangeable
+            // and is not elected: Table 4-53 (Sec 4.8.3 p.4-234) lets SnpSharedFwd
+            // forward SD_PD, passing dirtiness to the Requester rather than to this
+            // Home, and Sec 4.4.2 permits SnpNotSharedDirtyFwd for a ReadShared, so
+            // the DCT path keeps that. A ReadPreferUnique this Home serves Shared
+            // takes SnpPreferUnique, Table 4-24's (p.4-194) own row for it.
             chie_pkg::REQ_READNOTSHAREDDIRTY :
-                mshr_snpcode_sx7 = chie_pkg::SNP_SNPNOTSHAREDDIRTY;
+                mshr_snpcode_sx7 = mshr_prefunq_s1_q[l3_mshr_entry_sx7_q]  ? chie_pkg::SNP_SNPPREFERUNIQUE :
+                                   (mshr_rdshared_s1_q[l3_mshr_entry_sx7_q] & ~mshr_snp_will_fwd_sx7) ? chie_pkg::SNP_SNPSHARED
+                                                                           : chie_pkg::SNP_SNPNOTSHAREDDIRTY;
             chie_pkg::REQ_READCLEAN          :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEAN;
             chie_pkg::REQ_WRITEUNIQUEPTL     :
@@ -3344,7 +3368,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                          | mshr_wc_s1_q[mshr_txreq_entry_idx_sx1]
                                          | mshr_we_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
+    // Sec 13.10.24 (p.13-430, MUST): DoDWT is "only applicable in WriteNoSnpFull,
+    // WriteNoSnpPtl, and Combined Write requests from Home to Subordinate" and shares
+    // the SnpAttr field, so the persistent CMO leg this entry also sends must clear it.
+    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]) & ~mshr_txreq_is_cmo_sx1;
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 
     //************************************************************************//
@@ -3501,7 +3528,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txsnp_qos_sx1      = (mshr_qos_s1_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_fwdnid_sx1   = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_srcid_s1_q[mshr_txsnp_entry_idx_sx1]) : '0;
     assign mshr_txsnp_fwdtxnid_sx1 = mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]? (mshr_txnid_s1_q[mshr_txsnp_entry_idx_sx1]) : '0;
-    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]?chie_pkg::snp_opcode_e'(mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1] + 5'h10):mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_opcode_sx1   = (mshr_dct_sx8_q[mshr_txsnp_entry_idx_sx1]?opennoc_hnf_pkg::hnf_snp_fwd_of(mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]):mshr_snpcode_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_entry_idx_sx1];
