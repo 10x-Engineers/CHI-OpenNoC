@@ -34,6 +34,7 @@ module hnf_cache_pipeline `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_l3_entry_idx_sx1_q,
     input  wire                                     mshr_l3_fill_sx1_q,
     input  chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q,
+    input  wire                                     mshr_l3_snoopme_sx1_q,
     input  wire [CHIE_NID_WIDTH_PARAM-1:0]          mshr_l3_rnf_sx1_q,
     input  wire                                     mshr_l3_fill_dirty_sx1_q,
     input  wire                                     mshr_l3_seq_retire_sx1_q,
@@ -145,6 +146,7 @@ module hnf_cache_pipeline `HNF_PARAM
     logic [`MSHR_ENTRIES_WIDTH-1:0]          pipe_mshr_idx_sx_q[CPL_STAGE-1:0];
     logic [CPL_STAGE-1:0]                    pipe_fill_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_fill_dirty_sx_q;
+    logic [CPL_STAGE-1:0]                    pipe_snoopme_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_req_valid_sx_q;
     wire [CPL_STAGE-2:0]                     pipe_req_valid_sx;
 
@@ -159,6 +161,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]           pipe_mshr_idx_sx1;
     wire                                     pipe_fill_sx1;
     wire                                     pipe_fill_dirty_sx1;
+    wire                                     pipe_snoopme_sx1;
     wire                                     pipe_req_bypass_sx1;
     wire                                     pipe_mshr_req_valid_sx1;
 
@@ -508,7 +511,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [ADDR_WIDTH-1:0]                    pipe_addr_sx6;
 
     logic                                    cpl_internal_wr_sx6_q;
-    logic [`RNF_WIDTH-1:0]                   pipe_sf_hit_count_sx5;
+    logic [`RNF_CNT_WIDTH-1:0]               pipe_sf_hit_count_sx5;
 
     // BIQ signals
     logic [ADDR_WIDTH-1:0]                   biq_evict_addr_sx5_q;
@@ -536,6 +539,7 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_rnf_idx_sx1        = pipe_req_bypass_sx1 ? mshr_l3_rnf_sx1_q        : {NID_WIDTH{1'b0}};
     assign pipe_fill_sx1           = pipe_req_bypass_sx1 ? mshr_l3_fill_sx1_q       : 1'b0;
     assign pipe_fill_dirty_sx1     = pipe_req_bypass_sx1 ? mshr_l3_fill_dirty_sx1_q : 1'b0;
+    assign pipe_snoopme_sx1        = pipe_req_bypass_sx1 ? mshr_l3_snoopme_sx1_q    : 1'b0;
 
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
@@ -555,6 +559,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
+            pipe_snoopme_sx_q[SX2] <= 1'b0;
         end
         else if (cpl_internal_wr_sx6_q)begin
             pipe_opcode_sx_q[SX2]     <= pipe_opcode_sx_q[SX6];
@@ -563,6 +568,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= pipe_mshr_idx_sx_q[SX6];
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx_q[SX6];
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx_q[SX6];
+            pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx_q[SX6];
         end
         else if (pipe_mshr_req_valid_sx1)begin
             pipe_opcode_sx_q[SX2]     <= pipe_opcode_sx1;
@@ -571,6 +577,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= pipe_mshr_idx_sx1;
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx1;
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx1;
+            pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx1;
         end
         else begin
             pipe_opcode_sx_q[SX2]     <= chie_pkg::REQ_REQLCRDRETURN;
@@ -579,6 +586,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
+            pipe_snoopme_sx_q[SX2] <= 1'b0;
         end
     end
 
@@ -709,6 +717,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
+                    pipe_snoopme_sx_q[gi] <= 1'b0;
                 end
                 else if (pipe_req_valid_sx[gi-1] == 1'b1)begin
                     pipe_req_valid_sx_q[gi]  <= pipe_req_valid_sx[gi-1];
@@ -718,6 +727,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= pipe_mshr_idx_sx_q[gi-1][`MSHR_ENTRIES_WIDTH-1:0];
                     pipe_fill_sx_q[gi]       <= pipe_fill_sx_q[gi-1];
                     pipe_fill_dirty_sx_q[gi] <= pipe_fill_dirty_sx_q[gi-1];
+                    pipe_snoopme_sx_q[gi] <= pipe_snoopme_sx_q[gi-1];
                 end
                 else begin
                     pipe_opcode_sx_q[gi]     <= chie_pkg::REQ_REQLCRDRETURN;
@@ -726,6 +736,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
+                    pipe_snoopme_sx_q[gi] <= 1'b0;
                     pipe_req_valid_sx_q[gi]  <= 1'b0;
                 end
             end
@@ -1463,8 +1474,12 @@ module hnf_cache_pipeline `HNF_PARAM
         for (gi = 0;
                 gi < `RNF_NUM;
                 gi = gi + 1)begin
+            // Table 13-28 (SS13.10.31 p.13-433, MUST): with SnoopMe asserted the "Home
+            // must send a Snoop to the Requester if it determines the cache line might
+            // be present at the Requester" -- so its own directory bit stays in the
+            // fan-out instead of being masked out as every other request masks it.
             assign pipe_sf_snp_tgt_vec_sx4[gi]
-                   = |(pipe_sf_match_state_sx4_q[gi*2+:2] & ~pipe_sf_self_mask_sx4_q[gi*2+:2]) & ~pipe_fill_sx4 &
+                   = |(pipe_sf_match_state_sx4_q[gi*2+:2] & (pipe_snoopme_sx_q[SX4] ? 2'b11 : ~pipe_sf_self_mask_sx4_q[gi*2+:2])) & ~pipe_fill_sx4 &
                    ((~pipe_tag_match_sx4_q & (op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdonce_sx4_q)) | op_rdunique_sx4_q | op_roinv_sx4_q | op_wufull_sx4_q | op_wuptl_sx4_q | op_dl_cu_sx4_q |
                     op_cmo_ci_sx4_q | op_dl_mu_sx4_q) & ~op_dl_evict_sx4_q;
         end
@@ -1921,9 +1936,9 @@ module hnf_cache_pipeline `HNF_PARAM
 
     // compute snp count
     always_comb begin
-        pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] = {`RNF_WIDTH{1'b0}};
+        pipe_sf_hit_count_sx5 = {`RNF_CNT_WIDTH{1'b0}};
         for (int ii = 0; ii < `RNF_NUM; ii = ii + 1)begin
-            pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] = pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] + pipe_sf_tgt_vec_sx5_q[ii];
+            pipe_sf_hit_count_sx5 = pipe_sf_hit_count_sx5 + `RNF_CNT_WIDTH'(pipe_sf_tgt_vec_sx5_q[ii]);
         end
     end
 
@@ -1970,8 +1985,8 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_hit_sx7_q        <= pipe_tag_hit_sx5_q;
             l3_hit_dirty_sx7_q  <= pipe_tag_dirty_sx5_q;
             l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit;
-            l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] == 1);
-            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5[`RNF_WIDTH-1:0] > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
+            l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
+            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_replay_sx7_q     <= l3_replay_sx5;
             l3_mshr_wr_op_sx7_q <= ~l3_replay_sx5 & cpl_internal_wr_sx5;

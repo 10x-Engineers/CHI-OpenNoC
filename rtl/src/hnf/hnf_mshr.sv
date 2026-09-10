@@ -39,6 +39,7 @@ module hnf_mshr `HNF_PARAM
     input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
     input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
+    input  wire                                li_mshr_rxreq_endian_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  wire                                txrsp_mshr_retryack_won_s1,
@@ -137,6 +138,15 @@ module hnf_mshr `HNF_PARAM
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_rd_idx_sx1_q,
     output wire                                mshr_dbf_rd_valid_sx1_q,
     output wire                                mshr_dbf_rd_to_rn_sx1_q,
+    output wire                                   mshr_dbf_atm_set_s0,
+    output wire [`MSHR_ENTRIES_WIDTH-1:0]         mshr_dbf_atm_idx_s0,
+    output chie_pkg::req_opcode_e                 mshr_dbf_atm_op_s0,
+    output wire [5:0]                             mshr_dbf_atm_off_s0,
+    output wire [6:0]                             mshr_dbf_atm_len_s0,
+    output wire                                   mshr_dbf_atm_end_s0,
+    output wire                                   mshr_dbf_rd_atm_sx1,
+    output wire [chie_pkg::BE_WIDTH*2-1:0]        mshr_dbf_rd_atm_be_sx1,
+    output wire [1:0]                             mshr_dbf_rd_atm_pe_sx1,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_dbf_home_fill_idx_sx1_q,
     output wire                                mshr_dbf_home_fill_valid_sx1_q,
     output wire [`CACHE_BE_WIDTH-1:0]          mshr_dbf_home_fill_be_sx1_q,
@@ -188,6 +198,7 @@ module hnf_mshr `HNF_PARAM
     output wire [CHIE_NID_WIDTH_PARAM-1:0]     mshr_l3_rnf_sx1_q,
     output wire                                mshr_l3_seq_retire_sx1_q,
     output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
+    output wire                                mshr_l3_snoopme_sx1_q,
     output wire                                mshr_l3_req_en_sx1_q,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_l3_entry_idx_sx1_q,
     output wire                                mshr_l3_fill_dirty_sx1_q
@@ -217,9 +228,13 @@ module hnf_mshr `HNF_PARAM
     wire                           req_l3_alloc_s0;
     wire                           req_rdshared_s0;
     wire                           req_prefunq_s0;
+    wire                           req_atomic_s0;
+    wire                           req_atomic_rd_s0;
+    wire                           req_excl_s0;
+    wire                           req_snoopme_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
-                                                                     li_mshr_rxreq_excl_s0,
+                                                                     req_excl_s0,
                                                                      excl_store_fail_s0,
                                                                      excl_seq_other_rn_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
@@ -230,6 +245,15 @@ module hnf_mshr `HNF_PARAM
     assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
+    assign req_atomic_s0          = opennoc_hnf_pkg::hnf_atomic(li_mshr_rxreq_opcode_s0);
+    assign req_atomic_rd_s0       = opennoc_hnf_pkg::hnf_atomic_returns_data(li_mshr_rxreq_opcode_s0);
+    // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 (p.13-410)
+    // has it displace Excl on the shared REQ bit. Split here so no consumer downstream
+    // reads one as the other: SS6.3 (p.6-286) names no Atomic as an Exclusive access,
+    // and Table 13-28 (p.13-433, MUST) makes the same bit an obligation to snoop the
+    // Requester instead.
+    assign req_excl_s0            = li_mshr_rxreq_excl_s0 & ~req_atomic_s0;
+    assign req_snoopme_s0         = li_mshr_rxreq_excl_s0 &  req_atomic_s0;
     // The Allocate hint as the L3 may act on it, which Sec 2.9.3 (p.2-128) leaves free:
     // "it is permitted to not allocate the transaction". Sec 2.10.3 (p.2-135, MUST)
     // makes a deasserted byte enable one that "must not be updated in memory or
@@ -238,7 +262,11 @@ module hnf_mshr `HNF_PARAM
     // cannot either: Sec 4.2.2 (p.4-171, MUST) has a Home that is not the Point of
     // Persistence "send the request downstream", which a line parked in the L3 would
     // outlive.
-    assign req_l3_alloc_s0        = li_mshr_rxreq_memattr_s0[3] & ~req_wr_ptl_s0 & ~req_persist_s0;
+    // An Atomic takes the allocating arm whatever the hint says: SS4.2.5 (p.4-187,
+    // MUST) makes the returned value "the original value at the addressed location",
+    // so the Home has to hold the line to read it, operate on it and keep the result.
+    // Sec 2.9.3 (p.2-128) leaves that free -- Allocate is a hint either way.
+    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0) & ~req_wr_ptl_s0 & ~req_persist_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
@@ -260,7 +288,7 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_order_s0                          (li_mshr_rxreq_order_s0               ),
                         .li_mshr_rxreq_pcrdtype_s0                       (li_mshr_rxreq_pcrdtype_s0            ),
                         .li_mshr_rxreq_memattr_s0                        (li_mshr_rxreq_memattr_s0             ),
-                        .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0                ),
+                        .li_mshr_rxreq_excl_s0                           (req_excl_s0                          ),
                         .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0          ),
                         .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                        ),
                         .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                      ),
@@ -310,7 +338,7 @@ module hnf_mshr `HNF_PARAM
                                 .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),
                                 .li_mshr_rxreq_ns_s0                             (li_mshr_rxreq_ns_s0               ),
                                 .li_mshr_rxreq_lpid_s0                           (li_mshr_rxreq_lpid_s0             ),
-                                .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0             ),
+                                .li_mshr_rxreq_excl_s0                           (req_excl_s0                       ),
                                 .excl_pass_s1                                    (excl_pass_s1                      ),
                                 .excl_fail_s1                                    (excl_fail_s1                      ),
                                 .excl_store_fail_s0                              (excl_store_fail_s0                ),
@@ -398,6 +426,10 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_opcode_s0                         (req_opcode_serviced_s0            ),
                      .li_mshr_rxreq_excl_noexok_s0                    (req_excl_noexok_s0                ),
                      .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                     ),
+                     .li_mshr_rxreq_atomic_s0                         (req_atomic_s0                     ),
+                     .li_mshr_rxreq_atomic_rd_s0                      (req_atomic_rd_s0                  ),
+                     .li_mshr_rxreq_atomic_op_s0                      (li_mshr_rxreq_opcode_s0           ),
+                     .li_mshr_rxreq_endian_s0                         (li_mshr_rxreq_endian_s0           ),
                      .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
                      .li_mshr_rxreq_persist_s0                        (req_persist_s0                    ),
                      .li_mshr_rxreq_persist_rsp_s0                    (req_persist_rsp_s0                ),
@@ -413,7 +445,8 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_pcrdtype_s0                       (li_mshr_rxreq_pcrdtype_s0         ),
                      .li_mshr_rxreq_memattr_s0                        (li_mshr_rxreq_memattr_s0          ),
                      .li_mshr_rxreq_lpid_s0                           (li_mshr_rxreq_lpid_s0             ),
-                     .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0             ),
+                     .li_mshr_rxreq_excl_s0                           (req_excl_s0                       ),
+                     .li_mshr_rxreq_snoopme_s0                        (req_snoopme_s0                    ),
                      .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0       ),
                      .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0         ),
                      .li_mshr_rxdat_valid_s0                          (li_mshr_rxdat_valid_s0            ),
@@ -472,6 +505,15 @@ module hnf_mshr `HNF_PARAM
                      .mshr_dbf_rd_idx_sx1_q                           (mshr_dbf_rd_idx_sx1_q             ),
                      .mshr_dbf_rd_valid_sx1_q                         (mshr_dbf_rd_valid_sx1_q           ),
                      .mshr_dbf_rd_to_rn_sx1_q                         (mshr_dbf_rd_to_rn_sx1_q           ),
+                     .mshr_dbf_atm_set_s0                              (mshr_dbf_atm_set_s0),
+                     .mshr_dbf_atm_idx_s0                              (mshr_dbf_atm_idx_s0),
+                     .mshr_dbf_atm_op_s0                               (mshr_dbf_atm_op_s0),
+                     .mshr_dbf_atm_off_s0                              (mshr_dbf_atm_off_s0),
+                     .mshr_dbf_atm_len_s0                              (mshr_dbf_atm_len_s0),
+                     .mshr_dbf_atm_end_s0                              (mshr_dbf_atm_end_s0),
+                     .mshr_dbf_rd_atm_sx1                              (mshr_dbf_rd_atm_sx1),
+                     .mshr_dbf_rd_atm_be_sx1                           (mshr_dbf_rd_atm_be_sx1),
+                     .mshr_dbf_rd_atm_pe_sx1                           (mshr_dbf_rd_atm_pe_sx1),
                      .mshr_dbf_home_fill_idx_sx1_q                     (mshr_dbf_home_fill_idx_sx1_q       ),
                      .mshr_dbf_home_fill_valid_sx1_q                   (mshr_dbf_home_fill_valid_sx1_q     ),
                      .mshr_dbf_home_fill_be_sx1_q                      (mshr_dbf_home_fill_be_sx1_q        ),
@@ -523,6 +565,7 @@ module hnf_mshr `HNF_PARAM
                      .mshr_l3_rnf_sx1_q                               (mshr_l3_rnf_sx1_q                 ),
                      .mshr_l3_seq_retire_sx1_q                        (mshr_l3_seq_retire_sx1_q          ),
                      .mshr_l3_opcode_sx1_q                            (mshr_l3_opcode_sx1_q              ),
+                     .mshr_l3_snoopme_sx1_q                           (mshr_l3_snoopme_sx1_q             ),
                      .mshr_l3_req_en_sx1_q                            (mshr_l3_req_en_sx1_q              ),
                      .mshr_l3_entry_idx_sx1_q                         (mshr_l3_entry_idx_sx1_q           ),
                      .mshr_l3_fill_dirty_sx1_q                        (mshr_l3_fill_dirty_sx1_q          )

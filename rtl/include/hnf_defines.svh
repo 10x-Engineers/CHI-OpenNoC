@@ -79,6 +79,10 @@
 `define RNI_NUM                            HNF_MSHR_RNI_NUM_PARAM
 `define RN_NUM                             (HNF_MSHR_RNF_NUM_PARAM + HNF_MSHR_RNI_NUM_PARAM)
 `define RNF_WIDTH                          ((HNF_MSHR_RNF_NUM_PARAM == 1)? 1 : $clog2(HNF_MSHR_RNF_NUM_PARAM))
+// A snoopee count, which RNF_WIDTH is one bit too narrow for: it holds an index,
+// and SS13.10.31's (p.13-433) SnoopMe puts the Requester into its own fan-out, so
+// the count is bounded by RNF_NUM rather than by RNF_NUM-1.
+`define RNF_CNT_WIDTH                      ($clog2(HNF_MSHR_RNF_NUM_PARAM + 1))
 `define RNI_WIDTH                          ((HNF_MSHR_RNI_NUM_PARAM <= 1)? 1 : $clog2(HNF_MSHR_RNI_NUM_PARAM))
 `define RN_WIDTH                           ((`RN_NUM == 1)? 1 : $clog2(`RN_NUM))
 `define MSHR_ENTRIES_NUM                   HNF_MSHR_ENTRIES_NUM_PARAM

@@ -148,6 +148,7 @@ module hnf_link `HNF_PARAM
     output chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
     output wire [7:0]                          li_mshr_rxreq_lpid_s0,
     output wire                                li_mshr_rxreq_excl_s0,
+    output wire                                li_mshr_rxreq_endian_s0,
     output wire                                li_mshr_rxreq_expcompack_s0,
     output wire                                li_mshr_rxreq_tracetag_s0,
     output wire                                rxrsp_lcrdv,
@@ -245,6 +246,7 @@ module hnf_link `HNF_PARAM
                              .li_mshr_rxreq_memattr_s0                       (li_mshr_rxreq_memattr_s0       ),
                              .li_mshr_rxreq_lpid_s0                          (li_mshr_rxreq_lpid_s0          ),
                              .li_mshr_rxreq_excl_s0                          (li_mshr_rxreq_excl_s0          ),
+                             .li_mshr_rxreq_endian_s0                        (li_mshr_rxreq_endian_s0        ),
                              .li_mshr_rxreq_expcompack_s0                    (li_mshr_rxreq_expcompack_s0    ),
                              .li_mshr_rxreq_tracetag_s0                      (li_mshr_rxreq_tracetag_s0      )
                          );

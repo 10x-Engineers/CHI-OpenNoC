@@ -32,6 +32,17 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [chie_pkg::DATA_WIDTH-1:0]    li_dbf_rxdat_data_s0,
 
     //inputs from hnf_mshr_ctl
+    //inputs from hnf_mshr_ctl -- Atomic execution (SS4.2.5 p.4-184)
+    input  wire                               mshr_dbf_atm_set_s0,
+    input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_atm_idx_s0,
+    input  chie_pkg::req_opcode_e             mshr_dbf_atm_op_s0,
+    input  wire [5:0]                         mshr_dbf_atm_off_s0,
+    input  wire [6:0]                         mshr_dbf_atm_len_s0,
+    input  wire                               mshr_dbf_atm_end_s0,
+    input  wire                               mshr_dbf_rd_atm_sx1,
+    input  wire [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
+    input  wire [1:0]                         mshr_dbf_rd_atm_pe_sx1,
+
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
     input  wire                               mshr_dbf_rd_valid_sx1_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_retired_idx_sx1_q,
@@ -79,6 +90,21 @@ module hnf_data_buffer `HNF_PARAM
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
     logic [1:0]                        dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
+    // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
+    // location", so dbf_data_q must keep the line as fetched and the operand is held
+    // apart until the result is written out to the L3 below. One RXDAT packet holds
+    // it whole -- Table 2-16 (SS2.10.5 p.2-137) caps Size at 32 bytes and SS2.10.5
+    // aligns the payload to it, so it never crosses a packet boundary.
+    logic [chie_pkg::DATA_WIDTH-1:0]   dbf_atm_data_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::BE_WIDTH-1:0]     dbf_atm_be_q  [0:`MSHR_ENTRIES_NUM-1];
+    logic                              dbf_atm_v_q   [0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::req_opcode_e             dbf_atm_op_q  [0:`MSHR_ENTRIES_NUM-1];
+    logic [5:0]                        dbf_atm_off_q [0:`MSHR_ENTRIES_NUM-1];
+    logic [6:0]                        dbf_atm_len_q [0:`MSHR_ENTRIES_NUM-1];
+    logic                              dbf_atm_end_q [0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_atm_result_sx2;
+    wire                               dbf_atm_rd_sx2;
+    wire                               li_dbf_atm_operand_s0;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx3_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx4_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx5_q;
@@ -96,6 +122,10 @@ module hnf_data_buffer `HNF_PARAM
     wire [DBF_PKT_IDX_WIDTH:0] offset;
 
     assign offset=(li_dbf_rxdat_dataid_s0 == 2'b10)?DBF_PKT_BYTE_NUM[DBF_PKT_IDX_WIDTH:0]:{(DBF_PKT_IDX_WIDTH+1){1'b0}};
+
+    assign li_dbf_atm_operand_s0 = li_dbf_rxdat_valid_s0 & dbf_atm_v_q[li_dbf_rxdat_txnid_s0] &
+           ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA) |
+            (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK));
 
     genvar i;
     generate
@@ -161,7 +191,7 @@ module hnf_data_buffer `HNF_PARAM
                     temp_pipe_data[i*8+:8] = pipe_dbf_wr_data_sx9_q[i*8+:8];
                     temp_pipe_be[i]        = 1;
                 end
-                else if (pipe_dbf_wr_valid_sx9_q&&!(li_dbf_rxdat_valid_s0&&(li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q)))begin
+                else if (pipe_dbf_wr_valid_sx9_q&&!(li_dbf_rxdat_valid_s0&&!li_dbf_atm_operand_s0&&(li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q)))begin
                     temp_pipe_data[i*8+:8] = dbf_be_q[pipe_dbf_wr_idx_sx9_q][i]?dbf_data_q[pipe_dbf_wr_idx_sx9_q][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8];
                     temp_pipe_be[i]        = 1;
                 end
@@ -186,6 +216,14 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_data_q[i] <= 'd0;
                         dbf_be_q[i]   <= 'd0;
                         dbf_pe_q[i]   <= 'd0;
+                    end
+                    else if (li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
+                        //Atomic operand: kept out of the line, see dbf_atm_data_q
+                        if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q) begin
+                            dbf_data_q[i] <= temp_pipe_data;
+                            dbf_be_q[i]   <= temp_pipe_be;
+                            dbf_pe_q[i]   <= 2'b11;
+                        end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i] <= temp_li_data;
@@ -214,6 +252,101 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
 
+    generate
+        for(i = 0;i<`MSHR_ENTRIES_NUM;i = i+1) begin:atm_record
+            always_ff @(posedge clk or posedge rst)begin
+                if(rst)begin
+                    dbf_atm_v_q[i]    <= 1'b0;
+                    dbf_atm_op_q[i]   <= chie_pkg::REQ_REQLCRDRETURN;
+                    dbf_atm_off_q[i]  <= 6'd0;
+                    dbf_atm_len_q[i]  <= 7'd0;
+                    dbf_atm_end_q[i]  <= 1'b0;
+                end
+                else if(mshr_dbf_atm_set_s0 && i == mshr_dbf_atm_idx_s0)begin
+                    dbf_atm_v_q[i]    <= 1'b1;
+                    dbf_atm_op_q[i]   <= mshr_dbf_atm_op_s0;
+                    dbf_atm_off_q[i]  <= mshr_dbf_atm_off_s0;
+                    dbf_atm_len_q[i]  <= mshr_dbf_atm_len_s0;
+                    dbf_atm_end_q[i]  <= mshr_dbf_atm_end_s0;
+                end
+                else if(mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q)
+                    dbf_atm_v_q[i]    <= 1'b0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin
+                if(rst)begin
+                    dbf_atm_data_q[i] <= 'd0;
+                    dbf_atm_be_q[i]   <= 'd0;
+                end
+                else if(li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
+                    dbf_atm_data_q[i] <= li_dbf_rxdat_data_s0;
+                    dbf_atm_be_q[i]   <= li_dbf_rxdat_be_s0;
+                end
+                else if(mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q)begin
+                    dbf_atm_data_q[i] <= 'd0;
+                    dbf_atm_be_q[i]   <= 'd0;
+                end
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    // The read-modify-write, on the one path that carries the line out to the L3.
+    // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186) give the arithmetic;
+    // SS2.10.5 (p.2-137) the placement -- the element sits at Addr[5:0] within the
+    // line, and AtomicCompare's Swap half at that offset with bit[log2(len)] flipped.
+    assign dbf_atm_rd_sx2 = pipe_dbf_rd_idx_sx2_valid_q & dbf_atm_v_q[pipe_dbf_rd_idx_sx2_q];
+
+    always_comb begin : dbf_atm_rmw
+        logic [`MSHR_ENTRIES_WIDTH-1:0] a_idx;
+        chie_pkg::req_opcode_e          a_op;
+        int unsigned                    a_len, a_off, a_soff, a_poff;
+        logic [63:0]                    a_init, a_txn, a_res;
+        logic [127:0]                   a_init128, a_cmp128, a_swap128;
+        logic                           a_match;
+
+        a_idx              = pipe_dbf_rd_idx_sx2_q;
+        dbf_atm_result_sx2 = dbf_data_q[a_idx];
+        a_op               = dbf_atm_op_q[a_idx];
+        a_len              = {25'd0, dbf_atm_len_q[a_idx]};
+        a_off              = {26'd0, dbf_atm_off_q[a_idx]};
+        a_soff             = {26'd0, opennoc_hnf_pkg::hnf_atomic_swap_off(dbf_atm_off_q[a_idx], a_len)};
+        // The operand is one RXDAT packet, so its bytes are indexed inside that
+        // packet rather than inside the line.
+        a_poff             = a_off & (DBF_PKT_BYTE_NUM - 1);
+        a_soff             = a_soff & (DBF_PKT_BYTE_NUM - 1);
+
+        a_init    = 64'd0;
+        a_txn     = 64'd0;
+        a_init128 = 128'd0;
+        a_cmp128  = 128'd0;
+        a_swap128 = 128'd0;
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < a_len) begin
+                a_init128[b*8 +: 8] = dbf_data_q[a_idx][((a_off + b) & 63)*8 +: 8];
+                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[a_idx][((a_poff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
+                a_swap128[b*8 +: 8] = dbf_atm_data_q[a_idx][((a_soff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
+                if (b < 8) begin
+                    a_init[b*8 +: 8] = a_init128[b*8 +: 8];
+                    a_txn [b*8 +: 8] = a_cmp128 [b*8 +: 8];
+                end
+            end
+
+        a_match = opennoc_hnf_pkg::hnf_atomic_compare_eq(a_init128, a_cmp128, a_len);
+        a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx], a_init, a_txn);
+
+        if (dbf_atm_rd_sx2)
+            for (int unsigned b = 0; b < 16; b = b + 1)
+                if (b < a_len)
+                    dbf_atm_result_sx2[((a_off + b) & 63)*8 +: 8] =
+                        (a_op == chie_pkg::REQ_ATOMICCOMPARE) ? (a_match ? a_swap128[b*8 +: 8]
+                                                                        : a_init128[b*8 +: 8])
+                                                              : a_res[b*8 +: 8];
+    end
+
     always_ff @(posedge clk or posedge rst)begin :pipe_rd
         if(rst)begin
             dbf_pipe_rd_data_sx3_q <= 'd0;
@@ -223,7 +356,7 @@ module hnf_data_buffer `HNF_PARAM
             dbf_pipe_rd_data_sx7_q <= 'd0;
         end
         else begin
-            dbf_pipe_rd_data_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_data_q[pipe_dbf_rd_idx_sx2_q]:dbf_pipe_rd_data_sx3_q;
+            dbf_pipe_rd_data_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_atm_result_sx2:dbf_pipe_rd_data_sx3_q;
             dbf_pipe_rd_data_sx4_q <= dbf_pipe_rd_data_sx3_q;
             dbf_pipe_rd_data_sx5_q <= dbf_pipe_rd_data_sx4_q;
 `ifdef HNF_DELAY_ONE_CYCLE
@@ -239,7 +372,12 @@ module hnf_data_buffer `HNF_PARAM
 
     assign dbf_txdat_valid_sx1 = mshr_dbf_rd_valid_sx1_q;//tx read
     assign dbf_txdat_idx_sx1   = mshr_dbf_rd_idx_sx1_q;
-    assign dbf_txdat_be_sx1    = dbf_be_q[mshr_dbf_rd_idx_sx1_q];
+    // SS4.2.5 (p.4-187, MUST): an Atomic's inbound data size is its outbound size
+    // (half for AtomicCompare) with "byte enables asserted for all valid data", so
+    // its CompData carries that extent and nothing else. dbf_data_q still holds the
+    // line as fetched, which is the original value that MUST returns.
+    assign dbf_txdat_be_sx1    = mshr_dbf_rd_atm_sx1 ? (dbf_be_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_atm_be_sx1)
+                                                     :  dbf_be_q[mshr_dbf_rd_idx_sx1_q];
 
     generate
         for (genvar be_e = 0; be_e < `MSHR_ENTRIES_NUM; be_e = be_e + 1) begin : dbf_be_full
@@ -248,6 +386,7 @@ module hnf_data_buffer `HNF_PARAM
     endgenerate
     assign dbf_mshr_be_full_s0 = &temp_li_be;
     assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
-    assign dbf_txdat_pe_sx1    = dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_pe_sx1    = mshr_dbf_rd_atm_sx1 ? mshr_dbf_rd_atm_pe_sx1
+                                                    : dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
 
 endmodule

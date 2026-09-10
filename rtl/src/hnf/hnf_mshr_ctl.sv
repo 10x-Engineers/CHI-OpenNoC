@@ -70,6 +70,11 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  wire                                li_mshr_rxreq_stash_sep_s0,
+    input  wire                                li_mshr_rxreq_atomic_s0,
+    input  wire                                li_mshr_rxreq_atomic_rd_s0,
+    input  chie_pkg::req_opcode_e              li_mshr_rxreq_atomic_op_s0,
+    input  wire                                li_mshr_rxreq_endian_s0,
+    input  wire                                li_mshr_rxreq_snoopme_s0,
 
     //inputs related to data handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxdat_valid_s0,
@@ -157,6 +162,15 @@ module hnf_mshr_ctl `HNF_PARAM
     // data from nowhere else: an errored read (Sec 9.4.4 p.9-342, MUST, still
     // returns its data packets) and a Write Zero (Table 4-39 p.4-219 gives it a
     // WriteData response of None).
+    output logic                               mshr_dbf_atm_set_s0,
+    output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_atm_idx_s0,
+    output chie_pkg::req_opcode_e              mshr_dbf_atm_op_s0,
+    output logic [5:0]                         mshr_dbf_atm_off_s0,
+    output logic [6:0]                         mshr_dbf_atm_len_s0,
+    output logic                               mshr_dbf_atm_end_s0,
+    output logic                               mshr_dbf_rd_atm_sx1,
+    output logic [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
+    output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
@@ -218,6 +232,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [CHIE_NID_WIDTH_PARAM-1:0]    mshr_l3_rnf_sx1_q,
     output logic                               mshr_l3_seq_retire_sx1_q,
     output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
+    output logic                               mshr_l3_snoopme_sx1_q,
     output logic                               mshr_l3_req_en_sx1_q,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_l3_entry_idx_sx1_q,
     output logic                               mshr_l3_fill_dirty_sx1_q,
@@ -273,6 +288,13 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_stash_sep_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomic_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomicrd_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_endian_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snoopme_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_sent_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_owed_sx;
+    chie_pkg::req_opcode_e               mshr_atomic_op_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wrzero_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_persist_s1_q;
@@ -1167,17 +1189,12 @@ module hnf_mshr_ctl `HNF_PARAM
     assign op_err       = li_mshr_rxreq_valid_s0 & ~(op_serviced | op_drop);
     // Table 4-6 (p.4-168) / Table 4-8 (p.4-171): a read is completed by CompData, so
     // the error rides on the data response (Table 9-2 p.9-337).
-    // Sec 2.3.3 (p.2-69): an AtomicLoad/Swap/Compare is completed by CompData after
-    // a DBIDResp, never by Comp or CompDBIDResp (Table 9-9 p.9-342), so its Non-data
-    // Error rides on read data as well as owing the grant and the operand.
-    assign op_errrd     = op_err & ((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP)
-                                  | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD)
-                                   & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
-                                  );
-    // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
-    // a DBID and consume their write data before completing.
-    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
-                                  & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE));
+    assign op_errrd     = op_err & (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
+    // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so a class
+    // that owes one grants a DBID and consumes it before completing. No opcode is in
+    // it today: hnf_serviced_as() maps the Atomics onto WriteUniquePtl and this Home
+    // executes them.
+    assign op_errwrdat  = 1'b0;
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
@@ -1293,6 +1310,32 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_tracetag_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_tracetag_s1_q[entry] <= li_mshr_rxreq_tracetag_s0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_atomic_s1_q_timing_logic
+                if(rst == 1'b1)begin
+                    mshr_atomic_s1_q[entry]   <= 1'b0;
+                    mshr_atomicrd_s1_q[entry] <= 1'b0;
+                    mshr_endian_s1_q[entry]   <= 1'b0;
+                    mshr_snoopme_s1_q[entry]  <= 1'b0;
+                    mshr_atomic_op_s1_q[entry] <= chie_pkg::REQ_REQLCRDRETURN;
+                end
+                else if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_atomic_s1_q[entry]   <= 1'b0;
+                    mshr_atomicrd_s1_q[entry] <= 1'b0;
+                    mshr_endian_s1_q[entry]   <= 1'b0;
+                    mshr_snoopme_s1_q[entry]  <= 1'b0;
+                    mshr_atomic_op_s1_q[entry] <= chie_pkg::REQ_REQLCRDRETURN;
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1)begin
+                    mshr_atomic_s1_q[entry]   <= li_mshr_rxreq_atomic_s0;
+                    mshr_atomicrd_s1_q[entry] <= li_mshr_rxreq_atomic_rd_s0;
+                    mshr_endian_s1_q[entry]   <= li_mshr_rxreq_endian_s0;
+                    mshr_snoopme_s1_q[entry]  <= li_mshr_rxreq_snoopme_s0;
+                    mshr_atomic_op_s1_q[entry] <= li_mshr_rxreq_atomic_op_s0;
+                end
                 else
                     ;
             end
@@ -1494,7 +1537,9 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 4.2.2 (p.4-171, MUST) has a persistent CMO's completion reach the Point of
     // Persistence first, so it answers on the deferred slot instead of here.
     assign mshr_cs_comp_s1          = mshr_cs_s1_q & ~mshr_persist_s1_q;
-    assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
+    // Table 4-40 (SS4.7.4 p.4-219): an AtomicLoad, AtomicSwap or AtomicCompare
+    // completes with "DBIDResp + CompData_I", so it owes no Comp of its own.
+    assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & ~mshr_atomicrd_s1_q & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
     assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
     assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q));
     assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_excl_or_reqord}}));
@@ -2406,7 +2451,8 @@ module hnf_mshr_ctl `HNF_PARAM
                      mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] |
                      mshr_compack_busy_sx_q[entry] | mshr_txdat_rdy_sx[entry]);
             assign mshr_mem_cmo_rdy_clr_sx[entry]    = (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry]);
-            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]) ||
+            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_atm_dat_owed_sx[entry]) ||
+                   (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]) ||
                    (mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_rn_data_busy_clr_sx[entry]   = (txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]);
             assign mshr_sn_data_busy_set_sx[entry]   = (mshr_alloc_datbuf_sn_s1[entry]) ||
@@ -2426,7 +2472,17 @@ module hnf_mshr_ctl `HNF_PARAM
             // the same (neednosnp | snp_getall) gate mshr_comp_rdy_set_s2 gives
             // a Dataless request. The deferred arm is a pulse, not a level: the
             // ready flop gives set priority over clear.
-            assign mshr_txdat_rn_rdy_set_sx[entry]   = (mshr_dat_to_rn_s1[entry]) ||
+            // Sec 4.11.2 (p.4-243, MUST): while a Snoop response is pending, the only
+            // responses permitted to that address are RetryAck, the grant and a
+            // ReadReceipt -- so an Atomic's CompData takes the same (getall |
+            // neednosnp) gate the WriteUnique Comp below does. One send per Atomic:
+            // mshr_all_dat_alloc_s1 is a level settled by whichever arrival pulse
+            // completed it, and more than one such pulse follows the merge.
+            assign mshr_atm_dat_owed_sx[entry]       = mshr_atomicrd_s1_q[entry] & mshr_all_dat_alloc_s1[entry] &
+                   (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) &
+                   ~mshr_atm_dat_sent_sx_q[entry] & ~mshr_txdat_rn_rdy_sx_q[entry];
+            assign mshr_txdat_rn_rdy_set_sx[entry]   = (mshr_atm_dat_owed_sx[entry]) ||
+                   (mshr_dat_to_rn_s1[entry]) ||
                    (mshr_l3dat_rn_sx7[entry] & mshr_neednosnp_sx7[entry]) ||
                    (mshr_l3hit_sx8_q[entry] & (mshr_ru_s1_q[entry] | mshr_roinv_s1_q[entry]) & mshr_snp_getall_s1[entry] &
                     (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry])) ||
@@ -2457,8 +2513,8 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_dbid_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
-            assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
-                   (mshr_wu_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
+            assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
+                   (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
                    ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry] | mshr_we_s1_q[entry] | (mshr_wrnosnp_s1_q[entry] & ~mshr_wrzero_s1_q[entry])) & mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1 & (~mshr_dwt_s2_q[entry])) ||
                    // A Write Zero owes its Comp on the Subordinate's, not at allocation:
                    // it sources its own line, so the arm above -- which releases the
@@ -2471,7 +2527,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // A Write Zero's grant comes from hnf_mshr_bypass but its Comp does not,
             // so -- like a DWT write -- the entry owes one the bypass never sent.
             assign mshr_comp_busy_set_s2[entry]      = (mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1) ||
-                   (mshr_can_alloc_entry_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry] | mshr_wu_s1_q[entry] | mshr_wrzero_s1_q[entry])) ||
+                   (mshr_can_alloc_entry_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry] | mshr_wu_s1_q[entry] | mshr_wrzero_s1_q[entry])) ||
                    (mshr_alloc_dwt_s1[entry]) ||
                    (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_comp_busy_clr_s2[entry]      = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_comp_rdy_s2_q[entry]);
@@ -2713,6 +2769,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_txdat_sn_rdy_sx_q[entry] <= 1'b1;
                 else if(mshr_txdat_sn_rdy_clr_sx[entry])
                     mshr_txdat_sn_rdy_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_atm_dat_sent_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_atm_dat_sent_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_atm_dat_sent_sx_q[entry] <= 1'b0;
+                else if(mshr_atm_dat_owed_sx[entry])
+                    mshr_atm_dat_sent_sx_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -3577,6 +3644,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_fill_sx1_q       <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
+            mshr_l3_snoopme_sx1_q    <= 1'b0;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end
@@ -3585,6 +3653,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_entry_idx_sx1_q  <= mshrageq_mshr_idx_sx2_q[0];
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[mshrageq_mshr_idx_sx2_q[0]] | mshr_rn_dat_get_d_s1_q[mshrageq_mshr_idx_sx2_q[0]] | mshr_l3hit_d_sx8_q[mshrageq_mshr_idx_sx2_q[0]])&(!l3_rd_rdy_s2_q[mshrageq_mshr_idx_sx2_q[0]]);
         end
@@ -3593,6 +3662,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_rob]);
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_rob]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_rob]);
+            mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_rob]);
             mshr_l3_entry_idx_sx1_q  <= cpl_rob;
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[cpl_rob] | mshr_rn_dat_get_d_s1_q[cpl_rob] | mshr_l3hit_d_sx8_q[cpl_rob])&(!l3_rd_rdy_s2_q[cpl_rob]);
         end
@@ -3601,6 +3671,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_wrap_other_idx]);
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_wrap_other_idx]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_wrap_other_idx]);
+            mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_wrap_other_idx]);
             mshr_l3_entry_idx_sx1_q  <= cpl_wrap_other_idx;
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[cpl_wrap_other_idx] | mshr_rn_dat_get_d_s1_q[cpl_wrap_other_idx] | mshr_l3hit_d_sx8_q[cpl_wrap_other_idx])&(!l3_rd_rdy_s2_q[cpl_wrap_other_idx]);
         end
@@ -3609,6 +3680,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_fill_sx1_q       <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
+            mshr_l3_snoopme_sx1_q    <= 1'b0;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end
@@ -3749,20 +3821,41 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
-    // Sec 4.2.5 (p.4-187, MUST): an Atomic's inbound data is its outbound Size
-    // (half of it for AtomicCompare, Table 2-16 p.2-137) with the byte enables
-    // asserted for exactly those bytes, in the one packet that holds the address;
-    // an errored read keeps the full line.
+    // The two Home-sourced fills left are a Write Zero's line of zeros and an errored
+    // ReadNoSnpSep's, both whole lines. An Atomic's own return extent is shaped on the
+    // read instead (mshr_dbf_rd_atm_be_sx1), because this Home executes it.
     always_comb begin : mshr_home_fill_shape
-        mshr_home_fill_atomic_sx = (mshr_opcode_s1_q[mshr_home_fill_pick_idx_sx] >= chie_pkg::REQ_ATOMICLOAD_ADD)
-                                & (mshr_opcode_s1_q[mshr_home_fill_pick_idx_sx] <= chie_pkg::REQ_ATOMICCOMPARE);
-        mshr_home_fill_bytes_sx  = 32'd1 << mshr_size_s1_q[mshr_home_fill_pick_idx_sx];
-        if (mshr_opcode_s1_q[mshr_home_fill_pick_idx_sx] == chie_pkg::REQ_ATOMICCOMPARE)
-            mshr_home_fill_bytes_sx = mshr_home_fill_bytes_sx >> 1;
-        mshr_home_fill_first_sx  = {26'd0, mshr_addr_s1_q[mshr_home_fill_pick_idx_sx][`CACHE_BLOCK_OFFSET-1:0]};
+        mshr_home_fill_atomic_sx = 1'b0;
+        mshr_home_fill_bytes_sx  = `CACHE_BE_WIDTH;
+        mshr_home_fill_first_sx  = 32'd0;
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
-            mshr_home_fill_be_sx[b] = ~mshr_home_fill_atomic_sx
-                                   | ((b >= mshr_home_fill_first_sx) & (b < mshr_home_fill_first_sx + mshr_home_fill_bytes_sx));
+            mshr_home_fill_be_sx[b] = 1'b1;
+    end
+
+    // Sec 4.2.5 (p.4-187, MUST): an Atomic's inbound data is its outbound Size -- half
+    // of it for AtomicCompare (Table 2-16 p.2-137) -- with the byte enables asserted
+    // for exactly those bytes, in the one packet that holds the address.
+    always_comb begin : mshr_atm_rd_shape
+        int unsigned atm_len, atm_off;
+        atm_len = opennoc_hnf_pkg::hnf_atomic_elem_bytes(mshr_atomic_op_s1_q[mshr_dbf_rd_idx_sx1_q],
+                                                         mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q]);
+        atm_off = {26'd0, mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0]};
+        mshr_dbf_rd_atm_sx1 = mshr_dbf_rd_valid_sx1_q & mshr_dbf_rd_to_rn_sx1_q &
+                              mshr_atomicrd_s1_q[mshr_dbf_rd_idx_sx1_q];
+        for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
+            mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
+        mshr_dbf_rd_atm_pe_sx1 = mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01;
+    end
+
+    // The record hnf_data_buffer executes the operation from, written with the entry.
+    always_comb begin : mshr_atm_record
+        mshr_dbf_atm_set_s0 = li_mshr_rxreq_atomic_s0 & (|mshr_can_alloc_entry_s0);
+        mshr_dbf_atm_idx_s0 = mshr_entry_idx_alloc_s0;
+        mshr_dbf_atm_op_s0  = li_mshr_rxreq_atomic_op_s0;
+        mshr_dbf_atm_off_s0 = li_mshr_rxreq_addr_s0[`CACHE_BLOCK_OFFSET-1:0];
+        mshr_dbf_atm_len_s0 = 7'(opennoc_hnf_pkg::hnf_atomic_elem_bytes(li_mshr_rxreq_atomic_op_s0,
+                                                                       li_mshr_rxreq_size_s0));
+        mshr_dbf_atm_end_s0 = li_mshr_rxreq_endian_s0;
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_dbf_home_fill_timing_logic
