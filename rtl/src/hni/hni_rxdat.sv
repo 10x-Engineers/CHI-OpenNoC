@@ -36,9 +36,6 @@ module hni_rxdat `HNI_PARAM
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
     input  wire                 rxcrd_en,
-    // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
-    // credits to be returned before deasserting LINKACTIVEACK".
-    output wire                 rxdat_crd_cnt_full,
 
     //outputs to hni_data_buffer
     output wire                 rxdat_valid_s0,
@@ -86,7 +83,6 @@ module hni_rxdat `HNI_PARAM
     assign rxdat_crd_cnt_upd_s0 = rxdat_crd_grant_sx | rxdatflitv;
     assign rxdat_crd_cnt_nxt_s0 = rxdat_crd_cnt_s1_q - {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdat_crd_grant_sx}
                                                   + {{(`HNI_LL_DAT_CRD_CNT_WIDTH-1){1'b0}}, rxdatflitv};
-    assign rxdat_crd_cnt_full  = (rxdat_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNI_LL_DAT_CRD_CNT_WIDTH-1:0]);
 
     always_ff @(posedge clk or posedge rst) begin: rxdat_crd_cnt_s1_q_logic_t
         if (rst == 1'b1)
