@@ -325,8 +325,8 @@ monitor's same-cycle verdict.
 | `WriteBackPtl` | — | ⚪ | 🟢 serviced as `WriteBackFull`, never allocated into the L3 (no byte enables there) and forwarded to the Subordinate as `WriteNoSnpPtl` |
 | `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 served as `WriteUniqueFull`/`Ptl` — section 7.2 (p.7-296) permits ignoring the hint |
 | `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 completed `Comp_I` / `CompStashDone` without stashing — section 2.3.4 (p.2-71), section 7.3 (p.7-297), Table 4-38 (p.4-218) |
-| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🟡 the four non-persistent forms served, write leg + `CompCMO`; the two `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
-| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🟡 the five non-persistent forms served, write leg + `CompCMO`; the four `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🟢 write leg + `CompCMO`; the two `*CleanShPerSep` fold their `CompCMO` and Persist into one `CompPersist` (section 2.3.2 Alt 2a2, p.2-67) |
+| `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🟢 write leg + `CompCMO`; the four `*CleanShPerSep` fold their `CompCMO` and Persist into one `CompPersist` and never allocate into the L3, section 4.2.2 (p.4-171) sending them downstream |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
 | `MakeInvalid` | 🟢 | 🟢 | 🟢 served as `CleanInvalid` — section 4.2.2 (p.4-170) only permits the Dirty copy to be dropped, Table 4-38 (p.4-218) gives both `Comp_I` |
 | `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 serviced as `CleanShared`, with a `CleanSharedPersist` sent downstream and the completion held for the Subordinate's `Comp` (section 16.1, p.16-471) |
@@ -351,7 +351,10 @@ neither issues a snoop and neither has a SNP port.
 | `SnpOnce`, `SnpClean`, `SnpNotSharedDirty`, `SnpUnique` | 🟢 | `hnf_mshr_ctl.sv`'s `l3_opcode_decode_comb_logic` |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | the CMO- and back-invalidate-driven snoops |
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd` | 🟢 | the base opcode `+16`, elected on a snoop-direct L3 miss for a non-Exclusive allocating read (`hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8`); never for `ReadOnce{CleanInvalid,MakeInvalid}`, whose only Forwarding shape is `SnpOnceFwd` (section 4.4.2 p.4-196) |
-| `SnpShared`, `SnpSharedFwd`, `SnpPreferUnique*`, `SnpStash*`, `SnpQuery`, `SnpDVMOp` | 🔴 | never generated — [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67); a `ReadShared` is snooped with `SnpNotSharedDirty(Fwd)`, which section 4.4.2 (p.4-196) permits, and a `ReadPreferUnique` with `SnpUnique(Fwd)` or, on its Shared path, `SnpNotSharedDirty(Fwd)` (section 4.4.2 p.4-194) |
+| `SnpShared`, `SnpPreferUnique`, `SnpPreferUniqueFwd` | 🟢 | `SnpShared` for a `ReadShared`, `SnpPreferUnique` for the `ReadPreferUnique` this Home serves Shared (`hnf_mshr_ctl.sv`'s `l3_opcode_decode_comb_logic`) |
+| `SnpSharedFwd` | ⚪ | not elected: section 4.4.2 (p.4-196) permits `SnpNotSharedDirtyFwd` for a `ReadShared` too, and Table 4-53 (p.4-234) lets `SnpSharedFwd` forward `SD_PD` — passing dirtiness to the Requester rather than to this Home |
+| `SnpQuery` | ⚪ | not generated: section 6.2.3 (p.6-284) makes it one of three permitted ways to resolve an Exclusive Store and this Home implements the PoC monitor (`hnf_mshr_global_monitor.sv`) |
+| `SnpStash*`, `SnpDVMOp` | 🔴 | never generated — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68), with the Stash and DVM requests they belong to |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_snprspfwd_s0` / `mshr_snpdatfwd_s0` |
 | `SnpRespDataPtl` | 🟡 | decoded and merged under its byte enables (`hnf_mshr_ctl.sv`'s `mshr_snpdat_v_s0`, `hnf_data_buffer.sv`); a response whose byte enables are not all asserted is still completed without the section 5.1.5 merge — [#143](https://github.com/10x-Engineers/CHI-OpenNoC/issues/143) |
 
@@ -369,8 +372,8 @@ neither issues a snoop and neither has a SNP port.
 | Snoop filter | — | — | — | 🟢 | `hnf_sf_sram.sv` |
 | L3 / system cache | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
 | Exclusives | —² | 🟢³ | 🟢⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean` load, `WriteNoSnp*`/`CleanUnique` store; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
-| CMOs | 🟢 | 🟢 | — | 🟡 | all five at the SN-F and HN-I; the HN-F decodes `CleanShared`, `CleanInvalid` and `MakeInvalid`, and error-completes the two persistent ones |
-| Combined Writes | 🟡 | 🟡 | — | 🟡 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves the nine whose CMO leg is not persistent, and error-completes the six `*CleanShPerSep` |
+| CMOs | 🟢 | 🟢 | — | 🟢 | all five at every node; at the HN-F the two persistent ones are serviced as `CleanShared` with section 16.1's (p.16-471) substituted `CleanSharedPersist` downstream |
+| Combined Writes | 🟡 | 🟡 | — | 🟢 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves all fifteen of Table 4-17 (p.4-182) |
 | Write Zero | 🟡 | 🟢 | — | 🟢 | both are serviced at the HN-F; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
 | Atomics | ⚪ | ⚪ | — | ⚪ | section 16.1 leaves `Atomic_Transactions` False when undeclared, and section 16.3.3 then makes the error response the correct answer |
 | Stash | ⚪ | ⚪ | — | 🟡 | the HN-F completes every Stash request without stashing and without an error (section 2.3.4 p.2-71, section 9.4.6 p.9-344); no Stash snoop is generated |
