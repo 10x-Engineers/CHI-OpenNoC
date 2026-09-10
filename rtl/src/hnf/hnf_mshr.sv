@@ -230,11 +230,15 @@ module hnf_mshr `HNF_PARAM
     assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
-    // The Allocate hint as the L3 may act on it. Sec 2.10.3 (p.2-135, MUST) makes a
-    // deasserted byte enable one that "must not be updated in memory or cache", and
-    // hnf_sram_mask.sv has one write mask bit per way and none per byte -- so a
-    // partial line cannot go in the array.
-    assign req_l3_alloc_s0        = li_mshr_rxreq_memattr_s0[3] & ~req_wr_ptl_s0;
+    // The Allocate hint as the L3 may act on it, which Sec 2.9.3 (p.2-128) leaves free:
+    // "it is permitted to not allocate the transaction". Sec 2.10.3 (p.2-135, MUST)
+    // makes a deasserted byte enable one that "must not be updated in memory or
+    // cache", and hnf_sram_mask.sv has one write mask bit per way and none per byte --
+    // so a partial line cannot go in the array. A write carrying a persistent CMO
+    // cannot either: Sec 4.2.2 (p.4-171, MUST) has a Home that is not the Point of
+    // Persistence "send the request downstream", which a line parked in the L3 would
+    // outlive.
+    assign req_l3_alloc_s0        = li_mshr_rxreq_memattr_s0[3] & ~req_wr_ptl_s0 & ~req_persist_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;

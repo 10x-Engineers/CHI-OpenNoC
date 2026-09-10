@@ -528,7 +528,6 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                                 op_err;
     wire                                 op_errrd;
     wire                                 op_errwrdat;
-    wire                                 op_cwpersist;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_err_upd_sx;
@@ -1175,21 +1174,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                   | ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD)
                                    & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
                                   );
-    // The six of Table 4-17's (p.4-182) Combined Writes opennoc_hnf_pkg leaves
-    // unserved, enumerated rather than taken as an opcode range: the gaps inside that
-    // range are RESERVED, and a reserved opcode answered write-shaped would wait for
-    // data no Requester owes.
-    assign op_cwpersist = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
-                        | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
     // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so these owe
     // a DBID and consume their write data before completing.
-    assign op_errwrdat  = op_err & (((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
-                                   & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE))
-                                  | op_cwpersist);
+    assign op_errwrdat  = op_err & ((li_mshr_rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
+                                  & (li_mshr_rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE));
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
@@ -3380,7 +3368,10 @@ module hnf_mshr_ctl `HNF_PARAM
                                          | mshr_wc_s1_q[mshr_txreq_entry_idx_sx1]
                                          | mshr_we_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_memattr_sx1     = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1) ? 4'b1101 : (mshr_memattr_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]);
+    // Sec 13.10.24 (p.13-430, MUST): DoDWT is "only applicable in WriteNoSnpFull,
+    // WriteNoSnpPtl, and Combined Write requests from Home to Subordinate" and shares
+    // the SnpAttr field, so the persistent CMO leg this entry also sends must clear it.
+    assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]) & ~mshr_txreq_is_cmo_sx1;
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
 
     //************************************************************************//

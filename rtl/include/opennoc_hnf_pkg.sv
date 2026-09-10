@@ -96,15 +96,21 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_WRITEUNIQUEZERO      : return chie_pkg::REQ_WRITEUNIQUEFULL;
       chie_pkg::REQ_WRITENOSNPZERO       : return chie_pkg::REQ_WRITENOSNPFULL;
       chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPFULLCLEANINV       : return chie_pkg::REQ_WRITENOSNPFULL;
       chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPPTLCLEANINV        : return chie_pkg::REQ_WRITENOSNPPTL;
-      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH       : return chie_pkg::REQ_WRITEUNIQUEFULL;
-      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH        : return chie_pkg::REQ_WRITEUNIQUEPTL;
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP : return chie_pkg::REQ_WRITEUNIQUEFULL;
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP  : return chie_pkg::REQ_WRITEUNIQUEPTL;
       chie_pkg::REQ_WRITEBACKPTL,
       chie_pkg::REQ_WRITEBACKFULLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEBACKFULLCLEANINV        : return chie_pkg::REQ_WRITEBACKFULL;
-      chie_pkg::REQ_WRITECLEANFULLCLEANSH        : return chie_pkg::REQ_WRITECLEANFULL;
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP  : return chie_pkg::REQ_WRITECLEANFULL;
       chie_pkg::REQ_STASHONCESHARED,
       chie_pkg::REQ_STASHONCEUNIQUE,
       chie_pkg::REQ_STASHONCESEPSHARED,
@@ -138,6 +144,25 @@ package opennoc_hnf_pkg;
     return (op >= chie_pkg::REQ_ATOMICSTORE_ADD) && (op <= chie_pkg::REQ_ATOMICCOMPARE);
   endfunction
 
+  // The requests that owe a Persist response on top of their completion. Table 4-38
+  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
+  // "Comp + Persist or CompPersist"; SS4.2.4 (p.4-182) has a Persistent CMO combined
+  // with a write "treated as a CleanSharedPersistSep", so the six WriteCleanShPerSep
+  // forms owe one too -- which SS2.3.2 Alt 2a2 (p.2-67) lets the Home fold into a
+  // single CompPersist, exactly as the standalone request does.
+  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
+    case (op)
+      chie_pkg::REQ_CLEANSHAREDPERSISTSEP,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                                   : return 1'b0;
+    endcase
+  endfunction
+
   // The requests whose completion has to reach the Point of Persistence. SS4.2.2
   // (p.4-171, MUST) makes that a downstream obligation for a Home that is not the
   // PoP, and SS16.1 (p.16-471, MUST) fixes the shape when the Subordinate's own
@@ -145,32 +170,31 @@ package opennoc_hnf_pkg;
   // assume: a substituted CleanSharedPersist whose Comp the Home's own Persist
   // waits on.
   function automatic logic hnf_persist_cmo(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_CLEANSHAREDPERSIST
-        || op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+    return op == chie_pkg::REQ_CLEANSHAREDPERSIST || hnf_persist_response(op);
   endfunction
 
-  // Of those, the one that owes a Persist on top of its completion: Table 4-38
-  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
-  // "Comp + Persist or CompPersist".
-  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
-  endfunction
-
-  // The nine Combined Writes whose CMO leg SS2.3.2 (p.2-58/p.2-66) answers with
-  // CompCMO -- enumerated rather than taken as an opcode range, the gaps inside that
-  // range being RESERVED.
+  // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
+  // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
+  // range, the gaps inside that range being RESERVED. The six persistent forms fold
+  // that CompCMO into the CompPersist hnf_persist_response() elects.
   function automatic logic hnf_combined_write(chie_pkg::req_opcode_e op);
     case (op)
       chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
       chie_pkg::REQ_WRITENOSNPFULLCLEANINV,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
       chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
       chie_pkg::REQ_WRITEBACKFULLCLEANSH,
       chie_pkg::REQ_WRITEBACKFULLCLEANINV,
-      chie_pkg::REQ_WRITECLEANFULLCLEANSH : return 1'b1;
-      default                             : return 1'b0;
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSH,
+      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                                   : return 1'b0;
     endcase
   endfunction
 
