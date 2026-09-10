@@ -175,6 +175,7 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
+    `display_fatal_arm
     // hnf_mshr_ctl classifies every admitted opcode and answers an unserviced one
     // with Sec 9.1's (p.9-334) NDERR, which is what Sec 4.5.1 (p.4-197, MUST)
     // requires of every transaction but PCrdReturn and PrefetchTgt. A link flit is
@@ -182,8 +183,6 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // Table 14-2 (p.14-450, MUST) has the Transmitter send one per credit on
     // entering DEACTIVATE -- so the only thing left to reject is TxnID, which
     // Sec 13.10.13 (p.13-420, MUST) requires to be zero in a link flit.
-    always_comb begin
-        `display_fatal( (!((rxreqflitv == 1'b1) && (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN))) || (rxreqflit.txnid == 12'd0),$sformatf("Fatal info: RXREQ received a link flit with a non-zero TxnID: %h",rxreqflit.txnid));
-    end
+    `display_fatal_sva( (!((rxreqflitv == 1'b1) && (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN))) || (rxreqflit.txnid == 12'd0),$sformatf("Fatal info: RXREQ received a link flit with a non-zero TxnID: %h",rxreqflit.txnid))
 `endif
 endmodule

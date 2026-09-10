@@ -322,14 +322,14 @@ monitor's same-cycle verdict.
 | `WriteUniqueZero` | ⚪ | ⚪ | 🟢 served as `WriteUniqueFull` over a line of zeros the Home sources — §4.2.3 (p.4-176), Table 4-39 (p.4-219) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
 | `WriteEvictOrEvict` | — | ⚪ | 🟢 on section 2.3.2's (p.2-55) `CompDBIDResp` alternative |
-| `WriteBackPtl` | — | ⚪ | ⚪ [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
+| `WriteBackPtl` | — | ⚪ | 🟢 serviced as `WriteBackFull`, never allocated into the L3 (no byte enables there) and forwarded to the Subordinate as `WriteNoSnpPtl` |
 | `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 served as `WriteUniqueFull`/`Ptl` — section 7.2 (p.7-296) permits ignoring the hint |
 | `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 completed `Comp_I` / `CompStashDone` without stashing — section 2.3.4 (p.2-71), section 7.3 (p.7-297), Table 4-38 (p.4-218) |
 | `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🟡 the four non-persistent forms served, write leg + `CompCMO`; the two `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🟡 the five non-persistent forms served, write leg + `CompCMO`; the four `*CleanShPerSep` error-completed [#66](https://github.com/10x-Engineers/CHI-OpenNoC/issues/66) |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
 | `MakeInvalid` | 🟢 | 🟢 | 🟢 served as `CleanInvalid` — section 4.2.2 (p.4-170) only permits the Dirty copy to be dropped, Table 4-38 (p.4-218) gives both `Comp_I` |
-| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | ⚪ [#67](https://github.com/10x-Engineers/CHI-OpenNoC/issues/67) |
+| `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 serviced as `CleanShared`, with a `CleanSharedPersist` sent downstream and the completion held for the Subordinate's `Comp` (section 16.1, p.16-471) |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
 | Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) — `DBIDResp` then a `CompData` NDERR over the returned extent for the three that return data (section 2.3.3, section 4.2.5, section 9.4.4) |
 | `SnoopFilterEvict` | ⚪ | ⚪ | 🟢 |

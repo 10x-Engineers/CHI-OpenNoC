@@ -211,6 +211,10 @@ module hnf_mshr `HNF_PARAM
     wire                           req_excl_noexok_s0;
     wire                           req_wrzero_s0;
     wire                           req_cw_s0;
+    wire                           req_wr_ptl_s0;
+    wire                           req_persist_s0;
+    wire                           req_persist_rsp_s0;
+    wire                           req_l3_alloc_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      li_mshr_rxreq_excl_s0,
@@ -219,6 +223,14 @@ module hnf_mshr `HNF_PARAM
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
     assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
     assign req_cw_s0              = opennoc_hnf_pkg::hnf_combined_write(li_mshr_rxreq_opcode_s0);
+    assign req_wr_ptl_s0          = opennoc_hnf_pkg::hnf_write_partial(li_mshr_rxreq_opcode_s0);
+    assign req_persist_s0         = opennoc_hnf_pkg::hnf_persist_cmo(li_mshr_rxreq_opcode_s0);
+    assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
+    // The Allocate hint as the L3 may act on it. Sec 2.10.3 (p.2-135, MUST) makes a
+    // deasserted byte enable one that "must not be updated in memory or cache", and
+    // hnf_sram_mask.sv has one write mask bit per way and none per byte -- so a
+    // partial line cannot go in the array.
+    assign req_l3_alloc_s0        = li_mshr_rxreq_memattr_s0[3] & ~req_wr_ptl_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
@@ -243,6 +255,7 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_excl_s0                           (li_mshr_rxreq_excl_s0                ),
                         .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0          ),
                         .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                        ),
+                        .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                      ),
                         .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0            ),
                         .mshr_entry_idx_alloc_s1_q                       (mshr_entry_idx_alloc_s1_q            ),
                         .mshr_alloc_en_s0                                (mshr_alloc_en_s0                     ),
@@ -378,6 +391,9 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_excl_noexok_s0                    (req_excl_noexok_s0                ),
                      .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                     ),
                      .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
+                     .li_mshr_rxreq_persist_s0                        (req_persist_s0                    ),
+                     .li_mshr_rxreq_persist_rsp_s0                    (req_persist_rsp_s0                ),
+                     .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                   ),
                      .li_mshr_rxreq_stash_sep_s0                      (li_mshr_rxreq_stash_sep_s0        ),
                      .li_mshr_rxreq_size_s0                           (li_mshr_rxreq_size_s0             ),
                      .li_mshr_rxreq_addr_s0                           (li_mshr_rxreq_addr_s0             ),

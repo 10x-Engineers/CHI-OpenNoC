@@ -56,7 +56,20 @@
 `endif
 
 `ifdef DISPLAY_FATAL
-`define display_fatal(flag,info)              if(!(flag)) $fatal(1, info);
+// Elaborate once per module that uses `display_fatal, beside its clk/rst: the
+// checks are live from time 0 otherwise, over registers reset has not reached.
+`define display_fatal_arm                                                     \
+    logic __df_rst_applied = 1'b0;                                            \
+    always @(posedge clk or posedge rst)                                      \
+        if (rst === 1'b1) __df_rst_applied <= 1'b1;                           \
+    wire  __df_armed = (rst === 1'b0) && (__df_rst_applied === 1'b1);
+// Procedural form, for a check already inside a clocked always block.
+`define display_fatal(flag,info)              if(__df_armed && !(flag)) $fatal(1, info);
+// Module-scope form: samples in the Preponed region, so a check over signals
+// that settle in different deltas cannot see a glitched combination.
+`define display_fatal_sva(flag,info)                                          \
+    assert property (@(posedge clk) disable iff (!__df_armed) (flag))         \
+    else $fatal(1, info);
 `endif
 
 `define CACHE_LINE_WIDTH                   CHIE_DATA_WIDTH_PARAM*2

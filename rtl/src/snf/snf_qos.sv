@@ -762,7 +762,7 @@ module snf_qos `SNF_PARAM
                         .clk               (clk                 ),
                         .rst               (rst                 ),
                         .entry_vec         (h_retry_entry   ),
-                        .upd               (h_present_win_sx    ),
+                        .upd               (h_present_win_sx & (|h_retry_entry)    ),
                         .found             (),
                         .sel_entry         (ret_cnt_h_dec_ptr_sx1),
                         .sel_index         ()
@@ -792,7 +792,7 @@ module snf_qos `SNF_PARAM
                         .clk               (clk                 ),
                         .rst               (rst                 ),
                         .entry_vec         (l_retry_entry       ),
-                        .upd               (l_present_win_sx    ),
+                        .upd               (l_present_win_sx & (|l_retry_entry)    ),
                         .found             (),
                         .sel_entry         (ret_cnt_l_dec_ptr_sx1),
                         .sel_index         ()

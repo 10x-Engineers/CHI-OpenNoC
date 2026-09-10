@@ -1364,6 +1364,7 @@ module hnf_mshr_qos `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
+    `display_fatal_arm
 
     //    always_ff @(posedge clk)begin
     //        `display_fatal(!(retry_ack_fifo_full&&rxreq_retry_enable_s0),"Retry ack fifo overflow\n");

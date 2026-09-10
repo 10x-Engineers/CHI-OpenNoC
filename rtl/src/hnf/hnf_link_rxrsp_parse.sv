@@ -129,8 +129,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     // DISPLAY FATAL
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
-    always_comb begin
-        `display_fatal( (!li_mshr_rxrsp_valid_s0) || (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RSPLCRDRETURN)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RETRYACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPDBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_DBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_PCRDGRANT)||(li_mshr_rxrsp_opcode_s0 ==  chie_pkg::RSP_READRECEIPT)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESPFWDED),$sformatf("Fatal info: RXRSP received a unsupported flit with opcode: %h",li_mshr_rxrsp_opcode_s0));
-    end
+    `display_fatal_arm
+    `display_fatal_sva( (!li_mshr_rxrsp_valid_s0) || (li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RSPLCRDRETURN)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_RETRYACK)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_COMPDBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_DBIDRESP)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_PCRDGRANT)||(li_mshr_rxrsp_opcode_s0 ==  chie_pkg::RSP_READRECEIPT)||(li_mshr_rxrsp_opcode_s0 == chie_pkg::RSP_SNPRESPFWDED),$sformatf("Fatal info: RXRSP received a unsupported flit with opcode: %h",li_mshr_rxrsp_opcode_s0))
 `endif
 endmodule
