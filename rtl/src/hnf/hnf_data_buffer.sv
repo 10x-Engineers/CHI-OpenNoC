@@ -304,8 +304,8 @@ module hnf_data_buffer `HNF_PARAM
         logic [`MSHR_ENTRIES_WIDTH-1:0] a_idx;
         chie_pkg::req_opcode_e          a_op;
         int unsigned                    a_len, a_off, a_soff, a_poff;
-        logic [63:0]                    a_init, a_txn, a_res;
         logic [127:0]                   a_init128, a_cmp128, a_swap128;
+        logic [63:0]                    a_res;
         logic                           a_match;
 
         a_idx              = pipe_dbf_rd_idx_sx2_q;
@@ -319,8 +319,6 @@ module hnf_data_buffer `HNF_PARAM
         a_poff             = a_off & (DBF_PKT_BYTE_NUM - 1);
         a_soff             = a_soff & (DBF_PKT_BYTE_NUM - 1);
 
-        a_init    = 64'd0;
-        a_txn     = 64'd0;
         a_init128 = 128'd0;
         a_cmp128  = 128'd0;
         a_swap128 = 128'd0;
@@ -329,14 +327,11 @@ module hnf_data_buffer `HNF_PARAM
                 a_init128[b*8 +: 8] = dbf_data_q[a_idx][((a_off + b) & 63)*8 +: 8];
                 a_cmp128 [b*8 +: 8] = dbf_atm_data_q[a_idx][((a_poff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
                 a_swap128[b*8 +: 8] = dbf_atm_data_q[a_idx][((a_soff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
-                if (b < 8) begin
-                    a_init[b*8 +: 8] = a_init128[b*8 +: 8];
-                    a_txn [b*8 +: 8] = a_cmp128 [b*8 +: 8];
-                end
             end
 
         a_match = opennoc_hnf_pkg::hnf_atomic_compare_eq(a_init128, a_cmp128, a_len);
-        a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx], a_init, a_txn);
+        a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
+                                                  a_init128[63:0], a_cmp128[63:0]);
 
         if (dbf_atm_rd_sx2)
             for (int unsigned b = 0; b < 16; b = b + 1)

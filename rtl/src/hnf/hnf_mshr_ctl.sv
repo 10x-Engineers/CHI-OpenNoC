@@ -740,10 +740,6 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]  mshr_home_fill_pend_sx_q;
     logic                          mshr_home_fill_pick_valid_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0] mshr_home_fill_pick_idx_sx;
-    logic                          mshr_home_fill_atomic_sx;
-    int unsigned                   mshr_home_fill_bytes_sx;
-    int unsigned                   mshr_home_fill_first_sx;
-    logic [`CACHE_BE_WIDTH-1:0]    mshr_home_fill_be_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_alloc_entry_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_retire_entry_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshrageq_shift_sx2;
@@ -3821,17 +3817,6 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
-    // The two Home-sourced fills left are a Write Zero's line of zeros and an errored
-    // ReadNoSnpSep's, both whole lines. An Atomic's own return extent is shaped on the
-    // read instead (mshr_dbf_rd_atm_be_sx1), because this Home executes it.
-    always_comb begin : mshr_home_fill_shape
-        mshr_home_fill_atomic_sx = 1'b0;
-        mshr_home_fill_bytes_sx  = `CACHE_BE_WIDTH;
-        mshr_home_fill_first_sx  = 32'd0;
-        for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
-            mshr_home_fill_be_sx[b] = 1'b1;
-    end
-
     // Sec 4.2.5 (p.4-187, MUST): an Atomic's inbound data is its outbound Size -- half
     // of it for AtomicCompare (Table 2-16 p.2-137) -- with the byte enables asserted
     // for exactly those bytes, in the one packet that holds the address.
@@ -3868,9 +3853,11 @@ module hnf_mshr_ctl `HNF_PARAM
         else begin
             mshr_dbf_home_fill_valid_sx1_q <= mshr_home_fill_pick_valid_sx;
             mshr_dbf_home_fill_idx_sx1_q   <= mshr_home_fill_pick_idx_sx;
-            mshr_dbf_home_fill_be_sx1_q    <= mshr_home_fill_be_sx;
-            mshr_dbf_home_fill_pe_sx1_q    <= ~mshr_home_fill_atomic_sx ? 2'b11
-                                           : (mshr_addr_s1_q[mshr_home_fill_pick_idx_sx][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01);
+            // A Write Zero's line of zeros and an errored ReadNoSnpSep's are the two
+            // Home-sourced fills, and both are whole lines. An Atomic's return extent
+            // is shaped on the read instead (mshr_dbf_rd_atm_be_sx1).
+            mshr_dbf_home_fill_be_sx1_q    <= {`CACHE_BE_WIDTH{1'b1}};
+            mshr_dbf_home_fill_pe_sx1_q    <= 2'b11;
         end
     end
 
