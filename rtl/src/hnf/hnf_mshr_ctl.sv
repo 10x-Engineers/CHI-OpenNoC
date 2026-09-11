@@ -1715,13 +1715,10 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_dct_set_s1[entry]          = (mshr_snpdat_entry_vec_s0[entry] & mshr_snpdatfwd_s0) ||
                    (mshr_snprsp_entry_vec_s0[entry] & mshr_snprspfwd_s0);
             assign mshr_dct_clr_s1[entry]          = (mshr_can_retire_entry_sx1[entry]);
-            // SS5.1.5 (p.5-251) Figure 5-6: where a Snoop response supplied part of the
-            // line, the Home "waits for the data response from memory, merges the partial
-            // Snoop response data with the data response from memory, and sends the
-            // resultant data to the Requester" -- none of which it can do once memory
-            // answers the Requester directly, so a read that still owes that merge is
-            // never a DMT. mshr_snp_getid_s1_q is the snoop data already buffered for
-            // this entry; with none, memory IS the whole answer and DMT stands.
+            // SS5.1.5 (p.5-251) Fig 5-6: a read that still owes a merge has its memory
+            // data returned to the HOME, which merges and sends -- so it is never a DMT.
+            // mshr_snp_getid_s1_q is the snoop data buffered for this entry; with none,
+            // memory is the whole answer.
             assign mshr_snp_dmt_s1[entry]          = (mshr_snp_memrd_s1[entry] & mshr_ru_s1_q[entry] &
                    ~(|mshr_snp_getid_s1_q[entry]));
             assign mshr_snp_getall_s1[entry]       = ((mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) & (mshr_snpcnt_sx_q[entry] != {`MSHR_SNPCNT_WIDTH{1'b0}}));
