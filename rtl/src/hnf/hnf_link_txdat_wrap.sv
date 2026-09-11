@@ -175,6 +175,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0.tracetag  = mshr_txdat_tracetag_sx2;
         txdatflit_mshr_s0.be        = mshr_txdat_be_sx_ns;
         txdatflit_mshr_s0.data      = mshr_txdat_data_sx_ns;
+        // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
+        txdatflit_mshr_s0.datacheck = chie_pkg::datacheck_of(mshr_txdat_data_sx_ns);
     end
 
     assign txdatflit_s0            = txdatflit_mshr_s0;

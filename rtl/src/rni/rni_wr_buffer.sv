@@ -421,6 +421,8 @@ module rni_wr_buffer `RNI_PARAM
         wb_txdatflit_d3_o.dataid    = txdatflit_dataid_d3_w;
         wb_txdatflit_d3_o.be        = txdatflit_be_d3_w;
         wb_txdatflit_d3_o.data      = txdatflit_data_d3_w;
+        // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
+        wb_txdatflit_d3_o.datacheck = chie_pkg::datacheck_of(txdatflit_data_d3_w);
     end
 
     // txdatflit valid

@@ -16,7 +16,14 @@
 */
 
 module chi_xp_channel #(
-        parameter FLIT_WIDTH = 131,
+        // No default: 131 is $bits(chie_pkg::req_flit_s) only at the default widths,
+        // and a flit wider than that would be silently truncated by the buffers and
+        // muxes below rather than reported.
+        parameter int FLIT_WIDTH,
+        // The crosspoint reads two fields out of the flit by position: QoS at [3:1]
+        // and TgtID at [FLIT_TGT_OFFSET +: CHIE_NID_WIDTH_PARAM]. That holds because
+        // qos is the LSB field of every flit struct and tgtid is next, so a field
+        // added to chie_pkg must go at the MSB end.
         parameter FLIT_TGT_OFFSET = 4,
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN    = {6{1'b1}},

@@ -415,6 +415,8 @@ module snf_data_buffer `SNF_PARAM
         txdat_flit.tracetag  = mshr_txdat_tracetag_sx;
         txdat_flit.be        = dbf_txdat_be_sx;
         txdat_flit.data      = dbf_txdat_data_sx;
+        // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
+        txdat_flit.datacheck = chie_pkg::datacheck_of(dbf_txdat_data_sx);
     end
 
     //************************************************************************//

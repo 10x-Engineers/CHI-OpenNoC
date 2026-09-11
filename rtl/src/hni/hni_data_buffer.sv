@@ -587,6 +587,8 @@ module hni_data_buffer `HNI_PARAM
         txdat_flit.tracetag  = mshr_txdat_tracetag_sx;
         txdat_flit.be        = mshr_txdat_be_sx;
         txdat_flit.data      = mshr_txdat_data_sx;
+        // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
+        txdat_flit.datacheck = chie_pkg::datacheck_of(mshr_txdat_data_sx);
     end
 
     //from txdat
