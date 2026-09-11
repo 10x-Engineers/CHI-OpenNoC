@@ -351,10 +351,14 @@ module hni_txrsp `HNI_PARAM
 
     assign rsp_crd_cnt_s1          = txrsp_crd_cnt_q;
     assign txrspflitv_s0           = txrsp_req_s0 & (~txrsp_busy_sx);
-    // A queued Protocol flit returns the credit itself, and the flop below gives
-    // this the higher priority -- so it must stand down for one, or the response
-    // is retired by the arbitration above and never reaches the wire.
-    assign txrsp_lcrd_rtn_sx       = lcrd_return_en & rsp_crd_cnt_not_zero_sx & ~txrspflitv_s0;
+    // Table 14-2 DEACTIVATE (p.14-450, MUST): "The Transmitter must return credits
+    // using Protocol flits or L-Credit return flits" -- the two are alternative
+    // uses of the SAME credit, so a return sent while a response is still owed
+    // spends the credit that response needs, and the peer has stopped granting.
+    // Stated over the request, not over the flit being driven: the flop below
+    // gives the return the higher priority, and a response blocked this cycle is
+    // one this channel still owes. snf_txrsp.sv writes the same condition.
+    assign txrsp_lcrd_rtn_sx       = lcrd_return_en & rsp_crd_cnt_not_zero_sx & ~txrsp_req_s0;
     assign txrsp_crd_cnt_dec_sx    = (txrspflitv_s0 & txrsp_crd_avail_s1) | txrsp_lcrd_rtn_sx; //lcrd - 1
     // Sec 14.7.2 (p.14-460, MUST) tracks TXSACTIVE to what the Transmitter has to
     // send, and an L-Credit return flit is a flit.

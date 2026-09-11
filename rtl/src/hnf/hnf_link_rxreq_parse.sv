@@ -30,7 +30,6 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // CHI E.b Table 14-2 (p.14-450, MUST): the Receiver "must assert LINKACTIVEACK
     // and move to the RUN state before sending credits".
     input  wire                                rxcrd_en,
-    output wire                                rxreq_crd_cnt_full,
 
     //inputs from hnf_cache_pipeline
     input  wire                                biq_req_valid_s0_q,
@@ -145,7 +144,6 @@ module hnf_link_rxreq_parse `HNF_PARAM
     assign rxreq_crd_cnt_upd_s1  = rxreq_crd_grant_sx | (|rxreq_crd_rtn_sx);
     assign rxreq_crd_cnt_nxt_s1  = rxreq_crd_cnt_s1_q - {{(`HNF_LCRD_REQ_CNT_WIDTH-1){1'b0}}, rxreq_crd_grant_sx}
                                                      + {{(`HNF_LCRD_REQ_CNT_WIDTH-2){1'b0}}, rxreq_crd_rtn_sx};
-    assign rxreq_crd_cnt_full    = (rxreq_crd_cnt_s1_q == XP_LCRD_NUM_PARAM[`HNF_LCRD_REQ_CNT_WIDTH-1:0]);
 
 
     always_ff @(posedge clk or posedge rst) begin: rxreq_crd_cnt_s1_q_logic_t

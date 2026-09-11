@@ -201,17 +201,40 @@ module hnf_link `HNF_PARAM
     output wire                                txdat_mshr_busy_sx
     );
 
-    wire rxreq_crd_cnt_full;
-    wire rxrsp_crd_cnt_full;
-    wire rxdat_crd_cnt_full;
     wire txreq_flit_avail;
     wire txrsp_flit_avail;
     wire txsnp_flit_avail;
     wire txdat_flit_avail;
 
     // Table 14-2's DEACTIVATE row (p.14-450, MUST): "The Receiver must wait for all
-    // credits to be returned before deasserting LINKACTIVEACK".
-    assign rxcrd_cnt_full = rxreq_crd_cnt_full & rxrsp_crd_cnt_full & rxdat_crd_cnt_full;
+    // credits to be returned before deasserting LINKACTIVEACK". A credit is returned
+    // the cycle the flit it paid for arrives -- the Transmitter cannot spend it
+    // twice -- so this counts grants against arrivals and is NOT the per-channel
+    // grantable pool: Sec 2.11 (p.2-145) parks a RetryAck'd request until its
+    // response is sent, which defers that pool's re-grant while the peer already
+    // holds nothing. snf.sv keeps the same pair of counters apart for this reason.
+    logic [`HNF_LCRD_REQ_CNT_WIDTH-1:0] rxreq_out_crd_q;
+    logic [`HNF_LCRD_RSP_CNT_WIDTH-1:0] rxrsp_out_crd_q;
+    logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] rxdat_out_crd_q;
+
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst)                          rxreq_out_crd_q <= '0;
+        else if (rxreq_lcrdv ^ rxreqflitv) rxreq_out_crd_q <= rxreq_lcrdv ? (rxreq_out_crd_q + 1'b1)
+                                                                         : (rxreq_out_crd_q - 1'b1);
+    end
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst)                          rxrsp_out_crd_q <= '0;
+        else if (rxrsp_lcrdv ^ rxrspflitv) rxrsp_out_crd_q <= rxrsp_lcrdv ? (rxrsp_out_crd_q + 1'b1)
+                                                                         : (rxrsp_out_crd_q - 1'b1);
+    end
+    always_ff @(posedge clk or posedge rst) begin
+        if (rst)                          rxdat_out_crd_q <= '0;
+        else if (rxdat_lcrdv ^ rxdatflitv) rxdat_out_crd_q <= rxdat_lcrdv ? (rxdat_out_crd_q + 1'b1)
+                                                                         : (rxdat_out_crd_q - 1'b1);
+    end
+
+    assign rxcrd_cnt_full = (rxreq_out_crd_q == '0) & (rxrsp_out_crd_q == '0) &
+                            (rxdat_out_crd_q == '0);
     // Table 14-2's STOP row (p.14-450, MUST): the Transmitter "must assert
     // LINKACTIVEREQ to move to the ACTIVATE state if it has flits to send".
     assign txflit_avail   = txreq_flit_avail | txrsp_flit_avail | txsnp_flit_avail | txdat_flit_avail;
@@ -230,7 +253,6 @@ module hnf_link `HNF_PARAM
                              .txrsp_mshr_retryack_won_s1                     (txrsp_mshr_retryack_won_s1     ),
                              .rxreq_lcrdv                                    (rxreq_lcrdv                    ),
                              .rxcrd_en                                       (rxcrd_en                       ),
-                             .rxreq_crd_cnt_full                             (rxreq_crd_cnt_full             ),
                              .li_mshr_rxreq_valid_s0                         (li_mshr_rxreq_valid_s0         ),
                              .li_mshr_rxreq_qos_s0                           (li_mshr_rxreq_qos_s0           ),
                              .li_mshr_rxreq_srcid_s0                         (li_mshr_rxreq_srcid_s0         ),
@@ -260,7 +282,6 @@ module hnf_link `HNF_PARAM
                              .rxrspflitpend                                  (rxrspflitpend                  ),
                              .rxrsp_lcrdv                                    (rxrsp_lcrdv                    ),
                              .rxcrd_en                                       (rxcrd_en                       ),
-                             .rxrsp_crd_cnt_full                             (rxrsp_crd_cnt_full             ),
                              .li_mshr_rxrsp_valid_s0                         (li_mshr_rxrsp_valid_s0         ),
                              .li_mshr_rxrsp_srcid_s0                         (li_mshr_rxrsp_srcid_s0         ),
                              .li_mshr_rxrsp_txnid_s0                         (li_mshr_rxrsp_txnid_s0         ),
@@ -281,7 +302,6 @@ module hnf_link `HNF_PARAM
                              .rxdatflitpend                                  (rxdatflitpend                  ),
                              .rxdat_lcrdv                                    (rxdat_lcrdv                    ),
                              .rxcrd_en                                       (rxcrd_en                       ),
-                             .rxdat_crd_cnt_full                             (rxdat_crd_cnt_full             ),
                              .li_mshr_rxdat_valid_s0                         (li_mshr_rxdat_valid_s0         ),
                              .li_mshr_rxdat_txnid_s0                         (li_mshr_rxdat_txnid_s0         ),
                              .li_mshr_rxdat_opcode_s0                        (li_mshr_rxdat_opcode_s0        ),
