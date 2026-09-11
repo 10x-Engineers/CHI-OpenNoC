@@ -19,21 +19,22 @@
 */
 
 `timescale 1ns / 1ns
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module tb_hnf;
 
-  parameter CHIE_REQ_ADDR_WIDTH_PARAM = 44;
-  parameter CHIE_SNP_ADDR_WIDTH_PARAM = 41;
-  parameter CHIE_NID_WIDTH_PARAM = 7;
-  parameter CHIE_DATA_WIDTH_PARAM = 256;
-  parameter CHIE_BE_WIDTH_PARAM = 32;
-  parameter CHIE_DATACHECK_WIDTH_PARAM = 0;
-  parameter CHIE_POISON_WIDTH_PARAM = 0;
-  parameter CHIE_REQ_RSVDC_WIDTH_PARAM = 0;
-  parameter CHIE_DAT_RSVDC_WIDTH_PARAM = 0;
+  // Taken from chie_pkg, exactly as hnf_param.svh's own defaults are -- see
+  // tb_hnf_link.sv, where the same literals gave the HN-F a zero-width poison SRAM.
+  parameter CHIE_REQ_ADDR_WIDTH_PARAM = chie_pkg::REQ_ADDR_WIDTH;
+  parameter CHIE_SNP_ADDR_WIDTH_PARAM = chie_pkg::SNP_ADDR_WIDTH;
+  parameter CHIE_NID_WIDTH_PARAM = chie_pkg::NID_WIDTH;
+  parameter CHIE_DATA_WIDTH_PARAM = chie_pkg::DATA_WIDTH;
+  parameter CHIE_BE_WIDTH_PARAM = chie_pkg::BE_WIDTH;
+  parameter CHIE_DATACHECK_WIDTH_PARAM = chie_pkg::DATACHECK_WIDTH;
+  parameter CHIE_POISON_WIDTH_PARAM = chie_pkg::POISON_WIDTH;
+  parameter CHIE_REQ_RSVDC_WIDTH_PARAM = chie_pkg::REQ_RSVDC_WIDTH;
+  parameter CHIE_DAT_RSVDC_WIDTH_PARAM = chie_pkg::DAT_RSVDC_WIDTH;
   parameter HNF_MSHR_RNF_NUM_PARAM = 4;
   parameter HNF_MSHR_RNI_NUM_PARAM = 0;
   parameter RNF_NID_LIST_PARAM = {7'd40, 7'd8};
@@ -113,13 +114,13 @@ module tb_hnf;
   reg CLK;
   reg RST;
   reg RXREQFLITV;
-  reg [`CHIE_REQ_FLIT_RANGE] RXREQFLIT;
+  chie_pkg::req_flit_s RXREQFLIT;
   reg RXREQFLITPEND;
   reg RXRSPFLITV;
-  reg [`CHIE_RSP_FLIT_RANGE] RXRSPFLIT;
+  chie_pkg::rsp_flit_s RXRSPFLIT;
   reg RXRSPFLITPEND;
   reg RXDATFLITV;
-  reg [`CHIE_DAT_FLIT_RANGE] RXDATFLIT;
+  chie_pkg::dat_flit_s RXDATFLIT;
   reg RXDATFLITPEND;
   reg TXREQLCRDV;
   reg TXRSPLCRDV;
@@ -131,24 +132,24 @@ module tb_hnf;
   wire RXRSPLCRDV;
   wire RXDATLCRDV;
   wire TXREQFLITV;
-  wire [`CHIE_REQ_FLIT_RANGE] TXREQFLIT;
+  chie_pkg::req_flit_s TXREQFLIT;
   wire TXREQFLITPEND;
   wire TXRSPFLITV;
-  wire [`CHIE_RSP_FLIT_RANGE] TXRSPFLIT;
+  chie_pkg::rsp_flit_s TXRSPFLIT;
   wire TXRSPFLITPEND;
   wire TXSNPFLITV;
-  wire [`HNF_SNP_FLIT_RANGE] TXSNPFLIT;
+  opennoc_hnf_pkg::snp_routed_s TXSNPFLIT;
   wire TXSNPFLITPEND;
   wire TXDATFLITV;
-  wire [`CHIE_DAT_FLIT_RANGE] TXDATFLIT;
+  chie_pkg::dat_flit_s TXDATFLIT;
   wire TXDATFLITPEND;
 
   reg [6:0] typ[31:0];
   reg [511:0] flit[31:0];
   reg dbg_sn_wr_en;
   reg dbg_sn_rd_en;
-  reg [`CHIE_REQ_FLIT_ADDR_WIDTH-1:0] dbg_sn_addr;
-  reg [`CHIE_DAT_FLIT_WIDTH*2-1:0] dbg_sn_wr_data;
+  reg [chie_pkg::REQ_ADDR_WIDTH-1:0] dbg_sn_addr;
+  reg [chie_pkg::DAT_FLIT_WIDTH*2-1:0] dbg_sn_wr_data;
   reg dbg_l3_valid_q;
   reg [`LOC_INDEX_WIDTH-1:0] dbg_l3_index_q;
   reg [`LOC_WAY_NUM-1:0] dbg_l3_rd_ways_q;
@@ -175,17 +176,17 @@ module tb_hnf;
   reg [`LRU_CLINE_WIDTH-1:0] dbg_lru_rd_data_q;
   reg [2:0] notify_reg;
   reg sn_rxrspflitv;
-  reg [`CHIE_RSP_FLIT_RANGE] sn_rxrspflit;
+  chie_pkg::rsp_flit_s sn_rxrspflit;
   reg sn_rxdatflitv;
-  reg [`CHIE_DAT_FLIT_RANGE] sn_rxdatflit;
+  chie_pkg::dat_flit_s sn_rxdatflit;
   reg rn_rxrspflitv;
-  reg [`CHIE_RSP_FLIT_RANGE] rn_rxrspflit;
+  chie_pkg::rsp_flit_s rn_rxrspflit;
   reg rn_rxdatflitv;
-  reg [`CHIE_DAT_FLIT_RANGE] rn_rxdatflit;
+  chie_pkg::dat_flit_s rn_rxdatflit;
   reg sn_txdatflitv;
-  reg [`CHIE_DAT_FLIT_RANGE] sn_txdatflit;
+  chie_pkg::dat_flit_s sn_txdatflit;
   reg sn_txdatflitv_tmp;
-  reg [`CHIE_DAT_FLIT_RANGE] sn_txdatflit_tmp;
+  chie_pkg::dat_flit_s sn_txdatflit_tmp;
   reg [3:0] wr_rn_status;
   reg [1:0] wr_hn_status;
   reg [43:0] wr_addr;
@@ -196,17 +197,17 @@ module tb_hnf;
   reg [43:0] rd_addr;
   reg [511:0] rd_hnf;
   reg [511:0] rd_sni;
-  reg [`CHIE_REQ_FLIT_RANGE] rxreqflit;
-  reg [`CHIE_RSP_FLIT_RANGE] rxrspflit;
-  reg [`CHIE_DAT_FLIT_RANGE] rxdatflit;
-  reg [`CHIE_REQ_FLIT_RANGE] txreqflit;
-  reg [`CHIE_RSP_FLIT_RANGE] txrspflit;
-  reg [`HNF_SNP_FLIT_RANGE] txsnpflit;
-  reg [`CHIE_DAT_FLIT_RANGE] txdatflit;
-  reg [`CHIE_RSP_FLIT_RANGE] g_rxrspflit;
-  reg [`CHIE_DAT_FLIT_RANGE] g_txdatflit;
-  reg [`CHIE_DAT_FLIT_RANGE] g_rxdatflit;
-  wire [`CHIE_DAT_FLIT_WIDTH*2-1:0] dbg_sn_rd_data;
+  chie_pkg::req_flit_s rxreqflit;
+  chie_pkg::rsp_flit_s rxrspflit;
+  chie_pkg::dat_flit_s rxdatflit;
+  chie_pkg::req_flit_s txreqflit;
+  chie_pkg::rsp_flit_s txrspflit;
+  opennoc_hnf_pkg::snp_routed_s txsnpflit;
+  chie_pkg::dat_flit_s txdatflit;
+  chie_pkg::rsp_flit_s g_rxrspflit;
+  chie_pkg::dat_flit_s g_txdatflit;
+  chie_pkg::dat_flit_s g_rxdatflit;
+  wire [chie_pkg::DAT_FLIT_WIDTH*2-1:0] dbg_sn_rd_data;
 
   integer fd;
   integer code;
@@ -811,9 +812,9 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if ((typ[j] == `RXREQ_RN0)) begin
-        rxreqflit                             = flit[j][`CHIE_REQ_FLIT_RANGE];
-        rxreqflit[`CHIE_REQ_FLIT_SRCID_RANGE] = `RN0_ID;
-        rxreqflit[`CHIE_REQ_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxreqflit                             = chie_pkg::req_flit_s'(flit[j][chie_pkg::REQ_FLIT_WIDTH-1:0]);
+        rxreqflit.srcid = `RN0_ID;
+        rxreqflit.tgtid = `HNF0_ID;
         RXREQFLIT  <= rxreqflit;
         RXREQFLITV <= 1'b1;
         j          <= j + 1;
@@ -824,9 +825,9 @@ module tb_hnf;
       end
 
       if ((typ[j] == `RXREQ_RN1)) begin
-        rxreqflit                             = flit[j][`CHIE_REQ_FLIT_RANGE];
-        rxreqflit[`CHIE_REQ_FLIT_SRCID_RANGE] = `RN1_ID;
-        rxreqflit[`CHIE_REQ_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxreqflit                             = chie_pkg::req_flit_s'(flit[j][chie_pkg::REQ_FLIT_WIDTH-1:0]);
+        rxreqflit.srcid = `RN1_ID;
+        rxreqflit.tgtid = `HNF0_ID;
         RXREQFLIT  <= rxreqflit;
         RXREQFLITV <= 1'b1;
         j          <= j + 1;
@@ -841,8 +842,8 @@ module tb_hnf;
   end
 
   //HNF RXRSP CHANNEL
-  assign RXRSPFLITV = (sn_rxrspflitv & (sn_rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] == `HNF0_ID)) ? sn_rxrspflitv : rn_rxrspflitv;
-  assign RXRSPFLIT  = (sn_rxrspflitv & (sn_rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] == `HNF0_ID)) ? sn_rxrspflit : rn_rxrspflit;
+  assign RXRSPFLITV = (sn_rxrspflitv & (sn_rxrspflit.tgtid == `HNF0_ID)) ? sn_rxrspflitv : rn_rxrspflitv;
+  assign RXRSPFLIT  = (sn_rxrspflitv & (sn_rxrspflit.tgtid == `HNF0_ID)) ? sn_rxrspflit : rn_rxrspflit;
 
   initial begin
     rn_rxrspflitv <= 1'b0;
@@ -850,9 +851,9 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if ((typ[j] == `RXRSP_RN0)) begin
-        rxrspflit                             = flit[j][`CHIE_RSP_FLIT_RANGE];
-        rxrspflit[`CHIE_RSP_FLIT_SRCID_RANGE] = `RN0_ID;
-        rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        rxrspflit.srcid = `RN0_ID;
+        rxrspflit.tgtid = `HNF0_ID;
         rn_rxrspflit  <= rxrspflit;
         rn_rxrspflitv <= 1'b1;
         j             <= j + 1;
@@ -861,10 +862,10 @@ module tb_hnf;
 `endif
       end
       if ((typ[j] == `RXRSP_RN1)) begin
-        rxrspflit                             = flit[j][`CHIE_RSP_FLIT_RANGE];
-        rxrspflit[`CHIE_RSP_FLIT_SRCID_RANGE] = `RN1_ID;
-        rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] = `HNF0_ID;
-        rn_rxrspflit  <= flit[j][`CHIE_RSP_FLIT_RANGE];
+        rxrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        rxrspflit.srcid = `RN1_ID;
+        rxrspflit.tgtid = `HNF0_ID;
+        rn_rxrspflit  <= chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
         rn_rxrspflitv <= 1'b1;
         j             <= j + 1;
 `ifdef TB_INFO
@@ -874,7 +875,7 @@ module tb_hnf;
       @(posedge CLK);
 
       //resolve sn and rn sending rsp conflit, let rn rsp send 2 cycles
-      if (sn_rxrspflitv & (sn_rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] == `HNF0_ID)) begin
+      if (sn_rxrspflitv & (sn_rxrspflit.tgtid == `HNF0_ID)) begin
       end
       else begin
         rn_rxrspflitv <= 1'b0;
@@ -883,8 +884,8 @@ module tb_hnf;
   end
 
   //HNF RXDAT CHANNEL
-  assign RXDATFLIT  = (sn_rxdatflitv & (sn_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] == `HNF0_ID)) ? sn_rxdatflit : rn_rxdatflit;
-  assign RXDATFLITV = (sn_rxdatflitv & (sn_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] == `HNF0_ID)) ? sn_rxdatflitv : rn_rxdatflitv;
+  assign RXDATFLIT  = (sn_rxdatflitv & (sn_rxdatflit.tgtid == `HNF0_ID)) ? sn_rxdatflit : rn_rxdatflit;
+  assign RXDATFLITV = (sn_rxdatflitv & (sn_rxdatflit.tgtid == `HNF0_ID)) ? sn_rxdatflitv : rn_rxdatflitv;
 
   initial begin
     rn_rxdatflitv <= 1'b0;
@@ -892,9 +893,9 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if (typ[j] == `RXDAT1_RN0) begin
-        rxdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN0_ID;
-        rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit.srcid = `RN0_ID;
+        rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
         rn_rxdatflit  <= rxdatflit;
         j             <= j + 1;
@@ -904,9 +905,9 @@ module tb_hnf;
       end
 
       if (typ[j] == `RXDAT1_RN1) begin
-        rxdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN1_ID;
-        rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit.srcid = `RN1_ID;
+        rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
         rn_rxdatflit  <= rxdatflit;
         j             <= j + 1;
@@ -918,9 +919,9 @@ module tb_hnf;
       @(posedge CLK);
 
       if (typ[j] == `RXDAT2_RN0) begin
-        rxdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN0_ID;
-        rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit.srcid = `RN0_ID;
+        rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
         rn_rxdatflit  <= rxdatflit;
         j             <= j + 1;
@@ -930,9 +931,9 @@ module tb_hnf;
       end
 
       if (typ[j] == `RXDAT2_RN1) begin
-        rxdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN1_ID;
-        rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `HNF0_ID;
+        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit.srcid = `RN1_ID;
+        rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
         rn_rxdatflit  <= rxdatflit;
         j             <= j + 1;
@@ -952,11 +953,11 @@ module tb_hnf;
     forever begin
       if ((typ[j] == `TXDAT1_RN0)) begin
         while (!TXDATFLITV) @(posedge CLK);
-        if (TXDATFLIT[`CHIE_DAT_FLIT_TGTID_RANGE] == `RN0_ID) begin
-          txdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN0_ID;
-          txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `HNF0_ID;
-          txdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+        if (TXDATFLIT.tgtid == `RN0_ID) begin
+          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit.tgtid   = `RN0_ID;
+          txdatflit.srcid   = `HNF0_ID;
+          txdatflit.homenid = `HNF0_ID;
           if (TXDATFLIT == txdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO
@@ -973,10 +974,10 @@ module tb_hnf;
 
           @(posedge CLK);
           while (!TXDATFLITV) @(posedge CLK);
-          txdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN0_ID;
-          txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `HNF0_ID;
-          txdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit.tgtid   = `RN0_ID;
+          txdatflit.srcid   = `HNF0_ID;
+          txdatflit.homenid = `HNF0_ID;
           if (TXDATFLIT == txdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO
@@ -995,11 +996,11 @@ module tb_hnf;
 
       if ((typ[j] == `TXDAT1_RN1)) begin
         while (!TXDATFLITV) @(posedge CLK);
-        if (TXDATFLIT[`CHIE_DAT_FLIT_TGTID_RANGE] == `RN1_ID) begin
-          txdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN1_ID;
-          txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `HNF0_ID;
-          txdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+        if (TXDATFLIT.tgtid == `RN1_ID) begin
+          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit.tgtid   = `RN1_ID;
+          txdatflit.srcid   = `HNF0_ID;
+          txdatflit.homenid = `HNF0_ID;
           if (TXDATFLIT == txdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO
@@ -1016,10 +1017,10 @@ module tb_hnf;
 
           @(posedge CLK);
           while (!TXDATFLITV) @(posedge CLK);
-          txdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN1_ID;
-          txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `HNF0_ID;
-          txdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit.tgtid   = `RN1_ID;
+          txdatflit.srcid   = `HNF0_ID;
+          txdatflit.homenid = `HNF0_ID;
           if (TXDATFLIT == txdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO
@@ -1045,9 +1046,9 @@ module tb_hnf;
     forever begin
       if ((typ[j] == `TXRSP_RN0)) begin
         while (!TXRSPFLITV) @(posedge CLK);
-        txrspflit                             = flit[j][`CHIE_RSP_FLIT_RANGE];
-        txrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] = `RN0_ID;
-        txrspflit[`CHIE_RSP_FLIT_SRCID_RANGE] = `HNF0_ID;
+        txrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        txrspflit.tgtid = `RN0_ID;
+        txrspflit.srcid = `HNF0_ID;
         if (TXRSPFLIT == txrspflit) begin
           j <= j + 1;
 `ifdef TB_INFO
@@ -1065,9 +1066,9 @@ module tb_hnf;
 
       if ((typ[j] == `TXRSP_RN1)) begin
         while (!TXRSPFLITV) @(posedge CLK);
-        txrspflit                             = flit[j][`CHIE_RSP_FLIT_RANGE];
-        txrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] = `RN1_ID;
-        txrspflit[`CHIE_RSP_FLIT_SRCID_RANGE] = `HNF0_ID;
+        txrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        txrspflit.tgtid = `RN1_ID;
+        txrspflit.srcid = `HNF0_ID;
         if (TXRSPFLIT == txrspflit) begin
           j <= j + 1;
 `ifdef TB_INFO
@@ -1092,10 +1093,10 @@ module tb_hnf;
     forever begin
       if ((typ[j] == `TXSNP_RN0)) begin
         while (!TXSNPFLITV) @(posedge CLK);
-        txsnpflit                                             = flit[j][`HNF_SNP_FLIT_RANGE];
-        txsnpflit[`HNF_SNP_FLIT_WIDTH-1:`CHIE_SNP_FLIT_WIDTH] = `RN0_ID;
-        txsnpflit[`CHIE_SNP_FLIT_SRCID_RANGE]                 = `HNF0_ID;
-        if (txsnpflit[`CHIE_SNP_FLIT_FWDNID_RANGE] == 3) txsnpflit[`CHIE_SNP_FLIT_FWDNID_RANGE] = `RN1_ID;
+        txsnpflit = opennoc_hnf_pkg::snp_routed_s'(flit[j][$bits(opennoc_hnf_pkg::snp_routed_s)-1:0]);
+        txsnpflit.tgtid = `RN0_ID;
+        txsnpflit.flit.srcid                 = `HNF0_ID;
+        if (txsnpflit.flit.fwdnid == 3) txsnpflit.flit.fwdnid = `RN1_ID;
         if (TXSNPFLIT == txsnpflit) begin
           j <= j + 1;
 `ifdef TB_INFO
@@ -1113,10 +1114,10 @@ module tb_hnf;
 
       if ((typ[j] == `TXSNP_RN1)) begin
         while (!TXSNPFLITV) @(posedge CLK);
-        txsnpflit                                             = flit[j][`HNF_SNP_FLIT_RANGE];
-        txsnpflit[`HNF_SNP_FLIT_WIDTH-1:`CHIE_SNP_FLIT_WIDTH] = `RN1_ID;
-        txsnpflit[`CHIE_SNP_FLIT_SRCID_RANGE]                 = `HNF0_ID;
-        if (txsnpflit[`CHIE_SNP_FLIT_FWDNID_RANGE] == 1) txsnpflit[`CHIE_SNP_FLIT_FWDNID_RANGE] = `RN0_ID;
+        txsnpflit = opennoc_hnf_pkg::snp_routed_s'(flit[j][$bits(opennoc_hnf_pkg::snp_routed_s)-1:0]);
+        txsnpflit.tgtid = `RN1_ID;
+        txsnpflit.flit.srcid                 = `HNF0_ID;
+        if (txsnpflit.flit.fwdnid == 1) txsnpflit.flit.fwdnid = `RN0_ID;
         if (TXSNPFLIT == txsnpflit) begin
           j <= j + 1;
 `ifdef TB_INFO
@@ -1141,9 +1142,9 @@ module tb_hnf;
     forever begin
       if ((typ[j] == `SNI_RSP_RN0)) begin
         while (!sn_rxrspflitv) @(posedge CLK);
-        g_rxrspflit                             = flit[j][`CHIE_RSP_FLIT_RANGE];
-        g_rxrspflit[`CHIE_RSP_FLIT_TGTID_RANGE] = `RN0_ID;
-        g_rxrspflit[`CHIE_RSP_FLIT_SRCID_RANGE] = `SN_ID;
+        g_rxrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        g_rxrspflit.tgtid = `RN0_ID;
+        g_rxrspflit.srcid = `SN_ID;
         if (sn_rxrspflit == g_rxrspflit) begin
           j <= j + 1;
 `ifdef TB_INFO
@@ -1171,9 +1172,9 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if (typ[j] == `RN0_DAT1_SNI) begin
-        g_txdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        g_txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN0_ID;
-        g_txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `SN_ID;
+        g_txdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        g_txdatflit.srcid = `RN0_ID;
+        g_txdatflit.tgtid = `SN_ID;
         sn_txdatflitv_tmp <= 1'b1;
         sn_txdatflit_tmp  <= g_txdatflit;
         j                 <= j + 1;
@@ -1182,9 +1183,9 @@ module tb_hnf;
 `endif
 
         @(posedge CLK);
-        g_txdatflit                             = flit[j][`CHIE_DAT_FLIT_RANGE];
-        g_txdatflit[`CHIE_DAT_FLIT_SRCID_RANGE] = `RN0_ID;
-        g_txdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] = `SN_ID;
+        g_txdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        g_txdatflit.srcid = `RN0_ID;
+        g_txdatflit.tgtid = `SN_ID;
         sn_txdatflitv_tmp <= 1'b1;
         sn_txdatflit_tmp  <= g_txdatflit;
         j                 <= j + 1;
@@ -1203,11 +1204,11 @@ module tb_hnf;
     forever begin
       if (typ[j] == `SNI_DAT1_RN0) begin
         while (!sn_rxdatflitv) @(posedge CLK);
-        if (sn_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] == `RN0_ID) begin
-          g_rxdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          g_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN0_ID;
-          g_rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `SN_ID;
-          g_rxdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+        if (sn_rxdatflit.tgtid == `RN0_ID) begin
+          g_rxdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          g_rxdatflit.tgtid   = `RN0_ID;
+          g_rxdatflit.srcid   = `SN_ID;
+          g_rxdatflit.homenid = `HNF0_ID;
           if (g_rxdatflit == sn_rxdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO
@@ -1227,11 +1228,11 @@ module tb_hnf;
 
         while (!sn_rxdatflitv) @(posedge CLK);
 
-        if (sn_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE] == `RN0_ID) begin
-          g_rxdatflit                               = flit[j][`CHIE_DAT_FLIT_RANGE];
-          g_rxdatflit[`CHIE_DAT_FLIT_TGTID_RANGE]   = `RN0_ID;
-          g_rxdatflit[`CHIE_DAT_FLIT_SRCID_RANGE]   = `SN_ID;
-          g_rxdatflit[`CHIE_DAT_FLIT_HOMENID_RANGE] = `HNF0_ID;
+        if (sn_rxdatflit.tgtid == `RN0_ID) begin
+          g_rxdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          g_rxdatflit.tgtid   = `RN0_ID;
+          g_rxdatflit.srcid   = `SN_ID;
+          g_rxdatflit.homenid = `HNF0_ID;
           if (g_rxdatflit == sn_rxdatflit) begin
             j <= j + 1;
 `ifdef TB_INFO

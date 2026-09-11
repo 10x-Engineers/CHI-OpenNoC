@@ -17,7 +17,6 @@
 `include "rni_param.svh"
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
-`include "chie_defines.svh"
 
 // Mode Support
 // 1. NULL 
@@ -33,16 +32,20 @@
 module tb_rni;
     parameter AXI4_PA_WIDTH_PARAM                = 44;
     parameter AXI4_AXDATA_WIDTH_PARAM            = 128;
-    parameter CHIE_NID_WIDTH_PARAM               = 11;
-    parameter CHIE_REQ_RSVDC_WIDTH_PARAM         = 0;
-    parameter CHIE_DAT_RSVDC_WIDTH_PARAM         = 0;
-    parameter CHIE_REQ_ADDR_WIDTH_PARAM          = 44;
-    parameter CHIE_SNP_ADDR_WIDTH_PARAM          = 41;
-    parameter CHIE_PA_WIDTH_PARAM                = 44;
-    parameter CHIE_DATA_WIDTH_PARAM              = 256;
-    parameter CHIE_BE_WIDTH_PARAM                = 32;
-    parameter CHIE_POISON_WIDTH_PARAM            = 0;
-    parameter CHIE_DATACHECK_WIDTH_PARAM         = 0;
+    // Taken from chie_pkg, exactly as rni_param.svh's own defaults are. Restating
+    // them as literals let the bench disagree with the package that sizes the flit
+    // structs the DUT's ports are typed with -- NID_WIDTH was 11 here against the
+    // package's 7, and Poison/DataCheck 0 against DATA_WIDTH/64 and DATA_WIDTH/8.
+    parameter CHIE_NID_WIDTH_PARAM               = chie_pkg::NID_WIDTH;
+    parameter CHIE_REQ_RSVDC_WIDTH_PARAM         = chie_pkg::REQ_RSVDC_WIDTH;
+    parameter CHIE_DAT_RSVDC_WIDTH_PARAM         = chie_pkg::DAT_RSVDC_WIDTH;
+    parameter CHIE_REQ_ADDR_WIDTH_PARAM          = chie_pkg::REQ_ADDR_WIDTH;
+    parameter CHIE_SNP_ADDR_WIDTH_PARAM          = chie_pkg::SNP_ADDR_WIDTH;
+    parameter CHIE_PA_WIDTH_PARAM                = chie_pkg::REQ_ADDR_WIDTH;
+    parameter CHIE_DATA_WIDTH_PARAM              = chie_pkg::DATA_WIDTH;
+    parameter CHIE_BE_WIDTH_PARAM                = chie_pkg::BE_WIDTH;
+    parameter CHIE_POISON_WIDTH_PARAM            = chie_pkg::POISON_WIDTH;
+    parameter CHIE_DATACHECK_WIDTH_PARAM         = chie_pkg::DATACHECK_WIDTH;
     parameter RNI_AR_ENTRIES_NUM_PARAM           = 32;
     parameter RNI_AW_ENTRIES_NUM_PARAM           = 32;
     parameter HNF_NID_PARAM                      = 0; 
@@ -96,23 +99,23 @@ module tb_rni;
     reg                                         TXDATFLITV;
     reg                                         TXDATLCRDV;
     reg                                         TXREQFLITV;
-    reg [`CHIE_REQ_FLIT_RANGE]                  TXREQFLIT;
-    reg [`CHIE_RSP_FLIT_RANGE]                  TXRSPFLIT;
-    reg [`CHIE_DAT_FLIT_RANGE]                  TXDATFLIT;
+    chie_pkg::req_flit_s TXREQFLIT;
+    chie_pkg::rsp_flit_s TXRSPFLIT;
+    chie_pkg::dat_flit_s TXDATFLIT;
     reg                                         TXREQLCRDV;
-    reg [`CHIE_RSP_FLIT_RANGE]                  RXRSPFLIT;
-    reg [`CHIE_RSP_FLIT_RANGE]                  rxrspflit_tmp;
+    chie_pkg::rsp_flit_s RXRSPFLIT;
+    chie_pkg::rsp_flit_s rxrspflit_tmp;
     reg                                         RXRSPFLITV;
     reg                                         RXDATFLITV;
-    reg [`CHIE_DAT_FLIT_RANGE]                  RXDATFLIT;
-    reg [`CHIE_DAT_FLIT_RANGE]                  rxdatflit_tmp;
+    chie_pkg::dat_flit_s RXDATFLIT;
+    chie_pkg::dat_flit_s rxdatflit_tmp;
     reg [(AXI4_AXDATA_WIDTH_PARAM/8)-1:0]       wstrb0;
     reg [32-1:0]                                wdata_cnt;
-    reg [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]        txnid_r1[0:RNI_AR_ENTRIES_NUM_PARAM-1];
+    logic [$bits(TXREQFLIT.txnid)-1:0]          txnid_r1[0:RNI_AR_ENTRIES_NUM_PARAM-1];
     reg [RNI_AR_ENTRIES_NUM_PARAM-1:0]          r_entry_v;
     reg [32-1:0]                                r0;
     reg [32-1:0]                                r1;
-    reg [`CHIE_REQ_FLIT_TXNID_WIDTH-1:0]        txnid_w1[0:RNI_AW_ENTRIES_NUM_PARAM-1];
+    logic [$bits(TXREQFLIT.txnid)-1:0]          txnid_w1[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     reg [RNI_AW_ENTRIES_NUM_PARAM-1:0]          w_entry_v;
     reg [32-1:0]                                dbid_sent_v;
     reg [32-1:0]                                w0;
@@ -312,15 +315,15 @@ module tb_rni;
     initial begin
         wait(INIT_DONE);
         forever @(posedge clk) begin
-            if(TXDATFLITV & (TXDATFLIT[`CHIE_DAT_FLIT_OPCODE_RANGE] !== `CHIE_DATLCRDRETURN))
+            if(TXDATFLITV & (TXDATFLIT.opcode !== chie_pkg::DAT_DATLCRDRETURN))
                 TXDATLCRDV  <= 1;
             else
                 TXDATLCRDV  <= 0;
-            if(TXRSPFLITV & (TXRSPFLIT[`CHIE_RSP_FLIT_OPCODE_RANGE] !== `CHIE_RSPLCRDRETURN))
+            if(TXRSPFLITV & (TXRSPFLIT.opcode !== chie_pkg::RSP_RSPLCRDRETURN))
                 TXRSPLCRDV  <= 1;
             else
                 TXRSPLCRDV  <= 0;
-            if(TXREQFLITV & (TXREQFLIT[`CHIE_REQ_FLIT_OPCODE_RANGE] !== `CHIE_REQLCRDRETURN))
+            if(TXREQFLITV & (TXREQFLIT.opcode !== chie_pkg::REQ_REQLCRDRETURN))
                 TXREQLCRDV  <= 1;
             else
                 TXREQLCRDV  <= 0;
@@ -1088,8 +1091,8 @@ module tb_rni;
         r0 = 0;
         r_entry_v <= 0;;
         forever @(posedge clk) begin
-            if(TXREQFLITV & ~TXREQFLIT[`CHIE_REQ_FLIT_TXNID_MSB] & (TXREQFLIT[`CHIE_REQ_FLIT_OPCODE_RANGE] !== `CHIE_REQLCRDRETURN))begin
-                txnid_r1[r0]  <= TXREQFLIT[`CHIE_REQ_FLIT_TXNID_RANGE];
+            if(TXREQFLITV & ~TXREQFLIT.txnid[$bits(TXREQFLIT.txnid)-1] & (TXREQFLIT.opcode !== chie_pkg::REQ_REQLCRDRETURN))begin
+                txnid_r1[r0]  <= TXREQFLIT.txnid;
                 r_entry_v[r0] <= 1; 
                 if(r0 == (RNI_AR_ENTRIES_NUM_PARAM-1))begin
                     r0 <= 0;
@@ -1108,19 +1111,19 @@ module tb_rni;
             RXDATFLITV <= 1'b0;
             if(r_entry_v[r1])begin
                 repeat (10) @(posedge clk);
-                rxdatflit_tmp[`CHIE_DAT_FLIT_RANGE]        = {`CHIE_DAT_FLIT_WIDTH{1'b0}};
-                rxdatflit_tmp[`CHIE_DAT_FLIT_TGTID_RANGE]  = RNI_NID_PARAM;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_SRCID_RANGE]  = HNF_NID_PARAM;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_TXNID_RANGE]  = txnid_r1[r1];
-                rxdatflit_tmp[`CHIE_DAT_FLIT_OPCODE_RANGE] = `CHIE_COMPDATA;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_DATAID_RANGE] = 2'b00;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_BE_RANGE]     = 32'hffffffff;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_DATA_RANGE]   = 256'hffffffffffffffff1111111111111111cccccccccccccccc0123456789abcdef;
+                rxdatflit_tmp        = '0;
+                rxdatflit_tmp.tgtid  = RNI_NID_PARAM;
+                rxdatflit_tmp.srcid  = HNF_NID_PARAM;
+                rxdatflit_tmp.txnid  = txnid_r1[r1];
+                rxdatflit_tmp.opcode = chie_pkg::DAT_COMPDATA;
+                rxdatflit_tmp.dataid = 2'b00;
+                rxdatflit_tmp.be     = 32'hffffffff;
+                rxdatflit_tmp.data   = 256'hffffffffffffffff1111111111111111cccccccccccccccc0123456789abcdef;
                 RXDATFLITV <= 1'b1;
                 RXDATFLIT  <= rxdatflit_tmp;
                 @(posedge clk);
-                rxdatflit_tmp[`CHIE_DAT_FLIT_DATAID_RANGE] = 2'b10;
-                rxdatflit_tmp[`CHIE_DAT_FLIT_DATA_RANGE]   = 256'heeeeeeeeeeeeeeee3333333333333333000000000000000002468ace13579bdf;
+                rxdatflit_tmp.dataid = 2'b10;
+                rxdatflit_tmp.data   = 256'heeeeeeeeeeeeeeee3333333333333333000000000000000002468ace13579bdf;
                 RXDATFLITV <= 1'b1;
                 RXDATFLIT  <= rxdatflit_tmp;
                 r_entry_v[r1] <= 0; 
@@ -1879,8 +1882,8 @@ module tb_rni;
         w0 <= 0;
         w_entry_v <= 0;
         forever @(posedge clk) begin
-            if(TXREQFLITV & TXREQFLIT[`CHIE_REQ_FLIT_TXNID_MSB] & (TXREQFLIT[`CHIE_REQ_FLIT_OPCODE_RANGE] !== `CHIE_REQLCRDRETURN))begin
-                txnid_w1[w0] <= TXREQFLIT[`CHIE_REQ_FLIT_TXNID_RANGE];
+            if(TXREQFLITV & TXREQFLIT.txnid[$bits(TXREQFLIT.txnid)-1] & (TXREQFLIT.opcode !== chie_pkg::REQ_REQLCRDRETURN))begin
+                txnid_w1[w0] <= TXREQFLIT.txnid;
                 w_entry_v[w0] <= 1; 
                 if(w0 == (RNI_AW_ENTRIES_NUM_PARAM-1))begin
                     w0 <= 0;
@@ -1899,11 +1902,11 @@ module tb_rni;
         forever @(posedge clk) begin
             if(w_entry_v[w1])begin
                 repeat (9) @(posedge clk);
-                rxrspflit_tmp[`CHIE_RSP_FLIT_RANGE]        = {`CHIE_RSP_FLIT_WIDTH{1'b0}};
-                rxrspflit_tmp[`CHIE_RSP_FLIT_TGTID_RANGE]  = RNI_NID_PARAM;
-                rxrspflit_tmp[`CHIE_RSP_FLIT_SRCID_RANGE]  = HNF_NID_PARAM;
-                rxrspflit_tmp[`CHIE_RSP_FLIT_TXNID_RANGE]  = txnid_w1[w1];
-                rxrspflit_tmp[`CHIE_RSP_FLIT_OPCODE_RANGE] = `CHIE_DBIDRESP;
+                rxrspflit_tmp        = '0;
+                rxrspflit_tmp.tgtid  = RNI_NID_PARAM;
+                rxrspflit_tmp.srcid  = HNF_NID_PARAM;
+                rxrspflit_tmp.txnid  = txnid_w1[w1];
+                rxrspflit_tmp.opcode = chie_pkg::RSP_DBIDRESP;
                 RXRSPFLITV <= 1'b1;
                 RXRSPFLIT  <= rxrspflit_tmp;
                 dbid_sent_v[w1] <= 1;
@@ -1926,11 +1929,11 @@ module tb_rni;
         forever @(posedge clk) begin
             if(dbid_sent_v[w2])begin
                 repeat (8) @(posedge clk);
-                rxrspflit_tmp[`CHIE_RSP_FLIT_RANGE]        = {`CHIE_RSP_FLIT_WIDTH{1'b0}};
-                rxrspflit_tmp[`CHIE_RSP_FLIT_TGTID_RANGE]  = RNI_NID_PARAM;
-                rxrspflit_tmp[`CHIE_RSP_FLIT_SRCID_RANGE]  = HNF_NID_PARAM;
-                rxrspflit_tmp[`CHIE_RSP_FLIT_TXNID_RANGE]  = txnid_w1[w2];
-                rxrspflit_tmp[`CHIE_RSP_FLIT_OPCODE_RANGE] = `CHIE_COMP;
+                rxrspflit_tmp        = '0;
+                rxrspflit_tmp.tgtid  = RNI_NID_PARAM;
+                rxrspflit_tmp.srcid  = HNF_NID_PARAM;
+                rxrspflit_tmp.txnid  = txnid_w1[w2];
+                rxrspflit_tmp.opcode = chie_pkg::RSP_COMP;
                 RXRSPFLITV <= 1'b1;
                 RXRSPFLIT  <= rxrspflit_tmp;
                 dbid_sent_v[w2] <= 0;

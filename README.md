@@ -120,9 +120,18 @@ make clean
 `hnf.sv` and self-checks every response flit. `TOP_TB=tb_rni make com sim` runs the
 RN-I's AXI-side bench instead.
 
-> The HN-F flow is the one that works out of the box. `rtl/tb/tb_snf.sv` is in the
-> filelist but has no Makefile target — `TOP_TB=tb_snf` produces an option-less
-> `vcs` invocation. Fixing that is [#101](https://github.com/10x-Engineers/CHI-OpenNoC/issues/101).
+> Both `TOP_TB` targets elaborate. They were broken from c19c311 until
+> [#168](https://github.com/10x-Engineers/CHI-OpenNoC/issues/168): the filelist still
+> named the deleted `chie_defines.svh` and the benches were built on its bit-range
+> macros, so nothing under `rtl/tb/` compiled — only `tools/lint.sh` runs, and it
+> compiles `rtl/src/` and `rtl/misc/`, not `rtl/tb/`. The benches now use
+> `chie_pkg`'s flit structs, so a field added to one carries into them. Elaboration
+> is verified under Xcelium; no VCS licence was available to run `make sim` itself.
+>
+> `rtl/tb/tb_snf.sv` is in the filelist but has no Makefile target of its own —
+> `TOP_TB=tb_snf` produces an option-less `vcs` invocation. It is compiled as the
+> Subordinate model `tb_hnf` instantiates. Fixing the target is
+> [#101](https://github.com/10x-Engineers/CHI-OpenNoC/issues/101).
 
 ---
 

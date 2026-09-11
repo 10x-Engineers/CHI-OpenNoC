@@ -1,5 +1,9 @@
+// The packages come first and are named rather than left to the include path:
+// a missing *module* resolves from -incdir by filename, a package does not.
+./include/chie_pkg.sv
+./include/opennoc_hnf_pkg.sv
+./include/opennoc_rni_pkg.sv
 ./include/hnf_param.svh
-./include/chie_defines.svh
 ./include/hnf_defines.svh
 ./include/axi4_defines.svh
 ./include/hni_param.svh
@@ -13,6 +17,7 @@
 ./misc/assert_checker.sv
 ./misc/poll_function.sv
 ./misc/sync_fifo.sv
+./misc/chie_flit_opt_check.sv
 ./misc/poll_with_start_entry.sv
 ./src/hnf/hnf_link_txdat_wrap.sv
 ./src/hnf/hnf_cache_pipeline.sv
