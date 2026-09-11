@@ -17,21 +17,26 @@
 //   R5 Table 14-2 DEACTIVATE (p.14-450, MUST): a deactivating Transmitter returns
 //      every L-Credit it holds, so the peer Receiver can reach STOP.
 // =============================================================================
-`include "chie_defines.svh"
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
 module tb_hnf_link;
 
-  parameter CHIE_REQ_ADDR_WIDTH_PARAM   = 44;
-  parameter CHIE_SNP_ADDR_WIDTH_PARAM   = 41;
-  parameter CHIE_NID_WIDTH_PARAM        = 7;
-  parameter CHIE_DATA_WIDTH_PARAM       = 256;
-  parameter CHIE_BE_WIDTH_PARAM         = 32;
-  parameter CHIE_DATACHECK_WIDTH_PARAM  = 0;
-  parameter CHIE_POISON_WIDTH_PARAM     = 0;
-  parameter CHIE_REQ_RSVDC_WIDTH_PARAM  = 0;
-  parameter CHIE_DAT_RSVDC_WIDTH_PARAM  = 0;
+  // Taken from chie_pkg, exactly as hnf_param.svh's own defaults are. Restating
+  // them as literals let the bench disagree with the package that sizes the flit
+  // structs: at POISON_WIDTH 0 the HN-F's poison SRAM is instantiated
+  // RAM_DATA_WIDTH=0 (hnf_defines.svh's CACHE_POISON_WIDTH) while
+  // hnf_link_txdat_wrap selects chie_pkg::POISON_WIDTH bits out of it, which is a
+  // zero-width part-select and a reversed range.
+  parameter CHIE_REQ_ADDR_WIDTH_PARAM   = chie_pkg::REQ_ADDR_WIDTH;
+  parameter CHIE_SNP_ADDR_WIDTH_PARAM   = chie_pkg::SNP_ADDR_WIDTH;
+  parameter CHIE_NID_WIDTH_PARAM        = chie_pkg::NID_WIDTH;
+  parameter CHIE_DATA_WIDTH_PARAM       = chie_pkg::DATA_WIDTH;
+  parameter CHIE_BE_WIDTH_PARAM         = chie_pkg::BE_WIDTH;
+  parameter CHIE_DATACHECK_WIDTH_PARAM  = chie_pkg::DATACHECK_WIDTH;
+  parameter CHIE_POISON_WIDTH_PARAM     = chie_pkg::POISON_WIDTH;
+  parameter CHIE_REQ_RSVDC_WIDTH_PARAM  = chie_pkg::REQ_RSVDC_WIDTH;
+  parameter CHIE_DAT_RSVDC_WIDTH_PARAM  = chie_pkg::DAT_RSVDC_WIDTH;
   parameter HNF_MSHR_RNF_NUM_PARAM      = 4;
   parameter HNF_MSHR_RNI_NUM_PARAM      = 0;
   parameter RNF_NID_LIST_PARAM          = {7'd40, 7'd8};
@@ -83,16 +88,16 @@ module tb_hnf_link;
 
     reg  RXREQFLITV = 1'b0, RXRSPFLITV = 1'b0, RXDATFLITV = 1'b0;
     reg  RXREQFLITPEND = 1'b0, RXRSPFLITPEND = 1'b0, RXDATFLITPEND = 1'b0;
-    reg [`CHIE_REQ_FLIT_RANGE] RXREQFLIT = '0;
-    reg [`CHIE_RSP_FLIT_RANGE] RXRSPFLIT = '0;
-    reg [`CHIE_DAT_FLIT_RANGE] RXDATFLIT = '0;
+    chie_pkg::req_flit_s RXREQFLIT = '0;
+    chie_pkg::rsp_flit_s RXRSPFLIT = '0;
+    chie_pkg::dat_flit_s RXDATFLIT = '0;
     wire RXREQLCRDV, RXRSPLCRDV, RXDATLCRDV;
     wire TXREQFLITV, TXRSPFLITV, TXSNPFLITV, TXDATFLITV;
     wire TXREQFLITPEND, TXRSPFLITPEND, TXSNPFLITPEND, TXDATFLITPEND;
-    wire [`CHIE_REQ_FLIT_RANGE] TXREQFLIT;
-    wire [`CHIE_RSP_FLIT_RANGE] TXRSPFLIT;
-    wire [`HNF_SNP_FLIT_RANGE]  TXSNPFLIT;
-    wire [`CHIE_DAT_FLIT_RANGE] TXDATFLIT;
+    chie_pkg::req_flit_s TXREQFLIT;
+    chie_pkg::rsp_flit_s TXRSPFLIT;
+    opennoc_hnf_pkg::snp_routed_s TXSNPFLIT;
+    chie_pkg::dat_flit_s TXDATFLIT;
     wire [2:0] notify_reg;
 
     // The TX half. Tying these to zero leaves the DUT holding no TX L-Credit

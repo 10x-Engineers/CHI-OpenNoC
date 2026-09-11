@@ -27,17 +27,19 @@ command -v "$SIM" >/dev/null || { echo "$SIM not on PATH"; exit 2; }
 # which xrun rejects, and the HN-F needs neither -- so name the misc modules it
 # does need rather than globbing.
 MISC="misc/hnf_biq.sv misc/poll_function.sv misc/poll_with_start_entry.sv
-      misc/sync_fifo.sv misc/chi_link_handshake.sv"
+      misc/sync_fifo.sv misc/chi_link_handshake.sv misc/chie_flit_opt_check.sv"
 OUT=$(mktemp -d)
 
 case "$SIM" in
   xrun) CMD=(xrun -sv -incdir include -top tb_hnf_link -xmlibdirname "$OUT/xcelium.d") ;;
   vcs)  CMD=(vcs  -sverilog +incdir+include -top tb_hnf_link -R -Mdir="$OUT/csrc" -o "$OUT/simv") ;;
+  # -incdir resolves a missing *module* by filename but not a package, so the two
+  # the bench's flit types come from are named rather than left to the path.
   *)    echo "unsupported SIM=$SIM"; exit 2 ;;
 esac
 
 # shellcheck disable=SC2086
-"${CMD[@]}" tb/tb_hnf_link.sv src/hnf/*.sv $MISC > "$OUT/sim.log" 2>&1
+"${CMD[@]}" include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_link.sv src/hnf/*.sv $MISC > "$OUT/sim.log" 2>&1
 grep -E "^(FAIL|tb_hnf_link:)" "$OUT/sim.log" | sed 's/^/  /'
 
 if grep -q "tb_hnf_link: PASSED" "$OUT/sim.log"; then
