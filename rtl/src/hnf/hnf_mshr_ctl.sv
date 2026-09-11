@@ -70,6 +70,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
+    input  chie_pkg::req_rsvdc_t               li_mshr_rxreq_rsvdc_s0,
     input  wire                                li_mshr_rxreq_stash_sep_s0,
     input  wire                                li_mshr_rxreq_atomic_s0,
     input  wire                                li_mshr_rxreq_atomic_rd_s0,
@@ -203,6 +204,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output wire                                mshr_txreq_dodwt_sx1,
     output wire                                mshr_txreq_tracetag_sx1,
     output chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
+    output chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
 
     //outputs to hnf_link_txrsp_wrap
     output logic                               mshr_txrsp_valid_sx1_q,
@@ -304,6 +306,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::mpam_s                     mshr_mpam_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::req_rsvdc_t                mshr_rsvdc_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_stash_sep_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomic_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomicrd_s1_q;
@@ -1353,6 +1356,15 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            always_ff @(posedge clk)begin : mshr_rsvdc_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_rsvdc_s1_q[entry] <= '0;
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_rsvdc_s1_q[entry] <= li_mshr_rxreq_rsvdc_s0;
+                else
+                    ;
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_atomic_s1_q_timing_logic
                 if(rst == 1'b1)begin
                     mshr_atomic_s1_q[entry]   <= 1'b0;
@@ -1731,7 +1743,10 @@ module hnf_mshr_ctl `HNF_PARAM
             // treat the Snoop response as the whole line.
             assign mshr_snp_full_line_s1[entry]    = (mshr_snp_get_64B_s1[entry] &
                                                       (~mshr_snp_ptl_s1_q[entry] | dbf_mshr_be_full_sx[entry]));
-            assign mshr_snp_memrd_s1[entry]        = (mshr_snp_getall_s1[entry] & ~mshr_l3hit_sx8_q[entry] & ~mshr_dct_s1_q[entry] & ~mshr_snp_full_line_s1[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry]) & (mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] |
+            // Sec 2.5.2 (p.2-87, MUST) bounds TxnID reuse by what is outstanding, and
+            // one MSHR entry is one downstream TxnID -- so the post-snoop fetch does
+            // not arm while this entry's own downstream read is still in flight.
+            assign mshr_snp_memrd_s1[entry]        = (mshr_snp_getall_s1[entry] & ~mshr_mem_rd_busy_sx_q[entry] & ~mshr_l3hit_sx8_q[entry] & ~mshr_dct_s1_q[entry] & ~mshr_snp_full_line_s1[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry]) & (mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] |
                     mshr_ru_s1_q[entry] | mshr_rdnosd_s1_q[entry] | mshr_rc_s1_q[entry] | (mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry])));
             assign mshr_snp_memwr_s1[entry]        = (mshr_snp_get_64B_s1[entry] & mshr_snp_d_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_s1_q[entry] | mshr_ci_s1_q[entry] | mshr_seq_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry]));
             assign mshr_wup_memwr_s1[entry]        = (mshr_wup_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & (mshr_snp_getall_s1[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry])));
@@ -3660,6 +3675,13 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]) & ~mshr_txreq_is_cmo_sx1;
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
     assign mshr_txreq_mpam_sx1        = mshr_mpam_s1_q[mshr_txreq_entry_idx_sx1];
+    // A snoop-filter evict, an SLC eviction and its write-back answer to no
+    // upstream request, so they carry no customer value -- the same three-term
+    // condition Sec 2.9.3 (p.2-129) already puts on their MemAttr above.
+    assign mshr_txreq_rsvdc_sx1       = (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]
+                                       | mshr_txreq_evict_wr_sx1
+                                       | mshr_txreq_icn_wr_sx1) ? '0
+                                      : mshr_rsvdc_s1_q[mshr_txreq_entry_idx_sx1];
 
     //************************************************************************//
 

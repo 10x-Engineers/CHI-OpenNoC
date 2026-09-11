@@ -60,6 +60,12 @@ package chie_pkg;
 `else
   parameter int DAT_RSVDC_WIDTH = 0;
 `endif
+  // Section 13.10.56 (p.13-441) makes the field optional, and a wire cannot be zero
+  // bits wide -- so the plumb between a node's ingress and its egress carries this
+  // padded width instead.
+  parameter int REQ_RSVDC_BUS_WIDTH = (REQ_RSVDC_WIDTH == 0) ? 1 : REQ_RSVDC_WIDTH;
+  typedef logic [REQ_RSVDC_BUS_WIDTH-1:0] req_rsvdc_t;
+
 `ifdef CHIE_MPAM_PRESENT
   parameter int MPAM_WIDTH = 11;
 `else
@@ -461,6 +467,17 @@ package chie_pkg;
     return f.mpam;
 `else
     return mpam_default(f.ns);
+`endif
+  endfunction
+
+  // The one read of REQ RSVDC, so no node needs an `ifdef of its own. With the
+  // field absent there is nothing to propagate, which section 13.10.56 (p.13-441)
+  // leaves IMPLEMENTATION DEFINED anyway.
+  function automatic req_rsvdc_t req_rsvdc_of(req_flit_s f);
+`ifdef CHIE_REQ_RSVDC_WIDTH
+    return f.rsvdc;
+`else
+    return '0;
 `endif
   endfunction
 
