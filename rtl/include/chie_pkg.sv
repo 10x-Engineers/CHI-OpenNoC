@@ -29,6 +29,12 @@
 `ifndef CHIE_DATA_WIDTH
   `define CHIE_DATA_WIDTH 256
 `endif
+// Section 13.10.56 (p.13-441) makes RSVDC optional and its width implementation
+// defined -- "the permitted field widths are 4-bit, 8-bit, 12-bit, 16-bit, 24-bit,
+// and 32-bit", and they "can be different between REQ and DAT channels". A packed
+// struct cannot hold a zero-width member, so the DEFINE's presence is the field's
+// presence and its value is the width; leave it undefined for an interface without
+// the bus. chie_flit_rsvdc_check holds each node's parameter to what is declared here.
 package chie_pkg;
 
   parameter int REQ_ADDR_WIDTH = `CHIE_REQ_ADDR_WIDTH;
@@ -40,6 +46,16 @@ package chie_pkg;
   parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
+`ifdef CHIE_REQ_RSVDC_WIDTH
+  parameter int REQ_RSVDC_WIDTH = `CHIE_REQ_RSVDC_WIDTH;
+`else
+  parameter int REQ_RSVDC_WIDTH = 0;
+`endif
+`ifdef CHIE_DAT_RSVDC_WIDTH
+  parameter int DAT_RSVDC_WIDTH = `CHIE_DAT_RSVDC_WIDTH;
+`else
+  parameter int DAT_RSVDC_WIDTH = 0;
+`endif
 
   // ---------------------------------------------------------------------------
   // Encoded fields. Table 13-x gives each channel its own opcode space and its
@@ -240,10 +256,11 @@ package chie_pkg;
   // DataPull -- are packed unions, which is what makes them one set of bits with
   // several names rather than several fields.
   //
-  // RSVDC is absent: SS16.1 makes its width IMPLEMENTATION DEFINED and every
-  // node in this repo declares it 0. A build that wants it must add it here,
-  // and chie_flit_rsvdc_check enforces that rather than letting the layout
-  // silently disagree with the macro header.
+  // RSVDC sits at the MSB end of the REQ and DAT flits, present only when its width
+  // define is. Section 13.10.56 (p.13-441) gives the field to those two channels and
+  // no other. The MSB end is not a style choice: chi_xp_channel reads QoS at [3:1]
+  // and TgtID at [FLIT_TGT_OFFSET +: NID_WIDTH], so a field added below those would
+  // mis-route every flit in the fabric.
   // ---------------------------------------------------------------------------
   typedef union packed {
     logic excl;
@@ -261,6 +278,9 @@ package chie_pkg;
   } req_stashnidvalid_u;
 
   typedef struct packed {
+`ifdef CHIE_REQ_RSVDC_WIDTH
+    logic [`CHIE_REQ_RSVDC_WIDTH-1:0] rsvdc;
+`endif
     logic                     tracetag;
     logic [1:0]               tagop;
     logic                     expcompack;
@@ -317,6 +337,9 @@ package chie_pkg;
     logic [DATACHECK_WIDTH-1:0] datacheck;
     logic [DATA_WIDTH-1:0]      data;
     logic [BE_WIDTH-1:0]        be;
+`ifdef CHIE_DAT_RSVDC_WIDTH
+    logic [`CHIE_DAT_RSVDC_WIDTH-1:0] rsvdc;
+`endif
     logic                       tracetag;
     logic [TU_WIDTH-1:0]        tu;
     logic [TAG_WIDTH-1:0]       tag;

@@ -10,19 +10,31 @@
 * See the Mulan PSL v2 for more details.
 */
 
-// chie_pkg's REQ and DAT layouts carry no RSVDC field: SS16.1 makes its width
-// IMPLEMENTATION DEFINED and every node here declares it zero. A build that
-// widens it would otherwise get a flit whose fields all sit at the wrong
-// offsets, with nothing to say so -- the widths are parameters, and a struct
-// cannot grow a field from one.
+// A node's RSVDC width parameter and chie_pkg's flit layout are two declarations of
+// one thing, and a struct cannot grow a field from a parameter -- the layout follows
+// the CHIE_*_RSVDC_WIDTH defines. A node that disagrees would get a flit whose fields
+// all sit at the wrong offsets, with nothing to say so, which is what this refuses.
+//
+// Section 13.10.56 (p.13-441) also fixes the legal set: "the permitted field widths are
+// 4-bit, 8-bit, 12-bit, 16-bit, 24-bit, and 32-bit". Zero is the absent field.
 module chie_flit_rsvdc_check #(
     parameter REQ_RSVDC_WIDTH = 0,
     parameter DAT_RSVDC_WIDTH = 0
     ) ();
 
+    function automatic bit width_legal(int unsigned w);
+        return (w == 0) || (w inside {4, 8, 12, 16, 24, 32});
+    endfunction
+
     initial begin
-        if (REQ_RSVDC_WIDTH != 0 || DAT_RSVDC_WIDTH != 0)
-            $fatal(1, "%m: chie_pkg's flit layout has no RSVDC field, but this build declares REQ_RSVDC_WIDTH=%0d DAT_RSVDC_WIDTH=%0d. Add the field to chie_pkg::req_flit_s/dat_flit_s before widening it.",
+        if (REQ_RSVDC_WIDTH != chie_pkg::REQ_RSVDC_WIDTH)
+            $fatal(1, "%m: REQ_RSVDC_WIDTH=%0d but chie_pkg's req_flit_s carries %0d. The layout follows `CHIE_REQ_RSVDC_WIDTH; define it to match, or drop the parameter override.",
+                   REQ_RSVDC_WIDTH, chie_pkg::REQ_RSVDC_WIDTH);
+        if (DAT_RSVDC_WIDTH != chie_pkg::DAT_RSVDC_WIDTH)
+            $fatal(1, "%m: DAT_RSVDC_WIDTH=%0d but chie_pkg's dat_flit_s carries %0d. The layout follows `CHIE_DAT_RSVDC_WIDTH; define it to match, or drop the parameter override.",
+                   DAT_RSVDC_WIDTH, chie_pkg::DAT_RSVDC_WIDTH);
+        if (!width_legal(REQ_RSVDC_WIDTH) || !width_legal(DAT_RSVDC_WIDTH))
+            $fatal(1, "%m: REQ_RSVDC_WIDTH=%0d DAT_RSVDC_WIDTH=%0d -- section 13.10.56 (p.13-441) permits 4/8/12/16/24/32, or zero for an absent field.",
                    REQ_RSVDC_WIDTH, DAT_RSVDC_WIDTH);
     end
 

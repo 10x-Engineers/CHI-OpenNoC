@@ -21,8 +21,8 @@
     parameter AXI4_PA_WIDTH_PARAM        = opennoc_rni_pkg::PA_WIDTH,  \
     parameter AXI4_AXDATA_WIDTH_PARAM    = opennoc_rni_pkg::DATA_WIDTH, \
     parameter CHIE_NID_WIDTH_PARAM       = chie_pkg::NID_WIDTH,  \
-    parameter CHIE_REQ_RSVDC_WIDTH_PARAM = 0,   \
-    parameter CHIE_DAT_RSVDC_WIDTH_PARAM = 0,   \
+    parameter CHIE_REQ_RSVDC_WIDTH_PARAM = chie_pkg::REQ_RSVDC_WIDTH,   \
+    parameter CHIE_DAT_RSVDC_WIDTH_PARAM = chie_pkg::DAT_RSVDC_WIDTH,   \
     parameter CHIE_REQ_ADDR_WIDTH_PARAM  = chie_pkg::REQ_ADDR_WIDTH,  \
     parameter CHIE_SNP_ADDR_WIDTH_PARAM  = chie_pkg::SNP_ADDR_WIDTH,  \
     parameter CHIE_PA_WIDTH_PARAM        = 44,  \
