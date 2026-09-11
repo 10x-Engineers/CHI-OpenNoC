@@ -188,10 +188,8 @@ module hnf_data_buffer `HNF_PARAM
                     end
                     else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAPTL))) begin//merge
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
-                            // SS5.1.5 (p.5-251): the Home "merges the partial Snoop response data
-                            // with the data response from memory", and SS4.4.2 (p.4-196, MUST)
-                            // makes the Snoopee's dirty data what memory is merged INTO -- so a
-                            // byte the Home's own fill supplied is superseded here, not kept.
+                            // SS4.4.2 (p.4-196, MUST) / SS5.1.5 (p.5-251): a byte the Home's
+                            // own fill supplied is superseded here, not kept.
                             temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&(!dbf_be_q[li_dbf_rxdat_txnid_s0][i]||dbf_fill_q[li_dbf_rxdat_txnid_s0][i]))?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
                             temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
@@ -225,8 +223,7 @@ module hnf_data_buffer `HNF_PARAM
             end
 
             // An L3 read is the Home's own image of the line, so it is a fill on the
-            // same terms as a memory CompData: it supplies bytes nothing else has and
-            // a Snoopee's dirty copy still supersedes it.
+            // same terms as a memory CompData.
             always_comb begin//pipe temp data
                 if(pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)begin
                     temp_pipe_data[i*8+:8] = pipe_dbf_wr_data_sx9_q[i*8+:8];
