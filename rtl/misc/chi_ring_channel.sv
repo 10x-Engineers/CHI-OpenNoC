@@ -15,7 +15,9 @@
 */
 
 module chi_ring_channel #(
-        parameter FLIT_WIDTH = 131,
+        // No default, and the field-position assumption behind FLIT_TGT_OFFSET:
+        // see chi_xp_channel.sv, which carries the same two parameters.
+        parameter int FLIT_WIDTH,
         parameter FLIT_TGT_OFFSET = 4,
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN = {4{1'b1}},

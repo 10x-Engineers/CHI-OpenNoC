@@ -388,6 +388,19 @@ package chie_pkg;
     logic [3:0]                 qos;
   } snp_flit_s;
 
+  // CHI E.b section 9.6 (p.9-348): "The DAT packet carries eight Data Check bits per
+  // 64 bits of data. The Data Check bit is a parity bit that generates Odd Byte
+  // parity." One bit per data byte, so DATACHECK_WIDTH == BE_WIDTH.
+  //
+  // Bit i covers byte lane i. Section 13.10.52 (p.13-436) says only that a bit supplies
+  // parity "for the corresponding byte of Data" and never fixes the mapping, so this
+  // is a declared convention rather than a derived one -- it matches the CHI VIP's
+  // chi_pkg::compute_datacheck(), and a peer that orders the bits differently would
+  // disagree on every beat. See README section 2.4.
+  function automatic logic [DATACHECK_WIDTH-1:0] datacheck_of(logic [DATA_WIDTH-1:0] data);
+    for (int i = 0; i < DATACHECK_WIDTH; i++) datacheck_of[i] = ~(^data[i*8 +: 8]);
+  endfunction
+
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);
   parameter int RSP_FLIT_WIDTH = $bits(rsp_flit_s);
   parameter int DAT_FLIT_WIDTH = $bits(dat_flit_s);
