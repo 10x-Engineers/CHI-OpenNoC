@@ -56,6 +56,7 @@ module rni_awctrl `RNI_PARAM
     output wire                                awctrl_pcrdgnt_h_present_d3_o,
     output wire                                awctrl_pcrdgnt_l_present_d3_o,
     input  wire                                awctrl_pcrdgnt_h_win_d3_i,
+    output wire                                awctrl_entry_any_v_o,
     input  wire                                awctrl_pcrdgnt_l_win_d3_i,
 
     output wire                                awctrl_alloc_valid_s2_o,
@@ -74,6 +75,7 @@ module rni_awctrl `RNI_PARAM
 
     // txdatflit request
     input  wire                                wb_not_busy_d1_i,
+    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_i,
     output wire                                awctrl_txdat_rdy_v_d2_o,
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_txdat_rdy_entry_d2_o,
     output logic [3:0]                         awctrl_txdat_qos_d2_o,
@@ -181,6 +183,9 @@ module rni_awctrl `RNI_PARAM
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  rxrsp_comp_recv_vec_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_rdy_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  wdata_recv_done_ns_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_line_sized_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_full_pending_w;
+    logic                                aw_full_write_r;
     wire                                 txdat_select_entry_two_packets_w;
     wire                                 txdat_select_new_entry_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_vec_ns_w;
@@ -785,7 +790,27 @@ module rni_awctrl `RNI_PARAM
     // Sec 2.8.2's Note (p.2-115) leaves the endpoint address range IMPLEMENTATION
     // DEFINED, so the scope cannot be narrowed below what this bridge can prove --
     // the same choice the AR path makes.
-    assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]
+    // Table 4-13 (SS4.2.3 p.4-178) gives WriteNoSnpFull / WriteUniqueFull Size=64
+    // where the Ptl forms take <=64, so only a whole-line segment can be a Full
+    // write at all.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_line_sized
+            assign aw_line_sized_w[entry] = (awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0] == chie_pkg::SIZE_64B);
+        end
+    endgenerate
+
+    // SS2.10.3 (p.2-135, MUST) requires all byte enables asserted on a Full write,
+    // and those live on the W channel -- so a whole-line entry holds its request
+    // until its last beat has landed and the opcode is decidable. The cost is the
+    // REQ/DBID round trip no longer overlapping the write data, which is bounded by
+    // one line of AXI beats; the data itself could not have been sent any earlier,
+    // since TXDAT already waits on the same wdata_recv_done_q.
+    // This is also what keeps SS2.11 (p.2-145, MUST)'s "must have the same field
+    // values as the original request" true of a reissue: the strobes are complete
+    // before the first attempt, so the retried request re-derives the same opcode.
+    assign aw_full_pending_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = aw_line_sized_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
+    assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~aw_full_pending_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]
              & ~({RNI_AW_ENTRIES_NUM_PARAM{awctrl_ordered_pending_any_w}} & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])
              & ~({RNI_AW_ENTRIES_NUM_PARAM{arctrl_device_ordered_pending_i}} & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign awctrl_entry_req_hi_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
@@ -933,15 +958,28 @@ module rni_awctrl `RNI_PARAM
             aw_excl_r = aw_excl_r | (awctrl_entry_req_ptr_q[i] & awctrl_entry_excl_q[i]);
     end
 
+    always_comb begin: aw_full_write_sel
+        aw_full_write_r = 1'b0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+            aw_full_write_r = aw_full_write_r | (awctrl_entry_req_ptr_q[i] & aw_line_sized_w[i] &
+                                                 wdata_recv_done_q[i] & wb_entry_all_be_i[i]);
+    end
+
     always_comb begin
         aw_txreqflit_info_r = '0;
         aw_txreqflit_info_r.tgtid = aw_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         aw_txreqflit_info_r.srcid = RNI_NID_PARAM;
         aw_txreqflit_info_r.txnid = aw_txreq_txnid_r[11:0];
-        // Table 4-13 (p.4-178) gives the Non-snoopable write both a Full and a
-        // Partial form; this Requester's write path is byte-enabled throughout,
-        // so the partial one is what it can always honour.
-        aw_txreqflit_info_r.opcode = aw_cacheable_w ? chie_pkg::REQ_WRITEUNIQUEPTL : chie_pkg::REQ_WRITENOSNPPTL;
+        // Table 4-13 (p.4-178) gives the Non-snoopable and Snoopable writes both a
+        // Full and a Partial form. SS2.10.3 (p.2-135) lets a *Ptl write assert any
+        // combination "including asserting all", so the Partial form is always
+        // legal -- but a Full write is a different transaction at the Completer
+        // (Table 4-24 p.4-195 answers WriteUniqueFull with SnpMakeInvalid, which
+        // returns no data, where the Ptl form's snoop feeds a read-modify-write),
+        // so a whole-line write is issued as one.
+        aw_txreqflit_info_r.opcode = aw_cacheable_w
+            ? (aw_full_write_r ? chie_pkg::REQ_WRITEUNIQUEFULL : chie_pkg::REQ_WRITEUNIQUEPTL)
+            : (aw_full_write_r ? chie_pkg::REQ_WRITENOSNPFULL  : chie_pkg::REQ_WRITENOSNPPTL);
         aw_txreqflit_info_r.allowretry = ~awctrl_entry_req_select_retry_flag_q;
         // Table 2-11's Device rows carry Order=EndpointOrder; on a Normal row
         // this Requester keeps its Ordered-Write-Observation stream, which
@@ -1056,6 +1094,11 @@ module rni_awctrl `RNI_PARAM
     assign rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
+    // SS2.11 (p.2-145, MUST): a credit may arrive before the RetryAck it belongs
+    // to, so rni_misc must keep it while any request of this channel can still be
+    // retried. An allocated entry is exactly that.
+    assign awctrl_entry_any_v_o = |awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
     assign awctrl_pcrdgnt_h_present_d3_o = rxrsp_pcrdtype_hi_match_d3_q;
     assign awctrl_pcrdgnt_l_present_d3_o = rxrsp_pcrdtype_lo_match_d3_q;
     assign rxrsp_pcrdtype_hi_select_w = awctrl_pcrdgnt_h_win_d3_i & rxrsp_pcrdtype_hi_match_d3_q;

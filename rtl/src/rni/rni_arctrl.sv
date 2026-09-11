@@ -52,6 +52,7 @@ module rni_arctrl
     output wire                             arctrl_pcrdgnt_h_present_d3_o,
     output wire                             arctrl_pcrdgnt_l_present_d3_o,
     input  wire                             ar_pcrdgnt_h_win_d3_i,
+    output wire                             arctrl_entry_any_v_o,
     input  wire                             ar_pcrdgnt_l_win_d3_i,
 
     // rni_aw_ctl Interface -- Sec 2.9.4's (p.2-130) cross-kind Device ordering
@@ -805,6 +806,11 @@ module rni_arctrl
     assign arctrl_device_ordered_pending_o = |(arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
+    // SS2.11 (p.2-145, MUST): a credit may arrive before the RetryAck it belongs
+    // to, so rni_misc must keep it while any request of this channel can still be
+    // retried. An allocated entry is exactly that.
+    assign arctrl_entry_any_v_o = |arctrl_entry_v_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+
     assign arctrl_pcrdgnt_h_present_d3_o = rxrsp_pcrdtype_hi_match_d3_q;
     assign arctrl_pcrdgnt_l_present_d3_o = rxrsp_pcrdtype_lo_match_d3_q;
     assign rxrsp_pcrdtype_hi_select_w = ar_pcrdgnt_h_win_d3_i & rxrsp_pcrdtype_hi_match_d3_q;

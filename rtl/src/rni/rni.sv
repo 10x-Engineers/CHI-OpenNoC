@@ -155,6 +155,12 @@ module rni `RNI_PARAM
     wire                                awctrl_txrspflitv_d0;
     wire                                awctrl_txrspflit_sent_d0;
     chie_pkg::req_flit_s                awctrl_txreqflit_s4;
+    chie_pkg::req_flit_s                misc_txreqflit_s4;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be;
+    wire                                misc_txreqflitv_s4;
+    wire                                misc_txreqflit_sent_s4;
+    wire                                arctrl_entry_any_v;
+    wire                                awctrl_entry_any_v;
     wire                                awctrl_txreqflitv_s4;
     wire                                awctrl_txreqflit_sent_s4;
     wire                                awctrl_alloc_valid_s2;
@@ -287,6 +293,7 @@ module rni `RNI_PARAM
                    ,.arctrl_pcrdgnt_l_present_d3_o         ( arctrl_pcrdgnt_l_present_d3   )
                    ,.ar_pcrdgnt_h_win_d3_i                 ( ar_pcrdgnt_h_win_d3           )
                    ,.ar_pcrdgnt_l_win_d3_i                 ( ar_pcrdgnt_l_win_d3           )
+                   ,.arctrl_entry_any_v_o                  ( arctrl_entry_any_v            )
                    ,.arctrl_device_ordered_pending_o       ( arctrl_device_ordered_pending )
                    ,.awctrl_device_ordered_pending_i       ( awctrl_device_ordered_pending )
                );
@@ -312,6 +319,11 @@ module rni `RNI_PARAM
                  ,.ar_pcrdgnt_h_win_d3_o                 ( ar_pcrdgnt_h_win_d3           )
                  ,.aw_pcrdgnt_l_win_d3_o                 ( aw_pcrdgnt_l_win_d3           )
                  ,.aw_pcrdgnt_h_win_d3_o                 ( aw_pcrdgnt_h_win_d3           )
+                 ,.arctrl_entry_any_v_i                  ( arctrl_entry_any_v            )
+                 ,.awctrl_entry_any_v_i                  ( awctrl_entry_any_v            )
+                 ,.misc_txreqflit_s4_o                   ( misc_txreqflit_s4             )
+                 ,.misc_txreqflitv_s4_o                  ( misc_txreqflitv_s4            )
+                 ,.misc_txreqflit_sent_s4_i              ( misc_txreqflit_sent_s4        )
              );
 
     rni_awctrl `RNI_PARAM_INST
@@ -336,6 +348,7 @@ module rni `RNI_PARAM
                    ,.awctrl_pcrdgnt_l_present_d3_o         ( aw_pcrdgnt_l_present_d3       )
                    ,.awctrl_pcrdgnt_h_win_d3_i             ( aw_pcrdgnt_h_win_d3           )
                    ,.awctrl_pcrdgnt_l_win_d3_i             ( aw_pcrdgnt_l_win_d3           )
+                   ,.awctrl_entry_any_v_o                  ( awctrl_entry_any_v            )
                    ,.awctrl_alloc_valid_s2_o               ( awctrl_alloc_valid_s2         )
                    ,.awctrl_alloc_entry_s2_o               ( awctrl_alloc_entry_s2         )
                    ,.awctrl_ctmask_s2_o                    ( awctrl_ctmask_s2              )
@@ -346,6 +359,7 @@ module rni `RNI_PARAM
                    ,.wb_req_done_d3_i                      ( wb_req_done_d3                )
                    ,.wb_req_entry_d3_i                     ( wb_req_entry_d3               )
                    ,.wb_not_busy_d1_i                      ( wb_not_busy_d1                )
+                   ,.wb_entry_all_be_i                     ( wb_entry_all_be               )
                    ,.awctrl_txdat_rdy_v_d2_o               ( awctrl_txdat_rdy_v_d2         )
                    ,.awctrl_txdat_rdy_entry_d2_o           ( awctrl_txdat_rdy_entry_d2     )
                    ,.awctrl_txdat_qos_d2_o                 ( awctrl_txdat_qos_d2           )
@@ -399,6 +413,7 @@ module rni `RNI_PARAM
                       ,.B_CH_S0                               ( B_CH_S0                       )
                       ,.BVALID0                               ( BVALID0                       )
                       ,.BREADY0                               ( BREADY0                       )
+                      ,.wb_entry_all_be_o                     ( wb_entry_all_be               )
                       ,.wb_txdatflit_d3_o                     ( wb_txdatflit_d3               )
                       ,.wb_txdatflitv_d3_o                    ( wb_txdatflitv_d3              )
                       ,.wb_txdatflit_sent_d3_i                ( wb_txdatflit_sent_d3          )
@@ -455,6 +470,9 @@ module rni `RNI_PARAM
                      ,.aw_txreqflit_s4_i                     ( awctrl_txreqflit_s4           )
                      ,.aw_txreqflitv_s4_i                    ( awctrl_txreqflitv_s4          )
                      ,.aw_txreqflit_sent_s4_o                ( awctrl_txreqflit_sent_s4      )
+                     ,.misc_txreqflit_s4_i                   ( misc_txreqflit_s4             )
+                     ,.misc_txreqflitv_s4_i                  ( misc_txreqflitv_s4            )
+                     ,.misc_txreqflit_sent_s4_o              ( misc_txreqflit_sent_s4        )
 
                      // outputs to rni_arctrl/rni_awctrl/rni_rd_buffer/rni_misc
                      ,.rxrspflitv_d1_o                       ( rxrspflitv_d1                 )

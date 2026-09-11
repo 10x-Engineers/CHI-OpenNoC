@@ -92,9 +92,11 @@ package opennoc_rni_pkg;
     r_ch_s                    r;
   } r_bc_s;
 
-  // What the RSP parse stage forwards to the AR and AW controllers when a
-  // PCrdGrant lands: the grant has to be matched to the request that was
-  // retried, which SS2.11 (p.2-145) keys on the pair plus PCrdType.
+  // The one held credit rni_misc offers the AR and AW controllers at a time.
+  // SS2.11 (p.2-146) gives a credit no identity beyond its type -- "There is no
+  // fixed relationship between credits and particular transactions" -- so this is
+  // an offer of a PCrdType, named with the node IDs SS2.6.5 (p.2-112) fixes for
+  // the grant that produced it, not a copy of one arrived flit.
   typedef struct packed {
     logic [3:0]                     pcrdtype;
     logic [chie_pkg::NID_WIDTH-1:0] srcid;
