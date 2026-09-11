@@ -34,12 +34,23 @@
 // holds the two equal. Fields are appended at the MSB end, so adding MTE's Tag/TU
 // later does not move Poison.
 //
+// CHI E.b section 11.3 (p.11-365) gives MPAM the address channels, and section 11.3.4
+// (p.11-366, MUST) makes a Home's downstream request carry the MPAM of the request that
+// generated it -- at an HN-I that downstream face is this AXI port. The width does not
+// follow `CHIE_MPAM_PRESENT: AXI USER has no presence property and a zero-width port is
+// illegal, so the sideband is always here and the CHI side decides what reads it.
+//
 //   W/RUSER[P-1:0]   Poison,  P = data width / 64
+//   AW/ARUSER[10:0]  MPAM,    section 11.3 Figure 11-3's subdivision
 // ---------------------------------------------------------------------------
 `define AXI4_POISON_WIDTH        (`AXI4_WDATA_WIDTH/64)
 `define AXI4_WUSER_WIDTH         `AXI4_POISON_WIDTH
 `define AXI4_RUSER_WIDTH         `AXI4_POISON_WIDTH
 `define AXI4_USER_POISON_RANGE   `AXI4_POISON_WIDTH-1:0
+`define AXI4_MPAM_WIDTH          11
+`define AXI4_AWUSER_WIDTH        `AXI4_MPAM_WIDTH
+`define AXI4_ARUSER_WIDTH        `AXI4_MPAM_WIDTH
+`define AXI4_USER_MPAM_RANGE     `AXI4_MPAM_WIDTH-1:0
 
 // AXI4 interface
 // AXI4 write address channel fields
@@ -83,7 +94,6 @@
 `define AXI4_AWREGION_LSB     AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4
 `define AXI4_AWREGION_MSB     AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1
 `define AXI4_AWREGION_RANGE   AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1:AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4
-`define AXI4_AW_WIDTH         AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4
 `define AXI4_AW_RANGE         AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1:0
 
 // AXI4 write data channel fields
@@ -154,7 +164,6 @@
 `define AXI4_ARREGION_LSB     AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4
 `define AXI4_ARREGION_MSB     AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1
 `define AXI4_ARREGION_RANGE   AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1:AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4
-`define AXI4_AR_WIDTH         AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4
 `define AXI4_AR_RANGE         AXI4_PA_WIDTH_PARAM+11+8+3+2+1+4+3+4+4-1:0
 
 // AXI4 read data channel fields

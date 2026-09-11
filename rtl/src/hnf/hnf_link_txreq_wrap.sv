@@ -46,6 +46,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  chie_pkg::memattr_s                 mshr_txreq_bypass_memattr_s1,
     input  wire                                mshr_txreq_bypass_dodwt_s1,
     input  wire                                mshr_txreq_bypass_tracetag_s1,
+    input  chie_pkg::mpam_s                    mshr_txreq_bypass_mpam_s1,
 
     //inputs from hnf_mshr_ctl
     input  wire                                mshr_txreq_valid_sx1_q,
@@ -63,6 +64,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     input  wire                                mshr_txreq_dodwt_sx1,
     input  wire                                mshr_txreq_tracetag_sx1,
+    input  chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
 
     //outputs to hnf_link
     output logic                               txreqflitv,
@@ -154,6 +156,11 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_bypass_s1.expcompack   = '0;
         txreqflit_bypass_s1.tagop        = '0;
         txreqflit_bypass_s1.tracetag     =  mshr_txreq_bypass_tracetag_s1;
+`ifdef CHIE_MPAM_PRESENT
+        // Sec 11.3.4 (p.11-366, MUST): the MPAM values in a request to the
+        // Subordinate must be those of the request to the Home that generated it.
+        txreqflit_bypass_s1.mpam         =  mshr_txreq_bypass_mpam_s1;
+`endif
     end
 
     always_comb begin
@@ -179,6 +186,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1.expcompack     = '0;
         txreqflit_sx1.tagop          = '0;
         txreqflit_sx1.tracetag       = mshr_txreq_tracetag_sx1;
+`ifdef CHIE_MPAM_PRESENT
+        txreqflit_sx1.mpam           = mshr_txreq_mpam_sx1;   // Sec 11.3.4, as above
+`endif
     end
 
     assign txreqflit_s0 = ({chie_pkg::REQ_FLIT_WIDTH{txreq_mshr_bypass_won_s1}} & txreqflit_bypass_s1) |

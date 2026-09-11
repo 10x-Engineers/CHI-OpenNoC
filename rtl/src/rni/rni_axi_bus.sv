@@ -30,6 +30,7 @@ module rni_axi_bus `RNI_PARAM
     input  wire [`AXI4_AWPROT_WIDTH-1:0]   AWPROT0,
     input  wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS0,
     input  wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
+    input  wire [`AXI4_AWUSER_WIDTH-1:0]   AWUSER0,
     output opennoc_rni_pkg::ax_ch_s        AW_CH_S0,
 
     // W Channel0
@@ -55,6 +56,7 @@ module rni_axi_bus `RNI_PARAM
     input  wire [`AXI4_ARPROT_WIDTH-1:0]   ARPROT0,
     input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0,
     input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
+    input  wire [`AXI4_ARUSER_WIDTH-1:0]   ARUSER0,
     output opennoc_rni_pkg::ax_ch_s        AR_CH_S0,
 
     // R Channel0
@@ -77,6 +79,7 @@ module rni_axi_bus `RNI_PARAM
     assign AW_CH_S0.prot      = AWPROT0;
     assign AW_CH_S0.qos       = AWQOS0;
     assign AW_CH_S0.region    = AWREGION0;
+    assign AW_CH_S0.user      = AWUSER0;
 
     assign W_CH_S0.data        = WDATA0;
     assign W_CH_S0.strb        = WSTRB0;
@@ -93,6 +96,7 @@ module rni_axi_bus `RNI_PARAM
     assign AR_CH_S0.prot      = ARPROT0;
     assign AR_CH_S0.qos       = ARQOS0;
     assign AR_CH_S0.region    = ARREGION0;
+    assign AR_CH_S0.user      = ARUSER0;
 
     assign BID0   = B_CH_S0.id;
     assign BRESP0 = B_CH_S0.resp;

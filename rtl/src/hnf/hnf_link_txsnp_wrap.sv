@@ -40,6 +40,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     input  wire                                mshr_txsnp_ns_sx1,
     input  wire                                mshr_txsnp_rettosrc_sx1,
     input  wire                                mshr_txsnp_tracetag_sx1,
+    input  chie_pkg::mpam_s                    mshr_txsnp_mpam_sx1,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_rn_vec_sx1,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_stash_vec_sx1,
     input  chie_pkg::snp_opcode_e              mshr_txsnp_stash_opcode_sx1,
@@ -179,6 +180,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             txsnpflit_base_s0.flit.donotgotosd  = {1{1'b1}};
             txsnpflit_base_s0.flit.rettosrc     = mshr_txsnp_rettosrc_sx1;
             txsnpflit_base_s0.flit.tracetag     = mshr_txsnp_tracetag_sx1;
+`ifdef CHIE_MPAM_PRESENT
+            // Sec 11.3 (p.11-365, MUST): MPAM is applicable only in Stash snoops; in
+            // every other snoop it carries Table 11-5's (p.11-366) default settings.
+            txsnpflit_base_s0.flit.mpam         = chie_pkg::mpam_default(mshr_txsnp_ns_sx1);
+`endif
             //configure tgtid in txsnpflit
             txsnpflit_base_s0.tgtid = rnid_list_array[found_rn_vec_num];
         end
@@ -196,6 +202,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             txsnpflit_s0.flit.opcode   = stash_opcode_sel;
             txsnpflit_s0.flit.fwdtxnid = {6'b0, stash_lpid_sel};
             txsnpflit_s0.flit.rettosrc = 1'b0;
+`ifdef CHIE_MPAM_PRESENT
+            // Sec 11.3.3 (p.11-366, MUST): "MPAM values in Stash snoops must be the
+            // same as in the request that generated the snoops."
+            txsnpflit_s0.flit.mpam     = mshr_txsnp_mpam_sx1;
+`endif
         end
     end
 

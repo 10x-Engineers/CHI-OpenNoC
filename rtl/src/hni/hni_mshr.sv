@@ -109,6 +109,7 @@ module hni_mshr `HNI_PARAM
     output wire [`AXI4_ARCACHE_WIDTH-1:0]      arcache_sx,
     output wire [`AXI4_ARPROT_WIDTH-1:0]       arprot_sx,
     output wire [`AXI4_ARQOS_WIDTH-1:0]        arqos_sx,
+    output wire [`AXI4_ARUSER_WIDTH-1:0]       aruser_sx,
     output wire [`AXI4_ARREGION_WIDTH-1:0]     arregion_sx,
     output logic                               arvalid_sx,
     input  wire                                arready_sx,
@@ -122,6 +123,7 @@ module hni_mshr `HNI_PARAM
     output wire [`AXI4_AWCACHE_WIDTH-1:0]      awcache_sx,
     output wire [`AXI4_AWPROT_WIDTH-1:0]       awprot_sx,
     output wire [`AXI4_AWQOS_WIDTH-1:0]        awqos_sx,
+    output wire [`AXI4_AWUSER_WIDTH-1:0]       awuser_sx,
     output wire [`AXI4_AWREGION_WIDTH-1:0]     awregion_sx,
     output logic                               awvalid_sx,
     input  wire                                awready_sx,
@@ -151,6 +153,7 @@ module hni_mshr `HNI_PARAM
     chie_pkg::order_e                       rxreq_order_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_expcompack_s1_q;
     logic                                   rxreq_tracetag_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    chie_pkg::mpam_s                        rxreq_mpam_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [7:0]                             rxreq_lpid_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_excl_pass_s2_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_excl_fail_s2_q;
@@ -273,6 +276,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_excl_s0;
     wire                                   rxreq_expcompack_s0;
     wire                                   rxreq_tracetag_s0;
+    chie_pkg::mpam_s                       rxreq_mpam_s0;
     wire                                   rxreq_rd_s0;
     wire                                   rxreq_wrf_s0;
     wire                                   rxreq_wrp_s0;
@@ -370,6 +374,8 @@ module hni_mshr `HNI_PARAM
     assign rxreq_excl_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.excl          :'0;
     assign rxreq_expcompack_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.expcompack    :'0;
     assign rxreq_tracetag_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.tracetag      :'0;
+    assign rxreq_mpam_s0       = (rxreq_alloc_en_s0 == 1'b1)? chie_pkg::req_mpam_of(rxreq_alloc_flit_s0)
+                                                            : chie_pkg::mpam_default(1'b0);
     assign rxreq_rd_s0         = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)|(rxreq_opcode_s0 == chie_pkg::REQ_READONCE)|(rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN)|(rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)|(rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)) :1'b0;
     assign rxreq_wrf_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)|rxreq_cwf_s0|rxreq_wrzero_s0):1'b0;
     assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|rxreq_cwp_s0):1'b0;
@@ -721,6 +727,17 @@ module hni_mshr `HNI_PARAM
                     rxreq_tracetag_s1_q[entry] <= '0;
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)
                     rxreq_tracetag_s1_q[entry] <= rxreq_tracetag_s0;
+            end
+
+            // Section 11.3.4 (p.11-366, MUST): the downstream request this entry drives
+            // must carry the MPAM of the request to the Home that generated it.
+            always_ff @(posedge clk or posedge rst)begin : mshr_mpam_s1_q_logic
+                if(rst == 1'b1)
+                    rxreq_mpam_s1_q[entry] <= '0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_mpam_s1_q[entry] <= '0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_mpam_s1_q[entry] <= rxreq_mpam_s0;
             end
 
             //ADDR[5:4]:identifies the critical chunk
@@ -1365,6 +1382,7 @@ module hni_mshr `HNI_PARAM
     assign arlock_sx        = 1'b0;
     assign arprot_sx        = {1'b0,rxreq_ns_s1_q[arvalid_entry_idx_s1_q],1'b0};
     assign arqos_sx         = rxreq_qos_s1_q[arvalid_entry_idx_s1_q];
+    assign aruser_sx        = rxreq_mpam_s1_q[arvalid_entry_idx_s1_q];
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
     assign arlen_sx         = rxreq_axlen_s1_q[arvalid_entry_idx_s1_q];
     assign arsize_sx        = rxreq_axsize_s1_q[arvalid_entry_idx_s1_q];
@@ -1499,6 +1517,7 @@ module hni_mshr `HNI_PARAM
     assign awcache_sx[2]    = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][2];
     assign awcache_sx[3]    = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][3];
     assign awqos_sx         = rxreq_qos_s1_q[awvalid_entry_idx_s2_q];
+    assign awuser_sx        = rxreq_mpam_s1_q[awvalid_entry_idx_s2_q];
     assign awprot_sx        = {1'b0,rxreq_ns_s1_q[awvalid_entry_idx_s2_q],1'b0};       
     assign awlen_sx         = rxreq_axlen_s1_q[awvalid_entry_idx_s2_q];
     assign awsize_sx        = rxreq_axsize_s1_q[awvalid_entry_idx_s2_q];

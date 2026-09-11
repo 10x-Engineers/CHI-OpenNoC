@@ -62,7 +62,7 @@ anything around it.
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way; see [Verification](#verification). |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. See [Types, not bit ranges](#types-not-bit-ranges). |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
-| ⚠️ **Feature-incomplete against the spec** | MTE, MPAM and DVM are not implemented. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
+| ⚠️ **Feature-incomplete against the spec** | MTE and DVM are not implemented. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
 
 The [open issue tracker](https://github.com/10x-Engineers/CHI-OpenNoC/issues) is
@@ -208,11 +208,14 @@ Three consequences worth knowing:
   `CHIE_REQ_ADDR_WIDTH` and `CHIE_DATA_WIDTH` default in `chie_pkg.sv` and are
   overridable at compile time; each node's `*_param.svh` derives its own
   `CHIE_*_WIDTH_PARAM` from them, so a node cannot disagree with the package.
-- **RSVDC is present only when declared.** Section 13.10.56 makes the field optional
-  and its width implementation defined, and a packed struct cannot hold a zero-width
-  member — so `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` being *defined* is what
-  puts it in the layout, at that width. `chie_flit_rsvdc_check` holds each node's
-  parameter to the package rather than letting the layout silently shift.
+- **RSVDC and MPAM are present only when declared.** Section 13.10.56 makes RSVDC
+  optional and its width implementation defined, and section 11.3 gives MPAM a width
+  of "either 0 bits or 11 bits"; a packed struct cannot hold a zero-width member — so
+  `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` being *defined*
+  is what puts each in the layout. `chie_flit_opt_check` holds every node's parameter
+  to the package rather than letting the layout silently shift, and `tools/lint.sh`
+  lints each node a second time with all of them declared — the default build compiles
+  none of the code that carries them.
 
 `chi_chan_if.sv` bundles one channel's link-layer signals (flit, FLITV, FLITPEND,
 LCRDV) with `tx`/`rx` modports. Node **port lists stay flat** — an integrator wires
@@ -393,8 +396,8 @@ neither issues a snoop and neither has a SNP port.
 | Stash | ⚪ | ⚪ | — | 🟢 | the HN-F snoops the named Stash target (Table 7-1 p.7-295) and serves the Read that section 7.1.1's (p.7-295) Data Pull implies, addressed per section 2.6 step 6 (p.2-110). A request naming no target completes without stashing, which is section 7.4.2 (p.7-299) |
 | System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
-| MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_pkg`'s `req_flit_s` and `snp_flit_s` — the field is not in the layout — [#165](https://github.com/10x-Engineers/CHI-OpenNoC/issues/165) |
-| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_rsvdc_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Not propagated across the Home**: the same section makes propagation implementation defined, and the HN-F drops it — [#180](https://github.com/10x-Engineers/CHI-OpenNoC/issues/180) |
+| MPAM | 🟢 | 🟢 | 🟢 | 🟢 | in the REQ and SNP layout when `CHIE_MPAM_PRESENT` is defined, so `MPAM_Support = MPAM_9_1` (section 16.1 p.16-471); section 11.3 (p.11-365) makes the width 0 or 11 and Figure 11-3 the subdivision, both in `chie_pkg::mpam_s`. The RN-I sources the label from `ARUSER`/`AWUSER` verbatim, MPAMNS included, so a manager that does not use MPAM must itself drive Table 11-5's defaults there — the bridge cannot tell that case from a label whose subfields happen to be zero. The HN-I, SN-F and HN-F latch it per tracker entry. Section 11.3.4's (p.11-366, MUST) propagation lands on the HN-F's `TXREQ` and, the HN-I and SN-F having no downstream CHI port, on their AXI `AWUSER`/`ARUSER`. Section 11.3 (p.11-365) makes MPAM applicable only in Stash snoops, so `hnf_link_txsnp_wrap.sv` builds every snoop with Table 11-5's (p.11-366) defaults and its Stash-target override carries the generating request's own label (section 11.3.3 p.11-366) |
+| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_opt_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Not propagated across the Home**: the same section makes propagation implementation defined, and the HN-F drops it — [#180](https://github.com/10x-Engineers/CHI-OpenNoC/issues/180) |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | `chie_pkg::datacheck_of()` at each node's DAT builder, so `Data_Check = Odd_Parity` and `Check_Type = Odd_Parity_Byte_Data` (section 16.1 p.16-470/16-471). Sourced, not checked: section 9.6 (p.9-348) puts the parity obligation on the Transmitter, and section 9.8's (p.9-352) conversion MUST applies only where support differs across the interface, which it does not here. **Bit i covers byte lane i** — section 13.10.52 (p.13-436) never fixes the mapping, so a peer must adopt the same convention |
 | Poison | 🟢 | 🟢 | 🟢 | 🟢 | section 9.5 (p.9-347, MUST): "the Poison value, once set, must be propagated along with the data". Each node holds the tag beside the bytes it tags — per MSHR entry in `snf_data_buffer.sv` / `hni_data_buffer.sv`, per chunk in `hnf_data_buffer.sv` plus a mask SRAM on the L3's own index and way strobes, per bank in `rni_wr_buffer.sv` / `rni_rd_buffer.sv` — and sources it on every response it builds off that line. Across AXI it rides the `WUSER`/`RUSER` sideband `axi4_defines.svh` declares, AXI4 having no poison bit of its own. So `Data_Poison = True` (section 16.1 p.16-470) at all four nodes |
 | Error propagation (`RespErr`) | 🟢 | 🟢 | 🟢 | 🟢 | the SN-F and HN-I latch `RRESP`/`BRESP` per entry and report them, all-or-none across the packets of one read message (section 9.4.1); the HN-F parses inbound `RespErr` on both RX channels and passes it back, keeping `DERR` and `NDERR` distinct (section 9.1, section 9.2) |
@@ -492,7 +495,7 @@ Requester — each one an issue on this repository naming the clause it violated
 │   │   └── {hnf,hni,rni,snf}_{param,defines}.svh
 │   ├── misc/                  Shared modules: chi_link_handshake (Chapter 14 FSM),
 │   │                          crosspoint channels, FIFO, arbiters, BIQ,
-│   │                          assert_checker, chie_flit_rsvdc_check
+│   │                          assert_checker, chie_flit_opt_check
 │   ├── src/
 │   │   ├── hnf/               HN-F  (24 files) — link, MSHR, cache pipeline, SRAMs
 │   │   ├── hni/               HN-I  (10 files)

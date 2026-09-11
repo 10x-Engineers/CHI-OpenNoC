@@ -252,7 +252,7 @@ module rni_arctrl
                 end
                 else begin
                     if(arctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
-                        arctrl_entry_info_q[entry][`AXI4_AR_WIDTH-1:0] <= arlink_arbus_s1_w[`AXI4_AR_WIDTH-1:0];
+                        arctrl_entry_info_q[entry] <= arlink_arbus_s1_w;
                     end
                 end
             end
@@ -729,6 +729,12 @@ module rni_arctrl
                                ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
             // Table 2-11 gives no non-cacheable row an Allocate value.
             ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i].cache[2]);
+`ifdef CHIE_MPAM_PRESENT
+            // Sec 11.3 (p.11-365, MUST): the whole MPAM label is the sender's, so it
+            // crosses verbatim from ARUSER -- see axi4_defines.svh for the layout.
+            ar_txreqflit_info_r.mpam = chie_pkg::mpam_s'(ar_txreqflit_info_r.mpam |
+                ({chie_pkg::MPAM_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].user));
+`endif
         end
     end
 
