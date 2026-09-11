@@ -38,6 +38,8 @@ module hnf_link_rxdat_parse `HNF_PARAM
     //outputs to hnf_mshr
     output wire                            li_mshr_rxdat_valid_s0,
     output wire [11:0]                     li_mshr_rxdat_txnid_s0,
+    output wire [chie_pkg::NID_WIDTH-1:0]  li_mshr_rxdat_srcid_s0,
+    output wire [11:0]                     li_mshr_rxdat_dbid_s0,
     output chie_pkg::dat_opcode_e          li_mshr_rxdat_opcode_s0,
     output chie_pkg::resp_state_e          li_mshr_rxdat_resp_s0,
     output chie_pkg::resp_err_e            li_mshr_rxdat_resperr_s0,
@@ -85,6 +87,8 @@ module hnf_link_rxdat_parse `HNF_PARAM
                                        (rxdatflit.opcode == chie_pkg::DAT_DATLCRDRETURN);
     assign li_mshr_rxdat_valid_s0    = (rxdatflitv == 1'b1) && !rxdat_link_flit_s0;
     assign li_mshr_rxdat_txnid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.txnid    : '0;
+    assign li_mshr_rxdat_srcid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.srcid    : '0;
+    assign li_mshr_rxdat_dbid_s0     = li_mshr_rxdat_valid_s0? rxdatflit.dbid     : '0;
     assign li_mshr_rxdat_opcode_s0   = li_mshr_rxdat_valid_s0? rxdatflit.opcode   : chie_pkg::DAT_DATLCRDRETURN;
     assign li_mshr_rxdat_resp_s0     = li_mshr_rxdat_valid_s0? rxdatflit.resp     : chie_pkg::RESP_I;
     assign li_mshr_rxdat_resperr_s0  = li_mshr_rxdat_valid_s0? rxdatflit.resperr  : chie_pkg::RESP_ERR_NORM_OK;

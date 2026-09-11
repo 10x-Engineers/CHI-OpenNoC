@@ -84,6 +84,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //inputs related to data handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxdat_valid_s0,
     input  wire [11:0]                         li_mshr_rxdat_txnid_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxdat_srcid_s0,
+    input  wire [11:0]                         li_mshr_rxdat_dbid_s0,
     input  chie_pkg::dat_opcode_e              li_mshr_rxdat_opcode_s0,
     input  chie_pkg::resp_state_e              li_mshr_rxdat_resp_s0,
     input  chie_pkg::resp_err_e                li_mshr_rxdat_resperr_s0,
@@ -308,6 +310,16 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [5:0]                          mshr_stash_lpid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::snp_opcode_e               mshr_stash_snpcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_stash_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_s1_q;
+    logic [chie_pkg::NID_WIDTH-1:0]      mshr_stash_pull_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [11:0]                         mshr_stash_pull_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::req_opcode_e               mshr_stash_pull_rd_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_set_s0;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_issued_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_pend_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_busy_sx_q;
+    logic                                mshr_txdat_stash_pull_sx2;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_go_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_sent_sx_q;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_owed_sx;
     chie_pkg::req_opcode_e               mshr_atomic_op_s1_q[0:`MSHR_ENTRIES_NUM-1];
@@ -1363,12 +1375,44 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_stash_lpid_s1_q[entry]    <= '0;
                     mshr_stash_snpcode_s1_q[entry] <= chie_pkg::SNP_SNPLCRDRETURN;
                 end
+                else if(mshr_stash_pull_set_s0[entry] == 1'b1)begin
+                    mshr_stash_v_s1_q[entry]       <= 1'b0;
+                end
                 else if(mshr_req_set_s0[entry] == 1'b1)begin
                     mshr_stash_v_s1_q[entry]       <= li_mshr_rxreq_stashnidvalid_s0;
                     mshr_stash_nid_s1_q[entry]     <= li_mshr_rxreq_stashnid_s0;
                     mshr_stash_lpid_s1_q[entry]    <= {li_mshr_rxreq_stashlpidvalid_s0,
                                                        li_mshr_rxreq_stashlpid_s0};
                     mshr_stash_snpcode_s1_q[entry] <= li_mshr_rxreq_stash_snpcode_s0;
+                end
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_s1_q_timing_logic
+                if(rst == 1'b1)begin
+                    mshr_stash_pull_s1_q[entry]       <= 1'b0;
+                    mshr_stash_pull_srcid_s1_q[entry] <= '0;
+                    mshr_stash_pull_txnid_s1_q[entry] <= '0;
+                    mshr_stash_pull_rd_s1_q[entry]    <= chie_pkg::REQ_REQLCRDRETURN;
+                end
+                else if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_stash_pull_s1_q[entry]       <= 1'b0;
+                    mshr_stash_pull_srcid_s1_q[entry] <= '0;
+                    mshr_stash_pull_txnid_s1_q[entry] <= '0;
+                    mshr_stash_pull_rd_s1_q[entry]    <= chie_pkg::REQ_REQLCRDRETURN;
+                end
+                else if(mshr_stash_pull_set_s0[entry] == 1'b1)begin
+                    mshr_stash_pull_s1_q[entry]       <= 1'b1;
+                    // SS2.6 step 6 (p.2-110): the data response's "TgtID is set to the
+                    // same value as the SrcID of the Snoop response" and its "TxnID is
+                    // set to the same value as the DBID of the Snoop response".
+                    mshr_stash_pull_srcid_s1_q[entry] <= mshr_snprsp_entry_vec_s0[entry] ? li_mshr_rxrsp_srcid_s0
+                                                                                        : li_mshr_rxdat_srcid_s0;
+                    mshr_stash_pull_txnid_s1_q[entry] <= mshr_snprsp_entry_vec_s0[entry] ? li_mshr_rxrsp_dbid_s0
+                                                                                        : li_mshr_rxdat_dbid_s0;
+                    mshr_stash_pull_rd_s1_q[entry]    <= opennoc_hnf_pkg::hnf_stash_pull_read_of(
+                                                             mshr_stash_snpcode_s1_q[entry]);
                 end
                 else
                     ;
@@ -1608,6 +1652,26 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_snprsp_entry_vec_s1_q <= mshr_snprsp_entry_vec_s0;
     end
 
+    // SS7.1.1 (p.7-295): a Stash target's Snoop response may "also act as a Read
+    // request for the associated cache line". SS13.10.33 (p.13-433) puts DataPull in
+    // the FwdState slot on RSP and the DataSource slot on DAT, so it arrives on
+    // whichever channel answered. SS2.6 step 6 (p.2-110) and SS2.5.9 (p.2-90) then
+    // fix what the Home owes: the read data goes to the responder under the DBID it
+    // nominated. Only the named target's response can carry one -- SS4.3 (p.4-191,
+    // MUST) sends the stash snoop to one RN-F only.
+    generate
+        for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin:stash_pull_set_comb_logic
+            assign mshr_stash_pull_set_s0[entry] =
+                   mshr_stash_v_s1_q[entry] & ~mshr_stash_pull_s1_q[entry] &
+                   ((mshr_snprsp_entry_vec_s0[entry] &
+                     opennoc_hnf_pkg::hnf_data_pull(li_mshr_rxrsp_fwdstate_s0) &
+                     (li_mshr_rxrsp_srcid_s0 == mshr_stash_nid_s1_q[entry])) |
+                    (mshr_snpdat_entry_vec_s0[entry] &
+                     opennoc_hnf_pkg::hnf_data_pull(li_mshr_rxdat_fwdstate_s0[2:0]) &
+                     (li_mshr_rxdat_srcid_s0 == mshr_stash_nid_s1_q[entry])));
+        end
+    endgenerate
+
     //snpdat decode
     assign mshr_snpdat_s0       = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA);
     assign mshr_snpdatfwd_s0    = (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED);
@@ -1709,6 +1773,12 @@ module hnf_mshr_ctl `HNF_PARAM
         for (entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snp_getnum_s1_q_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if(rst == 1'b1)
+                    mshr_snp_getnum_s1_q[entry] <= {`MSHR_SNPCNT_WIDTH{1'b0}};
+                // The Data Pull's cache pass reloads mshr_snpcnt_sx_q with its own
+                // fan-out, which is empty -- so the count of responses gathered has to
+                // start again with it, or the two never agree and everything gated on
+                // "the snoop round is done" stays shut for the rest of the entry.
+                else if(mshr_stash_pull_go_sx[entry])
                     mshr_snp_getnum_s1_q[entry] <= {`MSHR_SNPCNT_WIDTH{1'b0}};
                 else if(mshr_snpdat_gettwo_s0[entry] && mshr_snprsp_getone_s0[entry])
                     mshr_snp_getnum_s1_q[entry] <= (mshr_snp_getnum_s1_q[entry] + 2'b10);
@@ -1830,7 +1900,8 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_dat_old_get_s1_q[entry] | mshr_l3hit_sx8_q[entry]) & mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry];
             assign mshr_dat_to_rn_s1[entry]      = ((mshr_dat_old_get_s1_q[entry] | (mshr_dat_memgetone_s1_q[entry] & mshr_size_s1_q[entry] != 3'b110)) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
                                                     (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & !mshr_dct_s1_q[entry] &
-                                                    (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry]));
+                                                    (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
+                                                     (mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry])));
             assign mshr_new_dat_l3fill_s1[entry] = (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry]) & (((mshr_wb_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]) |
                                                     mshr_we_s1_q[entry])) |
                    (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry]) & (!l3_rd_busy_s2_q[entry]) & ((mshr_wu_s1_q[entry] & ~mshr_wup_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]));
@@ -2144,7 +2215,13 @@ module hnf_mshr_ctl `HNF_PARAM
 
     assign mshr_l3_val_sx7  = l3_pipeval_sx7_q & !l3_replay_sx7_q;
     assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) & ~((mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b10) | (mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b11) &
-            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY);
+            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) &
+            // SS7.3 (p.7-298) permits DMT to the Stash target for a Data Pull, but the
+            // downstream read this pass issues carries the Requester's ReturnNID and
+            // ReturnTxnID -- so electing it would have the Subordinate answer the Stash
+            // request itself, with data a StashOnce* never asked for. The Home takes the
+            // line and sources the pull's CompData instead.
+            ~mshr_stash_pull_issued_sx_q[l3_mshr_entry_sx7_q];
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
@@ -2435,15 +2512,28 @@ module hnf_mshr_ctl `HNF_PARAM
         for(entry=0;
                 entry<`MSHR_ENTRIES_NUM;
                 entry=entry+1) begin : mshr_busy_rdy_deocde_comb_logic
+            // The Data Pull's pass is a cache read the entry makes on its own account,
+            // so it claims the same busy bit an allocated read does -- every SX7 result
+            // register and the neednosnp gate gather nothing without it.
             assign l3_rd_busy_set_s1[entry]
-                   = (mshr_alloc_l3rd_s1[entry] & ~excl_fail_s1);
+                   = (mshr_alloc_l3rd_s1[entry] & ~excl_fail_s1) | mshr_stash_pull_go_sx[entry];
             assign l3_rd_busy_clr_s1[entry]          = (mshr_clr_l3busy_sx7[entry]);
             assign l3_fill_busy_set_sx[entry]        = (mshr_alloc_l3fill_s1[entry]) ||
                    (mshr_l3_rd_l3fill_sx7[entry]);
             assign l3_fill_busy_clr_sx[entry]        = (mshr_clr_l3busy_sx7[entry] & (~l3_rd_busy_s2_q[entry])) ||
                    (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
             assign l3_rd_rdy_set_s2[entry]           = (mshr_alloc_l3rd_s1[entry] & (~excl_fail_s1)) ||
+                   (mshr_stash_pull_go_sx[entry]) ||
                    (mshr_l3_replay_sx7[entry] & l3_rd_busy_s2_q[entry]);
+            // SS2.5.2 (p.2-87) bounds TxnID reuse by what is outstanding, and one MSHR
+            // entry is one downstream TxnID -- so the pass that fetches the line for
+            // the Data Pull waits until the Stash request's own downstream transaction
+            // has completed, rather than racing it under the same identifier.
+            assign mshr_stash_pull_go_sx[entry]      = mshr_stash_pull_s1_q[entry] &
+                   ~mshr_stash_pull_issued_sx_q[entry] &
+                   ~mshr_mem_rd_busy_sx_q[entry] & ~mshr_mem_wr_busy_sx_q[entry] &
+                   ~mshr_sn_data_busy_sx_q[entry] &
+                   ~mshr_pipeline_busy_sx[entry] & ~l3_rd_rdy_s2_q[entry] & ~l3_fill_rdy_s2_q[entry];
             assign l3_rd_rdy_clr_s2[entry]           = (~l3_mshr_wr_op_sx7_q & mshr_l3_entry_vec_sx1[entry]);
             assign l3_fill_rdy_set_s2[entry]         = (l3_fill_data_busy_sx_q[entry] & (mshr_all_dat_alloc_s1[entry] | mshr_new_dat_l3fill_s1[entry]) & ~mshr_dat_stop_cb_s1_q[entry]) ||
                    (l3_fill_data_busy_sx_q[entry] & mshr_old_dat_l3fill_s1[entry] & ~mshr_compack_busy_sx_q[entry] & ~mshr_rn_data_busy_sx_q[entry]) ||
@@ -2569,13 +2659,13 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
-                   (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
+                   (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
                    ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry] | mshr_we_s1_q[entry] | (mshr_wrnosnp_s1_q[entry] & ~mshr_wrzero_s1_q[entry])) & mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1 & (~mshr_dwt_s2_q[entry])) ||
                    // A Write Zero owes its Comp on the Subordinate's, not at allocation:
                    // it sources its own line, so the arm above -- which releases the
                    // Comp with the grant -- would answer twice.
                    ((mshr_wrnosnp_s1_q[entry]) & (mshr_get_comp_s1_q[entry]) & mshr_comp_entry_vec_s1_q[entry] & (mshr_dwt_s2_q[entry] | mshr_wrzero_s1_q[entry])) ||
-                   ((mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry]) & (mshr_neednosnp_sx7[entry] | mshr_snp_getall_s1[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx7[entry])) ||
+                   ((mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry]) & (mshr_neednosnp_sx7[entry] | mshr_snp_getall_s1[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry]))) ||
                    (mshr_cu_s1_q[entry] & excl_fail_s1 & mshr_can_alloc_entry_s1_q[entry]) ||
                    (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_comp_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
@@ -2591,8 +2681,13 @@ module hnf_mshr_ctl `HNF_PARAM
             // the Completer sends a Comp instead of a CompDBIDResp". This Home takes
             // Sec 2.3.2's (p.2-55) CompDBIDResp alternative, whose CopyBackWrData is
             // the implicit CompAck, so waiting on one would never retire the entry.
+            // Table 2-8 (SS2.8.3 p.2-117) makes CompAck required for ReadUnique and
+            // ReadNotSharedDirty at an RN-F, which is what a Data Pull is -- so the
+            // entry owes one whatever the Stash request's own ExpCompAck said.
+            // SS2.6 step 7 (p.2-110) sends it under this Home's DBID, the entry index.
             assign mshr_compack_busy_set_sx[entry]   = (mshr_can_alloc_entry_s0[entry] & li_mshr_rxreq_expcompack_s0
-                                                        & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_WRITEEVICTOREVICT));
+                                                        & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_WRITEEVICTOREVICT)) ||
+                   (mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry]);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
                    (mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
@@ -2828,6 +2923,47 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_issued_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_stash_pull_issued_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_stash_pull_issued_sx_q[entry] <= 1'b0;
+                else if(mshr_stash_pull_go_sx[entry])
+                    mshr_stash_pull_issued_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            // Marks the single cache pass that is the Data Pull's, from the cycle it
+            // is armed to the cycle it enters the pipeline. The entry's own passes --
+            // a fill writing the fetched line into the L3, above all -- must still
+            // carry the Stash request's opcode, and the design asserts on a
+            // ReadUnique presented with fill set.
+            always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_busy_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_stash_pull_busy_sx_q[entry] <= 1'b0;
+                else if(mshr_stash_pull_set_s0[entry])
+                    mshr_stash_pull_busy_sx_q[entry] <= 1'b1;
+                else if(mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] &
+                        mshr_stash_pull_issued_sx_q[entry])
+                    mshr_stash_pull_busy_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_pend_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_stash_pull_pend_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_stash_pull_pend_sx_q[entry] <= 1'b0;
+                else if(mshr_stash_pull_go_sx[entry])
+                    mshr_stash_pull_pend_sx_q[entry] <= 1'b1;
+                else if(mshr_l3_entry_vec_sx1[entry])
+                    mshr_stash_pull_pend_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_atm_dat_sent_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_atm_dat_sent_sx_q[entry] <= 1'b0;
@@ -2943,7 +3079,15 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_txreq_rdy_sx[entry]     = mshr_mem_rd_rdy_sx_q[entry] | mshr_mem_wr_rdy_sx_q[entry] | mshr_mem_cmo_rdy_sx_q[entry];
             assign mshr_pipeline_rdy_sx[entry]  = l3_rd_rdy_s2_q[entry] | l3_fill_rdy_s2_q[entry];
             assign mshr_txrsp_rdy_sx[entry]     = mshr_comp_rdy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry] | mshr_cw_rdy_sx_q[entry];
-            assign mshr_entry_busy_sx[entry]    = mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry];
+            // mshr_stash_pull_busy_sx_q is its own term rather than a claim on the data
+            // buffer or the CompAck: SS7.3 (p.7-297) lets the Stash request's own Comp go
+            // out before the Snoop response, so the entry would otherwise read as idle
+            // between that Comp and the pull it still owes -- and borrowing those two
+            // bits stalls the entry's own cache fill, which clears them. The set pulse
+            // is folded in beside the flop because every other term here is registered:
+            // the entry is idle by all of them in the cycle the Snoop response arrives,
+            // and would retire out from under the pull before the flop caught it.
+            assign mshr_entry_busy_sx[entry]    = mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry] | mshr_stash_pull_busy_sx_q[entry] | mshr_stash_pull_set_s0[entry];
 
             // Raised from s1, so it lands the same cycle the write's own busy bits do
             // and cannot read the entry as idle in the window before they are set.
@@ -3696,6 +3840,13 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
+    // SS7.1.1 (p.7-295) makes a Data Pull a Read of the stashed line, and Table 7-2
+    // (p.7-295) names which -- "which is how the Home must treat it". Presented to
+    // the cache pipeline in place of the Stash request's own opcode, and on behalf of
+    // the Stash target rather than the Requester, so that one pass fetches the line,
+    // records the target in the snoop filter as the holder it now is, and elects the
+    // Table 4-33 (p.4-211) response state. The entry's own opcode is untouched: what
+    // it still owes the Requester is decided from that.
     always_ff @(posedge clk or posedge rst)begin : mshr_l3_timing_logic
         if(rst == 1'b1) begin
             mshr_l3_req_en_sx1_q     <= 1'b0;
@@ -3711,8 +3862,10 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[mshrageq_mshr_idx_sx2_q[0]]);
-            mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
-            mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[mshrageq_mshr_idx_sx2_q[0]] ? mshr_stash_pull_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]
+                                                                      : (mshr_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[mshrageq_mshr_idx_sx2_q[0]] ? mshr_stash_pull_rd_s1_q[mshrageq_mshr_idx_sx2_q[0]]
+                                                                      : (mshr_opcode_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
@@ -3722,8 +3875,10 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_other_vec[cpl_rob])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_rob]);
-            mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_rob]);
-            mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_rob]);
+            mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[cpl_rob] ? mshr_stash_pull_srcid_s1_q[cpl_rob]
+                                                                      : (mshr_srcid_s1_q[cpl_rob]);
+            mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[cpl_rob] ? mshr_stash_pull_rd_s1_q[cpl_rob]
+                                                                      : (mshr_opcode_s1_q[cpl_rob]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_rob]);
             mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[cpl_rob]);
             mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[cpl_rob]);
@@ -3733,8 +3888,10 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_other_ptr[cpl_wrap_other_idx])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_wrap_other_idx]);
-            mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_wrap_other_idx]);
-            mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_wrap_other_idx]);
+            mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[cpl_wrap_other_idx] ? mshr_stash_pull_srcid_s1_q[cpl_wrap_other_idx]
+                                                                      : (mshr_srcid_s1_q[cpl_wrap_other_idx]);
+            mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[cpl_wrap_other_idx] ? mshr_stash_pull_rd_s1_q[cpl_wrap_other_idx]
+                                                                      : (mshr_opcode_s1_q[cpl_wrap_other_idx]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_wrap_other_idx]);
             mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[cpl_wrap_other_idx]);
             mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[cpl_wrap_other_idx]);
@@ -3774,8 +3931,19 @@ module hnf_mshr_ctl `HNF_PARAM
     // of the ENTRY, cleared three stages later by the send itself, so an entry that
     // owes both a CompData and a NonCopyBackWrData reports RN for both.
     always_comb begin
-        mshr_txdat_tgtid_sx2   = (txdat_mshr_rd_to_rn_sx2?mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2]:SNF_NID_PARAM);
-        mshr_txdat_txnid_sx2   = (txdat_mshr_rd_to_rn_sx2?mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2]:mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
+        // SS2.6 step 6 (p.2-110): a Data Pull's read data carries the Snoop response's
+        // SrcID as TgtID and its DBID as TxnID, so it reaches the Stash target under
+        // the identifier that target nominated rather than the Requester's.
+        mshr_txdat_stash_pull_sx2 = mshr_stash_pull_s1_q[txdat_mshr_rd_idx_sx2] &
+                                    mshr_stash_pull_issued_sx_q[txdat_mshr_rd_idx_sx2];
+        mshr_txdat_tgtid_sx2   = (txdat_mshr_rd_to_rn_sx2?
+                                  (mshr_txdat_stash_pull_sx2? mshr_stash_pull_srcid_s1_q[txdat_mshr_rd_idx_sx2]
+                                                            : mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2])
+                                  :SNF_NID_PARAM);
+        mshr_txdat_txnid_sx2   = (txdat_mshr_rd_to_rn_sx2?
+                                  (mshr_txdat_stash_pull_sx2? mshr_stash_pull_txnid_s1_q[txdat_mshr_rd_idx_sx2]
+                                                            : mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2])
+                                  :mshr_dbid_s1_q[txdat_mshr_rd_idx_sx2]);
         mshr_txdat_opcode_sx2  = (txdat_mshr_rd_to_rn_sx2?chie_pkg::DAT_COMPDATA:chie_pkg::DAT_NONCOPYBACKWRDATA);
         mshr_txdat_resp_sx2    = (txdat_mshr_rd_to_rn_sx2?((mshr_snp_d_s1_q[txdat_mshr_rd_idx_sx2]&mshr_ru_s1_q[txdat_mshr_rd_idx_sx2])?chie_pkg::RESP_UC_PD:mshr_l3_resp_sx8_q[txdat_mshr_rd_idx_sx2]):chie_pkg::RESP_I);
         // Table 9-7 (Sec 9.4.3 p.9-340, MUST): a Write transaction's data packets

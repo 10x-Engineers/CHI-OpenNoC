@@ -379,6 +379,8 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [`RNF_NUM-1:0]                      pipe_sf_evict_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_snp_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_stash_tgt_vec_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_stash_pair_mask_sx4;
+    wire                                     pipe_stash_other_holder_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_snp_unq_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_tgt_vec_sx4;
 
@@ -1521,6 +1523,14 @@ module hnf_cache_pipeline `HNF_PARAM
         for (gi = 0;
                 gi < `RNF_NUM;
                 gi = gi + 1)begin
+            assign pipe_stash_pair_mask_sx4[gi*2 +: 2] = {2{pipe_stash_vec_sx_q[SX4][gi]}};
+        end
+    endgenerate
+
+    generate
+        for (gi = 0;
+                gi < `RNF_NUM;
+                gi = gi + 1)begin
             assign pipe_sf_snp_unq_tgt_vec_sx4[gi]
                    = ((pipe_sf_match_state_sx4_q[gi*2+:2] == `SF_U) & pipe_sf_other_valid_mask_sx4_q[gi*2]);
             assign pipe_sf_snp_share_state_sx4[gi*2 +: 2] = {(`SF_STATE_WIDTH){pipe_sf_snp_unq_tgt_vec_sx4[gi]}};
@@ -1562,7 +1572,18 @@ module hnf_cache_pipeline `HNF_PARAM
     // SS4.4.2 (p.4-196) permits the stash snoop "to the target RN ... if the target
     // RN does not have the cache line", so the Stash target joins the directory's
     // fan-out instead of being drawn from it. A fill carries no request to stash for.
-    assign pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0] = pipe_stash_vec_sx_q[SX4] & {`RNF_NUM{~pipe_fill_sx4}};
+    // SS7.3 (p.7-297) permits the Home "to not send a Snoop request in response to a
+    // Stash request", and this Home takes that permission for a StashOnce* whose line
+    // another peer still holds. Table 7-2 (p.7-295) makes the Data Pull such a snoop
+    // invites a ReadUnique or ReadNotSharedDirty, and serving one off a line a peer
+    // holds would oblige a second snoop round inside the one transaction that
+    // SS7.3 (p.7-298, MUST) requires be atomic. A WriteUnique*Stash is unaffected:
+    // SS4.2.3 (p.4-181, MUST) leaves every peer Invalid by the time it completes.
+    assign pipe_stash_other_holder_sx4 = |(pipe_sf_match_state_sx4_q[`RNF_NUM*2-1:0] &
+                                           ~pipe_stash_pair_mask_sx4[`RNF_NUM*2-1:0]);
+    assign pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0] = pipe_stash_vec_sx_q[SX4]
+                                                & {`RNF_NUM{~pipe_fill_sx4}}
+                                                & {`RNF_NUM{~(op_dl_evict_sx4_q & pipe_stash_other_holder_sx4)}};
     assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = (op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0])
                                              | pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
     assign pipe_sf_wr_state_sx4[`RNF_NUM*2-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] : pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0];

@@ -62,6 +62,8 @@ module hnf_mshr `HNF_PARAM
     input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] l3_evict_addr_sx7_q,
     input  wire                                li_mshr_rxdat_valid_s0,
     input  wire [11:0]                         li_mshr_rxdat_txnid_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxdat_srcid_s0,
+    input  wire [11:0]                         li_mshr_rxdat_dbid_s0,
     input  chie_pkg::dat_opcode_e              li_mshr_rxdat_opcode_s0,
     input  chie_pkg::resp_state_e              li_mshr_rxdat_resp_s0,
     input  chie_pkg::resp_err_e                li_mshr_rxdat_resperr_s0,
@@ -243,6 +245,7 @@ module hnf_mshr `HNF_PARAM
     wire                           req_excl_s0;
     wire                           req_snoopme_s0;
     chie_pkg::snp_opcode_e         req_stash_snpcode_s0;
+    wire                           req_stash_s0;
 
     assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      req_excl_s0,
@@ -252,6 +255,7 @@ module hnf_mshr `HNF_PARAM
     // hnf_serviced_as() folds it to -- which is what every consumer below this
     // point sees.
     assign req_stash_snpcode_s0   = opennoc_hnf_pkg::hnf_stash_snp_of(li_mshr_rxreq_opcode_s0);
+    assign req_stash_s0           = opennoc_hnf_pkg::hnf_stash_req(li_mshr_rxreq_opcode_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
     assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
     assign req_cw_s0              = opennoc_hnf_pkg::hnf_combined_write(li_mshr_rxreq_opcode_s0);
@@ -281,7 +285,12 @@ module hnf_mshr `HNF_PARAM
     // MUST) makes the returned value "the original value at the addressed location",
     // so the Home has to hold the line to read it, operate on it and keep the result.
     // Sec 2.9.3 (p.2-128) leaves that free -- Allocate is a hint either way.
-    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0) & ~req_wr_ptl_s0 & ~req_persist_s0;
+    // A Stash request allocates whatever the hint says, because SS7.4.2 (p.7-299)
+    // recommends it -- "it is recommended that he Home prefetches and allocates the
+    // cache line in the system cache" -- and because the Read that SS7.1.1's (p.7-295)
+    // Data Pull implies is served from that line. A non-allocating one would have to
+    // fetch it a second time, under a downstream identifier the write leg still owns.
+    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0 | req_stash_s0) & ~req_wr_ptl_s0 & ~req_persist_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_busy_sx;
@@ -471,6 +480,8 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0         ),
                      .li_mshr_rxdat_valid_s0                          (li_mshr_rxdat_valid_s0            ),
                      .li_mshr_rxdat_txnid_s0                          (li_mshr_rxdat_txnid_s0            ),
+                     .li_mshr_rxdat_srcid_s0                          (li_mshr_rxdat_srcid_s0            ),
+                     .li_mshr_rxdat_dbid_s0                           (li_mshr_rxdat_dbid_s0             ),
                      .li_mshr_rxdat_opcode_s0                         (li_mshr_rxdat_opcode_s0           ),
                      .li_mshr_rxdat_resp_s0                           (li_mshr_rxdat_resp_s0             ),
                      .li_mshr_rxdat_resperr_s0                        (li_mshr_rxdat_resperr_s0          ),

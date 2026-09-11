@@ -217,6 +217,8 @@ module hnf `HNF_PARAM
     wire [3:0]                               li_mshr_rxrsp_pcrdtype_s0;
     wire                                     li_mshr_rxdat_valid_s0;
     wire [11:0]                              li_mshr_rxdat_txnid_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxdat_srcid_s0;
+    wire [11:0]                              li_mshr_rxdat_dbid_s0;
     chie_pkg::dat_opcode_e                   li_mshr_rxdat_opcode_s0;
     chie_pkg::resp_state_e                   li_mshr_rxdat_resp_s0;
     chie_pkg::resp_err_e                     li_mshr_rxdat_resperr_s0;
@@ -518,6 +520,8 @@ module hnf `HNF_PARAM
                  .rxdat_lcrdv                                  (RXDATLCRDV                        ),
                  .li_mshr_rxdat_valid_s0                       (li_mshr_rxdat_valid_s0            ),
                  .li_mshr_rxdat_txnid_s0                       (li_mshr_rxdat_txnid_s0            ),
+                 .li_mshr_rxdat_srcid_s0                       (li_mshr_rxdat_srcid_s0            ),
+                 .li_mshr_rxdat_dbid_s0                        (li_mshr_rxdat_dbid_s0             ),
                  .li_mshr_rxdat_opcode_s0                      (li_mshr_rxdat_opcode_s0           ),
                  .li_mshr_rxdat_resp_s0                        (li_mshr_rxdat_resp_s0             ),
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
@@ -594,6 +598,8 @@ module hnf `HNF_PARAM
                  .l3_evict_addr_sx7_q                          (l3_evict_addr_sx7_q               ),
                  .li_mshr_rxdat_valid_s0                       (li_mshr_rxdat_valid_s0            ),
                  .li_mshr_rxdat_txnid_s0                       (li_mshr_rxdat_txnid_s0            ),
+                 .li_mshr_rxdat_srcid_s0                       (li_mshr_rxdat_srcid_s0            ),
+                 .li_mshr_rxdat_dbid_s0                        (li_mshr_rxdat_dbid_s0             ),
                  .li_mshr_rxdat_opcode_s0                      (li_mshr_rxdat_opcode_s0           ),
                  .li_mshr_rxdat_resp_s0                        (li_mshr_rxdat_resp_s0             ),
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
