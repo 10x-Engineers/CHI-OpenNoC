@@ -303,7 +303,7 @@ at both Homes — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68).
 | :--- | ---: | :--- |
 | **SN-F** | 16 | ⚪ NDERR catch-all — `snf_mshr.sv`'s `rxreq_err_s0` |
 | **HN-I** | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.sv`'s `rxreq_err_s0` |
-| **HN-F** | 51, plus 9 snoops and their 5 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
+| **HN-F** | 69, plus 9 snoops and their 5 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
 | **RN-I** | generates 4 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
 
 All three Completers now answer everything they do not implement. The HN-F count
@@ -342,7 +342,7 @@ monitor's same-cycle verdict. What is left over is the 18 Atomics, `DVMOp` and
 | `MakeInvalid` | 🟢 | 🟢 | 🟢 served as `CleanInvalid` — section 4.2.2 (p.4-170) only permits the Dirty copy to be dropped, Table 4-38 (p.4-218) gives both `Comp_I` |
 | `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 serviced as `CleanShared`, with a `CleanSharedPersist` sent downstream and the completion held for the Subordinate's `Comp` (section 16.1, p.16-471) |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
-| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) — `DBIDResp` then a `CompData` NDERR over the returned extent for the three that return data (section 2.3.3, section 4.2.5, section 9.4.4) |
+| Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` (18 opcodes) | ⚪ | ⚪ | 🟢 **executed here** — section 16.3.2 (p.16-479) puts the execution point anywhere in the interconnect. Served on the `WriteUniquePtl` skeleton: `DBIDResp`, invalidating snoop, line fetched and merged, then Table 4-19/4-20's operation. `CompData_I` carries section 4.2.5's (p.4-187) original value over the inbound extent — half of Size for `AtomicCompare` (Table 2-16 p.2-137); `AtomicStore` gets `Comp_I` (Table 4-40 p.4-219). `SnoopMe` honoured (Table 13-28 p.13-433) |
 | `SnoopFilterEvict` | ⚪ | ⚪ | 🟢 |
 | `DVMOp` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `PrefetchTgt`, `PCrdReturn` | ⬛ | ⬛ | ⬛ |
@@ -366,7 +366,8 @@ neither issues a snoop and neither has a SNP port.
 | `SnpShared`, `SnpPreferUnique`, `SnpPreferUniqueFwd` | 🟢 | `SnpShared` for a `ReadShared`, `SnpPreferUnique` for the `ReadPreferUnique` this Home serves Shared (`hnf_mshr_ctl.sv`'s `l3_opcode_decode_comb_logic`) |
 | `SnpSharedFwd` | ⚪ | not elected: section 4.4.2 (p.4-196) permits `SnpNotSharedDirtyFwd` for a `ReadShared` too, and Table 4-53 (p.4-234) lets `SnpSharedFwd` forward `SD_PD` — passing dirtiness to the Requester rather than to this Home |
 | `SnpQuery` | ⚪ | not generated: section 6.2.3 (p.6-284) makes it one of three permitted ways to resolve an Exclusive Store and this Home implements the PoC monitor (`hnf_mshr_global_monitor.sv`) |
-| `SnpStash*`, `SnpDVMOp` | 🔴 | never generated — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68), with the Stash and DVM requests they belong to |
+| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🔴 | never generated — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68), with the Stash requests they belong to |
+| `SnpDVMOp` | 🔴 | never generated. Table B-1 (p.B-493) gives `DVMOp` only ICN(MN) as a target and no permitted alternative, so an HN-F is never one — see [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `DoNotGoToSD`, on every snoop sent | 🟢 | hardwired to 1 in `hnf_link_txsnp_wrap.sv`. Section 13.10.34 (p.13-434) makes the bit free on `SnpOnce`/`SnpClean`/`SnpShared`/`SnpNotSharedDirty`/`SnpPreferUnique` and their forwarding twins, and must-be-1 on the ten invalidating and Stash snoops; the two that must carry zero, `SnpQuery` and `SnpDVMOp`, are never generated, so 1 is legal on every snoop this Home sends. It does mean a Snoopee never keeps the line Shared Dirty against this Home — Table 4-42 footnote c (p.4-223) withdraws that row |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_snprspfwd_s0` / `mshr_snpdatfwd_s0` |
 | `SnpRespDataPtl` | 🟢 | decoded and merged under its byte enables (`hnf_mshr_ctl.sv`'s `mshr_snpdat_v_s0`, `hnf_data_buffer.sv`). Whether the line is whole is read from the accumulated byte enables, not from the opcode (`mshr_snp_full_line_s1`) — where they leave bytes invalid the Home reads memory and merges before completing, section 5.1.5 (p.5-251) |
@@ -388,7 +389,7 @@ neither issues a snoop and neither has a SNP port.
 | CMOs | 🟢 | 🟢 | — | 🟢 | all five at every node; at the HN-F the two persistent ones are serviced as `CleanShared` with section 16.1's (p.16-471) substituted `CleanSharedPersist` downstream |
 | Combined Writes | 🟡 | 🟡 | — | 🟢 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves all fifteen of Table 4-17 (p.4-182) |
 | Write Zero | 🟡 | 🟢 | — | 🟢 | both are serviced at the HN-F; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
-| Atomics | ⚪ | ⚪ | — | ⚪ | section 16.1 leaves `Atomic_Transactions` False when undeclared, and section 16.3.3 then makes the error response the correct answer |
+| Atomics | ⚪ | ⚪ | — | 🟢 | `opennoc_hnf_pkg.sv`'s `hnf_atomic_alu()` / `hnf_atomic_compare_eq()`, the read-modify-write in `hnf_data_buffer.sv`. At the SN-F and HN-I section 16.1 leaves `Atomic_Transactions` False when undeclared and section 16.3.3 makes the error response correct; the HN-F declares them, which section 16.3.2 then makes all-or-nothing over its whole Snoopable range |
 | Stash | ⚪ | ⚪ | — | 🟡 | the HN-F completes every Stash request without stashing and without an error (section 2.3.4 p.2-71, section 9.4.6 p.9-344); no Stash snoop is generated |
 | System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
