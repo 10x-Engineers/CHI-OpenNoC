@@ -208,9 +208,11 @@ Three consequences worth knowing:
   `CHIE_REQ_ADDR_WIDTH` and `CHIE_DATA_WIDTH` default in `chie_pkg.sv` and are
   overridable at compile time; each node's `*_param.svh` derives its own
   `CHIE_*_WIDTH_PARAM` from them, so a node cannot disagree with the package.
-- **RSVDC is absent from the layout.** section 16.1 makes its width implementation
-  defined and every node here declares it zero. `chie_flit_rsvdc_check` refuses a
-  build that declares otherwise rather than letting the layout silently shift.
+- **RSVDC is present only when declared.** Section 13.10.56 makes the field optional
+  and its width implementation defined, and a packed struct cannot hold a zero-width
+  member — so `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` being *defined* is what
+  puts it in the layout, at that width. `chie_flit_rsvdc_check` holds each node's
+  parameter to the package rather than letting the layout silently shift.
 
 `chi_chan_if.sv` bundles one channel's link-layer signals (flit, FLITV, FLITPEND,
 LCRDV) with `tx`/`rx` modports. Node **port lists stay flat** — an integrator wires
@@ -391,7 +393,7 @@ neither issues a snoop and neither has a SNP port.
 | System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
 | MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_pkg`'s `req_flit_s` and `snp_flit_s` — the field is not in the layout — [#165](https://github.com/10x-Engineers/CHI-OpenNoC/issues/165) |
-| RSVDC | 🔴 | 🔴 | 🔴 | 🔴 | absent from the layout, and `chie_flit_rsvdc_check` refuses a non-zero width — [#162](https://github.com/10x-Engineers/CHI-OpenNoC/issues/162) |
+| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_rsvdc_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Not propagated across the Home**: the same section makes propagation implementation defined, and the HN-F drops it — [#180](https://github.com/10x-Engineers/CHI-OpenNoC/issues/180) |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | `chie_pkg::datacheck_of()` at each node's DAT builder, so `Data_Check = Odd_Parity` and `Check_Type = Odd_Parity_Byte_Data` (section 16.1 p.16-470/16-471). Sourced, not checked: section 9.6 (p.9-348) puts the parity obligation on the Transmitter, and section 9.8's (p.9-352) conversion MUST applies only where support differs across the interface, which it does not here. **Bit i covers byte lane i** — section 13.10.52 (p.13-436) never fixes the mapping, so a peer must adopt the same convention |
 | Poison | 🔴 | 🔴 | 🔴 | 🔴 | the field is in the DAT layout, but no node sources or parses one, so a write whose data arrives poisoned is stored and served back clean — [#164](https://github.com/10x-Engineers/CHI-OpenNoC/issues/164) |
 | Error propagation (`RespErr`) | 🟢 | 🟢 | 🟢 | 🟢 | the SN-F and HN-I latch `RRESP`/`BRESP` per entry and report them, all-or-none across the packets of one read message (section 9.4.1); the HN-F parses inbound `RespErr` on both RX channels and passes it back, keeping `DERR` and `NDERR` distinct (section 9.1, section 9.2) |
