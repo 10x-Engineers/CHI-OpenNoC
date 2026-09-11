@@ -67,6 +67,8 @@ module rni `RNI_PARAM
     output wire                            AWREADY0,
     input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0,
     input  wire [`AXI4_WSTRB_WIDTH-1:0]    WSTRB0,
+    // CHI E.b SS9.5 (p.9-347, MUST): the Poison sideband, one bit per 64-bit chunk.
+    input  wire [`AXI4_WUSER_WIDTH-1:0]    WUSER0,
     input  wire [`AXI4_WLAST_WIDTH-1:0]    WLAST0,
     input  wire                            WVALID0,
     output wire                            WREADY0,
@@ -89,6 +91,7 @@ module rni `RNI_PARAM
     output wire [`AXI4_RID_WIDTH-1:0]      RID0,
     output wire [`AXI4_RDATA_WIDTH-1:0]    RDATA0,
     output wire [`AXI4_RRESP_WIDTH-1:0]    RRESP0,
+    output wire [`AXI4_RUSER_WIDTH-1:0]    RUSER0,
     output wire [`AXI4_RLAST_WIDTH-1:0]    RLAST0,
     output wire                            RVALID0,
     input  wire                            RREADY0
@@ -196,6 +199,7 @@ module rni `RNI_PARAM
                     // W Channel0
                     ,.WDATA0                                ( WDATA0                        )
                     ,.WSTRB0                                ( WSTRB0                        )
+                    ,.WUSER0                                ( WUSER0                        )
                     ,.WLAST0                                ( WLAST0                        )
                     ,.W_CH_S0                               ( W_CH_S0                       )
 
@@ -221,6 +225,7 @@ module rni `RNI_PARAM
                     ,.RID0                                  ( RID0                          )
                     ,.RDATA0                                ( RDATA0                        )
                     ,.RRESP0                                ( RRESP0                        )
+                    ,.RUSER0                                ( RUSER0                        )
                     ,.RLAST0                                ( RLAST0                        )
                     ,.R_CH_S0                               ( R_CH_S0                       )
                 );

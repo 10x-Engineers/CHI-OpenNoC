@@ -48,6 +48,7 @@ package opennoc_rni_pkg;
   parameter int DATA_WIDTH = `AXI4_DATA_WIDTH;
   parameter int STRB_WIDTH = DATA_WIDTH / 8;
   parameter int ID_WIDTH   = `AXI4_AWID_WIDTH;
+  parameter int USER_WIDTH = DATA_WIDTH / 64;   // SS9.5: one Poison bit per 8-byte chunk
 
   typedef struct packed {
     logic [3:0]           region;
@@ -64,6 +65,7 @@ package opennoc_rni_pkg;
 
   typedef struct packed {
     logic                   last;
+    logic [USER_WIDTH-1:0]  user;
     logic [STRB_WIDTH-1:0]  strb;
     logic [DATA_WIDTH-1:0]  data;
   } w_ch_s;
@@ -75,6 +77,7 @@ package opennoc_rni_pkg;
 
   typedef struct packed {
     logic                   last;
+    logic [USER_WIDTH-1:0]  user;
     logic [1:0]             resp;
     logic [DATA_WIDTH-1:0]  data;
     logic [ID_WIDTH-1:0]    id;

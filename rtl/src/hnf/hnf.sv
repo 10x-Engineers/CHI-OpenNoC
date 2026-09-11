@@ -180,6 +180,7 @@ module hnf `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]           dbf_txdat_idx_sx1;
     wire [chie_pkg::BE_WIDTH*2-1:0]          dbf_txdat_be_sx1;
     wire [1:0]                               dbf_txdat_pe_sx1;
+    wire [`CACHE_POISON_WIDTH-1:0]           dbf_txdat_poison_sx1;
     wire                                     dbf_txdat_valid_sx1;
     wire                                     li_mshr_rxreq_valid_s0;
     wire [3:0]                               li_mshr_rxreq_qos_s0;
@@ -221,6 +222,7 @@ module hnf `HNF_PARAM
     wire [1:0]                               li_dbf_rxdat_dataid_s0;
     wire [chie_pkg::BE_WIDTH-1:0]            li_dbf_rxdat_be_s0;
     wire [chie_pkg::DATA_WIDTH-1:0]          li_dbf_rxdat_data_s0;
+    wire [chie_pkg::POISON_WIDTH-1:0]        li_dbf_rxdat_poison_s0;
     wire                                     txrsp_mshr_retryack_won_s1;
     wire                                     txrsp_mshr_pcrdgnt_won_s2;
     wire                                     txrsp_mshr_won_sx1;
@@ -303,10 +305,13 @@ module hnf `HNF_PARAM
     wire                                     lru_wr_en_q;
     wire [`LRU_CLINE_WIDTH-1:0]              lru_wr_data_q;
     wire [`CACHE_LINE_WIDTH-1:0]             l3_rd_data_q;
+    wire [`CACHE_POISON_WIDTH-1:0]           l3_rd_poison_q;
     wire [`CACHE_LINE_WIDTH-1:0]             l3_wr_data_q;
+    wire [`CACHE_POISON_WIDTH-1:0]           l3_wr_poison_q;
     wire [`LOC_INDEX_WIDTH-1:0]              cpl_l3_index_q;
     wire [`LOC_WAY_NUM-1:0]                  cpl_l3_rd_ways_q;
     wire [`CACHE_LINE_WIDTH-1:0]             dbf_l3_wr_data_q;
+    wire [`CACHE_POISON_WIDTH-1:0]           dbf_l3_wr_poison_q;
     wire [`LOC_WAY_NUM-1:0]                  cpl_l3_wr_ways_q;
     wire [`LOC_INDEX_WIDTH-1:0]              cpl_loc_index_q;
     wire                                     cpl_loc_rd_en_q;
@@ -465,6 +470,7 @@ module hnf `HNF_PARAM
                  .dbf_txdat_idx_sx1                            (dbf_txdat_idx_sx1                 ),
                  .dbf_txdat_be_sx1                             (dbf_txdat_be_sx1                  ),
                  .dbf_txdat_pe_sx1                             (dbf_txdat_pe_sx1                  ),
+                 .dbf_txdat_poison_sx1                         (dbf_txdat_poison_sx1              ),
                  .mshr_dbf_rd_to_rn_sx1_q                      (mshr_dbf_rd_to_rn_sx1_q           ),
                  .dbf_txdat_valid_sx1                          (dbf_txdat_valid_sx1               ),
 
@@ -512,6 +518,7 @@ module hnf `HNF_PARAM
                  .li_dbf_rxdat_dataid_s0                       (li_dbf_rxdat_dataid_s0            ),
                  .li_dbf_rxdat_be_s0                           (li_dbf_rxdat_be_s0                ),
                  .li_dbf_rxdat_data_s0                         (li_dbf_rxdat_data_s0              ),
+                 .li_dbf_rxdat_poison_s0                       (li_dbf_rxdat_poison_s0            ),
                  .txreqflitv                                   (TXREQFLITV                        ),
                  .txreqflit                                    (TXREQFLIT                         ),
                  .txreqflitpend                                (TXREQFLITPEND                     ),
@@ -798,6 +805,7 @@ module hnf `HNF_PARAM
                         .li_dbf_rxdat_dataid_s0                       (li_dbf_rxdat_dataid_s0            ),
                         .li_dbf_rxdat_be_s0                           (li_dbf_rxdat_be_s0                ),
                         .li_dbf_rxdat_data_s0                         (li_dbf_rxdat_data_s0              ),
+                        .li_dbf_rxdat_poison_s0                       (li_dbf_rxdat_poison_s0            ),
                         .mshr_dbf_rd_idx_sx1_q                        (mshr_dbf_rd_idx_sx1_q             ),
                         .mshr_dbf_rd_valid_sx1_q                      (mshr_dbf_rd_valid_sx1_q           ),
                         .mshr_dbf_retired_idx_sx1_q                   (mshr_dbf_retired_idx_sx1_q        ),
@@ -818,15 +826,18 @@ module hnf `HNF_PARAM
                         .pipe_dbf_wr_valid_sx9_q                      (pipe_dbf_wr_valid_sx9_q           ),
                         .pipe_dbf_wr_idx_sx9_q                        (pipe_dbf_wr_idx_sx9_q             ),
                         .pipe_dbf_wr_data_sx9_q                       (l3_rd_data_q                      ),
+                        .pipe_dbf_wr_poison_sx9_q                     (l3_rd_poison_q                    ),
                         .pipe_dbf_rd_idx_sx2_q                        (pipe_dbf_rd_idx_sx2_q             ),
                         .pipe_dbf_rd_idx_sx2_valid_q                  (pipe_dbf_rd_idx_sx2_valid_q       ),
 
                         //outputs
                         .dbf_pipe_rd_data_sx7_q                       (dbf_l3_wr_data_q                  ),
+                        .dbf_pipe_rd_poison_sx7_q                     (dbf_l3_wr_poison_q                ),
                         .dbf_txdat_valid_sx1                          (dbf_txdat_valid_sx1               ),
                         .dbf_txdat_idx_sx1                            (dbf_txdat_idx_sx1                 ),
                         .dbf_txdat_be_sx1                             (dbf_txdat_be_sx1                  ),
                         .dbf_txdat_pe_sx1                             (dbf_txdat_pe_sx1                  ),
+                        .dbf_txdat_poison_sx1                         (dbf_txdat_poison_sx1              ),
                         .dbf_txdat_data_sx1                           (dbf_txdat_data_sx1                ),
                         .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
                         .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               )
@@ -879,9 +890,11 @@ module hnf `HNF_PARAM
                       .l3_index_q                                   (l3_index_q                        ),
                       .l3_rd_ways_q                                 (l3_rd_ways_q                      ),
                       .l3_wr_data_q                                 (l3_wr_data_q                      ),
+                      .l3_wr_poison_q                               (l3_wr_poison_q                    ),
                       .l3_wr_ways_q                                 (l3_wr_ways_q                      ),
                       //outputs
-                      .l3_rd_data_q                                 (l3_rd_data_q                      )
+                      .l3_rd_data_q                                 (l3_rd_data_q                      ),
+                      .l3_rd_poison_q                               (l3_rd_poison_q                    )
                   );
 
     hnf_mem_ctl `HNF_PARAM_INST
@@ -905,6 +918,7 @@ module hnf `HNF_PARAM
                     .l3_index_q                                   (l3_index_q                        ),
                     .l3_rd_ways_q                                 (l3_rd_ways_q                      ),
                     .l3_wr_data_q                                 (l3_wr_data_q                      ),
+                    .l3_wr_poison_q                               (l3_wr_poison_q                    ),
                     .l3_wr_ways_q                                 (l3_wr_ways_q                      ),
                     .notify_reg                                   (notify_reg                        ),
 `ifdef tb_hnf
@@ -940,6 +954,7 @@ module hnf `HNF_PARAM
                     .cpl_l3_index_q                               (cpl_l3_index_q                    ),
                     .cpl_l3_rd_ways_q                             (cpl_l3_rd_ways_q                  ),
                     .dbf_l3_wr_data_q                             (dbf_l3_wr_data_q                  ),
+                    .dbf_l3_wr_poison_q                           (dbf_l3_wr_poison_q                ),
                     .cpl_l3_wr_ways_q                             (cpl_l3_wr_ways_q                  ),
                     .cpl_loc_index_q                              (cpl_loc_index_q                   ),
                     .cpl_loc_rd_en_q                              (cpl_loc_rd_en_q                   ),

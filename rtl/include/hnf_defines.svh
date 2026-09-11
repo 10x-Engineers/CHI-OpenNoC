@@ -74,6 +74,8 @@
 
 `define CACHE_LINE_WIDTH                   CHIE_DATA_WIDTH_PARAM*2
 `define CACHE_BE_WIDTH                     CHIE_BE_WIDTH_PARAM*2
+// CHI E.b SS9.5 (p.9-347): one Poison bit per 64-bit chunk of the line.
+`define CACHE_POISON_WIDTH                 CHIE_POISON_WIDTH_PARAM*2
 `define CACHE_BLOCK_OFFSET                 6
 `define RNF_NUM                            HNF_MSHR_RNF_NUM_PARAM
 `define RNI_NUM                            HNF_MSHR_RNI_NUM_PARAM

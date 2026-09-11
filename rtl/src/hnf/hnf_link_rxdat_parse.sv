@@ -50,7 +50,8 @@ module hnf_link_rxdat_parse `HNF_PARAM
     output chie_pkg::dat_opcode_e          li_dbf_rxdat_opcode_s0,
     output wire [1:0]                      li_dbf_rxdat_dataid_s0,
     output wire [chie_pkg::BE_WIDTH-1:0]   li_dbf_rxdat_be_s0,
-    output wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0
+    output wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0,
+    output wire [chie_pkg::POISON_WIDTH-1:0] li_dbf_rxdat_poison_s0
     );
 
     //internal reg signals
@@ -98,6 +99,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_dbf_rxdat_dataid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.dataid   : '0;
     assign li_dbf_rxdat_be_s0        = li_mshr_rxdat_valid_s0? rxdatflit.be       : '0;
     assign li_dbf_rxdat_data_s0      = li_mshr_rxdat_valid_s0? rxdatflit.data     : '0;
+    assign li_dbf_rxdat_poison_s0    = li_mshr_rxdat_valid_s0? rxdatflit.poison   : '0;
 
     //if lcrd is zero
     assign rxdat_crd_cnt_zero = (rxdat_crd_cnt_s1_q == {`HNF_LCRD_DAT_CNT_WIDTH{1'b0}});

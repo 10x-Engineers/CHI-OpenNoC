@@ -35,6 +35,7 @@ module rni_axi_bus `RNI_PARAM
     // W Channel0
     input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0,
     input  wire [`AXI4_WSTRB_WIDTH-1:0]    WSTRB0,
+    input  wire [`AXI4_WUSER_WIDTH-1:0]    WUSER0,
     input  wire [`AXI4_WLAST_WIDTH-1:0]    WLAST0,
     output opennoc_rni_pkg::w_ch_s         W_CH_S0,
 
@@ -60,6 +61,7 @@ module rni_axi_bus `RNI_PARAM
     output wire [`AXI4_RID_WIDTH-1:0]      RID0,
     output wire [`AXI4_RDATA_WIDTH-1:0]    RDATA0,
     output wire [`AXI4_RRESP_WIDTH-1:0]    RRESP0,
+    output wire [`AXI4_RUSER_WIDTH-1:0]    RUSER0,
     output wire [`AXI4_RLAST_WIDTH-1:0]    RLAST0,
     input  opennoc_rni_pkg::r_ch_s         R_CH_S0
     );
@@ -78,6 +80,7 @@ module rni_axi_bus `RNI_PARAM
 
     assign W_CH_S0.data        = WDATA0;
     assign W_CH_S0.strb        = WSTRB0;
+    assign W_CH_S0.user        = WUSER0;
     assign W_CH_S0.last        = WLAST0;
 
     assign AR_CH_S0.id        = ARID0;
@@ -97,6 +100,7 @@ module rni_axi_bus `RNI_PARAM
     assign RID0   = R_CH_S0.id;
     assign RDATA0 = R_CH_S0.data;
     assign RRESP0 = R_CH_S0.resp;
+    assign RUSER0 = R_CH_S0.user;
     assign RLAST0 = R_CH_S0.last;
 
 endmodule

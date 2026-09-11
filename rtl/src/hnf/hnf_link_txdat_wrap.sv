@@ -50,6 +50,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]    dbf_txdat_idx_sx1,
     input  wire [chie_pkg::BE_WIDTH*2-1:0]   dbf_txdat_be_sx1,
     input  wire [1:0]                        dbf_txdat_pe_sx1,
+    input  wire [`CACHE_POISON_WIDTH-1:0]    dbf_txdat_poison_sx1,
 
     //outputs to hnf_link
     output logic                             txdatflitv,
@@ -71,12 +72,14 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry1_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry1_sx;
     logic [1:0]                         dbf_txdat_pe_entry1_sx;
+    logic [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_entry1_sx;
     logic                               dbf_txdat_to_rn_entry1_sx;
     logic                               dbf_txdat_valid_entry2_sx;
     logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry2_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry2_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry2_sx;
     logic [1:0]                         dbf_txdat_pe_entry2_sx;
+    logic [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_entry2_sx;
     logic                               dbf_txdat_to_rn_entry2_sx;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] txdat_crd_cnt_q;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
@@ -84,6 +87,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     wire [1:0]                          mshr_txdat_dataid_sx_ns;
     logic [chie_pkg::BE_WIDTH-1:0]      mshr_txdat_be_sx_ns;
     logic [chie_pkg::DATA_WIDTH-1:0]    mshr_txdat_data_sx_ns;
+    logic [chie_pkg::POISON_WIDTH-1:0]  mshr_txdat_poison_sx_ns;
 
     //internal wire signals
     wire                                dat_crd_cnt_not_zero_sx;
@@ -150,10 +154,25 @@ module hnf_link_txdat_wrap `HNF_PARAM
             ;
     end
 
+    // The Poison bits of the half the DataID names, selected exactly as the data is.
+    always_comb begin: txdat_poison_sel_comb_logic
+        mshr_txdat_poison_sx_ns = '0;
+        if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
+            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry2_sx[chie_pkg::POISON_WIDTH-1:0];
+        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
+            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry2_sx[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
+        else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
+            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry1_sx[chie_pkg::POISON_WIDTH-1:0];
+        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
+            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry1_sx[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
+        else
+            ;
+    end
+
     always_comb begin : combinational_logic1
-        // RSVDC, DataCheck and Poison are the fields this node never sources.
-        // Defaulting the whole flit to zero covers them at any configured width;
-        // the assignments below override every field that does carry a value.
+        // RSVDC is the field this node never sources. Defaulting the whole flit to
+        // zero covers it at any configured width; the assignments below override
+        // every field that does carry a value.
         txdatflit_mshr_s0 = '0;
 
         txdatflit_mshr_s0.qos       = '0;
@@ -177,6 +196,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0.data      = mshr_txdat_data_sx_ns;
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         txdatflit_mshr_s0.datacheck = chie_pkg::datacheck_of(mshr_txdat_data_sx_ns);
+        txdatflit_mshr_s0.poison    = mshr_txdat_poison_sx_ns;
     end
 
     assign txdatflit_s0            = txdatflit_mshr_s0;
@@ -351,6 +371,24 @@ module hnf_link_txdat_wrap `HNF_PARAM
             dbf_txdat_be_entry2_sx <= dbf_txdat_be_sx1;
         else
             dbf_txdat_be_entry2_sx <= dbf_txdat_be_entry2_sx;
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_poison_entry1_sx_logic_t
+        if(rst == 1'b1)
+            dbf_txdat_poison_entry1_sx <= {`CACHE_POISON_WIDTH{1'b0}};
+        else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
+            dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_sx1;
+        else
+            dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_entry1_sx;
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_poison_entry2_sx_logic_t
+        if(rst == 1'b1)
+            dbf_txdat_poison_entry2_sx <= {`CACHE_POISON_WIDTH{1'b0}};
+        else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
+            dbf_txdat_poison_entry2_sx <= dbf_txdat_poison_sx1;
+        else
+            dbf_txdat_poison_entry2_sx <= dbf_txdat_poison_entry2_sx;
     end
 
     //receive dbf_txdat_valid_sx1, pass pe

@@ -30,6 +30,7 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [1:0]                         li_dbf_rxdat_dataid_s0,
     input  wire [chie_pkg::BE_WIDTH-1:0]      li_dbf_rxdat_be_s0,
     input  wire [chie_pkg::DATA_WIDTH-1:0]    li_dbf_rxdat_data_s0,
+    input  wire [chie_pkg::POISON_WIDTH-1:0]  li_dbf_rxdat_poison_s0,
 
     //inputs from hnf_mshr_ctl
     //inputs from hnf_mshr_ctl -- Atomic execution (SS4.2.5 p.4-184)
@@ -61,12 +62,14 @@ module hnf_data_buffer `HNF_PARAM
     input  wire                               pipe_dbf_wr_valid_sx9_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_wr_idx_sx9_q,
     input  wire [chie_pkg::DATA_WIDTH*2-1:0]  pipe_dbf_wr_data_sx9_q,
+    input  wire [`CACHE_POISON_WIDTH-1:0]     pipe_dbf_wr_poison_sx9_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_rd_idx_sx2_q,
     input  wire                               pipe_dbf_rd_idx_sx2_valid_q,
 
 
     //outputs to hnf_cache_pipeline
     output logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx7_q,
+    output logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx7_q,
 
     //outputs to hnf_link_txdat_wrap
     //outputs to hnf_mshr_ctl
@@ -83,13 +86,20 @@ module hnf_data_buffer `HNF_PARAM
     output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
     output wire [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_sx1,
     output wire [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_sx1,
-    output wire [1:0]                         dbf_txdat_pe_sx1
+    output wire [1:0]                         dbf_txdat_pe_sx1,
+    output wire [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_sx1
     );
 
     //internal signals
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
     logic [1:0]                        dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
+    // SS9.5 (p.9-347, MUST): "The Poison value, once set, must be propagated along
+    // with the data." Chunk-granular, so it accumulates per 64-bit chunk rather
+    // than following the byte-wise merge below.
+    logic [`CACHE_POISON_WIDTH-1:0]    dbf_poison_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_POISON_WIDTH-1:0]    temp_li_poison;
+    logic [`CACHE_POISON_WIDTH-1:0]    temp_pipe_poison;
     // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
     // location", so dbf_data_q must keep the line as fetched and the operand is held
     // apart until the result is written out to the L3 below. One RXDAT packet holds
@@ -109,6 +119,10 @@ module hnf_data_buffer `HNF_PARAM
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx4_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx5_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx6_q;
+    logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx3_q;
+    logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx4_q;
+    logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx5_q;
+    logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx6_q;
 
     logic [chie_pkg::DATA_WIDTH*2-1:0] temp_li_data;
     logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_be;
@@ -203,47 +217,73 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
 
+    // A chunk takes the incoming Poison whenever the packet that carries it covers
+    // the chunk, and keeps what it already held: SS9.5 gives no way to clear a set
+    // Poison bit, so the accumulation is an OR and never a replacement.
+    generate
+        for(i = 0;i<`CACHE_POISON_WIDTH;i = i+1) begin:get_poison_temp
+            wire covered;
+            assign covered = li_dbf_rxdat_valid_s0
+                          && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
+                          && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::POISON_WIDTH))
+                           || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::POISON_WIDTH)));
+
+            assign temp_li_poison[i] = dbf_poison_q[li_dbf_rxdat_txnid_s0][i]
+                                     | (covered & li_dbf_rxdat_poison_s0[i % chie_pkg::POISON_WIDTH]);
+
+            assign temp_pipe_poison[i] = dbf_poison_q[pipe_dbf_wr_idx_sx9_q][i]
+                                       | pipe_dbf_wr_poison_sx9_q[i];
+        end
+    endgenerate
+
     generate
         for(i = 0;i<`MSHR_ENTRIES_NUM;i = i+1) begin:load_wt_temp
             always_ff @(posedge clk or posedge rst)begin
                 if(rst)begin
-                    dbf_data_q[i] <= 'd0;
-                    dbf_be_q[i]   <= 'd0;
-                    dbf_pe_q[i]   <= 'd0;
+                    dbf_data_q[i]   <= 'd0;
+                    dbf_be_q[i]     <= 'd0;
+                    dbf_pe_q[i]     <= 'd0;
+                    dbf_poison_q[i] <= 'd0;
                 end
                 else begin
                     if (mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q) begin//entry retired
-                        dbf_data_q[i] <= 'd0;
-                        dbf_be_q[i]   <= 'd0;
-                        dbf_pe_q[i]   <= 'd0;
+                        dbf_data_q[i]   <= 'd0;
+                        dbf_be_q[i]     <= 'd0;
+                        dbf_pe_q[i]     <= 'd0;
+                        dbf_poison_q[i] <= 'd0;
                     end
                     else if (li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         //Atomic operand: kept out of the line, see dbf_atm_data_q
                         if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q) begin
-                            dbf_data_q[i] <= temp_pipe_data;
-                            dbf_be_q[i]   <= temp_pipe_be;
-                            dbf_pe_q[i]   <= 2'b11;
+                            dbf_data_q[i]   <= temp_pipe_data;
+                            dbf_be_q[i]     <= temp_pipe_be;
+                            dbf_pe_q[i]     <= 2'b11;
+                            dbf_poison_q[i] <= temp_pipe_poison;
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
-                        dbf_data_q[i] <= temp_li_data;
-                        dbf_be_q[i]   <= temp_li_be;
-                        dbf_pe_q[i]   <= 2'b11;
+                        dbf_data_q[i]   <= temp_li_data;
+                        dbf_be_q[i]     <= temp_li_be;
+                        dbf_pe_q[i]     <= 2'b11;
+                        dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
                     end
                     else if(li_dbf_rxdat_valid_s0 && i == li_dbf_rxdat_txnid_s0)begin
-                        dbf_data_q[i] <= temp_li_data;
-                        dbf_be_q[i]   <= temp_li_be;
-                        dbf_pe_q[i]   <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
+                        dbf_data_q[i]   <= temp_li_data;
+                        dbf_be_q[i]     <= temp_li_be;
+                        dbf_pe_q[i]     <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
+                        dbf_poison_q[i] <= temp_li_poison;
                     end
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
-                        dbf_data_q[i] <= temp_pipe_data;
-                        dbf_be_q[i]   <= temp_pipe_be;
-                        dbf_pe_q[i]   <= 2'b11;
+                        dbf_data_q[i]   <= temp_pipe_data;
+                        dbf_be_q[i]     <= temp_pipe_be;
+                        dbf_pe_q[i]     <= 2'b11;
+                        dbf_poison_q[i] <= temp_pipe_poison;
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
-                        dbf_data_q[i] <= 'd0;
-                        dbf_be_q[i]   <= mshr_dbf_home_fill_be_sx1_q;
-                        dbf_pe_q[i]   <= mshr_dbf_home_fill_pe_sx1_q;
+                        dbf_data_q[i]   <= 'd0;
+                        dbf_be_q[i]     <= mshr_dbf_home_fill_be_sx1_q;
+                        dbf_pe_q[i]     <= mshr_dbf_home_fill_pe_sx1_q;
+                        dbf_poison_q[i] <= 'd0;
                     end
                     else begin
                     end
@@ -344,22 +384,33 @@ module hnf_data_buffer `HNF_PARAM
 
     always_ff @(posedge clk or posedge rst)begin :pipe_rd
         if(rst)begin
-            dbf_pipe_rd_data_sx3_q <= 'd0;
-            dbf_pipe_rd_data_sx4_q <= 'd0;
-            dbf_pipe_rd_data_sx5_q <= 'd0;
-            dbf_pipe_rd_data_sx6_q <= 'd0;
-            dbf_pipe_rd_data_sx7_q <= 'd0;
+            dbf_pipe_rd_data_sx3_q   <= 'd0;
+            dbf_pipe_rd_data_sx4_q   <= 'd0;
+            dbf_pipe_rd_data_sx5_q   <= 'd0;
+            dbf_pipe_rd_data_sx6_q   <= 'd0;
+            dbf_pipe_rd_data_sx7_q   <= 'd0;
+            dbf_pipe_rd_poison_sx3_q <= 'd0;
+            dbf_pipe_rd_poison_sx4_q <= 'd0;
+            dbf_pipe_rd_poison_sx5_q <= 'd0;
+            dbf_pipe_rd_poison_sx6_q <= 'd0;
+            dbf_pipe_rd_poison_sx7_q <= 'd0;
         end
         else begin
-            dbf_pipe_rd_data_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_atm_result_sx2:dbf_pipe_rd_data_sx3_q;
-            dbf_pipe_rd_data_sx4_q <= dbf_pipe_rd_data_sx3_q;
-            dbf_pipe_rd_data_sx5_q <= dbf_pipe_rd_data_sx4_q;
+            dbf_pipe_rd_data_sx3_q   <= pipe_dbf_rd_idx_sx2_valid_q?dbf_atm_result_sx2:dbf_pipe_rd_data_sx3_q;
+            dbf_pipe_rd_data_sx4_q   <= dbf_pipe_rd_data_sx3_q;
+            dbf_pipe_rd_data_sx5_q   <= dbf_pipe_rd_data_sx4_q;
+            dbf_pipe_rd_poison_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_poison_q[pipe_dbf_rd_idx_sx2_q]:dbf_pipe_rd_poison_sx3_q;
+            dbf_pipe_rd_poison_sx4_q <= dbf_pipe_rd_poison_sx3_q;
+            dbf_pipe_rd_poison_sx5_q <= dbf_pipe_rd_poison_sx4_q;
 `ifdef HNF_DELAY_ONE_CYCLE
 
-            dbf_pipe_rd_data_sx6_q <= dbf_pipe_rd_data_sx5_q;
-            dbf_pipe_rd_data_sx7_q <= dbf_pipe_rd_data_sx6_q;
+            dbf_pipe_rd_data_sx6_q   <= dbf_pipe_rd_data_sx5_q;
+            dbf_pipe_rd_data_sx7_q   <= dbf_pipe_rd_data_sx6_q;
+            dbf_pipe_rd_poison_sx6_q <= dbf_pipe_rd_poison_sx5_q;
+            dbf_pipe_rd_poison_sx7_q <= dbf_pipe_rd_poison_sx6_q;
 `else
-            dbf_pipe_rd_data_sx7_q <= dbf_pipe_rd_data_sx5_q;
+            dbf_pipe_rd_data_sx7_q   <= dbf_pipe_rd_data_sx5_q;
+            dbf_pipe_rd_poison_sx7_q <= dbf_pipe_rd_poison_sx5_q;
 `endif
 
         end
@@ -383,5 +434,6 @@ module hnf_data_buffer `HNF_PARAM
     assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_pe_sx1    = mshr_dbf_rd_atm_sx1 ? mshr_dbf_rd_atm_pe_sx1
                                                     : dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
 
 endmodule

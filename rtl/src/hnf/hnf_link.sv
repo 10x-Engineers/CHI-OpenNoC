@@ -118,6 +118,7 @@ module hnf_link `HNF_PARAM
     input  wire [chie_pkg::DATA_WIDTH*2-1:0]   dbf_txdat_data_sx1,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      dbf_txdat_idx_sx1,
     input  wire [1:0]                          dbf_txdat_pe_sx1,
+    input  wire [`CACHE_POISON_WIDTH-1:0]      dbf_txdat_poison_sx1,
     input  wire [chie_pkg::BE_WIDTH*2-1:0]     dbf_txdat_be_sx1,
     input  wire                                mshr_dbf_rd_to_rn_sx1_q,
     input  wire                                dbf_txdat_valid_sx1,
@@ -175,6 +176,7 @@ module hnf_link `HNF_PARAM
     output wire [1:0]                          li_dbf_rxdat_dataid_s0,
     output wire [chie_pkg::BE_WIDTH-1:0]       li_dbf_rxdat_be_s0,
     output wire [chie_pkg::DATA_WIDTH-1:0]     li_dbf_rxdat_data_s0,
+    output wire [chie_pkg::POISON_WIDTH-1:0]   li_dbf_rxdat_poison_s0,
     output wire                                txreqflitv,
     output chie_pkg::req_flit_s                txreqflit,
     output wire                                txreqflitpend,
@@ -294,7 +296,8 @@ module hnf_link `HNF_PARAM
                              .li_dbf_rxdat_opcode_s0                         (li_dbf_rxdat_opcode_s0         ),
                              .li_dbf_rxdat_dataid_s0                         (li_dbf_rxdat_dataid_s0         ),
                              .li_dbf_rxdat_be_s0                             (li_dbf_rxdat_be_s0             ),
-                             .li_dbf_rxdat_data_s0                           (li_dbf_rxdat_data_s0           )
+                             .li_dbf_rxdat_data_s0                           (li_dbf_rxdat_data_s0           ),
+                             .li_dbf_rxdat_poison_s0                         (li_dbf_rxdat_poison_s0         )
                          );
 
     hnf_link_txreq_wrap `HNF_PARAM_INST
@@ -431,6 +434,7 @@ module hnf_link `HNF_PARAM
                             .dbf_txdat_idx_sx1                              (dbf_txdat_idx_sx1                 ),
                             .dbf_txdat_be_sx1                               (dbf_txdat_be_sx1                  ),
                             .dbf_txdat_pe_sx1                               (dbf_txdat_pe_sx1                  ),
+                            .dbf_txdat_poison_sx1                           (dbf_txdat_poison_sx1              ),
                             .mshr_dbf_rd_to_rn_sx1_q                        (mshr_dbf_rd_to_rn_sx1_q           ),
                             .dbf_txdat_valid_sx1                            (dbf_txdat_valid_sx1               ),
                             .txdatflitv                                     (txdatflitv                        ),
