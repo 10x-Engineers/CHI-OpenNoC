@@ -35,6 +35,8 @@ module hnf_cache_pipeline `HNF_PARAM
     input  wire                                     mshr_l3_fill_sx1_q,
     input  chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q,
     input  wire                                     mshr_l3_snoopme_sx1_q,
+    input  wire [chie_pkg::NID_WIDTH-1:0]           mshr_l3_stash_nid_sx1_q,
+    input  wire                                     mshr_l3_stash_v_sx1_q,
     input  wire [CHIE_NID_WIDTH_PARAM-1:0]          mshr_l3_rnf_sx1_q,
     input  wire                                     mshr_l3_fill_dirty_sx1_q,
     input  wire                                     mshr_l3_seq_retire_sx1_q,
@@ -101,6 +103,7 @@ module hnf_cache_pipeline `HNF_PARAM
     output logic                                    l3_snpdirect_sx7_q,
     output logic                                    l3_snpbrd_sx7_q,
     output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]       l3_snp_bit_sx7_q,
+    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]       l3_stash_bit_sx7_q,
     output logic                                    l3_replay_sx7_q,
     output logic                                    l3_mshr_wr_op_sx7_q,
     output logic [chie_pkg::REQ_ADDR_WIDTH-1:0]     l3_evict_addr_sx7_q,
@@ -147,6 +150,7 @@ module hnf_cache_pipeline `HNF_PARAM
     logic [CPL_STAGE-1:0]                    pipe_fill_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_fill_dirty_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_snoopme_sx_q;
+    logic [`RNF_NUM-1:0]                     pipe_stash_vec_sx_q[CPL_STAGE-1:0];
     logic [CPL_STAGE-1:0]                    pipe_req_valid_sx_q;
     wire [CPL_STAGE-2:0]                     pipe_req_valid_sx;
 
@@ -162,6 +166,9 @@ module hnf_cache_pipeline `HNF_PARAM
     wire                                     pipe_fill_sx1;
     wire                                     pipe_fill_dirty_sx1;
     wire                                     pipe_snoopme_sx1;
+    wire [`RNF_NUM-1:0]                      pipe_stash_vec_sx1;
+    logic [`RNF_NUM-1:0]                     pipe_stash_onehot_sx1;
+    logic [`RNF_NUM*NID_WIDTH-1:0]           pipe_stash_list_sx1;
     wire                                     pipe_req_bypass_sx1;
     wire                                     pipe_mshr_req_valid_sx1;
 
@@ -371,6 +378,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [`RNF_NUM*2-1:0]                    pipe_sf_insert_state_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_evict_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_snp_tgt_vec_sx4;
+    wire [`RNF_NUM-1:0]                      pipe_stash_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_snp_unq_tgt_vec_sx4;
     wire [`RNF_NUM-1:0]                      pipe_sf_tgt_vec_sx4;
 
@@ -449,6 +457,7 @@ module hnf_cache_pipeline `HNF_PARAM
     logic                                    pipe_sf_other_hit_sx5_q;
     logic                                    pipe_sf_hit_sx5_q;
     logic [`RNF_NUM-1:0]                     pipe_sf_tgt_vec_sx5_q;
+    logic [`RNF_NUM-1:0]                     pipe_stash_tgt_vec_sx5_q;
     wire                                     pipe_biq_hit_cancel_brd_sx5;
     logic [`RNF_NUM-1:0]                     pipe_biq_hit_tgt_vec_sx5_q;
     wire [`RNF_NUM-1:0]                      pipe_biq_hit_tgt_vec_sx5;
@@ -541,6 +550,22 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_fill_dirty_sx1     = pipe_req_bypass_sx1 ? mshr_l3_fill_dirty_sx1_q : 1'b0;
     assign pipe_snoopme_sx1        = pipe_req_bypass_sx1 ? mshr_l3_snoopme_sx1_q    : 1'b0;
 
+    // SS7.4.1 (p.7-299): "If the Stash target is available in the Stash request then
+    // Home sends the snoop with a stash hint to the specified target" -- a target
+    // the directory need not hold, so this vector joins the fan-out below rather
+    // than being selected from it. A StashNID naming no RN-F on this port is
+    // SS7.4.2's no-target case and one-hots to zero.
+    always_comb begin : func_stashnid2onehot
+        pipe_stash_onehot_sx1 = {`RNF_NUM{1'b0}};
+        pipe_stash_list_sx1[`RNF_NUM*NID_WIDTH-1:0] = RNF_NID_LIST_PARAM;
+        for (int i = 0; i < `RNF_NUM; i = i+1)
+            if (pipe_stash_list_sx1[NID_WIDTH*i +: NID_WIDTH] == mshr_l3_stash_nid_sx1_q)
+                pipe_stash_onehot_sx1[i] = 1'b1;
+    end
+
+    assign pipe_stash_vec_sx1      = (pipe_req_bypass_sx1 & mshr_l3_stash_v_sx1_q) ? pipe_stash_onehot_sx1
+                                                                                   : {`RNF_NUM{1'b0}};
+
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
             pipe_req_valid_sx_q[SX2] <= 1'b0;
@@ -560,6 +585,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
             pipe_snoopme_sx_q[SX2] <= 1'b0;
+            pipe_stash_vec_sx_q[SX2] <= {`RNF_NUM{1'b0}};
         end
         else if (cpl_internal_wr_sx6_q)begin
             pipe_opcode_sx_q[SX2]     <= pipe_opcode_sx_q[SX6];
@@ -569,6 +595,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx_q[SX6];
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx_q[SX6];
             pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx_q[SX6];
+            pipe_stash_vec_sx_q[SX2] <= pipe_stash_vec_sx_q[SX6];
         end
         else if (pipe_mshr_req_valid_sx1)begin
             pipe_opcode_sx_q[SX2]     <= pipe_opcode_sx1;
@@ -578,6 +605,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx1;
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx1;
             pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx1;
+            pipe_stash_vec_sx_q[SX2] <= pipe_stash_vec_sx1;
         end
         else begin
             pipe_opcode_sx_q[SX2]     <= chie_pkg::REQ_REQLCRDRETURN;
@@ -587,6 +615,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
             pipe_snoopme_sx_q[SX2] <= 1'b0;
+            pipe_stash_vec_sx_q[SX2] <= {`RNF_NUM{1'b0}};
         end
     end
 
@@ -718,6 +747,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
                     pipe_snoopme_sx_q[gi] <= 1'b0;
+                    pipe_stash_vec_sx_q[gi] <= {`RNF_NUM{1'b0}};
                 end
                 else if (pipe_req_valid_sx[gi-1] == 1'b1)begin
                     pipe_req_valid_sx_q[gi]  <= pipe_req_valid_sx[gi-1];
@@ -728,6 +758,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_fill_sx_q[gi]       <= pipe_fill_sx_q[gi-1];
                     pipe_fill_dirty_sx_q[gi] <= pipe_fill_dirty_sx_q[gi-1];
                     pipe_snoopme_sx_q[gi] <= pipe_snoopme_sx_q[gi-1];
+                    pipe_stash_vec_sx_q[gi] <= pipe_stash_vec_sx_q[gi-1];
                 end
                 else begin
                     pipe_opcode_sx_q[gi]     <= chie_pkg::REQ_REQLCRDRETURN;
@@ -737,6 +768,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
                     pipe_snoopme_sx_q[gi] <= 1'b0;
+                    pipe_stash_vec_sx_q[gi] <= {`RNF_NUM{1'b0}};
                     pipe_req_valid_sx_q[gi]  <= 1'b0;
                 end
             end
@@ -1527,7 +1559,12 @@ module hnf_cache_pipeline `HNF_PARAM
 
     assign pipe_sf_wr_way_sx4[`SF_WAY_NUM-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_match_vec_sx4_q[`SF_WAY_NUM-1:0] :
            (pipe_sf_evict_sx4 ? pipe_sf_evict_next_sx4_q[`SF_WAY_NUM-1:0] : pipe_sf_free_way_vec_sx4[`SF_WAY_NUM-1:0]);
-    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0];
+    // SS4.4.2 (p.4-196) permits the stash snoop "to the target RN ... if the target
+    // RN does not have the cache line", so the Stash target joins the directory's
+    // fan-out instead of being drawn from it. A fill carries no request to stash for.
+    assign pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0] = pipe_stash_vec_sx_q[SX4] & {`RNF_NUM{~pipe_fill_sx4}};
+    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = (op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0])
+                                             | pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
     assign pipe_sf_wr_state_sx4[`RNF_NUM*2-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] : pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0];
 
     //////////////////////////////////////////////////////////////////////////////
@@ -1614,6 +1651,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_sf_hit_sx5_q                                           <= 1'b0;
             pipe_sf_wr_sx5_q                                            <= 1'b0;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= {`RNF_NUM{1'b0}};
+            pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= {`RNF_NUM{1'b0}};
             pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]                     <= {`RNF_NUM{1'b0}};
             pipe_sf_evict_sx5_q                                         <= 1'b0;
             pipe_sf_wr_way_sx5_q[`SF_WAY_NUM-1:0]                       <= {`SF_WAY_NUM{1'b0}};
@@ -1625,6 +1663,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_sf_hit_sx5_q                                           <= pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4;
             pipe_sf_wr_sx5_q                                            <= pipe_sf_wr_sx4;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0];
+            pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
             pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]                     <= pipe_biq_hit_tgt_vec_sx5[`RNF_NUM-1:0];
             pipe_sf_evict_sx5_q                                         <= pipe_sf_evict_sx4;
             pipe_sf_wr_way_sx5_q[`SF_WAY_NUM-1:0]                       <= pipe_sf_wr_way_sx4[`SF_WAY_NUM-1:0];
@@ -1956,6 +1995,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {HNF_MSHR_RNF_NUM_PARAM{1'b0}};
+            l3_stash_bit_sx7_q  <= {HNF_MSHR_RNF_NUM_PARAM{1'b0}};
             l3_replay_sx7_q     <= 1'b0;
             l3_mshr_wr_op_sx7_q <= 1'b0;
             l3_evict_sx7_q      <= 1'b0;
@@ -1972,6 +2012,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {`RNF_NUM{1'b0}};
+            l3_stash_bit_sx7_q  <= {`RNF_NUM{1'b0}};
             l3_replay_sx7_q     <= l3_replay_sx5;
             l3_mshr_wr_op_sx7_q <= ~l3_replay_sx5 & cpl_internal_wr_sx5;
             l3_evict_sx7_q      <= pipe_tag_evict_sx5_q && !l3_replay_sx5;
@@ -1984,10 +2025,16 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit);
             l3_hit_sx7_q        <= pipe_tag_hit_sx5_q;
             l3_hit_dirty_sx7_q  <= pipe_tag_dirty_sx5_q;
-            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit;
+            // Not "a peer holds the line" but "a snoop on this line is outstanding":
+            // every consumer reads it to defer a decision until the snoop round ends.
+            // SS7.4.1's (p.7-299) Stash target is a snoopee the directory need not
+            // hold, so without it the no-snoop fast path and the post-snoop path both
+            // fire and the entry issues two downstream requests under one TxnID.
+            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit | (|pipe_stash_tgt_vec_sx5_q);
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
             l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
+            l3_stash_bit_sx7_q  <= biq_hit?{`RNF_NUM{1'b0}}                         : pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_replay_sx7_q     <= l3_replay_sx5;
             l3_mshr_wr_op_sx7_q <= ~l3_replay_sx5 & cpl_internal_wr_sx5;
             l3_evict_sx7_q      <= 1'b0;

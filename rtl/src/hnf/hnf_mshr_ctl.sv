@@ -74,6 +74,11 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_atomic_rd_s0,
     input  chie_pkg::req_opcode_e              li_mshr_rxreq_atomic_op_s0,
     input  wire                                li_mshr_rxreq_endian_s0,
+    input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_stashnid_s0,
+    input  wire                                li_mshr_rxreq_stashnidvalid_s0,
+    input  wire [4:0]                          li_mshr_rxreq_stashlpid_s0,
+    input  wire                                li_mshr_rxreq_stashlpidvalid_s0,
+    input  chie_pkg::snp_opcode_e              li_mshr_rxreq_stash_snpcode_s0,
     input  wire                                li_mshr_rxreq_snoopme_s0,
 
     //inputs related to data handling from hnf_link_rxreq_parse
@@ -146,6 +151,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                l3_snpdirect_sx7_q,
     input  wire                                l3_snpbrd_sx7_q,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   l3_snp_bit_sx7_q,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   l3_stash_bit_sx7_q,
     input  wire                                l3_replay_sx7_q,
     input  wire                                l3_hit_d_sx7_q,
     input  wire                                l3_evict_sx7_q,
@@ -212,6 +218,9 @@ module hnf_mshr_ctl `HNF_PARAM
     output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txsnp_fwdnid_sx1,
     output wire [11:0]                         mshr_txsnp_fwdtxnid_sx1,
     output chie_pkg::snp_opcode_e              mshr_txsnp_opcode_sx1,
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_stash_vec_sx1,
+    output chie_pkg::snp_opcode_e              mshr_txsnp_stash_opcode_sx1,
+    output wire [5:0]                          mshr_txsnp_stash_lpid_sx1,
     output wire                                mshr_txsnp_ns_sx1,
     output wire                                mshr_txsnp_rettosrc_sx1,
     output wire                                mshr_txsnp_tracetag_sx1,
@@ -233,6 +242,8 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic                               mshr_l3_seq_retire_sx1_q,
     output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
     output logic                               mshr_l3_snoopme_sx1_q,
+    output logic [chie_pkg::NID_WIDTH-1:0]     mshr_l3_stash_nid_sx1_q,
+    output logic                               mshr_l3_stash_v_sx1_q,
     output logic                               mshr_l3_req_en_sx1_q,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_l3_entry_idx_sx1_q,
     output logic                               mshr_l3_fill_dirty_sx1_q,
@@ -292,6 +303,11 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomicrd_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_endian_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snoopme_s1_q;
+    logic [chie_pkg::NID_WIDTH-1:0]      mshr_stash_nid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_v_s1_q;
+    logic [5:0]                          mshr_stash_lpid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::snp_opcode_e               mshr_stash_snpcode_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`RNF_NUM-1:0]                 mshr_stash_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_sent_sx_q;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_dat_owed_sx;
     chie_pkg::req_opcode_e               mshr_atomic_op_s1_q[0:`MSHR_ENTRIES_NUM-1];
@@ -1336,6 +1352,28 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            // Table 7-3 (SS7.5.1 p.7-300): StashNIDValid=0 is "Stash target is not
+            // specified", which SS7.4.2 (p.7-299) completes without a stash snoop --
+            // and for a WriteUnique*Stash whose line no peer holds Unique, "must not
+            // send SnpUniqueStash to any Request Node".
+            always_ff @(posedge clk)begin : mshr_stash_tgt_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_stash_v_s1_q[entry]       <= 1'b0;
+                    mshr_stash_nid_s1_q[entry]     <= '0;
+                    mshr_stash_lpid_s1_q[entry]    <= '0;
+                    mshr_stash_snpcode_s1_q[entry] <= chie_pkg::SNP_SNPLCRDRETURN;
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1)begin
+                    mshr_stash_v_s1_q[entry]       <= li_mshr_rxreq_stashnidvalid_s0;
+                    mshr_stash_nid_s1_q[entry]     <= li_mshr_rxreq_stashnid_s0;
+                    mshr_stash_lpid_s1_q[entry]    <= {li_mshr_rxreq_stashlpidvalid_s0,
+                                                       li_mshr_rxreq_stashlpid_s0};
+                    mshr_stash_snpcode_s1_q[entry] <= li_mshr_rxreq_stash_snpcode_s0;
+                end
+                else
+                    ;
+            end
+
             always_ff @(posedge clk)begin : mshr_stash_sep_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
                     mshr_stash_sep_s1_q[entry] <= 1'b0;
@@ -2255,6 +2293,21 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snp_bit_sx8_q[entry] <= l3_snp_bit_sx7_q;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
                     mshr_snp_bit_sx8_q[entry] <= {`RNF_NUM{1'b1}};
+                else
+                    ;
+            end
+
+            // SS4.3 (p.4-191, MUST): "A stash snoop is permitted to be sent to one
+            // RN-F only", so this stays the one-hot the pipeline widened the fan-out
+            // with -- the fan-out itself may hold several snoopees, and the rest take
+            // SS4.4.1's (p.4-194, MUST) invalidating snoop instead.
+            always_ff @(posedge clk)begin : mshr_stash_bit_sx8_q_timing_logic
+                if(mshr_can_retire_entry_sx1[entry])
+                    mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
+                else if(mshr_l3_entry_vec_sx7[entry] && l3_rd_busy_s2_q[entry])
+                    mshr_stash_bit_sx8_q[entry] <= l3_stash_bit_sx7_q;
+                else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                    mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
                 else
                     ;
             end
@@ -3602,6 +3655,9 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_entry_idx_sx1];
     assign mshr_txsnp_rn_vec_sx1   = (mshr_snp_bit_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_stash_vec_sx1    = (mshr_stash_bit_sx8_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_stash_opcode_sx1 = (mshr_stash_snpcode_s1_q[mshr_txsnp_entry_idx_sx1]);
+    assign mshr_txsnp_stash_lpid_sx1   = (mshr_stash_lpid_s1_q[mshr_txsnp_entry_idx_sx1]);
 
     //************************************************************************//
 
@@ -3647,6 +3703,8 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_snoopme_sx1_q    <= 1'b0;
+            mshr_l3_stash_nid_sx1_q  <= '0;
+            mshr_l3_stash_v_sx1_q    <= 1'b0;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end
@@ -3656,6 +3714,8 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_entry_idx_sx1_q  <= mshrageq_mshr_idx_sx2_q[0];
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[mshrageq_mshr_idx_sx2_q[0]] | mshr_rn_dat_get_d_s1_q[mshrageq_mshr_idx_sx2_q[0]] | mshr_l3hit_d_sx8_q[mshrageq_mshr_idx_sx2_q[0]])&(!l3_rd_rdy_s2_q[mshrageq_mshr_idx_sx2_q[0]]);
         end
@@ -3665,6 +3725,8 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_rob]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_rob]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_rob]);
+            mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[cpl_rob]);
+            mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[cpl_rob]);
             mshr_l3_entry_idx_sx1_q  <= cpl_rob;
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[cpl_rob] | mshr_rn_dat_get_d_s1_q[cpl_rob] | mshr_l3hit_d_sx8_q[cpl_rob])&(!l3_rd_rdy_s2_q[cpl_rob]);
         end
@@ -3674,6 +3736,8 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_rnf_sx1_q        <= (mshr_srcid_s1_q[cpl_wrap_other_idx]);
             mshr_l3_opcode_sx1_q     <= (mshr_opcode_s1_q[cpl_wrap_other_idx]);
             mshr_l3_snoopme_sx1_q    <= (mshr_snoopme_s1_q[cpl_wrap_other_idx]);
+            mshr_l3_stash_nid_sx1_q  <= (mshr_stash_nid_s1_q[cpl_wrap_other_idx]);
+            mshr_l3_stash_v_sx1_q    <= (mshr_stash_v_s1_q[cpl_wrap_other_idx]);
             mshr_l3_entry_idx_sx1_q  <= cpl_wrap_other_idx;
             mshr_l3_fill_dirty_sx1_q <= (mshr_snp_d_s1_q[cpl_wrap_other_idx] | mshr_rn_dat_get_d_s1_q[cpl_wrap_other_idx] | mshr_l3hit_d_sx8_q[cpl_wrap_other_idx])&(!l3_rd_rdy_s2_q[cpl_wrap_other_idx]);
         end
@@ -3683,6 +3747,8 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_snoopme_sx1_q    <= 1'b0;
+            mshr_l3_stash_nid_sx1_q  <= '0;
+            mshr_l3_stash_v_sx1_q    <= 1'b0;
             mshr_l3_entry_idx_sx1_q  <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_l3_fill_dirty_sx1_q <= 1'b0;
         end

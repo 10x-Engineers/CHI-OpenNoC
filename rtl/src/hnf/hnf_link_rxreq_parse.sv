@@ -63,6 +63,10 @@ module hnf_link_rxreq_parse `HNF_PARAM
     output wire [7:0]                          li_mshr_rxreq_lpid_s0,
     output wire                                li_mshr_rxreq_excl_s0,
     output wire                                li_mshr_rxreq_endian_s0,
+    output wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_stashnid_s0,
+    output wire                                li_mshr_rxreq_stashnidvalid_s0,
+    output wire [4:0]                          li_mshr_rxreq_stashlpid_s0,
+    output wire                                li_mshr_rxreq_stashlpidvalid_s0,
     output wire                                li_mshr_rxreq_expcompack_s0,
     output wire                                li_mshr_rxreq_tracetag_s0
     );
@@ -126,6 +130,19 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // Table 13-6 (p.13-410) overlays Endian on the StashNIDValid bit; SS2.10.5
     // (p.2-138) makes it the operand format an Atomic's arithmetic reads.
     assign li_mshr_rxreq_endian_s0     = rxreq_flit_valid_s0? rxreqflit.stashnidvalid.endian :'0;
+    // Table 7-3 (SS7.5.1 p.7-300): a Stash request names its target in the
+    // ReturnNID/ReturnTxnID bits -- StashNID with StashNIDValid, and StashLPID in
+    // ReturnTxnID[4:0] with StashLPIDValid at [5]. The StashNIDValid position is
+    // the same bit Table 13-6 (p.13-410) gives Endian, so the opcode is what tells
+    // the two apart.
+    assign li_mshr_rxreq_stashnid_s0       = (rxreq_flit_valid_s0 & opennoc_hnf_pkg::hnf_stash_req(rxreqflit.opcode))
+                                             ? rxreqflit.returnnid : '0;
+    assign li_mshr_rxreq_stashnidvalid_s0  = (rxreq_flit_valid_s0 & opennoc_hnf_pkg::hnf_stash_req(rxreqflit.opcode))
+                                             & rxreqflit.stashnidvalid.stashnidvalid;
+    assign li_mshr_rxreq_stashlpid_s0      = (rxreq_flit_valid_s0 & opennoc_hnf_pkg::hnf_stash_req(rxreqflit.opcode))
+                                             ? rxreqflit.returntxnid[4:0] : '0;
+    assign li_mshr_rxreq_stashlpidvalid_s0 = (rxreq_flit_valid_s0 & opennoc_hnf_pkg::hnf_stash_req(rxreqflit.opcode))
+                                             & rxreqflit.returntxnid[5];
     assign li_mshr_rxreq_expcompack_s0 = rxreq_flit_valid_s0? rxreqflit.expcompack:'0;
     assign li_mshr_rxreq_tracetag_s0   = rxreq_flit_valid_s0? rxreqflit.tracetag  :'0;
 

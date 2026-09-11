@@ -168,6 +168,9 @@ module hnf `HNF_PARAM
     wire                                     mshr_txsnp_rettosrc_sx1;
     wire                                     mshr_txsnp_tracetag_sx1;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        mshr_txsnp_rn_vec_sx1;
+    wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        mshr_txsnp_stash_vec_sx1;
+    chie_pkg::snp_opcode_e                   mshr_txsnp_stash_opcode_sx1;
+    wire [5:0]                               mshr_txsnp_stash_lpid_sx1;
     wire [chie_pkg::NID_WIDTH-1:0]           mshr_txdat_tgtid_sx2;
     wire [11:0]                              mshr_txdat_txnid_sx2;
     chie_pkg::dat_opcode_e                   mshr_txdat_opcode_sx2;
@@ -197,6 +200,10 @@ module hnf `HNF_PARAM
     wire [7:0]                               li_mshr_rxreq_lpid_s0;
     wire                                     li_mshr_rxreq_excl_s0;
     wire                                     li_mshr_rxreq_endian_s0;
+    wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxreq_stashnid_s0;
+    wire                                     li_mshr_rxreq_stashnidvalid_s0;
+    wire [4:0]                               li_mshr_rxreq_stashlpid_s0;
+    wire                                     li_mshr_rxreq_stashlpidvalid_s0;
     wire                                     li_mshr_rxreq_expcompack_s0;
     wire                                     li_mshr_rxreq_tracetag_s0;
     wire                                     li_mshr_rxrsp_valid_s0;
@@ -250,6 +257,7 @@ module hnf `HNF_PARAM
     wire                                     l3_snpdirect_sx7_q;
     wire                                     l3_snpbrd_sx7_q;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        l3_snp_bit_sx7_q;
+    wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        l3_stash_bit_sx7_q;
     wire                                     l3_replay_sx7_q;
     wire                                     l3_mshr_wr_op_sx7_q;
     wire                                     mshr_l3_hazard_valid_sx3_q;
@@ -281,6 +289,8 @@ module hnf `HNF_PARAM
     wire                                     mshr_l3_fill_sx1_q;
     chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q;
     wire                                     mshr_l3_snoopme_sx1_q;
+    wire [chie_pkg::NID_WIDTH-1:0]           mshr_l3_stash_nid_sx1_q;
+    wire                                     mshr_l3_stash_v_sx1_q;
     wire [CHIE_NID_WIDTH_PARAM-1:0]          mshr_l3_rnf_sx1_q;
     wire                                     mshr_l3_fill_dirty_sx1_q;
     wire                                     mshr_l3_seq_retire_sx1_q;
@@ -452,6 +462,9 @@ module hnf `HNF_PARAM
                  .mshr_txsnp_rettosrc_sx1                      (mshr_txsnp_rettosrc_sx1           ),
                  .mshr_txsnp_tracetag_sx1                      (mshr_txsnp_tracetag_sx1           ),
                  .mshr_txsnp_rn_vec_sx1                        (mshr_txsnp_rn_vec_sx1             ),
+                 .mshr_txsnp_stash_vec_sx1                     (mshr_txsnp_stash_vec_sx1          ),
+                 .mshr_txsnp_stash_opcode_sx1                  (mshr_txsnp_stash_opcode_sx1       ),
+                 .mshr_txsnp_stash_lpid_sx1                    (mshr_txsnp_stash_lpid_sx1         ),
                  .txdat_lcrdv                                  (TXDATLCRDV                        ),
                  .mshr_txdat_tgtid_sx2                         (mshr_txdat_tgtid_sx2              ),
                  .mshr_txdat_txnid_sx2                         (mshr_txdat_txnid_sx2              ),
@@ -486,6 +499,10 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_lpid_s0                        (li_mshr_rxreq_lpid_s0             ),
                  .li_mshr_rxreq_excl_s0                        (li_mshr_rxreq_excl_s0             ),
                  .li_mshr_rxreq_endian_s0                      (li_mshr_rxreq_endian_s0           ),
+                 .li_mshr_rxreq_stashnid_s0                    (li_mshr_rxreq_stashnid_s0         ),
+                 .li_mshr_rxreq_stashnidvalid_s0               (li_mshr_rxreq_stashnidvalid_s0    ),
+                 .li_mshr_rxreq_stashlpid_s0                   (li_mshr_rxreq_stashlpid_s0        ),
+                 .li_mshr_rxreq_stashlpidvalid_s0              (li_mshr_rxreq_stashlpidvalid_s0   ),
                  .li_mshr_rxreq_expcompack_s0                  (li_mshr_rxreq_expcompack_s0       ),
                  .li_mshr_rxreq_tracetag_s0                    (li_mshr_rxreq_tracetag_s0         ),
                  .rxrsp_lcrdv                                  (RXRSPLCRDV                        ),
@@ -559,6 +576,10 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_lpid_s0                        (li_mshr_rxreq_lpid_s0             ),
                  .li_mshr_rxreq_excl_s0                        (li_mshr_rxreq_excl_s0             ),
                  .li_mshr_rxreq_endian_s0                      (li_mshr_rxreq_endian_s0           ),
+                 .li_mshr_rxreq_stashnid_s0                    (li_mshr_rxreq_stashnid_s0         ),
+                 .li_mshr_rxreq_stashnidvalid_s0               (li_mshr_rxreq_stashnidvalid_s0    ),
+                 .li_mshr_rxreq_stashlpid_s0                   (li_mshr_rxreq_stashlpid_s0        ),
+                 .li_mshr_rxreq_stashlpidvalid_s0              (li_mshr_rxreq_stashlpidvalid_s0   ),
                  .li_mshr_rxreq_expcompack_s0                  (li_mshr_rxreq_expcompack_s0       ),
                  .li_mshr_rxreq_tracetag_s0                    (li_mshr_rxreq_tracetag_s0         ),
                  .txrsp_mshr_retryack_won_s1                   (txrsp_mshr_retryack_won_s1        ),
@@ -606,6 +627,7 @@ module hnf `HNF_PARAM
                  .l3_snpdirect_sx7_q                           (l3_snpdirect_sx7_q                ),
                  .l3_snpbrd_sx7_q                              (l3_snpbrd_sx7_q                   ),
                  .l3_snp_bit_sx7_q                             (l3_snp_bit_sx7_q                  ),
+                 .l3_stash_bit_sx7_q                           (l3_stash_bit_sx7_q                ),
                  .l3_replay_sx7_q                              (l3_replay_sx7_q                   ),
                  .l3_hit_d_sx7_q                               (l3_hit_d_sx7_q                    ),
 
@@ -705,6 +727,9 @@ module hnf `HNF_PARAM
                  .mshr_txsnp_rettosrc_sx1                      (mshr_txsnp_rettosrc_sx1           ),
                  .mshr_txsnp_tracetag_sx1                      (mshr_txsnp_tracetag_sx1           ),
                  .mshr_txsnp_rn_vec_sx1                        (mshr_txsnp_rn_vec_sx1             ),
+                 .mshr_txsnp_stash_vec_sx1                     (mshr_txsnp_stash_vec_sx1          ),
+                 .mshr_txsnp_stash_opcode_sx1                  (mshr_txsnp_stash_opcode_sx1       ),
+                 .mshr_txsnp_stash_lpid_sx1                    (mshr_txsnp_stash_lpid_sx1         ),
                  .mshr_txdat_tgtid_sx2                         (mshr_txdat_tgtid_sx2              ),
                  .mshr_txdat_txnid_sx2                         (mshr_txdat_txnid_sx2              ),
                  .mshr_txdat_opcode_sx2                        (mshr_txdat_opcode_sx2             ),
@@ -717,6 +742,8 @@ module hnf `HNF_PARAM
                  .mshr_l3_rnf_sx1_q                            (mshr_l3_rnf_sx1_q                 ),
                  .mshr_l3_seq_retire_sx1_q                     (mshr_l3_seq_retire_sx1_q          ),
                  .mshr_l3_snoopme_sx1_q                        (mshr_l3_snoopme_sx1_q             ),
+                 .mshr_l3_stash_nid_sx1_q                      (mshr_l3_stash_nid_sx1_q           ),
+                 .mshr_l3_stash_v_sx1_q                        (mshr_l3_stash_v_sx1_q             ),
                  .mshr_l3_opcode_sx1_q                         (mshr_l3_opcode_sx1_q              ),
                  .mshr_l3_req_en_sx1_q                         (mshr_l3_req_en_sx1_q              ),
                  .mshr_l3_entry_idx_sx1_q                      (mshr_l3_entry_idx_sx1_q           ),
@@ -733,6 +760,8 @@ module hnf `HNF_PARAM
                            .mshr_l3_entry_idx_sx1_q                      (mshr_l3_entry_idx_sx1_q           ),
                            .mshr_l3_fill_sx1_q                           (mshr_l3_fill_sx1_q                ),
                            .mshr_l3_snoopme_sx1_q                        (mshr_l3_snoopme_sx1_q             ),
+                           .mshr_l3_stash_nid_sx1_q                      (mshr_l3_stash_nid_sx1_q           ),
+                           .mshr_l3_stash_v_sx1_q                        (mshr_l3_stash_v_sx1_q             ),
                            .mshr_l3_opcode_sx1_q                         (mshr_l3_opcode_sx1_q              ),
                            .mshr_l3_rnf_sx1_q                            (mshr_l3_rnf_sx1_q                 ),
                            .mshr_l3_fill_dirty_sx1_q                     (mshr_l3_fill_dirty_sx1_q          ),
@@ -779,6 +808,7 @@ module hnf `HNF_PARAM
                            .l3_snpdirect_sx7_q                           (l3_snpdirect_sx7_q                ),
                            .l3_snpbrd_sx7_q                              (l3_snpbrd_sx7_q                   ),
                            .l3_snp_bit_sx7_q                             (l3_snp_bit_sx7_q                  ),
+                           .l3_stash_bit_sx7_q                           (l3_stash_bit_sx7_q                ),
                            .l3_replay_sx7_q                              (l3_replay_sx7_q                   ),
                            .l3_mshr_wr_op_sx7_q                          (l3_mshr_wr_op_sx7_q               ),
                            .pipe_dbf_wr_valid_sx9_q                      (pipe_dbf_wr_valid_sx9_q           ),

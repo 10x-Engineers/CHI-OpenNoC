@@ -41,6 +41,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     input  wire                                mshr_txsnp_rettosrc_sx1,
     input  wire                                mshr_txsnp_tracetag_sx1,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_rn_vec_sx1,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_stash_vec_sx1,
+    input  chie_pkg::snp_opcode_e              mshr_txsnp_stash_opcode_sx1,
+    input  wire [5:0]                          mshr_txsnp_stash_lpid_sx1,
 
     //outputs to hnf_link
     output logic                               txsnpflitv,
@@ -61,11 +64,20 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0_q;
     logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0] snp_crd_cnt_ns_s0;
     opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0;
+    opennoc_hnf_pkg::snp_routed_s       txsnpflit_base_s0;
+    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  stash_vec_q;
+    chie_pkg::snp_opcode_e              stash_opcode_q;
+    logic [5:0]                         stash_lpid_q;
+    logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  stash_vec_sel;
+    chie_pkg::snp_opcode_e              stash_opcode_sel;
+    logic [5:0]                         stash_lpid_sel;
     logic                               found_rn_vec;
     logic [`RNF_WIDTH-1:0]              found_rn_vec_num;
     logic                               found_tgt_vec;
     logic [`RNF_WIDTH-1:0]              found_tgt_vec_num;
     logic [CHIE_NID_WIDTH_PARAM-1:0]    rnid_list_array[0:HNF_MSHR_RNF_NUM_PARAM-1];
+    logic [`RNF_WIDTH-1:0]              snp_tgt_idx;
+    logic                               snp_tgt_is_stash;
 
     //internal wire signals
     wire                                txsnp_busy_sx;
@@ -146,31 +158,57 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     // select from new request and old request(snoop count > 1)
     always_comb begin: txsnpflit_s0_logic_c
-        txsnpflit_s0 = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? txsnpflit_s0_q : '0;
+        txsnpflit_base_s0 = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? txsnpflit_s0_q : '0;
         if(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})begin
-            txsnpflit_s0.tgtid = rnid_list_array[found_tgt_vec_num];
+            txsnpflit_base_s0.tgtid = rnid_list_array[found_tgt_vec_num];
             // Sec 4.9 (p.4-240, MUST): "Home must only set RetToSrc on the Snoop
             // request to a single Request Node." Only the first snoopee of the
             // fan-out is built below; every re-drive here clears the bit.
-            txsnpflit_s0.flit.rettosrc = 1'b0;
+            txsnpflit_base_s0.flit.rettosrc = 1'b0;
         end
         else if(mshr_txsnp_valid_sx1_q == 1'b1 & txsnp_mshr_busy_sx1 == 1'b0)begin
             //MSHR txsnpflit wrap
-            txsnpflit_s0.flit.qos          = mshr_txsnp_qos_sx1;
-            txsnpflit_s0.flit.srcid        = HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
-            txsnpflit_s0.flit.txnid        = mshr_txsnp_txnid_sx1_q;
-            txsnpflit_s0.flit.fwdnid       = mshr_txsnp_fwdnid_sx1;
-            txsnpflit_s0.flit.fwdtxnid     = mshr_txsnp_fwdtxnid_sx1;
-            txsnpflit_s0.flit.opcode       = mshr_txsnp_opcode_sx1;
-            txsnpflit_s0.flit.addr         = mshr_txsnp_addr_sx1;
-            txsnpflit_s0.flit.ns           = mshr_txsnp_ns_sx1;
-            txsnpflit_s0.flit.donotgotosd  = {1{1'b1}};
-            txsnpflit_s0.flit.rettosrc     = mshr_txsnp_rettosrc_sx1;
-            txsnpflit_s0.flit.tracetag     = mshr_txsnp_tracetag_sx1;
+            txsnpflit_base_s0.flit.qos          = mshr_txsnp_qos_sx1;
+            txsnpflit_base_s0.flit.srcid        = HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
+            txsnpflit_base_s0.flit.txnid        = mshr_txsnp_txnid_sx1_q;
+            txsnpflit_base_s0.flit.fwdnid       = mshr_txsnp_fwdnid_sx1;
+            txsnpflit_base_s0.flit.fwdtxnid     = mshr_txsnp_fwdtxnid_sx1;
+            txsnpflit_base_s0.flit.opcode       = mshr_txsnp_opcode_sx1;
+            txsnpflit_base_s0.flit.addr         = mshr_txsnp_addr_sx1;
+            txsnpflit_base_s0.flit.ns           = mshr_txsnp_ns_sx1;
+            txsnpflit_base_s0.flit.donotgotosd  = {1{1'b1}};
+            txsnpflit_base_s0.flit.rettosrc     = mshr_txsnp_rettosrc_sx1;
+            txsnpflit_base_s0.flit.tracetag     = mshr_txsnp_tracetag_sx1;
             //configure tgtid in txsnpflit
-            txsnpflit_s0.tgtid = rnid_list_array[found_rn_vec_num];
+            txsnpflit_base_s0.tgtid = rnid_list_array[found_rn_vec_num];
         end
     end
+
+    // Table 7-1 (SS7.1.1 p.7-295) gives the Stash target a different snoop from the
+    // rest of the fan-out, so the opcode is per snoopee rather than per request.
+    // Applied to the flit being sent and never to the preserved one: that copy is
+    // what every later snoopee of this fan-out is re-driven from. SS4.9 (p.4-240,
+    // MUST) makes RetToSrc "inapplicable and must be set to zero in ... Stash
+    // snoops", and SS13.10.10 (p.13-419) carries StashLPID in the FwdTxnID bits.
+    always_comb begin: txsnpflit_stash_override_c
+        txsnpflit_s0 = txsnpflit_base_s0;
+        if(snp_tgt_is_stash)begin
+            txsnpflit_s0.flit.opcode   = stash_opcode_sel;
+            txsnpflit_s0.flit.fwdtxnid = {6'b0, stash_lpid_sel};
+            txsnpflit_s0.flit.rettosrc = 1'b0;
+        end
+    end
+
+    assign snp_tgt_idx      = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ? found_tgt_vec_num : found_rn_vec_num;
+    assign stash_vec_sel    = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ? stash_vec_q    : mshr_txsnp_stash_vec_sx1;
+    assign stash_opcode_sel = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ? stash_opcode_q : mshr_txsnp_stash_opcode_sx1;
+    assign stash_lpid_sel   = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ? stash_lpid_q   : mshr_txsnp_stash_lpid_sx1;
+
+    // SNP_SNPLCRDRETURN is hnf_stash_snp_of()'s "not a Stash request" sentinel, so it
+    // is never an opcode to send.
+    assign snp_tgt_is_stash = ((txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ? found_tgt_vec : found_rn_vec) &
+                              stash_vec_sel[snp_tgt_idx] &
+                              (stash_opcode_sel != chie_pkg::SNP_SNPLCRDRETURN);
 
     assign txsnp_cnt_tmp = (mshr_txsnp_valid_sx1_q & ~txsnp_mshr_busy_sx1)? mshr_txsnp_rn_cnt : {`MSHR_SNPCNT_WIDTH{1'b0}};
 
@@ -179,9 +217,25 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         if(rst == 1'b1)
             txsnpflit_s0_q <= '0;
         else if(txsnp_cnt_tmp > {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1})
-            txsnpflit_s0_q <= txsnpflit_s0;
+            txsnpflit_s0_q <= txsnpflit_base_s0;
         else
             txsnpflit_s0_q <= txsnpflit_s0_q;
+    end
+
+    // Held for the whole fan-out for the same reason the flit is: the MSHR clears
+    // the entry's snoop state as it retires, and the later snoopees are driven from
+    // what was captured when the fan-out started.
+    always_ff @(posedge clk or posedge rst) begin: stash_sel_q_logic_t
+        if(rst == 1'b1)begin
+            stash_vec_q    <= {HNF_MSHR_RNF_NUM_PARAM{1'b0}};
+            stash_opcode_q <= chie_pkg::SNP_SNPLCRDRETURN;
+            stash_lpid_q   <= 6'b0;
+        end
+        else if(txsnp_cnt_tmp > {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1})begin
+            stash_vec_q    <= mshr_txsnp_stash_vec_sx1;
+            stash_opcode_q <= mshr_txsnp_stash_opcode_sx1;
+            stash_lpid_q   <= mshr_txsnp_stash_lpid_sx1;
+        end
     end
 
     //just received it or not zero
