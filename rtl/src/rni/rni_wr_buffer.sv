@@ -72,6 +72,10 @@ module rni_wr_buffer `RNI_PARAM
     input  wire                                BREADY0,
 
     // Link Ctl Interface
+    // Per entry: every byte of the 64B line has its write strobe asserted. Only
+    // meaningful once that entry's last beat has landed (awctrl's
+    // wdata_recv_done_q), which is where it is read.
+    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_o,
     output chie_pkg::dat_flit_s                wb_txdatflit_d3_o,
     output wire                                wb_txdatflitv_d3_o,
     input  wire                                wb_txdatflit_sent_d3_i
@@ -330,6 +334,15 @@ module rni_wr_buffer `RNI_PARAM
         for (int i = 0; i < RNI_AW_ENTRIES_NUM_PARAM; i = i + 1)
             txdat_data_d2_r = txdat_data_d2_r | ({(`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH){txdat_rdy_entry_d2_q_i[i]}} & w_data_d2_q[i]);
     end
+
+    // SS2.10.3 (p.2-135, MUST) gives WriteNoSnpFull / WriteUniqueFull "all byte
+    // enables must be asserted", so the Full opcode is only available once the
+    // accumulated strobes cover the whole line.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: wr_all_be
+            assign wb_entry_all_be_o[entry] = &w_strb_d2_q[entry];
+        end
+    endgenerate
 
     // get 64 bits BE from write wstrb bank
     always_comb begin

@@ -69,6 +69,9 @@ module rni_link_ctl `RNI_PARAM
     input  chie_pkg::req_flit_s aw_txreqflit_s4_i,
     input  wire                 aw_txreqflitv_s4_i,
     output wire                 aw_txreqflit_sent_s4_o,
+    input  chie_pkg::req_flit_s misc_txreqflit_s4_i,
+    input  wire                 misc_txreqflitv_s4_i,
+    output wire                 misc_txreqflit_sent_s4_o,
 
     // outputs to rni_ar_ctl/rni_aw_ctl/rni_rd_buffer/rni_misc
     output wire                 rxrspflitv_d1_o,
@@ -95,9 +98,9 @@ module rni_link_ctl `RNI_PARAM
     wire                       ax_txrspflit_sent_d0_w;
     wire                       txrspflitv_en_w;
     chie_pkg::rsp_flit_s       txrspflit_d0_w;
-    wire [1:0]                 ax_txreqflitv_s4_w;
+    wire [2:0]                 ax_txreqflitv_s4_w;
     wire                       ax_txreqflit_upd_s4_w;
-    wire [1:0]                 ax_txreqflit_sel_s4_w;
+    wire [2:0]                 ax_txreqflit_sel_s4_w;
     wire                       ax_txreqflit_sent_s4_w;
     wire                       txreqflitv_en_w;
     chie_pkg::req_flit_s       txreqflit_s4_w;
@@ -138,7 +141,7 @@ module rni_link_ctl `RNI_PARAM
 
     assign TXDATFLITPEND = wb_txdatflitv_d3_i | txdatflit_lcrd_v;
     assign TXRSPFLITPEND = aw_txrspflitv_d0_i | txrspflit_lcrd_v;
-    assign TXREQFLITPEND = ar_txreqflitv_s4_i | aw_txreqflitv_s4_i | txreqflit_lcrd_v;
+    assign TXREQFLITPEND = ar_txreqflitv_s4_i | aw_txreqflitv_s4_i | misc_txreqflitv_s4_i | txreqflit_lcrd_v;
 `else
     assign TXDATFLITPEND = 1'b1;
     assign TXRSPFLITPEND = 1'b1;
@@ -148,7 +151,7 @@ module rni_link_ctl `RNI_PARAM
     //*************************************************
     //                Link HandShake
     //*************************************************
-    assign txflit_avail   = wb_txdatflitv_d3_i | aw_txrspflitv_d0_i | ar_txreqflitv_s4_i | aw_txreqflitv_s4_i;
+    assign txflit_avail   = wb_txdatflitv_d3_i | aw_txrspflitv_d0_i | ar_txreqflitv_s4_i | aw_txreqflitv_s4_i | misc_txreqflitv_s4_i;
 
     assign rxll_st_run    = (rxlink_state == `LL_RUN);
     assign llst_is_run    = txll_st_run & rxll_st_run;
@@ -447,11 +450,14 @@ module rni_link_ctl `RNI_PARAM
                       ,.lcrd_avail        ( txreq_lcrd_avail_s4_w  )
                   );
 
-    assign ax_txreqflitv_s4_w    = {aw_txreqflitv_s4_i, ar_txreqflitv_s4_i};
-    assign ax_txreqflit_upd_s4_w = txreq_lcrd_avail_s4_w & (aw_txreqflitv_s4_i | ar_txreqflitv_s4_i);
+    // rni_misc's PCrdReturn is the third REQ source. SS2.11.1 (p.2-147, MUST)
+    // makes returning an unused credit an obligation, so it arbitrates with the
+    // AR and AW requests rather than waiting for the channel to go quiet.
+    assign ax_txreqflitv_s4_w    = {misc_txreqflitv_s4_i, aw_txreqflitv_s4_i, ar_txreqflitv_s4_i};
+    assign ax_txreqflit_upd_s4_w = txreq_lcrd_avail_s4_w & (misc_txreqflitv_s4_i | aw_txreqflitv_s4_i | ar_txreqflitv_s4_i);
 
     poll_function #(
-                      .POLL_ENTRIES_NUM ( 2                       )
+                      .POLL_ENTRIES_NUM ( 3                       )
                       ,.POLL_MODE        ( 1'b1                    )
                   )txreq_poll(
                       .clk              ( clk_i                   )
@@ -463,9 +469,10 @@ module rni_link_ctl `RNI_PARAM
                       ,.sel_index        (                         )
                   );
 
-    assign ar_txreqflit_sent_s4_o = ax_txreqflit_sel_s4_w[0] & ar_txreqflitv_s4_i & txreq_lcrd_avail_s4_w & ~lcrd_return_en & txll_st_run;
-    assign aw_txreqflit_sent_s4_o = ax_txreqflit_sel_s4_w[1] & aw_txreqflitv_s4_i & txreq_lcrd_avail_s4_w & ~lcrd_return_en & txll_st_run;
-    assign ax_txreqflit_sent_s4_w = (ar_txreqflit_sent_s4_o | aw_txreqflit_sent_s4_o | txreqflit_lcrd_v);
+    assign ar_txreqflit_sent_s4_o   = ax_txreqflit_sel_s4_w[0] & ar_txreqflitv_s4_i   & txreq_lcrd_avail_s4_w & ~lcrd_return_en & txll_st_run;
+    assign aw_txreqflit_sent_s4_o   = ax_txreqflit_sel_s4_w[1] & aw_txreqflitv_s4_i   & txreq_lcrd_avail_s4_w & ~lcrd_return_en & txll_st_run;
+    assign misc_txreqflit_sent_s4_o = ax_txreqflit_sel_s4_w[2] & misc_txreqflitv_s4_i & txreq_lcrd_avail_s4_w & ~lcrd_return_en & txll_st_run;
+    assign ax_txreqflit_sent_s4_w = (ar_txreqflit_sent_s4_o | aw_txreqflit_sent_s4_o | misc_txreqflit_sent_s4_o | txreqflit_lcrd_v);
 
     assign txreqflitv_en_w = ax_txreqflit_sent_s4_w | txreqflitv_s5_q;
 
@@ -479,7 +486,8 @@ module rni_link_ctl `RNI_PARAM
     assign TXREQFLITV = txreqflitv_s5_q;
 
     assign txreqflit_s4_w = txreqflit_lcrd_v? txreqflit_lcrd_d4 : (({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[0]}} & ar_txreqflit_s4_i) |
-            ({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[1]}} & aw_txreqflit_s4_i));
+            ({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[1]}} & aw_txreqflit_s4_i) |
+            ({chie_pkg::REQ_FLIT_WIDTH{ax_txreqflit_sel_s4_w[2]}} & misc_txreqflit_s4_i));
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)

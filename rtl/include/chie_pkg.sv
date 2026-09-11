@@ -449,7 +449,7 @@ package chie_pkg;
   // parity "for the corresponding byte of Data" and never fixes the mapping, so this
   // is a declared convention rather than a derived one -- it matches the CHI VIP's
   // chi_pkg::compute_datacheck(), and a peer that orders the bits differently would
-  // disagree on every beat. See README section 2.4.
+  // disagree on every beat. See the DataCheck row of the README's Features table.
   function automatic logic [DATACHECK_WIDTH-1:0] datacheck_of(logic [DATA_WIDTH-1:0] data);
     for (int i = 0; i < DATACHECK_WIDTH; i++) datacheck_of[i] = ~(^data[i*8 +: 8]);
   endfunction

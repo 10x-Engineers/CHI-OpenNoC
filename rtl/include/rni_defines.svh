@@ -23,6 +23,15 @@
 `define LL_RUN                          2'b11
 `define LL_DEACTIVATE                   2'b01
 //rni_misc
+// Table 13-31 (SS13.10.36 p.13-434): "0x0 - 0xF -- P-Credit type 0 to 15
+// respectively", and SS2.11 (p.2-146) "The Retry mechanism supports up to 16
+// different credit types". PCRD_CNT_WIDTH bounds how many of one type this
+// bridge can hold at once; SS2.11 (p.2-146) caps a Requester's outstanding
+// transactions at 1024 and each needs its own credit, so 10 bits is the
+// architectural ceiling.
+`define PCRD_TYPE_NUM                   16
+`define PCRD_CNT_WIDTH                  10
+
 `define L_DISABLE_CNT_WIDTH             3
 `define L_DISABLE_H_MAX_VAL             2
 //rni_ctl
