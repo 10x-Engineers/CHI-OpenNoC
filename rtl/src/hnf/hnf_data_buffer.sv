@@ -93,6 +93,13 @@ module hnf_data_buffer `HNF_PARAM
     //internal signals
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
+    // SS4.4.2 (p.4-196, MUST) merges a partial Snoop response with "any dirty data
+    // received with the Snoop response", and SS5.1.5 (p.5-251) fills the remainder
+    // from memory -- so the Snoopee's copy wins and memory only completes it.
+    // dbf_be_q records that a byte is present, never who supplied it, so this marks
+    // the bytes that came from the Home's own fill (a memory CompData or an L3 read)
+    // and are therefore still superseded by a Snoopee's.
+    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_fill_q[0:`MSHR_ENTRIES_NUM-1];
     logic [1:0]                        dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
     // SS9.5 (p.9-347, MUST): "The Poison value, once set, must be propagated along
     // with the data." Chunk-granular, so it accumulates per 64-bit chunk rather
@@ -126,9 +133,11 @@ module hnf_data_buffer `HNF_PARAM
 
     logic [chie_pkg::DATA_WIDTH*2-1:0] temp_li_data;
     logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_be;
+    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_fill;
 
     logic [chie_pkg::DATA_WIDTH*2-1:0] temp_pipe_data;
     logic [chie_pkg::BE_WIDTH*2-1:0]   temp_pipe_be;
+    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_pipe_fill;
 
     localparam DBF_PKT_BYTE_NUM  = chie_pkg::DATA_WIDTH/8;
     localparam DBF_PKT_IDX_WIDTH = $clog2(DBF_PKT_BYTE_NUM);
@@ -156,10 +165,12 @@ module hnf_data_buffer `HNF_PARAM
                     if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8)) begin//first package
                         temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8]);
                         temp_li_be[i]        = 1;
+                        temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_fill_q[li_dbf_rxdat_txnid_s0][i]:1'b1);
                     end
                     else begin//The rest
                         temp_li_data[i*8+:8] = dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8];
                         temp_li_be[i]        = 1;
+                        temp_li_fill[i]      = dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_fill_q[li_dbf_rxdat_txnid_s0][i]:1'b1;
                     end
                 end
                 else begin
@@ -167,51 +178,70 @@ module hnf_data_buffer `HNF_PARAM
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
                             temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                         else begin
                             temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_fill[i]      = dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAPTL))) begin//merge
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
-                            temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&!dbf_be_q[li_dbf_rxdat_txnid_s0][i])?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
+                            // SS5.1.5 (p.5-251): the Home "merges the partial Snoop response data
+                            // with the data response from memory", and SS4.4.2 (p.4-196, MUST)
+                            // makes the Snoopee's dirty data what memory is merged INTO -- so a
+                            // byte the Home's own fill supplied is superseded here, not kept.
+                            temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&(!dbf_be_q[li_dbf_rxdat_txnid_s0][i]||dbf_fill_q[li_dbf_rxdat_txnid_s0][i]))?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                         else begin
                             temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_fill[i]      = dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA))begin
                         if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
+                            // SS2.10.3 (p.2-135) scopes Byte Enables to Writes and Snoop responses,
+                            // so a CompData carries the whole packet and every byte of it is valid.
                             temp_li_data[i*8+:8] = !dbf_be_q[li_dbf_rxdat_txnid_s0][i]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = 1;
+                            temp_li_fill[i]      = !dbf_be_q[li_dbf_rxdat_txnid_s0][i]?1'b1:dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                         else begin
                             temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                            temp_li_fill[i]      = dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                         end
                     end
                     else begin
                         temp_li_data[i*8+:8] = dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                         temp_li_be[i]        = dbf_be_q[li_dbf_rxdat_txnid_s0][i];
+                        temp_li_fill[i]      = dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
                     end
                 end
             end
 
+            // An L3 read is the Home's own image of the line, so it is a fill on the
+            // same terms as a memory CompData: it supplies bytes nothing else has and
+            // a Snoopee's dirty copy still supersedes it.
             always_comb begin//pipe temp data
                 if(pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)begin
                     temp_pipe_data[i*8+:8] = pipe_dbf_wr_data_sx9_q[i*8+:8];
                     temp_pipe_be[i]        = 1;
+                    temp_pipe_fill[i]      = 1'b1;
                 end
                 else if (pipe_dbf_wr_valid_sx9_q&&!(li_dbf_rxdat_valid_s0&&!li_dbf_atm_operand_s0&&(li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q)))begin
                     temp_pipe_data[i*8+:8] = dbf_be_q[pipe_dbf_wr_idx_sx9_q][i]?dbf_data_q[pipe_dbf_wr_idx_sx9_q][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8];
                     temp_pipe_be[i]        = 1;
+                    temp_pipe_fill[i]      = dbf_be_q[pipe_dbf_wr_idx_sx9_q][i]?dbf_fill_q[pipe_dbf_wr_idx_sx9_q][i]:1'b1;
                 end
                 else begin
                     temp_pipe_data[i*8+:8] = dbf_data_q[pipe_dbf_wr_idx_sx9_q][i*8+:8];
                     temp_pipe_be[i]        = dbf_be_q[pipe_dbf_wr_idx_sx9_q][i];
+                    temp_pipe_fill[i]      = dbf_fill_q[pipe_dbf_wr_idx_sx9_q][i];
                 end
             end
         end
@@ -242,6 +272,7 @@ module hnf_data_buffer `HNF_PARAM
                 if(rst)begin
                     dbf_data_q[i]   <= 'd0;
                     dbf_be_q[i]     <= 'd0;
+                    dbf_fill_q[i]   <= 'd0;
                     dbf_pe_q[i]     <= 'd0;
                     dbf_poison_q[i] <= 'd0;
                 end
@@ -249,6 +280,7 @@ module hnf_data_buffer `HNF_PARAM
                     if (mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q) begin//entry retired
                         dbf_data_q[i]   <= 'd0;
                         dbf_be_q[i]     <= 'd0;
+                        dbf_fill_q[i]   <= 'd0;
                         dbf_pe_q[i]     <= 'd0;
                         dbf_poison_q[i] <= 'd0;
                     end
@@ -257,6 +289,7 @@ module hnf_data_buffer `HNF_PARAM
                         if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q) begin
                             dbf_data_q[i]   <= temp_pipe_data;
                             dbf_be_q[i]     <= temp_pipe_be;
+                            dbf_fill_q[i]   <= temp_pipe_fill;
                             dbf_pe_q[i]     <= 2'b11;
                             dbf_poison_q[i] <= temp_pipe_poison;
                         end
@@ -264,24 +297,30 @@ module hnf_data_buffer `HNF_PARAM
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i]   <= temp_li_data;
                         dbf_be_q[i]     <= temp_li_be;
+                        dbf_fill_q[i]   <= temp_li_fill;
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
                     end
                     else if(li_dbf_rxdat_valid_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         dbf_data_q[i]   <= temp_li_data;
                         dbf_be_q[i]     <= temp_li_be;
+                        dbf_fill_q[i]   <= temp_li_fill;
                         dbf_pe_q[i]     <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
                         dbf_poison_q[i] <= temp_li_poison;
                     end
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i]   <= temp_pipe_data;
                         dbf_be_q[i]     <= temp_pipe_be;
+                        dbf_fill_q[i]   <= temp_pipe_fill;
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_pipe_poison;
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
+                        // SS9.4.4 (p.9-342) / a Write Zero: the Home's own bytes, not a fill
+                        // standing in for a copy it has yet to see, so nothing supersedes them.
                         dbf_data_q[i]   <= 'd0;
                         dbf_be_q[i]     <= mshr_dbf_home_fill_be_sx1_q;
+                        dbf_fill_q[i]   <= 'd0;
                         dbf_pe_q[i]     <= mshr_dbf_home_fill_pe_sx1_q;
                         dbf_poison_q[i] <= 'd0;
                     end
