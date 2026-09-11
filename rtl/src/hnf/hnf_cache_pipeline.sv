@@ -2049,9 +2049,12 @@ module hnf_cache_pipeline `HNF_PARAM
             // Not "a peer holds the line" but "a snoop on this line is outstanding":
             // every consumer reads it to defer a decision until the snoop round ends.
             // SS7.4.1's (p.7-299) Stash target is a snoopee the directory need not
-            // hold, so without it the no-snoop fast path and the post-snoop path both
-            // fire and the entry issues two downstream requests under one TxnID.
-            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit | (|pipe_stash_tgt_vec_sx5_q);
+            // hold, and Table 13-28 (SS13.10.31 p.13-433, MUST) makes SnoopMe's
+            // snoopee the Requester itself, which the other-holder view masks out --
+            // so this reads the pass's whole snoopee vector. With either missing, the
+            // no-snoop fast path and the post-snoop path both fire and the entry
+            // issues two downstream requests under one TxnID (SS2.5.2 p.2-87, MUST).
+            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit | (|pipe_sf_tgt_vec_sx5_q);
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
             l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];

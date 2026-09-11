@@ -47,6 +47,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  wire                                mshr_txreq_bypass_dodwt_s1,
     input  wire                                mshr_txreq_bypass_tracetag_s1,
     input  chie_pkg::mpam_s                    mshr_txreq_bypass_mpam_s1,
+    input  chie_pkg::req_rsvdc_t               mshr_txreq_bypass_rsvdc_s1,
 
     //inputs from hnf_mshr_ctl
     input  wire                                mshr_txreq_valid_sx1_q,
@@ -65,6 +66,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  wire                                mshr_txreq_dodwt_sx1,
     input  wire                                mshr_txreq_tracetag_sx1,
     input  chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
+    input  chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
 
     //outputs to hnf_link
     output logic                               txreqflitv,
@@ -161,6 +163,11 @@ module hnf_link_txreq_wrap `HNF_PARAM
         // Subordinate must be those of the request to the Home that generated it.
         txreqflit_bypass_s1.mpam         =  mshr_txreq_bypass_mpam_s1;
 `endif
+`ifdef CHIE_REQ_RSVDC_WIDTH
+        // Sec 13.10.56 (p.13-441) leaves propagation of this field through the
+        // interconnect IMPLEMENTATION DEFINED; this Home preserves it on REQ.
+        txreqflit_bypass_s1.rsvdc        =  mshr_txreq_bypass_rsvdc_s1;
+`endif
     end
 
     always_comb begin
@@ -188,6 +195,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1.tracetag       = mshr_txreq_tracetag_sx1;
 `ifdef CHIE_MPAM_PRESENT
         txreqflit_sx1.mpam           = mshr_txreq_mpam_sx1;   // Sec 11.3.4, as above
+`endif
+`ifdef CHIE_REQ_RSVDC_WIDTH
+        txreqflit_sx1.rsvdc          = mshr_txreq_rsvdc_sx1;  // Sec 13.10.56, as above
 `endif
     end
 

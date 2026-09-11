@@ -52,6 +52,7 @@ module hnf_link `HNF_PARAM
     input  wire                                mshr_txreq_bypass_dodwt_s1,
     input  wire                                mshr_txreq_bypass_tracetag_s1,
     input  chie_pkg::mpam_s                    mshr_txreq_bypass_mpam_s1,
+    input  chie_pkg::req_rsvdc_t               mshr_txreq_bypass_rsvdc_s1,
     input  wire                                mshr_txreq_valid_sx1_q,
     input  wire [3:0]                          mshr_txreq_qos_sx1,
     input  wire [11:0]                         mshr_txreq_txnid_sx1_q,
@@ -68,6 +69,7 @@ module hnf_link `HNF_PARAM
     input  wire                                mshr_txreq_dodwt_sx1,
     input  wire                                mshr_txreq_tracetag_sx1,
     input  chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
+    input  chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
     input  wire                                txrsp_lcrdv,
     input  wire                                mshr_txrsp_bypass_valid_s1,
     input  wire [3:0]                          mshr_txrsp_bypass_qos_s1,
@@ -163,6 +165,7 @@ module hnf_link `HNF_PARAM
     output wire                                li_mshr_rxreq_expcompack_s0,
     output wire                                li_mshr_rxreq_tracetag_s0,
     output chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
+    output chie_pkg::req_rsvdc_t               li_mshr_rxreq_rsvdc_s0,
     output wire                                rxrsp_lcrdv,
     output wire                                li_mshr_rxrsp_valid_s0,
     output wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxrsp_srcid_s0,
@@ -290,7 +293,8 @@ module hnf_link `HNF_PARAM
                              .li_mshr_rxreq_stashlpidvalid_s0                (li_mshr_rxreq_stashlpidvalid_s0),
                              .li_mshr_rxreq_expcompack_s0                    (li_mshr_rxreq_expcompack_s0    ),
                              .li_mshr_rxreq_tracetag_s0                      (li_mshr_rxreq_tracetag_s0      ),
-                             .li_mshr_rxreq_mpam_s0                          (li_mshr_rxreq_mpam_s0          )
+                             .li_mshr_rxreq_mpam_s0                          (li_mshr_rxreq_mpam_s0          ),
+                             .li_mshr_rxreq_rsvdc_s0                         (li_mshr_rxreq_rsvdc_s0         )
                          );
 
     hnf_link_rxrsp_parse `HNF_PARAM_INST
@@ -364,6 +368,7 @@ module hnf_link `HNF_PARAM
                             .mshr_txreq_bypass_dodwt_s1                         (mshr_txreq_bypass_dodwt_s1         ),
                             .mshr_txreq_bypass_tracetag_s1                      (mshr_txreq_bypass_tracetag_s1      ),
                             .mshr_txreq_bypass_mpam_s1                          (mshr_txreq_bypass_mpam_s1          ),
+                            .mshr_txreq_bypass_rsvdc_s1                         (mshr_txreq_bypass_rsvdc_s1         ),
                             .mshr_txreq_valid_sx1_q                         (mshr_txreq_valid_sx1_q         ),
                             .mshr_txreq_qos_sx1                             (mshr_txreq_qos_sx1             ),
                             .mshr_txreq_txnid_sx1_q                         (mshr_txreq_txnid_sx1_q         ),
@@ -380,6 +385,7 @@ module hnf_link `HNF_PARAM
                             .mshr_txreq_dodwt_sx1                           (mshr_txreq_dodwt_sx1           ),
                             .mshr_txreq_tracetag_sx1                        (mshr_txreq_tracetag_sx1        ),
                             .mshr_txreq_mpam_sx1                            (mshr_txreq_mpam_sx1            ),
+                            .mshr_txreq_rsvdc_sx1                           (mshr_txreq_rsvdc_sx1           ),
                             .txreqflitv                                     (txreqflitv                     ),
                             .txreqflit                                      (txreqflit                      ),
                             .txreqflitpend                                  (txreqflitpend                  ),
