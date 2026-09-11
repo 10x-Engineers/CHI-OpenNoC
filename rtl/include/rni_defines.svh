@@ -50,7 +50,7 @@
 `define AW_FIFO_CNT_WIDTH               2
 `define AW_FIFO_CNT_NUM                 2
 //rni_wr_buffer
-`define WD_FIFO_ENTRIES_WIDTH           `AXI4_W_WIDTH
+`define WD_FIFO_ENTRIES_WIDTH           $bits(opennoc_rni_pkg::w_ch_s)
 `define WD_FIFO_ENTRIES_DEPTH           4
 `define AW_REQ_FIFO_ENTRIES_WIDTH       (RNI_AW_ENTRIES_NUM_PARAM + 4 + 4 + 16)
 `define AW_REQ_FIFO_ENTRIES_DEPTH       6
@@ -62,9 +62,8 @@
 `define RNI_RD_BANK_ADDR_WIDTH          `RNI_AR_ENTRIES_WIDTH
 `define RNI_RD_BANK_DATA_WIDTH          128
 `define RNI_RP_FIFO_DEPTH               2
-`define RNI_RP_FIFO_WIDTH               (`AXI4_R_WIDTH+`RNI_BC_WIDTH)
 `define RNI_RD_FIFO_DEPTH               2
-`define RNI_RD_FIFO_WIDTH               `AXI4_R_WIDTH
+`define RNI_RD_FIFO_WIDTH               $bits(opennoc_rni_pkg::r_ch_s)
 //cacheline
 `define L3_CACHELINE_OFFSET             6
 

@@ -56,6 +56,7 @@ module rni_rd_buffer `RNI_PARAM
     wire [1:0]                         dataid_d1_w;
     wire [chie_pkg::DATA_WIDTH-1:0]    data_d1_w;
     chie_pkg::resp_err_e               resperr_d1_w;
+    wire [chie_pkg::POISON_WIDTH-1:0]  poison_d1_w;
     wire                               rdata_last_d4_w;
     wire [`AXI4_RID_WIDTH-1:0]         rdata_rid_d4_w;
     wire [`RNI_BC_WIDTH-1:0]           rdata_bc_d4_w;
@@ -120,7 +121,15 @@ module rni_rd_buffer `RNI_PARAM
     logic [chie_pkg::DATA_WIDTH-1:0]   data_d2_q;
     logic [11:0]                       txnid_d2_q;
     chie_pkg::resp_err_e               resperr_d2_q;
+    logic [chie_pkg::POISON_WIDTH-1:0] poison_d2_q;
     chie_pkg::resp_err_e               resperr_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
+    // CHI E.b SS9.5 (p.9-347, MUST): the Poison of each bank, held beside its
+    // RespErr rather than in the data banks -- two bits per 128-bit bank.
+    logic [`AXI4_POISON_WIDTH-1:0]     poison_bank_d3_q [RNI_AR_ENTRIES_NUM_PARAM-1:0][`RNI_RD_BANK_NUM-1:0];
+    wire  [`AXI4_POISON_WIDTH-1:0]     bank_wr_poison_d2_w [`RNI_RD_BANK_NUM-1:0];
+    wire  [`RNI_RD_BANK_NUM-1:0]       bank_wr_en_d2_w;
+    wire  [`AXI4_POISON_WIDTH-1:0]     data_bank_poison_d4_w [`RNI_RD_BANK_NUM-1:0];
+    wire  [`AXI4_RUSER_WIDTH-1:0]      rdata_user_d4_w;
     logic [`RNI_BC_WIDTH-1:0]          bcount_q;
 
     genvar                             bank;
@@ -131,6 +140,7 @@ module rni_rd_buffer `RNI_PARAM
     assign dataid_d1_w  = rxdatflit_d1_i.dataid;
     assign data_d1_w    = rxdatflit_d1_i.data;
     assign resperr_d1_w = rxdatflit_d1_i.resperr;
+    assign poison_d1_w  = rxdatflit_d1_i.poison;
 
     //arctrl request decode
     assign rdata_rid_d4_w  = arctrl_rb_rid_d4_i;
@@ -153,6 +163,7 @@ module rni_rd_buffer `RNI_PARAM
             data_d2_q    <= data_d1_w;
             txnid_d2_q   <= txnid_d1_w;
             resperr_d2_q <= resperr_d1_w;
+            poison_d2_q  <= poison_d1_w;
         end
     end
 
@@ -210,6 +221,27 @@ generate if(CHIE_DATA_WIDTH_PARAM == 128)begin
         end
     endgenerate
 
+    assign bank_wr_en_d2_w = {bank3_wr_en_d2_w, bank2_wr_en_d2_w, bank1_wr_en_d2_w, bank0_wr_en_d2_w};
+
+    // Bank k holds the 128 bits the DataID-selected packet put there, so it holds
+    // that slice's Poison: the packet carries POISON_WIDTH bits over
+    // CHIE_DATA_WIDTH/128 banks, and k wraps within the packet.
+    generate
+        for (bank=0; bank<`RNI_RD_BANK_NUM; bank=bank+1) begin:poison_slice
+            assign bank_wr_poison_d2_w[bank] =
+                poison_d2_q[(bank % (CHIE_DATA_WIDTH_PARAM/128))*`AXI4_POISON_WIDTH +: `AXI4_POISON_WIDTH];
+        end
+
+        for (entry=0; entry<RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1)begin:poison_bank_entry
+            for (bank=0; bank<`RNI_RD_BANK_NUM; bank=bank+1)begin:poison_bank
+                always_ff @(posedge clk_i)begin
+                    if (bank_wr_en_d2_w[bank] && (txnid_d2_q[`RNI_AR_ENTRIES_WIDTH-1:0] == entry))
+                        poison_bank_d3_q[entry][bank] <= bank_wr_poison_d2_w[bank];
+                end
+            end
+        end
+    endgenerate
+
     //write resperr bank
 generate if(CHIE_DATA_WIDTH_PARAM == 128)begin
             for (entry=0; entry<RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1)begin
@@ -254,6 +286,7 @@ generate for (entry=0; entry<RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1)begin
             assign data_bank_ctmask_d4_w[bank]  = data_bank_vec_d4_w[bank]? arctrl_rb_ctmask_d4_i[bank] : 0;
             assign data_bank_idx_d4_w[bank]     = data_bank_vec_d4_w[bank]? arctrl_rb_idx_d4_i : 0;
             assign data_bank_resperr_d4_w[bank] = data_bank_vec_d4_w[bank]? resperr_bank_d3_q[arctrl_rb_idx_d4_i][bank] : chie_pkg::RESP_ERR_NORM_OK;
+            assign data_bank_poison_d4_w[bank]  = data_bank_vec_d4_w[bank]? poison_bank_d3_q[arctrl_rb_idx_d4_i][bank] : '0;
         end
     endgenerate
 
@@ -332,6 +365,11 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[1]}} & resperr_128_d4_w[1] |
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[2]}} & resperr_128_d4_w[2] |
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[3]}} & resperr_128_d4_w[3] ;
+
+            assign rdata_user_d4_w = {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[0]}} & data_bank_poison_d4_w[0] |
+                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[1]}} & data_bank_poison_d4_w[1] |
+                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[2]}} & data_bank_poison_d4_w[2] |
+                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[3]}} & data_bank_poison_d4_w[3] ;
         end
         else if(AXI4_AXDATA_WIDTH_PARAM == 256)begin
             for (bank=0; bank<`RNI_RD_BANK_NUM/2; bank=bank+1) begin
@@ -344,6 +382,9 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
 
             assign rdata_resperr_d4_w = {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[0] & data_bank_ctmask_d4_w[1]}} & resperr_256_d4_w[0] |
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[2] & data_bank_ctmask_d4_w[3]}} & resperr_256_d4_w[1] ;
+
+            assign rdata_user_d4_w = {`AXI4_RUSER_WIDTH/2{data_bank_ctmask_d4_w[0] & data_bank_ctmask_d4_w[1]}} & {data_bank_poison_d4_w[1], data_bank_poison_d4_w[0]} |
+                   {`AXI4_RUSER_WIDTH/2{data_bank_ctmask_d4_w[2] & data_bank_ctmask_d4_w[3]}} & {data_bank_poison_d4_w[3], data_bank_poison_d4_w[2]} ;
         end
     endgenerate
 
@@ -354,6 +395,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
     assign rp_fifo_data_in_d4_w.r.id   = rdata_rid_d4_w;
     assign rp_fifo_data_in_d4_w.r.data = rdata_data_d4_w;
     assign rp_fifo_data_in_d4_w.r.resp = rdata_resperr_d4_w;
+    assign rp_fifo_data_in_d4_w.r.user = rdata_user_d4_w;
     assign rp_fifo_data_in_d4_w.r.last = rdata_last_d4_w;
     assign rp_fifo_data_in_d4_w.bc = rdata_bc_d4_w;
 
@@ -395,6 +437,7 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
     assign rd_fifo_data_in_d5_w.id   = rp_fifo_data_out_d5_w.r.id;
     assign rd_fifo_data_in_d5_w.data = rp_fifo_data_out_d5_w.r.data;
     assign rd_fifo_data_in_d5_w.resp = rp_fifo_data_out_d5_w.r.resp;
+    assign rd_fifo_data_in_d5_w.user = rp_fifo_data_out_d5_w.r.user;
     assign rd_fifo_data_in_d5_w.last = rp_fifo_data_out_d5_w.r.last & bcount_v_d5_w & bcount_zero_w;
 
     sync_fifo #(
