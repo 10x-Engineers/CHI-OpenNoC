@@ -29,6 +29,7 @@
         parameter CHIE_POISON_WIDTH_PARAM      = chie_pkg::POISON_WIDTH,     \
         parameter CHIE_REQ_RSVDC_WIDTH_PARAM   = chie_pkg::REQ_RSVDC_WIDTH,     \
         parameter CHIE_DAT_RSVDC_WIDTH_PARAM   = chie_pkg::DAT_RSVDC_WIDTH,     \
+        parameter CHIE_MPAM_WIDTH_PARAM        = chie_pkg::MPAM_WIDTH,     \
         parameter SNF_MSHR_HNF_NUM_PARAM       = 4,     \
         parameter XP_LCRD_NUM_PARAM            = 15,    \
         parameter SNF_MSHR_ENTRIES_NUM_PARAM   = 32,    \
@@ -48,6 +49,7 @@
     .CHIE_POISON_WIDTH_PARAM            (CHIE_POISON_WIDTH_PARAM           ), \
     .CHIE_REQ_RSVDC_WIDTH_PARAM         (CHIE_REQ_RSVDC_WIDTH_PARAM        ), \
     .CHIE_DAT_RSVDC_WIDTH_PARAM         (CHIE_DAT_RSVDC_WIDTH_PARAM        ), \
+    .CHIE_MPAM_WIDTH_PARAM              (CHIE_MPAM_WIDTH_PARAM             ), \
     .SNF_MSHR_HNF_NUM_PARAM             (SNF_MSHR_HNF_NUM_PARAM            ), \
     .XP_LCRD_NUM_PARAM                  (XP_LCRD_NUM_PARAM                 ), \
     .SNF_NID_PARAM                      (SNF_NID_PARAM                     ), \

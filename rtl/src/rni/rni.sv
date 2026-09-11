@@ -63,6 +63,9 @@ module rni `RNI_PARAM
     input  wire [`AXI4_AWPROT_WIDTH-1:0]   AWPROT0,
     input  wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS0,
     input  wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
+    // Section 11.3 (p.11-365): the MPAM label this access is made under. AXI4 has no
+    // MPAM signal; see axi4_defines.svh for the sideband's layout.
+    input  wire [`AXI4_AWUSER_WIDTH-1:0]   AWUSER0,
     input  wire                            AWVALID0,
     output wire                            AWREADY0,
     input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0,
@@ -86,6 +89,7 @@ module rni `RNI_PARAM
     input  wire [`AXI4_ARPROT_WIDTH-1:0]   ARPROT0,
     input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0,
     input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
+    input  wire [`AXI4_ARUSER_WIDTH-1:0]   ARUSER0,
     input  wire                            ARVALID0,
     output wire                            ARREADY0,
     output wire [`AXI4_RID_WIDTH-1:0]      RID0,
@@ -194,6 +198,7 @@ module rni `RNI_PARAM
                     ,.AWPROT0                               ( AWPROT0                       )
                     ,.AWQOS0                                ( AWQOS0                        )
                     ,.AWREGION0                             ( AWREGION0                     )
+                    ,.AWUSER0                               ( AWUSER0                       )
                     ,.AW_CH_S0                              ( AW_CH_S0                      )
 
                     // W Channel0
@@ -219,6 +224,7 @@ module rni `RNI_PARAM
                     ,.ARPROT0                               ( ARPROT0                       )
                     ,.ARQOS0                                ( ARQOS0                        )
                     ,.ARREGION0                             ( ARREGION0                     )
+                    ,.ARUSER0                               ( ARUSER0                       )
                     ,.AR_CH_S0                              ( AR_CH_S0                      )
 
                     // R Channel0
@@ -456,11 +462,12 @@ module rni `RNI_PARAM
                      ,.rxdatflitv_d1_o                       ( rxdatflitv_d1                 )
                      ,.rxdatflit_d1_q_o                      ( rxdatflit_d1                  )
                  );
-    // chie_pkg's flit layout has no RSVDC field; this refuses a build that
-    // declares one rather than silently shifting every field.
-    chie_flit_rsvdc_check #(
+    // A node's optional-field widths and chie_pkg's layout are one declaration; this
+    // refuses a build where they disagree rather than silently shifting every field.
+    chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
-        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM)
-    ) u_chie_flit_rsvdc_check ();
+        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+    ) u_chie_flit_opt_check ();
 
 endmodule

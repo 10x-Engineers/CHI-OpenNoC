@@ -66,7 +66,7 @@ module rni_awlink `RNI_PARAM
     logic                          awready_q;
 
     assign awlink_awvalid_s1_o = axi_valid_s1_i;
-    assign awlink_awbus_s1_o[`AXI4_AW_WIDTH-1:0] = awbus_out_r1[`AXI4_AW_WIDTH-1:0];
+    assign awlink_awbus_s1_o = awbus_out_r1;
     assign awready_w = ~(((aw_fifo_count[`AW_FIFO_CNT_WIDTH-1:0] == `AW_FIFO_CNT_NUM)&& ~awlink_done_s1_o) || ((aw_fifo_count[`AW_FIFO_CNT_WIDTH-1:0] == (`AW_FIFO_CNT_NUM - 1'b1)) && AWVALID && AWREADY && ~awlink_done_s1_o));
 
     assign AWREADY = awready_q;
@@ -79,7 +79,7 @@ module rni_awlink `RNI_PARAM
     assign awlink_len_s1_o[`AXI4_AWLEN_WIDTH-1:0] = axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0];
 
     sync_fifo #(
-                  .FIFO_ENTRIES_WIDTH(`AXI4_AW_WIDTH),
+                  .FIFO_ENTRIES_WIDTH($bits(opennoc_rni_pkg::ax_ch_s)),
                   .FIFO_ENTRIES_DEPTH(2),
                   .FIFO_BYP_ENABLE   (1'b0)
               )
@@ -88,9 +88,9 @@ module rni_awlink `RNI_PARAM
                   .rst        (rst_i),
                   .push       (AWVALID & AWREADY),
                   .pop        (awlink_done_s1_o),
-                  .data_in    (AWBUS[`AXI4_AW_WIDTH-1:0]),
+                  .data_in    (AWBUS),
 
-                  .data_out   (awbus_out_r1[`AXI4_AW_WIDTH-1:0]),
+                  .data_out   (awbus_out_r1),
                   .empty      (aw_fifo_empty),
                   .full       (),
                   .count      (aw_fifo_count[`AW_FIFO_CNT_WIDTH-1:0])

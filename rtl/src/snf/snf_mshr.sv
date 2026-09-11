@@ -81,6 +81,7 @@ module snf_mshr `SNF_PARAM
         output wire [`AXI4_ARCACHE_WIDTH-1:0]       arcache_sx,
         output wire [`AXI4_ARPROT_WIDTH-1:0]        arprot_sx,
         output wire [`AXI4_ARQOS_WIDTH-1:0]         arqos_sx,
+        output wire [`AXI4_ARUSER_WIDTH-1:0]        aruser_sx,
         output wire [`AXI4_ARREGION_WIDTH-1:0]      arregion_sx,
         output logic                                arvalid_sx,
         input  wire                                 arready_sx,
@@ -93,6 +94,7 @@ module snf_mshr `SNF_PARAM
         output wire [`AXI4_AWCACHE_WIDTH-1:0]       awcache_sx,
         output wire [`AXI4_AWPROT_WIDTH-1:0]        awprot_sx,
         output wire [`AXI4_AWQOS_WIDTH-1:0]         awqos_sx,
+        output wire [`AXI4_AWUSER_WIDTH-1:0]        awuser_sx,
         output wire [`AXI4_AWREGION_WIDTH-1:0]      awregion_sx,
         output logic                                awvalid_sx,
         input  wire                                 awready_sx,
@@ -124,6 +126,7 @@ module snf_mshr `SNF_PARAM
         chie_pkg::order_e                    order;
         logic [11:0]                         returntxnid;
         logic                                tracetag;
+        chie_pkg::mpam_s                     mpam;
         logic [chie_pkg::NID_WIDTH-1:0]      returnnid;
         logic [PGROUPID_W-1:0]               pgroupid;
         logic [1:0]                          ccid;
@@ -190,6 +193,7 @@ module snf_mshr `SNF_PARAM
     logic [3:0]                          rxreq_pcrdtype_s0;
     chie_pkg::memattr_s                  rxreq_memattr_s0;
     logic                                rxreq_tracetag_s0;
+    chie_pkg::mpam_s                     rxreq_mpam_s0;
     wire                                 rxreq_ewa_s0;
     wire                                 rxreq_rd_s0;
     wire                                 rxreq_wr_s0;
@@ -289,6 +293,8 @@ module snf_mshr `SNF_PARAM
     assign rxreq_pcrdtype_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.pcrdtype     : '0;
     assign rxreq_memattr_s0     = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.memattr      : '0;
     assign rxreq_tracetag_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.tracetag     : '0;
+    assign rxreq_mpam_s0        = (rxreq_alloc_en_s0 == 1'b1)? chie_pkg::req_mpam_of(rxreq_alloc_flit_s0)
+                                                             : chie_pkg::mpam_default(1'b0);
     assign rxreq_returnnid_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returnnid    : '0;
     assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returntxnid  : '0;
     // Sec 13.10.7 (p.13-418): in a request the PGroupID occupies the bits the
@@ -576,6 +582,7 @@ module snf_mshr `SNF_PARAM
                                               order       : rxreq_order_s0,
                                               returntxnid : rxreq_returntxnid_s0,
                                               tracetag    : rxreq_tracetag_s0,
+                                              mpam        : rxreq_mpam_s0,
                                               returnnid   : rxreq_returnnid_s0,
                                               // SS2.6.2 steps 6/7 (p.2-102, MUST): the PGroupID
                                               // is set to the request's own.
@@ -856,6 +863,7 @@ module snf_mshr `SNF_PARAM
     assign arlock_sx        = 1'b0;
     assign arprot_sx        = {1'b0,mshr_entry_q[arvalid_entry_idx_s1_q].ns,1'b0};
     assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
+    assign aruser_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
     assign arlen_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].axlen;
     assign arsize_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axsize;
@@ -1063,6 +1071,7 @@ module snf_mshr `SNF_PARAM
     assign awcache_sx[2]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[2];
     assign awcache_sx[3]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[3];
     assign awqos_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].qos;
+    assign awuser_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].mpam;
     assign awprot_sx              = {1'b0,mshr_entry_q[awvalid_entry_idx_s2_q].ns,1'b0};
     assign awlen_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].axlen;
     assign awsize_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axsize;

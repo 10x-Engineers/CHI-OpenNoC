@@ -357,7 +357,7 @@ module rni_awctrl `RNI_PARAM
                 end
                 else begin
                     if(awctrl_alloc_ptr_s1_w[entry] == 1'b1)begin
-                        awctrl_entry_info_q[entry][`AXI4_AW_WIDTH-1:0] <= awlink_awbus_s1_w[`AXI4_AW_WIDTH-1:0];
+                        awctrl_entry_info_q[entry] <= awlink_awbus_s1_w;
                     end
                 end
             end
@@ -969,6 +969,11 @@ module rni_awctrl `RNI_PARAM
             // Table 2-11 gives no non-cacheable row an Allocate value.
             aw_txreqflit_info_r.memattr.allocate = aw_txreqflit_info_r.memattr.allocate | (aw_cacheable_w & awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i].cache[3]);
             aw_txreqflit_info_r.expcompack = aw_txreqflit_info_r.expcompack | (awctrl_entry_req_ptr_q[i] & awctrl_entry_expcompack_q[i]);
+`ifdef CHIE_MPAM_PRESENT
+            // Sec 11.3 (p.11-365, MUST): see rni_arctrl.sv -- AWUSER carries the label.
+            aw_txreqflit_info_r.mpam = chie_pkg::mpam_s'(aw_txreqflit_info_r.mpam |
+                ({chie_pkg::MPAM_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user));
+`endif
         end
     end
 

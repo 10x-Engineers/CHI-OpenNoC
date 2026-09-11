@@ -69,6 +69,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_prefunq_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
+    input  chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
     input  wire                                li_mshr_rxreq_stash_sep_s0,
     input  wire                                li_mshr_rxreq_atomic_s0,
     input  wire                                li_mshr_rxreq_atomic_rd_s0,
@@ -201,6 +202,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     output wire                                mshr_txreq_dodwt_sx1,
     output wire                                mshr_txreq_tracetag_sx1,
+    output chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
 
     //outputs to hnf_link_txrsp_wrap
     output logic                               mshr_txrsp_valid_sx1_q,
@@ -226,6 +228,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output wire                                mshr_txsnp_ns_sx1,
     output wire                                mshr_txsnp_rettosrc_sx1,
     output wire                                mshr_txsnp_tracetag_sx1,
+    output chie_pkg::mpam_s                    mshr_txsnp_mpam_sx1,
     output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_txsnp_rn_vec_sx1,
 
     //outputs to hnf_link_txdat_wrap
@@ -300,6 +303,7 @@ module hnf_mshr_ctl `HNF_PARAM
     chie_pkg::size_e                     mshr_size_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_addr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_tracetag_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::mpam_s                     mshr_mpam_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic                                mshr_stash_sep_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomic_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atomicrd_s1_q;
@@ -1334,6 +1338,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_tracetag_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_tracetag_s1_q[entry] <= li_mshr_rxreq_tracetag_s0;
+                else
+                    ;
+            end
+
+            // Sec 11.3.4 (p.11-366, MUST): the MPAM values in a Home to Subordinate
+            // request "must be the same as the MPAM values in that request to the Home".
+            always_ff @(posedge clk)begin : mshr_mpam_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_mpam_s1_q[entry] <= '0;
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_mpam_s1_q[entry] <= li_mshr_rxreq_mpam_s0;
                 else
                     ;
             end
@@ -3639,6 +3654,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // the SnpAttr field, so the persistent CMO leg this entry also sends must clear it.
     assign mshr_txreq_dodwt_sx1       = (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1]) & ~mshr_txreq_is_cmo_sx1;
     assign mshr_txreq_tracetag_sx1    = mshr_tracetag_s1_q[mshr_txreq_entry_idx_sx1];
+    assign mshr_txreq_mpam_sx1        = mshr_mpam_s1_q[mshr_txreq_entry_idx_sx1];
 
     //************************************************************************//
 
@@ -3798,6 +3814,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txsnp_ns_sx1       = (mshr_ns_s1_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_rettosrc_sx1 = (mshr_retosrc_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_tracetag_sx1 = mshr_tracetag_s1_q[mshr_txsnp_entry_idx_sx1];
+    assign mshr_txsnp_mpam_sx1     = mshr_mpam_s1_q[mshr_txsnp_entry_idx_sx1];
     assign mshr_txsnp_rn_vec_sx1   = (mshr_snp_bit_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_stash_vec_sx1    = (mshr_stash_bit_sx8_q[mshr_txsnp_entry_idx_sx1]);
     assign mshr_txsnp_stash_opcode_sx1 = (mshr_stash_snpcode_s1_q[mshr_txsnp_entry_idx_sx1]);

@@ -43,6 +43,7 @@ module hnf_mshr_bypass `HNF_PARAM
     input  wire                                li_mshr_rxreq_wrzero_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
+    input  chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
 
     //inputs from hnf_mshr_qos
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_entry_idx_alloc_s1_q,
@@ -85,6 +86,7 @@ module hnf_mshr_bypass `HNF_PARAM
     output chie_pkg::memattr_s                 mshr_txreq_bypass_memattr_s1,
     output wire                                mshr_txreq_bypass_dodwt_s1,
     output wire                                mshr_txreq_bypass_tracetag_s1,
+    output chie_pkg::mpam_s                    mshr_txreq_bypass_mpam_s1,
 
     //outputs to hnf_mshr_ctl
     output wire                                txreq_mshr_bypass_lost_s1,
@@ -115,6 +117,7 @@ module hnf_mshr_bypass `HNF_PARAM
     chie_pkg::memattr_s                  li_mshr_rxreq_memattr_s1_q;
     logic                                li_mshr_rxreq_excl_s1_q;
     logic                                li_mshr_rxreq_tracetag_s1_q;
+    chie_pkg::mpam_s                     li_mshr_rxreq_mpam_s1_q;
 
     wire                                 rd_receipt_s0;
     wire                                 wr_compdbid_s0;
@@ -247,6 +250,13 @@ module hnf_mshr_bypass `HNF_PARAM
             li_mshr_rxreq_tracetag_s1_q <= li_mshr_rxreq_tracetag_s0;
     end
 
+    always_ff @(posedge clk or posedge rst)begin :pass_mpam
+        if (rst)
+            li_mshr_rxreq_mpam_s1_q <= '0;
+        else
+            li_mshr_rxreq_mpam_s1_q <= li_mshr_rxreq_mpam_s0;
+    end
+
 
     //valid judgment
     assign rd_receipt_s0        = req_rd_s0&&req_ord_s0&&mshr_alloc_en_s0;
@@ -368,6 +378,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_memattr_s1     = li_mshr_rxreq_memattr_s1_q;
     assign mshr_txreq_bypass_dodwt_s1       = tx_rdnosnp_s1_q?1'd0:(tx_wrnosnpful_s1?do_dwt_wrnosnpfull_s1_q:(tx_wrnosnpptl_s1?do_dwt_wrnosnpptl_s1_q:1'd0));
     assign mshr_txreq_bypass_tracetag_s1    = li_mshr_rxreq_tracetag_s1_q;
+    assign mshr_txreq_bypass_mpam_s1        = li_mshr_rxreq_mpam_s1_q;
 
     //bypass_lost
     assign txreq_mshr_bypass_lost_s1 = (mshr_txreq_bypass_valid_s1&&!txreq_mshr_bypass_won_s1)||(rxreq_cam_hazard_s1_q&&(tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1));

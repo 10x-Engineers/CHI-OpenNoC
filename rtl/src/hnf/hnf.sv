@@ -115,6 +115,7 @@ module hnf `HNF_PARAM
     chie_pkg::memattr_s                      mshr_txreq_bypass_memattr_s1;
     wire                                     mshr_txreq_bypass_dodwt_s1;
     wire                                     mshr_txreq_bypass_tracetag_s1;
+    chie_pkg::mpam_s                         mshr_txreq_bypass_mpam_s1;
     wire                                     mshr_txreq_valid_sx1_q;
     wire [3:0]                               mshr_txreq_qos_sx1;
     wire [11:0]                              mshr_txreq_txnid_sx1_q;
@@ -130,6 +131,7 @@ module hnf `HNF_PARAM
     chie_pkg::memattr_s                      mshr_txreq_memattr_sx1;
     wire                                     mshr_txreq_dodwt_sx1;
     wire                                     mshr_txreq_tracetag_sx1;
+    chie_pkg::mpam_s                         mshr_txreq_mpam_sx1;
     wire                                     mshr_txrsp_bypass_valid_s1;
     wire [3:0]                               mshr_txrsp_bypass_qos_s1;
     wire [chie_pkg::NID_WIDTH-1:0]           mshr_txrsp_bypass_tgtid_s1;
@@ -167,6 +169,7 @@ module hnf `HNF_PARAM
     wire                                     mshr_txsnp_ns_sx1;
     wire                                     mshr_txsnp_rettosrc_sx1;
     wire                                     mshr_txsnp_tracetag_sx1;
+    chie_pkg::mpam_s                         mshr_txsnp_mpam_sx1;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        mshr_txsnp_rn_vec_sx1;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        mshr_txsnp_stash_vec_sx1;
     chie_pkg::snp_opcode_e                   mshr_txsnp_stash_opcode_sx1;
@@ -207,6 +210,7 @@ module hnf `HNF_PARAM
     wire                                     li_mshr_rxreq_stashlpidvalid_s0;
     wire                                     li_mshr_rxreq_expcompack_s0;
     wire                                     li_mshr_rxreq_tracetag_s0;
+    chie_pkg::mpam_s                         li_mshr_rxreq_mpam_s0;
     wire                                     li_mshr_rxrsp_valid_s0;
     wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxrsp_srcid_s0;
     wire [11:0]                              li_mshr_rxrsp_txnid_s0;
@@ -414,6 +418,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_bypass_memattr_s1                     (mshr_txreq_bypass_memattr_s1          ),
                  .mshr_txreq_bypass_dodwt_s1                       (mshr_txreq_bypass_dodwt_s1            ),
                  .mshr_txreq_bypass_tracetag_s1                    (mshr_txreq_bypass_tracetag_s1         ),
+                 .mshr_txreq_bypass_mpam_s1                        (mshr_txreq_bypass_mpam_s1             ),
                  .mshr_txreq_valid_sx1_q                       (mshr_txreq_valid_sx1_q            ),
                  .mshr_txreq_qos_sx1                           (mshr_txreq_qos_sx1                ),
                  .mshr_txreq_txnid_sx1_q                       (mshr_txreq_txnid_sx1_q            ),
@@ -429,6 +434,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_memattr_sx1                       (mshr_txreq_memattr_sx1            ),
                  .mshr_txreq_dodwt_sx1                         (mshr_txreq_dodwt_sx1              ),
                  .mshr_txreq_tracetag_sx1                      (mshr_txreq_tracetag_sx1           ),
+                 .mshr_txreq_mpam_sx1                          (mshr_txreq_mpam_sx1               ),
                  .txrsp_lcrdv                                  (TXRSPLCRDV                        ),
                  .mshr_txrsp_bypass_valid_s1                       (mshr_txrsp_bypass_valid_s1            ),
                  .mshr_txrsp_bypass_qos_s1                         (mshr_txrsp_bypass_qos_s1              ),
@@ -468,6 +474,7 @@ module hnf `HNF_PARAM
                  .mshr_txsnp_ns_sx1                            (mshr_txsnp_ns_sx1                 ),
                  .mshr_txsnp_rettosrc_sx1                      (mshr_txsnp_rettosrc_sx1           ),
                  .mshr_txsnp_tracetag_sx1                      (mshr_txsnp_tracetag_sx1           ),
+                 .mshr_txsnp_mpam_sx1                          (mshr_txsnp_mpam_sx1               ),
                  .mshr_txsnp_rn_vec_sx1                        (mshr_txsnp_rn_vec_sx1             ),
                  .mshr_txsnp_stash_vec_sx1                     (mshr_txsnp_stash_vec_sx1          ),
                  .mshr_txsnp_stash_opcode_sx1                  (mshr_txsnp_stash_opcode_sx1       ),
@@ -513,6 +520,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_stashlpidvalid_s0              (li_mshr_rxreq_stashlpidvalid_s0   ),
                  .li_mshr_rxreq_expcompack_s0                  (li_mshr_rxreq_expcompack_s0       ),
                  .li_mshr_rxreq_tracetag_s0                    (li_mshr_rxreq_tracetag_s0         ),
+                 .li_mshr_rxreq_mpam_s0                        (li_mshr_rxreq_mpam_s0             ),
                  .rxrsp_lcrdv                                  (RXRSPLCRDV                        ),
                  .li_mshr_rxrsp_valid_s0                       (li_mshr_rxrsp_valid_s0            ),
                  .li_mshr_rxrsp_srcid_s0                       (li_mshr_rxrsp_srcid_s0            ),
@@ -593,6 +601,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_stashlpidvalid_s0              (li_mshr_rxreq_stashlpidvalid_s0   ),
                  .li_mshr_rxreq_expcompack_s0                  (li_mshr_rxreq_expcompack_s0       ),
                  .li_mshr_rxreq_tracetag_s0                    (li_mshr_rxreq_tracetag_s0         ),
+                 .li_mshr_rxreq_mpam_s0                        (li_mshr_rxreq_mpam_s0             ),
                  .txrsp_mshr_retryack_won_s1                   (txrsp_mshr_retryack_won_s1        ),
                  .txrsp_mshr_pcrdgnt_won_s2                    (txrsp_mshr_pcrdgnt_won_s2         ),
                  .txreq_mshr_bypass_won_s1                         (txreq_mshr_bypass_won_s1              ),
@@ -668,6 +677,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_bypass_memattr_s1                     (mshr_txreq_bypass_memattr_s1          ),
                  .mshr_txreq_bypass_dodwt_s1                       (mshr_txreq_bypass_dodwt_s1            ),
                  .mshr_txreq_bypass_tracetag_s1                    (mshr_txreq_bypass_tracetag_s1         ),
+                 .mshr_txreq_bypass_mpam_s1                        (mshr_txreq_bypass_mpam_s1             ),
                  .qos_txrsp_retryack_valid_s1                  (qos_txrsp_retryack_valid_s1       ),
                  .qos_txrsp_retryack_qos_s1                    (qos_txrsp_retryack_qos_s1         ),
                  .qos_txrsp_retryack_tgtid_s1                  (qos_txrsp_retryack_tgtid_s1       ),
@@ -721,6 +731,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_memattr_sx1                       (mshr_txreq_memattr_sx1            ),
                  .mshr_txreq_dodwt_sx1                         (mshr_txreq_dodwt_sx1              ),
                  .mshr_txreq_tracetag_sx1                      (mshr_txreq_tracetag_sx1           ),
+                 .mshr_txreq_mpam_sx1                          (mshr_txreq_mpam_sx1               ),
                  .mshr_txrsp_valid_sx1_q                       (mshr_txrsp_valid_sx1_q            ),
                  .mshr_txrsp_qos_sx1                           (mshr_txrsp_qos_sx1                ),
                  .mshr_txrsp_tgtid_sx1                         (mshr_txrsp_tgtid_sx1              ),
@@ -739,6 +750,7 @@ module hnf `HNF_PARAM
                  .mshr_txsnp_ns_sx1                            (mshr_txsnp_ns_sx1                 ),
                  .mshr_txsnp_rettosrc_sx1                      (mshr_txsnp_rettosrc_sx1           ),
                  .mshr_txsnp_tracetag_sx1                      (mshr_txsnp_tracetag_sx1           ),
+                 .mshr_txsnp_mpam_sx1                          (mshr_txsnp_mpam_sx1               ),
                  .mshr_txsnp_rn_vec_sx1                        (mshr_txsnp_rn_vec_sx1             ),
                  .mshr_txsnp_stash_vec_sx1                     (mshr_txsnp_stash_vec_sx1          ),
                  .mshr_txsnp_stash_opcode_sx1                  (mshr_txsnp_stash_opcode_sx1       ),
@@ -1006,11 +1018,12 @@ module hnf `HNF_PARAM
                     .cpl_lru_wr_data_q                            (cpl_lru_wr_data_q                 )
                 );
 
-    // chie_pkg's flit layout has no RSVDC field; this refuses a build that
-    // declares one rather than silently shifting every field.
-    chie_flit_rsvdc_check #(
+    // A node's optional-field widths and chie_pkg's layout are one declaration; this
+    // refuses a build where they disagree rather than silently shifting every field.
+    chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
-        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM)
-    ) u_chie_flit_rsvdc_check ();
+        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+    ) u_chie_flit_opt_check ();
 
 endmodule

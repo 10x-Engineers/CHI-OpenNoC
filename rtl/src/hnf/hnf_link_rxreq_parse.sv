@@ -67,7 +67,8 @@ module hnf_link_rxreq_parse `HNF_PARAM
     output wire [4:0]                          li_mshr_rxreq_stashlpid_s0,
     output wire                                li_mshr_rxreq_stashlpidvalid_s0,
     output wire                                li_mshr_rxreq_expcompack_s0,
-    output wire                                li_mshr_rxreq_tracetag_s0
+    output wire                                li_mshr_rxreq_tracetag_s0,
+    output chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0
     );
 
     //internal reg signals
@@ -144,6 +145,8 @@ module hnf_link_rxreq_parse `HNF_PARAM
                                              & rxreqflit.returntxnid[5];
     assign li_mshr_rxreq_expcompack_s0 = rxreq_flit_valid_s0? rxreqflit.expcompack:'0;
     assign li_mshr_rxreq_tracetag_s0   = rxreq_flit_valid_s0? rxreqflit.tracetag  :'0;
+    assign li_mshr_rxreq_mpam_s0       = rxreq_flit_valid_s0? chie_pkg::req_mpam_of(rxreqflit)
+                                                            :chie_pkg::mpam_default(1'b0);
 
     //rxreq L-credit
     assign li_req_crd_rtn_s0 = !rxreq_retry_enable_s0 && rxreqflitv == 1'b1;

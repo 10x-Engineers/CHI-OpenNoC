@@ -61,7 +61,7 @@ module rni_arlink
     assign arlink_fifo_pop_s1_w  = ~arlink_fifo_empty_s1_w & segburst_done_s1_w;
 
     sync_fifo #(
-                  .FIFO_ENTRIES_WIDTH (`AXI4_AR_WIDTH)
+                  .FIFO_ENTRIES_WIDTH ($bits(opennoc_rni_pkg::ax_ch_s))
                   ,.FIFO_ENTRIES_DEPTH (2)
                   ,.FIFO_BYP_ENABLE    (1'b0)
               ) u_arlink_fifo (

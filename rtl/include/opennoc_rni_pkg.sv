@@ -49,8 +49,10 @@ package opennoc_rni_pkg;
   parameter int STRB_WIDTH = DATA_WIDTH / 8;
   parameter int ID_WIDTH   = `AXI4_AWID_WIDTH;
   parameter int USER_WIDTH = DATA_WIDTH / 64;   // SS9.5: one Poison bit per 8-byte chunk
+  parameter int AX_USER_WIDTH = `AXI4_MPAM_WIDTH;   // section 11.3: MPAM, 11 bits
 
   typedef struct packed {
+    logic [AX_USER_WIDTH-1:0] user;
     logic [3:0]           region;
     logic [3:0]           qos;
     logic [2:0]           prot;

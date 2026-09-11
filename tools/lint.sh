@@ -62,29 +62,45 @@ fi
 
 rc=0
 
-for n in "${NODES[@]}"; do
-  echo "==================== $n ===================="
+# The optional flit fields are `ifdef'd, so the default build compiles none of the
+# code that carries them. Each node is linted twice: once as it ships, once with
+# every optional field declared -- the second pass is the only one that reads those
+# branches at all. Section 13.10.56 (p.13-441) permits 4/8/12/16/24/32 for RSVDC and
+# lets REQ and DAT differ; section 11.3 (p.11-365) gives MPAM only 0 or 11.
+OPT_DEFINES="-DCHIE_MPAM_PRESENT -DCHIE_REQ_RSVDC_WIDTH=8 -DCHIE_DAT_RSVDC_WIDTH=16"
+
+lint_node() {   # $1 node, $2 pass label, $3.. extra defines
+  local n="$1" label="$2"; shift 2
+  echo "-------------------- $n ($label) --------------------"
   # chie_pkg.sv is listed rather than left to -Iinclude: Verilator resolves a
   # missing *module* from the include path by filename, but not a package.
   # The design's own assertions ship gated off, so nothing compiled them until
   # they were turned on here; DISPLAY_INFO stays off, being $display tracing
   # rather than a check.
+  local out
   out=$(verilator --lint-only -Wno-fatal --top-module "$n" \
-          -DASSERT_CHECKER_ON -DDISPLAY_FATAL \
+          -DASSERT_CHECKER_ON -DDISPLAY_FATAL "$@" \
           -Iinclude -Imisc -I"src/$n" include/chie_pkg.sv \
           $([ -f "include/opennoc_${n}_pkg.sv" ] && echo "include/opennoc_${n}_pkg.sv") \
-          misc/chie_flit_rsvdc_check.sv src/"$n"/*.sv 2>&1)
+          misc/chie_flit_opt_check.sv src/"$n"/*.sv 2>&1)
   echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
 
   if echo "$out" | grep -q "^%Error"; then
-    echo "  FAIL: $n does not elaborate"
+    echo "  FAIL: $n does not elaborate ($label)"
     echo "$out" | grep -A4 "^%Error" | head -40
-    rc=1
+    return 1
   elif echo "$out" | grep -q "^%Warning"; then
-    echo "  FAIL: $n has lint warnings"
+    echo "  FAIL: $n has lint warnings ($label)"
     echo "$out" | grep -A4 "^%Warning" | head -60
-    rc=1
+    return 1
   fi
+  return 0
+}
+
+for n in "${NODES[@]}"; do
+  echo "==================== $n ===================="
+  lint_node "$n" "default"          || rc=1
+  lint_node "$n" "optional fields" $OPT_DEFINES || rc=1
 done
 
 echo

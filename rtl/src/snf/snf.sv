@@ -61,6 +61,8 @@ module snf `SNF_PARAM
         output wire [`AXI4_ARPROT_WIDTH-1:0]   ARPROT,
         output wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS,
         output wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION,
+        // The MPAM of the CHI request this access serves. See axi4_defines.svh.
+        output wire [`AXI4_ARUSER_WIDTH-1:0]   ARUSER,
         output wire                            ARVALID,
         input  wire                            ARREADY,
         input  wire [`AXI4_RID_WIDTH-1:0]      RID,
@@ -80,6 +82,7 @@ module snf `SNF_PARAM
         output wire [`AXI4_AWPROT_WIDTH-1:0]   AWPROT,
         output wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS,
         output wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION,
+        output wire [`AXI4_AWUSER_WIDTH-1:0]   AWUSER,
         output wire                            AWVALID,
         input  wire                            AWREADY,
         output wire [`AXI4_WDATA_WIDTH-1:0]    WDATA,
@@ -497,6 +500,7 @@ module snf `SNF_PARAM
             .arprot_sx(ARPROT),
             .arqos_sx(ARQOS),
             .arregion_sx(ARREGION),
+            .aruser_sx(ARUSER),
             .arvalid_sx(ARVALID),
             .arready_sx(ARREADY),
             .awid_sx(AWID),
@@ -509,6 +513,7 @@ module snf `SNF_PARAM
             .awprot_sx(AWPROT),
             .awqos_sx(AWQOS),
             .awregion_sx(AWREGION),
+            .awuser_sx(AWUSER),
             .awvalid_sx(AWVALID),
             .awready_sx(AWREADY),
             .bid_sx(BID),
@@ -516,11 +521,12 @@ module snf `SNF_PARAM
             .bvalid_sx(BVALID),
             .bready_sx(BREADY)
         );
-    // chie_pkg's flit layout has no RSVDC field; this refuses a build that
-    // declares one rather than silently shifting every field.
-    chie_flit_rsvdc_check #(
+    // A node's optional-field widths and chie_pkg's layout are one declaration; this
+    // refuses a build where they disagree rather than silently shifting every field.
+    chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
-        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM)
-    ) u_chie_flit_rsvdc_check ();
+        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+    ) u_chie_flit_opt_check ();
 
 endmodule

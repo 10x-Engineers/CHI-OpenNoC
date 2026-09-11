@@ -34,7 +34,11 @@
 // and 32-bit", and they "can be different between REQ and DAT channels". A packed
 // struct cannot hold a zero-width member, so the DEFINE's presence is the field's
 // presence and its value is the width; leave it undefined for an interface without
-// the bus. chie_flit_rsvdc_check holds each node's parameter to what is declared here.
+// the bus. chie_flit_opt_check holds each node's parameter to what is declared here.
+//
+// Section 11.3 (p.11-365) gives MPAM the same shape: the field "is either 0 bits or
+// 11 bits", so `CHIE_MPAM_PRESENT is its presence and section 16.1's (p.16-471)
+// MPAM_Support = MPAM_9_1 is what defining it declares.
 package chie_pkg;
 
   parameter int REQ_ADDR_WIDTH = `CHIE_REQ_ADDR_WIDTH;
@@ -56,6 +60,25 @@ package chie_pkg;
 `else
   parameter int DAT_RSVDC_WIDTH = 0;
 `endif
+`ifdef CHIE_MPAM_PRESENT
+  parameter int MPAM_WIDTH = 11;
+`else
+  parameter int MPAM_WIDTH = 0;
+`endif
+
+  // Section 11.3 Figure 11-3 (p.11-365): MPAM[0]=MPAMNS, MPAM[9:1]=PartID,
+  // MPAM[10]=PerfMonGroup.
+  typedef struct packed {
+    logic       perfmongroup;
+    logic [8:0] partid;
+    logic       mpamns;
+  } mpam_s;
+
+  // Table 11-5 (section 11.3.2 p.11-366): the default settings a message that does
+  // not use MPAM must carry -- PartID 0, PerfMonGroup 0, MPAMNS = the message's NS.
+  function automatic mpam_s mpam_default(logic ns);
+    mpam_default = '{perfmongroup: 1'b0, partid: '0, mpamns: ns};
+  endfunction
 
   // ---------------------------------------------------------------------------
   // Encoded fields. Table 13-x gives each channel its own opcode space and its
@@ -256,11 +279,12 @@ package chie_pkg;
   // DataPull -- are packed unions, which is what makes them one set of bits with
   // several names rather than several fields.
   //
-  // RSVDC sits at the MSB end of the REQ and DAT flits, present only when its width
-  // define is. Section 13.10.56 (p.13-441) gives the field to those two channels and
-  // no other. The MSB end is not a style choice: chi_xp_channel reads QoS at [3:1]
-  // and TgtID at [FLIT_TGT_OFFSET +: NID_WIDTH], so a field added below those would
-  // mis-route every flit in the fabric.
+  // RSVDC and MPAM sit at the MSB end of the flits that carry them, present only when
+  // their defines are. Section 13.10.56 (p.13-441) gives RSVDC the REQ and DAT
+  // channels and no other; section 16.1 (p.16-471) puts MPAM "on all address
+  // channels", which is REQ and SNP. The MSB end is not a style choice: chi_xp_channel
+  // reads QoS at [3:1] and TgtID at [FLIT_TGT_OFFSET +: NID_WIDTH], so a field added
+  // below those would mis-route every flit in the fabric.
   // ---------------------------------------------------------------------------
   typedef union packed {
     logic excl;
@@ -280,6 +304,9 @@ package chie_pkg;
   typedef struct packed {
 `ifdef CHIE_REQ_RSVDC_WIDTH
     logic [`CHIE_REQ_RSVDC_WIDTH-1:0] rsvdc;
+`endif
+`ifdef CHIE_MPAM_PRESENT
+    mpam_s                    mpam;
 `endif
     logic                     tracetag;
     logic [1:0]               tagop;
@@ -398,6 +425,9 @@ package chie_pkg;
   } snp_fwdtxnid_u;
 
   typedef struct packed {
+`ifdef CHIE_MPAM_PRESENT
+    mpam_s                      mpam;
+`endif
     logic                       tracetag;
     logic                       rettosrc;
     logic                       donotgotosd;
@@ -422,6 +452,16 @@ package chie_pkg;
   // disagree on every beat. See README section 2.4.
   function automatic logic [DATACHECK_WIDTH-1:0] datacheck_of(logic [DATA_WIDTH-1:0] data);
     for (int i = 0; i < DATACHECK_WIDTH; i++) datacheck_of[i] = ~(^data[i*8 +: 8]);
+  endfunction
+
+  // The one read of REQ MPAM, so no node needs its own `ifdef. With the field absent
+  // the request cannot have used MPAM, which Table 11-5 (p.11-366) makes the default.
+  function automatic mpam_s req_mpam_of(req_flit_s f);
+`ifdef CHIE_MPAM_PRESENT
+    return f.mpam;
+`else
+    return mpam_default(f.ns);
+`endif
   endfunction
 
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);

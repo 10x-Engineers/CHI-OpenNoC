@@ -64,6 +64,7 @@ module tb_rni;
     reg [3:0]                                   AWCACHE0;
     reg [2:0]                                   AWPROT0;
     reg [3:0]                                   AWREGION0;
+    reg [10:0]                                  AWUSER0;
     reg [3:0]                                   AWQOS0;
     reg                                         AWVALID0;
     reg                                         AWREADY0;
@@ -84,6 +85,7 @@ module tb_rni;
     reg [3:0]                                   ARCACHE0;
     reg [2:0]                                   ARPROT0;
     reg [3:0]                                   ARREGION0;
+    reg [10:0]                                  ARUSER0;
     reg [3:0]                                   ARQOS0;
     reg                                         ARVALID0;
     reg                                         ARREADY0;
@@ -180,6 +182,7 @@ module tb_rni;
         .AWPROT0                        ( AWPROT0                    ),
         .AWQOS0                         ( AWQOS0                     ),
         .AWREGION0                      ( AWREGION0                  ),
+        .AWUSER0                        ( AWUSER0                    ),
         .AWVALID0                       ( AWVALID0                   ),
         .AWREADY0                       ( AWREADY0                   ),
         .WDATA0                         ( WDATA0                     ),
@@ -201,6 +204,7 @@ module tb_rni;
         .ARPROT0                        ( ARPROT0                    ),
         .ARQOS0                         ( ARQOS0                     ),
         .ARREGION0                      ( ARREGION0                  ),
+        .ARUSER0                        ( ARUSER0                    ),
         .ARVALID0                       ( ARVALID0                   ),
         .ARREADY0                       ( ARREADY0                   ),
         .RID0                           (                            ),
@@ -248,6 +252,7 @@ module tb_rni;
         AWPROT0     = 0;
         AWQOS0      = 0;
         AWREGION0   = 0;
+        AWUSER0     = 0;
         AWVALID0    = 0;
         BREADY0     = 1;
         RREADY0     = 1;
@@ -260,6 +265,7 @@ module tb_rni;
         ARCACHE0    = 0;
         ARPROT0     = 0;
         ARREGION0   = 0;
+        ARUSER0     = 0;
         ARQOS0      = 0;
         ARVALID0    = 0;
         TXRSPLCRDV  = 0;
