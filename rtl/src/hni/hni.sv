@@ -74,6 +74,9 @@ module hni `HNI_PARAM
 
     input  wire [10:0]                   RID,
     input  wire [`AXI4_RDATA_WIDTH-1:0]  RDATA,
+    // Section 9.5 (p.9-347, MUST): the Poison stored with this location. AXI4 has no
+    // poison bit; see axi4_defines.svh for the sideband's layout.
+    input  wire [`AXI4_RUSER_WIDTH-1:0]  RUSER,
     input  wire [1:0]                    RRESP,
     input  wire                          RLAST,
     input  wire                          RVALID,
@@ -93,6 +96,7 @@ module hni `HNI_PARAM
     input  wire                          AWREADY,
 
     output wire [`AXI4_WDATA_WIDTH-1:0]  WDATA,
+    output wire [`AXI4_WUSER_WIDTH-1:0]  WUSER,
     output wire [`AXI4_WSTRB_WIDTH-1:0]  WSTRB,
     output wire                          WLAST,
     output wire                          WVALID,
@@ -390,11 +394,13 @@ module hni `HNI_PARAM
             .w_last(dbf_wdat_last), 
             .rid(RID),
             .rdata(RDATA),
+            .ruser(RUSER),
             .rresp(RRESP),
             .rlast(RLAST),
             .rvalid(RVALID),
             .rready(RREADY),
             .wdata(WDATA),
+            .wuser(WUSER),
             .wstrb(WSTRB),
             .wlast(WLAST),
             .wvalid(WVALID),
