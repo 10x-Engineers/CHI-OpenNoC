@@ -19,6 +19,28 @@
 `ifndef AXI_DEFINES
 `define AXI_DEFINES
 
+// ---------------------------------------------------------------------------
+// USER sidebands. AMBA AXI4 (IHI 0022) A2 leaves the width and meaning of the
+// *USER signals IMPLEMENTATION DEFINED, which is what lets a CHI field with no
+// native AXI encoding cross this boundary at all.
+//
+// CHI E.b section 9.5 (p.9-347, MUST): "The Poison value, once set, must be
+// propagated along with the data", at one bit per 64 bits of data. AXI4 has no
+// poison bit, so without this sideband a poisoned write reaching memory would be
+// stored clean and served back clean, which that MUST forbids.
+//
+// The layout is a contract with whatever drives the other side of the port. The CHI
+// VIP's axi4_if (10x-Engineers/amba-chi-vip) mirrors it, and opennoc_axi_width_check
+// holds the two equal. Fields are appended at the MSB end, so adding MTE's Tag/TU
+// later does not move Poison.
+//
+//   W/RUSER[P-1:0]   Poison,  P = data width / 64
+// ---------------------------------------------------------------------------
+`define AXI4_POISON_WIDTH        (`AXI4_WDATA_WIDTH/64)
+`define AXI4_WUSER_WIDTH         `AXI4_POISON_WIDTH
+`define AXI4_RUSER_WIDTH         `AXI4_POISON_WIDTH
+`define AXI4_USER_POISON_RANGE   `AXI4_POISON_WIDTH-1:0
+
 // AXI4 interface
 // AXI4 write address channel fields
 `define AXI4_AWID_WIDTH       11

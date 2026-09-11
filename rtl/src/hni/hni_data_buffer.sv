@@ -85,12 +85,14 @@ module hni_data_buffer `HNI_PARAM
     //inout with axi slaves
     input  wire [10:0]                         rid,
     input  wire [`AXI4_RDATA_WIDTH-1:0]        rdata,
+    input  wire [`AXI4_RUSER_WIDTH-1:0]        ruser,
     input  wire [1:0]                          rresp,
     input  wire                                rlast,
     input  wire                                rvalid,
     output wire                                rready,
 
     output logic [`AXI4_WDATA_WIDTH-1:0]       wdata,
+    output logic [`AXI4_WUSER_WIDTH-1:0]       wuser,
     output logic [`AXI4_WSTRB_WIDTH-1:0]       wstrb,
     output logic                               wlast,
     output wire                                wvalid,
@@ -111,10 +113,16 @@ module hni_data_buffer `HNI_PARAM
     logic [1:0]                        rresp_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]  rxreq_dbf_wr_q;
     logic [`AXI4_RDATA_WIDTH*4-1:0]    rdata_receive;
+    logic [chie_pkg::POISON_WIDTH-1:0] rxdat_poison_s0;
+    logic [chie_pkg::POISON_WIDTH-1:0] mshr_txdat_poison_sx;
     logic [10:0]                       axid_current;
     logic [`HNI_MASK_CD_WIDTH-1:0]     rd_cdmask_current;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    // Section 9.5 (p.9-347): one Poison bit per 64 bits, so one line's worth is
+    // POISON_WIDTH*2 -- the tag that has to travel with the data, both ways.
+    logic [chie_pkg::POISON_WIDTH*2-1:0] dbf_poison_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`AXI4_RDATA_WIDTH*4/64-1:0]   rdata_poison_receive;
     logic                              dbf_rvalid_q;
     logic [chie_pkg::DATA_WIDTH-1:0]   mshr_txdat_data_sx;
     logic [chie_pkg::BE_WIDTH-1:0]     mshr_txdat_be_sx;
@@ -123,6 +131,7 @@ module hni_data_buffer `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]  wvalid_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] wdata_current;
     logic [chie_pkg::BE_WIDTH*2-1:0]   wstrb_current;
+    logic [chie_pkg::POISON_WIDTH*2-1:0] wpoison_current;
     logic [`HNI_MASK_CD_WIDTH-1:0]     wr_cdmask_current;
     logic [`HNI_MASK_WL_WIDTH-1:0]     wr_wlmask_current;
 
@@ -149,6 +158,7 @@ module hni_data_buffer `HNI_PARAM
     assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.be     : '0;
     assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.dataid : '0;
     assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.data   : '0;
+    assign rxdat_poison_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.poison : '0;
 
     assign rxdat_entry_idx_s0  = rxdat_txnid_s0[`HNI_MSHR_ENTRIES_WIDTH-1:0];
 
@@ -468,9 +478,13 @@ module hni_data_buffer `HNI_PARAM
 
     always_comb begin:receive_rdata_comb_logic          
         rdata_receive = {`AXI4_RDATA_WIDTH*4{1'b0}};
+        // Section 9.5 (p.9-347, MUST): the Poison this location was stored with lands in
+        // the same chunk of the line its data does.
+        rdata_poison_receive = {`AXI4_RDATA_WIDTH*4/64{1'b0}};
         if (rvalid && rready && (rid == axid_current)) begin
             for (int j =0;j<4;j=j+1) begin
                 if(rd_cdmask_current[j] == 1)begin
+                    rdata_poison_receive[j*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH] = ruser[`AXI4_USER_POISON_RANGE];
                     rdata_receive[j*`AXI4_RDATA_WIDTH+:`AXI4_RDATA_WIDTH] = rdata;
                 end
             end
@@ -482,32 +496,38 @@ module hni_data_buffer `HNI_PARAM
         for(i = 0;i<`HNI_MSHR_ENTRIES_NUM;i = i+1) begin:dbf_receive_data_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if(rst)begin
-                    dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                    dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b0}};
+                    dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                    dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b0}};
+                    dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
                 end
                 else begin
                     if (mshr_retired_valid_sx && i == mshr_retired_idx_sx) begin//entry retired
-                        dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b0}};
+                        dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                        dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b0}};
+                        dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
                     end
                     // Table 4-39 (p.4-219): a Write Zero has no WriteData response, so
                     // its payload is sourced here -- zeros with every byte enable set.
                     else if (rxreq_dbf_en_s0 && rxreq_dbf_wrzero_s0 && (i == rxreq_dbf_entry_idx_s0)) begin
-                        dbf_data_q[i] <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]   <= {chie_pkg::BE_WIDTH*2{1'b1}};
+                        dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
+                        dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b1}};
+                        dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
                     end
                     else if (rxdat_valid_s0 && rxreq_dbf_wr_q[i] && (i == rxdat_entry_idx_s0))begin
                         if(rxdat_dataid_s0 == 2'b00)begin
                             dbf_data_q[i][chie_pkg::DATA_WIDTH-1:0] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
                             dbf_be_q[i][chie_pkg::BE_WIDTH-1:0]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH-1:0];
+                            dbf_poison_q[i][chie_pkg::POISON_WIDTH-1:0] <= rxdat_poison_s0 | dbf_poison_q[i][chie_pkg::POISON_WIDTH-1:0];
                         end
                         else if(rxdat_dataid_s0 == 2'b10)begin
                             dbf_data_q[i][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
                             dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH];
+                            dbf_poison_q[i][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH] <= rxdat_poison_s0 | dbf_poison_q[i][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH];
                         end
                     end
                     else if(rvalid && rready && rready_q[i] && (rid == rxreq_alloc_axid_q[i]))begin
-                        dbf_data_q[i] <= rdata_receive | dbf_data_q[i];
+                        dbf_data_q[i]   <= rdata_receive | dbf_data_q[i];
+                        dbf_poison_q[i] <= rdata_poison_receive | dbf_poison_q[i];
                     end
                 end
             end
@@ -542,6 +562,7 @@ module hni_data_buffer `HNI_PARAM
     always_comb begin:txdat_data_and_be_comb_logic
         mshr_txdat_data_sx   = '0;
         mshr_txdat_be_sx     = '0;
+        mshr_txdat_poison_sx = '0;
         mshr_txdat_ccid_sx  = 2'b0;
         if(mshr_txdat_en_sx && txdat_dbf_rdy_s1)begin
             for (int entry = 0;entry<`HNI_MSHR_ENTRIES_NUM;entry = entry+1) begin:txdata
@@ -550,10 +571,12 @@ module hni_data_buffer `HNI_PARAM
                     if(mshr_txdat_dataid_sx == 2'b00)begin
                         mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH-1:0];
                         mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
+                        mshr_txdat_poison_sx = dbf_poison_q[entry][chie_pkg::POISON_WIDTH-1:0];
                     end
                     else if(mshr_txdat_dataid_sx == 2'b10)begin
                         mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH];
                         mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
+                        mshr_txdat_poison_sx = dbf_poison_q[entry][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH];
                     end
                 end
             end
@@ -587,6 +610,8 @@ module hni_data_buffer `HNI_PARAM
         txdat_flit.tracetag  = mshr_txdat_tracetag_sx;
         txdat_flit.be        = mshr_txdat_be_sx;
         txdat_flit.data      = mshr_txdat_data_sx;
+        // Section 9.5 (p.9-347, MUST): the Poison travels with the data it tags.
+        txdat_flit.poison    = mshr_txdat_poison_sx;
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         txdat_flit.datacheck = chie_pkg::datacheck_of(mshr_txdat_data_sx);
     end
@@ -617,12 +642,14 @@ module hni_data_buffer `HNI_PARAM
         wr_wlmask_current = {`HNI_MASK_WL_WIDTH{1'b0}};
         wdata_current = {chie_pkg::DATA_WIDTH*2{1'b0}};
         wstrb_current = {chie_pkg::BE_WIDTH*2{1'b0}};
+        wpoison_current = {chie_pkg::POISON_WIDTH*2{1'b0}};
         for (int entry =0; entry<`HNI_MSHR_ENTRIES_NUM; entry = entry+1)begin
             if (wvalid_q[entry])begin
                 wr_cdmask_current = dbf_wr_cdmask_q[entry];
                 wr_wlmask_current = dbf_wr_wlmask_q[entry];
                 wdata_current = dbf_data_q[entry];
                 wstrb_current = dbf_be_q[entry];
+                wpoison_current = dbf_poison_q[entry];
             end
         end
     end
@@ -670,6 +697,9 @@ module hni_data_buffer `HNI_PARAM
     always_comb begin:send_data_to_slave_comb_logic
         wdata = {`AXI4_WDATA_WIDTH{1'b0}};
         wstrb = {`AXI4_WSTRB_WIDTH{1'b0}};
+        // Section 9.5 (p.9-347, MUST): the Poison goes to memory with the beat it tags,
+        // selected by whichever chunk wdata below is taken from.
+        wuser = {`AXI4_WUSER_WIDTH{1'b0}};
         wlast = 1'b0;
         if(wvalid)begin
             if(wr_cdmask_current == wr_wlmask_current)begin
@@ -678,6 +708,7 @@ module hni_data_buffer `HNI_PARAM
                     if(wr_cdmask_current[j] == 1)begin
                         wdata = wdata_current[j*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                         wstrb = wstrb_current[j*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
+                        wuser = wpoison_current[j*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                     end
                 end
             end
@@ -685,18 +716,22 @@ module hni_data_buffer `HNI_PARAM
                 if(wr_cdmask_current == 4'b0001)begin
                     wdata = wdata_current[0*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[0*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
+                    wuser = wpoison_current[0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b0010)begin
                     wdata = wdata_current[1*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[1*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
+                    wuser = wpoison_current[1*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b0100)begin
                     wdata = wdata_current[2*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[2*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
+                    wuser = wpoison_current[2*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b1000)begin
                     wdata = wdata_current[3*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[3*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
+                    wuser = wpoison_current[3*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
             end
         end
