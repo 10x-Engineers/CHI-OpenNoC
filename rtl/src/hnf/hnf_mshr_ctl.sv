@@ -2447,7 +2447,13 @@ module hnf_mshr_ctl `HNF_PARAM
                      mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] |
                      mshr_compack_busy_sx_q[entry] | mshr_txdat_rdy_sx[entry]);
             assign mshr_mem_cmo_rdy_clr_sx[entry]    = (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry]);
-            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_atm_dat_owed_sx[entry]) ||
+            // Claimed at allocation, not at the send: Table 4-40 (SS4.7.4 p.4-219) gives
+            // an AtomicLoad/Swap/Compare no Comp of its own, so the CompData is the only
+            // thing it owes and mshr_entry_busy_sx -- which reads the registered busy
+            // bits -- would otherwise judge the entry idle in the cycle the send is
+            // armed and retire it under its own data response.
+            assign mshr_rn_data_busy_set_sx[entry]   = (mshr_atomicrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
+                   (mshr_atm_dat_owed_sx[entry]) ||
                    (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]) ||
                    (mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_rn_data_busy_clr_sx[entry]   = (txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]);
@@ -3753,6 +3759,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // uses, so an Atomic's error fill follows its last write beat; a read's and a
     // Write Zero's are requested at allocation, neither owing any. One fill per
     // cycle, held per entry until served.
+
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_home_fill_pend_logic
             assign mshr_home_fill_req_sx[entry] = (mshr_errrd_s1_q[entry] &
