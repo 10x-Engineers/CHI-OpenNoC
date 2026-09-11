@@ -62,7 +62,7 @@ anything around it.
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way; see [Verification](#verification). |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. See [Types, not bit ranges](#types-not-bit-ranges). |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
-| ⚠️ **Feature-incomplete against the spec** | Atomics, MTE, MPAM and DVM are not implemented, and no node stashes — the HN-F completes a Stash request conformantly, without acting on the hint. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
+| ⚠️ **Feature-incomplete against the spec** | MTE, MPAM and DVM are not implemented. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
 
 The [open issue tracker](https://github.com/10x-Engineers/CHI-OpenNoC/issues) is
@@ -334,8 +334,8 @@ monitor's same-cycle verdict. What is left over is the 18 Atomics, `DVMOp` and
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
 | `WriteEvictOrEvict` | — | ⚪ | 🟢 on section 2.3.2's (p.2-55) `CompDBIDResp` alternative |
 | `WriteBackPtl` | — | ⚪ | 🟢 serviced as `WriteBackFull`, never allocated into the L3 (no byte enables there) and forwarded to the Subordinate as `WriteNoSnpPtl` |
-| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 served as `WriteUniqueFull`/`Ptl` — section 7.2 (p.7-296) permits ignoring the hint |
-| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 completed `Comp_I` / `CompStashDone` without stashing — section 2.3.4 (p.2-71), section 7.3 (p.7-297), Table 4-38 (p.4-218) |
+| `WriteUniqueFullStash`, `WriteUniquePtlStash` | — | ⚪ | 🟢 Table 7-1 (p.7-295) snoop to the named target, section 4.4.1's (p.4-194) invalidating snoop to every other holder |
+| `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` | — | ⚪ | 🟢 Table 7-1 (p.7-295) snoop to the named target only — section 7.3 (p.7-297) — completed `Comp_I` / `CompStashDone`, Table 4-38 (p.4-218) |
 | `WriteNoSnp*` Combined Writes (6) | 🟢 | 🟢 | 🟢 write leg + `CompCMO`; the two `*CleanShPerSep` fold their `CompCMO` and Persist into one `CompPersist` (section 2.3.2 Alt 2a2, p.2-67) |
 | `WriteUnique*` / `WriteBack*` / `WriteClean*` Combined Writes (9) | ⚪ | ⚪ | 🟢 write leg + `CompCMO`; the four `*CleanShPerSep` fold their `CompCMO` and Persist into one `CompPersist` and never allocate into the L3, section 4.2.2 (p.4-171) sending them downstream |
 | `CleanShared`, `CleanInvalid` | 🟢 | 🟢 | 🟢 |
@@ -366,7 +366,7 @@ neither issues a snoop and neither has a SNP port.
 | `SnpShared`, `SnpPreferUnique`, `SnpPreferUniqueFwd` | 🟢 | `SnpShared` for a `ReadShared`, `SnpPreferUnique` for the `ReadPreferUnique` this Home serves Shared (`hnf_mshr_ctl.sv`'s `l3_opcode_decode_comb_logic`) |
 | `SnpSharedFwd` | ⚪ | not elected: section 4.4.2 (p.4-196) permits `SnpNotSharedDirtyFwd` for a `ReadShared` too, and Table 4-53 (p.4-234) lets `SnpSharedFwd` forward `SD_PD` — passing dirtiness to the Requester rather than to this Home |
 | `SnpQuery` | ⚪ | not generated: section 6.2.3 (p.6-284) makes it one of three permitted ways to resolve an Exclusive Store and this Home implements the PoC monitor (`hnf_mshr_global_monitor.sv`) |
-| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🔴 | never generated — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68), with the Stash requests they belong to |
+| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | Table 7-1 (p.7-295), to the one RN-F section 4.3 (p.4-191) permits, carrying StashLPID and RetToSrc=0 (section 4.9 p.4-240) |
 | `SnpDVMOp` | 🔴 | never generated. Table B-1 (p.B-493) gives `DVMOp` only ICN(MN) as a target and no permitted alternative, so an HN-F is never one — see [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `DoNotGoToSD`, on every snoop sent | 🟢 | hardwired to 1 in `hnf_link_txsnp_wrap.sv`. Section 13.10.34 (p.13-434) makes the bit free on `SnpOnce`/`SnpClean`/`SnpShared`/`SnpNotSharedDirty`/`SnpPreferUnique` and their forwarding twins, and must-be-1 on the ten invalidating and Stash snoops; the two that must carry zero, `SnpQuery` and `SnpDVMOp`, are never generated, so 1 is legal on every snoop this Home sends. It does mean a Snoopee never keeps the line Shared Dirty against this Home — Table 4-42 footnote c (p.4-223) withdraws that row |
 | Responses decoded: `SnpResp`, `SnpRespData`, `SnpRespFwded`, `SnpRespDataFwded` | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_snprspfwd_s0` / `mshr_snpdatfwd_s0` |
@@ -390,7 +390,7 @@ neither issues a snoop and neither has a SNP port.
 | Combined Writes | 🟡 | 🟡 | — | 🟢 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves all fifteen of Table 4-17 (p.4-182) |
 | Write Zero | 🟡 | 🟢 | — | 🟢 | both are serviced at the HN-F; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
 | Atomics | ⚪ | ⚪ | — | 🟢 | `opennoc_hnf_pkg.sv`'s `hnf_atomic_alu()` / `hnf_atomic_compare_eq()`, the read-modify-write in `hnf_data_buffer.sv`. At the SN-F and HN-I section 16.1 leaves `Atomic_Transactions` False when undeclared and section 16.3.3 makes the error response correct; the HN-F declares them, which section 16.3.2 then makes all-or-nothing over its whole Snoopable range |
-| Stash | ⚪ | ⚪ | — | 🟡 | the HN-F completes every Stash request without stashing and without an error (section 2.3.4 p.2-71, section 9.4.6 p.9-344); no Stash snoop is generated |
+| Stash | ⚪ | ⚪ | — | 🟢 | the HN-F snoops the named Stash target (Table 7-1 p.7-295) and serves the Read that section 7.1.1's (p.7-295) Data Pull implies, addressed per section 2.6 step 6 (p.2-110). A request naming no target completes without stashing, which is section 7.4.2 (p.7-299) |
 | System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
 | MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
 | MPAM | 🔴 | 🔴 | 🔴 | 🔴 | absent from `chie_pkg`'s `req_flit_s` and `snp_flit_s` — the field is not in the layout — [#165](https://github.com/10x-Engineers/CHI-OpenNoC/issues/165) |

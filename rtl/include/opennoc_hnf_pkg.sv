@@ -367,6 +367,58 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_STASHONCESEPSHARED || op == chie_pkg::REQ_STASHONCESEPUNIQUE;
   endfunction
 
+  // The six requests that carry a stash hint: Table 7-3 (SS7.5.1 p.7-300) gives
+  // each a StashNID/StashNIDValid, and Table 7-1 (SS7.1.1 p.7-295) the snoop its
+  // target receives.
+  function automatic logic hnf_stash_req(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_WRITEUNIQUEFULLSTASH ||
+           op == chie_pkg::REQ_WRITEUNIQUEPTLSTASH  ||
+           op == chie_pkg::REQ_STASHONCESHARED      ||
+           op == chie_pkg::REQ_STASHONCEUNIQUE      ||
+           op == chie_pkg::REQ_STASHONCESEPSHARED   ||
+           op == chie_pkg::REQ_STASHONCESEPUNIQUE;
+  endfunction
+
+  // The Stash requests that carry no write data. SS7.3 (p.7-297) snoops only the
+  // named target for these -- a stash hint invalidates nothing, so a peer holding
+  // the line is left alone -- where SS4.4.1 (p.4-194, MUST) has a WriteUnique*Stash
+  // additionally invalidate "all Non-stash target Request Nodes that have a copy".
+  function automatic logic hnf_stash_dataless(chie_pkg::req_opcode_e op);
+    return op == chie_pkg::REQ_STASHONCESHARED    ||
+           op == chie_pkg::REQ_STASHONCEUNIQUE    ||
+           op == chie_pkg::REQ_STASHONCESEPSHARED ||
+           op == chie_pkg::REQ_STASHONCESEPUNIQUE;
+  endfunction
+
+  // Table 13-29 (SS13.10.33 p.13-433): 0b000 No Read, 0b001 Read, and 0b010-0b111
+  // Reserved -- so the field has two readings and neither "bit 0" nor "non-zero"
+  // is one of them.
+  function automatic logic hnf_data_pull(logic [2:0] f);
+    return f == 3'b001;
+  endfunction
+
+  // Table 7-2 (SS7.1.1 p.7-295): the Read a Data Pull implies, "which is how the
+  // Home must treat it" (restated per-snoop at SS4.8.2 p.4-227/4-228).
+  function automatic chie_pkg::req_opcode_e hnf_stash_pull_read_of(chie_pkg::snp_opcode_e op);
+    return (op == chie_pkg::SNP_SNPSTASHSHARED) ? chie_pkg::REQ_READNOTSHAREDDIRTY
+                                                : chie_pkg::REQ_READUNIQUE;
+  endfunction
+
+  // Table 7-1 (SS7.1.1 p.7-295): the snoop the Stash target receives. SS4.4.2
+  // (p.4-196) expressly permits sending it "to the target RN ... if the target RN
+  // does not have the cache line", which is what makes it a stash at all.
+  function automatic chie_pkg::snp_opcode_e hnf_stash_snp_of(chie_pkg::req_opcode_e op);
+    case (op)
+      chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return chie_pkg::SNP_SNPMAKEINVALIDSTASH;
+      chie_pkg::REQ_WRITEUNIQUEPTLSTASH  : return chie_pkg::SNP_SNPUNIQUESTASH;
+      chie_pkg::REQ_STASHONCEUNIQUE,
+      chie_pkg::REQ_STASHONCESEPUNIQUE   : return chie_pkg::SNP_SNPSTASHUNIQUE;
+      chie_pkg::REQ_STASHONCESHARED,
+      chie_pkg::REQ_STASHONCESEPSHARED   : return chie_pkg::SNP_SNPSTASHSHARED;
+      default                            : return chie_pkg::SNP_SNPLCRDRETURN;
+    endcase
+  endfunction
+
 endpackage
 
 `endif
