@@ -191,6 +191,7 @@ module hnf `HNF_PARAM
     wire [`CACHE_POISON_WIDTH-1:0]           dbf_txdat_poison_sx1;
     wire                                     dbf_txdat_valid_sx1;
     wire                                     li_mshr_rxreq_valid_s0;
+    wire                                     li_mshr_rxreq_seq_s0;
     wire [3:0]                               li_mshr_rxreq_qos_s0;
     wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxreq_srcid_s0;
     wire [11:0]                              li_mshr_rxreq_txnid_s0;
@@ -504,6 +505,7 @@ module hnf `HNF_PARAM
                  //outputs
                  .rxreq_lcrdv                                  (RXREQLCRDV                        ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
+                 .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
                  .li_mshr_rxreq_qos_s0                         (li_mshr_rxreq_qos_s0              ),
                  .li_mshr_rxreq_srcid_s0                       (li_mshr_rxreq_srcid_s0            ),
                  .li_mshr_rxreq_txnid_s0                       (li_mshr_rxreq_txnid_s0            ),
@@ -586,6 +588,7 @@ module hnf `HNF_PARAM
                  .clk                                          (CLK                               ),
                  .rst                                          (RST                               ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
+                 .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
                  .li_mshr_rxreq_qos_s0                         (li_mshr_rxreq_qos_s0              ),
                  .li_mshr_rxreq_srcid_s0                       (li_mshr_rxreq_srcid_s0            ),
                  .li_mshr_rxreq_txnid_s0                       (li_mshr_rxreq_txnid_s0            ),

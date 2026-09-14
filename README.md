@@ -322,9 +322,7 @@ at both Homes — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68).
 | **RN-I** | generates 7 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
 
 All three Completers now answer everything they do not implement. The HN-F count
-is the 21 opcodes `hnf_mshr_ctl.sv` decodes in its own right — `SnoopFilterEvict`
-among them, whose encoding its internal back-invalidate shares
-(`hnf_link_rxreq_parse.sv`'s back-invalidate-queue injection) — plus the thirty
+is the 20 opcodes `hnf_mshr_ctl.sv` decodes in its own right — plus the thirty
 `opennoc_hnf_pkg.sv`'s `hnf_serviced_as()` maps onto one of those twins, each
 mapping a permission the spec gives the Home outright, cited beside it. Two of
 them, MakeReadUnique(Excl) and ReadPreferUnique, pick their twin from the PoC
@@ -358,7 +356,6 @@ monitor's same-cycle verdict. What is left over is the 18 Atomics, `DVMOp` and
 | `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 serviced as `CleanShared`, with a `CleanSharedPersist` sent downstream and the completion held for the Subordinate's `Comp` (section 16.1, p.16-471) |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
 | Atomics — `AtomicStore`, `AtomicLoad`, `AtomicSwap`, `AtomicCompare` (18 opcodes) | ⚪ | ⚪ | 🟢 **executed here** — section 16.3.2 (p.16-479) puts the execution point anywhere in the interconnect. Served on the `WriteUniquePtl` skeleton: `DBIDResp`, invalidating snoop, line fetched and merged, then Table 4-19/4-20's operation. `CompData_I` carries section 4.2.5's (p.4-187) original value over the inbound extent — half of Size for `AtomicCompare` (Table 2-16 p.2-137); `AtomicStore` gets `Comp_I` (Table 4-40 p.4-219). `SnoopMe` honoured (Table 13-28 p.13-433) |
-| `SnoopFilterEvict` | ⚪ | ⚪ | 🟢 |
 | `DVMOp` | ⚪ | ⚪ | ⚪ [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68) |
 | `PrefetchTgt`, `PCrdReturn` | ⬛ | ⬛ | ⬛ |
 | `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ |
