@@ -58,7 +58,7 @@ anything around it.
 
 | | |
 | :-- | :-- |
-| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR. The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
+| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way; see [Verification](#verification). |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. See [Types, not bit ranges](#types-not-bit-ranges). |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
@@ -79,7 +79,7 @@ limitations" paragraph that nobody updates.
 
 | Tool | Needed for | Notes |
 | :-- | :-- | :-- |
-| Verilator ≥ 5.0 | `tools/lint.sh` | The only licence-free step. What CI runs. |
+| Verilator ≥ 5.0, pyslang | `tools/lint.sh` | The only licence-free step. What CI runs. Verilator lints; pyslang backs `tools/check_select_bounds.py`. |
 | Xcelium **or** VCS | `tools/link_check.sh`, `rtl/Makefile` | Verilator 5.048 segfaults constructing the HN-F model (in `VL_MURMUR64_HASH`), so behavioural simulation needs a commercial simulator. |
 | Python 3 + `jinja2` | the topology generators | `pip install jinja2`. There is no `requirements.txt`. |
 
@@ -487,7 +487,7 @@ Three layers, in increasing cost:
 
 | Layer | What it proves | Runs where |
 | :-- | :-- | :-- |
-| `tools/lint.sh` | The design elaborates and contains no never-executing logic, inferred latches, or incomplete cases. | CI, every push and PR. Licence-free. |
+| `tools/lint.sh` | The design elaborates and contains no never-executing logic, inferred latches, incomplete cases, or part-selects that read past their operand once a `for` loop is unrolled. | CI, every push and PR. Licence-free. |
 | `rtl/tb/` | Directed behavioural benches: 136 recorded HN-F cases, an RN-I AXI bench, an SN-F bench, and a Chapter 14 link-activation conformance bench. | Locally, needs VCS or Xcelium. |
 | **An external CHI VIP** | Conformance against the Issue E.b specification itself: every node driven as a DUT by an independent UVM verification IP whose checkers cite spec clauses, with a golden reference model behind them. | The 10xEngineers CHI VIP. This is where essentially every protocol defect in the fork log was found. |
 
@@ -506,7 +506,7 @@ Requester — each one an issue on this repository naming the clause it violated
 .
 ├── LICENSE                    Mulan PSL v2
 ├── README.md
-├── .github/workflows/lint.yml Verilator lint gate (the only CI job)
+├── .github/workflows/lint.yml Verilator + select-bounds lint gate (the only CI job)
 ├── doc/
 │   └── hnf/                   HN-F design overview + datapath diagram (Chinese)
 ├── rtl/
@@ -530,7 +530,8 @@ Requester — each one an issue on this repository naming the clause it violated
 │   ├── Makefile               VCS compile/run flow
 │   └── file_list_tb.f         Source manifest
 └── tools/
-    ├── lint.sh                Verilator structural lint (CI gate)
+    ├── lint.sh                Verilator structural lint + select bounds (CI gate)
+    ├── check_select_bounds.py Out-of-range part-selects after loop unrolling
     ├── link_check.sh          Chapter 14 link-activation bench
     ├── mesh_generator/        Mesh fabric generator (Python + Jinja2)
     └── ring_generator/        Ring fabric generator
