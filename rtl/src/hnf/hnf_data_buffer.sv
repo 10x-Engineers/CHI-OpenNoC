@@ -380,7 +380,7 @@ module hnf_data_buffer `HNF_PARAM
         logic [`MSHR_ENTRIES_WIDTH-1:0] a_idx;
         chie_pkg::req_opcode_e          a_op;
         int unsigned                    a_len, a_off, a_soff, a_poff;
-        logic [127:0]                   a_init128, a_cmp128, a_swap128;
+        logic [127:0]                   a_init128, a_cmp128, a_swap128, a_wr128;
         logic [63:0]                    a_res;
         logic                           a_match;
 
@@ -409,13 +409,16 @@ module hnf_data_buffer `HNF_PARAM
         a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
                                                   a_init128[63:0], a_cmp128[63:0]);
 
+        // Table 2-16 (SS2.10.5 p.2-137) bounds AtomicStore/Load/Swap at 8 bytes and
+        // only AtomicCompare at 16, so the ALU result is the narrower source, widened
+        // here to the one vector the write-back indexes.
+        a_wr128 = (a_op == chie_pkg::REQ_ATOMICCOMPARE) ? (a_match ? a_swap128 : a_init128)
+                                                        : {64'd0, a_res};
+
         if (dbf_atm_rd_sx2)
             for (int unsigned b = 0; b < 16; b = b + 1)
                 if (b < a_len)
-                    dbf_atm_result_sx2[((a_off + b) & 63)*8 +: 8] =
-                        (a_op == chie_pkg::REQ_ATOMICCOMPARE) ? (a_match ? a_swap128[b*8 +: 8]
-                                                                        : a_init128[b*8 +: 8])
-                                                              : a_res[b*8 +: 8];
+                    dbf_atm_result_sx2[((a_off + b) & 63)*8 +: 8] = a_wr128[b*8 +: 8];
     end
 
     always_ff @(posedge clk or posedge rst)begin :pipe_rd

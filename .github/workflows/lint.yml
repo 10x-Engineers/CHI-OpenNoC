@@ -1,5 +1,6 @@
 # Structural lint of every CHI node. The repo's own flow needs VCS, which no
-# runner has, so this is Verilator-only -- see tools/lint.sh for what it gates on.
+# runner has, so this is Verilator plus pyslang -- see tools/lint.sh for what each
+# gates on, and why one front end is not enough.
 name: lint
 
 on:
@@ -16,6 +17,7 @@ env:
   # Quoted: unquoted 5.050 is a YAML float and reaches the shell as "5.05",
   # which is not a tag.
   VERILATOR_VERSION: "5.050"
+  PYSLANG_VERSION: "11.0.0"
 
 jobs:
   verilator:
@@ -44,6 +46,12 @@ jobs:
 
       - name: Put Verilator on PATH
         run: echo "$HOME/verilator-install/bin" >> "$GITHUB_PATH"
+
+      # tools/check_select_bounds.py's front end. Pinned for the same reason the
+      # Verilator version is: what an elaborator constant-folds moves between
+      # releases, so an unpinned install would silently change what this gate sees.
+      - name: Install pyslang
+        run: pip install "pyslang==${PYSLANG_VERSION}"
 
       - name: Lint every node
         run: ./tools/lint.sh

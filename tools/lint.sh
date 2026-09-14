@@ -30,11 +30,18 @@
 # an explicit zero-extension -- never with a lint_off pragma, which hides the next
 # one too.
 #
+# Verilator is not the whole gate. tools/check_select_bounds.py runs beside it on
+# the same file set, because the one class Verilator cannot see is a part-select
+# that reads past its operand only once an enclosing `for` loop is unrolled --
+# IEEE 1800 makes a variable-base select yield x rather than an error, so Verilator,
+# slang and Xcelium all accept it and Verific rejects it.
+#
 # The behavioural counterpart is tools/link_check.sh, which needs a simulator this
 # script deliberately does not.
 # =============================================================================
 set -uo pipefail
-cd "$(dirname "$0")/../rtl" || exit 2
+TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
+cd "$TOOLS/../rtl" || exit 2
 
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
 
@@ -46,6 +53,17 @@ if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
 VERILATOR_PIN=5.050
 
 command -v verilator >/dev/null || { echo "verilator not on PATH"; exit 2; }
+
+# The interpreter that has pyslang, which is not necessarily the one `python3`
+# names. $PYTHON overrides; a missing module is a hard stop, since a gate that
+# quietly skips is worse than one that is not there.
+PYTHON=${PYTHON:-}
+if [ -z "$PYTHON" ]; then
+  for p in python3 python3.12 python3.11 python3.10; do
+    command -v "$p" >/dev/null && "$p" -c "import pyslang" 2>/dev/null && { PYTHON=$p; break; }
+  done
+fi
+[ -n "$PYTHON" ] || { echo "no python3 with pyslang (pip install pyslang) -- tools/check_select_bounds.py cannot run"; exit 2; }
 verilator --version
 # ALWNEVER is emitted only by Verilator 5.x. An older binary reports none and would
 # pass this gate vacuously, which is worse than not running it at all.
@@ -62,6 +80,10 @@ fi
 
 rc=0
 
+# The select-bounds gate proves itself before it is believed: a clean report from a
+# checker that has stopped reporting is the one outcome worse than not running it.
+"$PYTHON" "$TOOLS/check_select_bounds.py" --self-test || rc=1
+
 # The optional flit fields are `ifdef'd, so the default build compiles none of the
 # code that carries them. Each node is linted twice: once as it ships, once with
 # every optional field declared -- the second pass is the only one that reads those
@@ -69,20 +91,24 @@ rc=0
 # lets REQ and DAT differ; section 11.3 (p.11-365) gives MPAM only 0 or 11.
 OPT_DEFINES="-DCHIE_MPAM_PRESENT -DCHIE_REQ_RSVDC_WIDTH=8 -DCHIE_DAT_RSVDC_WIDTH=16"
 
+# chie_pkg.sv is listed rather than left to -Iinclude: Verilator resolves a
+# missing *module* from the include path by filename, but not a package. The
+# design's own assertions ship gated off, so nothing compiled them until they were
+# turned on here; DISPLAY_INFO stays off, being $display tracing rather than a check.
+node_sources() {  # $1 node -- the file set both gates read
+  local n="$1"
+  echo "include/chie_pkg.sv \
+        $([ -f "include/opennoc_${n}_pkg.sv" ] && echo "include/opennoc_${n}_pkg.sv") \
+        misc/chie_flit_opt_check.sv src/$n/*.sv"
+}
+
 lint_node() {   # $1 node, $2 pass label, $3.. extra defines
   local n="$1" label="$2"; shift 2
   echo "-------------------- $n ($label) --------------------"
-  # chie_pkg.sv is listed rather than left to -Iinclude: Verilator resolves a
-  # missing *module* from the include path by filename, but not a package.
-  # The design's own assertions ship gated off, so nothing compiled them until
-  # they were turned on here; DISPLAY_INFO stays off, being $display tracing
-  # rather than a check.
   local out
   out=$(verilator --lint-only -Wno-fatal --top-module "$n" \
           -DASSERT_CHECKER_ON -DDISPLAY_FATAL "$@" \
-          -Iinclude -Imisc -I"src/$n" include/chie_pkg.sv \
-          $([ -f "include/opennoc_${n}_pkg.sv" ] && echo "include/opennoc_${n}_pkg.sv") \
-          misc/chie_flit_opt_check.sv src/"$n"/*.sv 2>&1)
+          -Iinclude -Imisc -I"src/$n" $(node_sources "$n") 2>&1)
   echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
 
   if echo "$out" | grep -q "^%Error"; then
@@ -97,10 +123,22 @@ lint_node() {   # $1 node, $2 pass label, $3.. extra defines
   return 0
 }
 
+# slang resolves an uninstantiated module from a library directory rather than from
+# the include path, so `-y misc` is what -Imisc is to Verilator.
+bounds_node() {  # $1 node, $2 pass label, $3.. extra defines
+  local n="$1" label="$2"; shift 2
+  echo "-------------------- $n select bounds ($label) --------------------"
+  "$PYTHON" "$TOOLS/check_select_bounds.py" --top "$n" \
+      -DASSERT_CHECKER_ON -DDISPLAY_FATAL "$@" \
+      -Iinclude -Imisc -I"src/$n" -y misc --libext .sv $(node_sources "$n")
+}
+
 for n in "${NODES[@]}"; do
   echo "==================== $n ===================="
   lint_node "$n" "default"          || rc=1
   lint_node "$n" "optional fields" $OPT_DEFINES || rc=1
+  bounds_node "$n" "default"          || rc=1
+  bounds_node "$n" "optional fields" $OPT_DEFINES || rc=1
 done
 
 echo
