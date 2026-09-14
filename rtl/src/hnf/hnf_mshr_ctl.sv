@@ -35,6 +35,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //inputs related to request handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxreq_valid_s0,
+    input  wire                                li_mshr_rxreq_seq_s0,
     input  wire [3:0]                          li_mshr_rxreq_qos_s0,
     input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
     input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
@@ -1185,7 +1186,10 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
-    assign op_seq              = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT);
+    // The interconnect's own back-invalidation, qualified by the signal
+    // hnf_link_rxreq_parse asserts for it -- never by an opcode value, which is a
+    // field a Requester drives.
+    assign op_seq              = li_mshr_rxreq_seq_s0;
     assign mshr_seq_set_s0     = {`MSHR_ENTRIES_NUM{op_seq}} & mshr_can_alloc_entry_s0;
     assign mshr_seq_clr_sx1    = mshr_can_retire_entry_sx1;
     assign mshr_seq_upd_sx     = mshr_seq_set_s0 | mshr_seq_clr_sx1;

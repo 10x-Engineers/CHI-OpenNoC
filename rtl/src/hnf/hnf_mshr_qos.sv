@@ -31,6 +31,7 @@ module hnf_mshr_qos `HNF_PARAM
 
     //inputs from hnf_link_rxreq_parse
     input  wire                            li_mshr_rxreq_valid_s0,
+    input  wire                            li_mshr_rxreq_seq_s0,
     input  wire [3:0]                      li_mshr_rxreq_qos_s0,
     input  wire [chie_pkg::NID_WIDTH-1:0]  li_mshr_rxreq_srcid_s0,
     input  wire [11:0]                     li_mshr_rxreq_txnid_s0,
@@ -324,10 +325,12 @@ module hnf_mshr_qos `HNF_PARAM
                                     | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)
                                     | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT);
 
-    assign li_req_dyn_s0            = li_mshr_rxreq_valid_s0 & li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
-    assign li_req_static_s0         = li_mshr_rxreq_valid_s0 & ~li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0;
+    // The internal back-invalidation takes the reserved SEQ pool and neither of
+    // the Requester pools, so it is excluded here rather than at each alloc term.
+    assign li_req_dyn_s0            = li_mshr_rxreq_valid_s0 & li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0 & ~li_mshr_rxreq_seq_s0;
+    assign li_req_static_s0         = li_mshr_rxreq_valid_s0 & ~li_mshr_rxreq_allowretry_s0 & ~li_req_noalloc_s0 & ~li_mshr_rxreq_seq_s0;
 
-    assign li_req_dyn_alloc_s0      = li_req_dyn_s0 & li_req_qos_can_alloc_s0 & (li_mshr_rxreq_opcode_s0 != chie_pkg::REQ_SNOOPFILTEREVICT);
+    assign li_req_dyn_alloc_s0      = li_req_dyn_s0 & li_req_qos_can_alloc_s0;
     assign li_req_dyn_alloc_fail_s0 = li_req_dyn_s0 & ~li_req_qos_can_alloc_s0;
 
     // The static path has an occupancy check for the same reason the dynamic one
@@ -335,9 +338,9 @@ module hnf_mshr_qos `HNF_PARAM
     // through to its initial 0 and hnf_mshr_ctl's mshr_can_alloc_entry_s0 -- which
     // compares the index, not the pointer -- allocates entry 0 over its occupant.
     assign li_req_static_avail_s0   = |mshr_static_entry_idx_ptr_s0;
-    assign li_req_static_alloc_s0   = li_req_static_s0 & li_req_static_avail_s0 & !(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT);
+    assign li_req_static_alloc_s0   = li_req_static_s0 & li_req_static_avail_s0;
 
-    assign li_seq_alloc_s0          = li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT) && qos_seq_pool_avail_s0;
+    assign li_seq_alloc_s0          = li_mshr_rxreq_valid_s0 && li_mshr_rxreq_seq_s0 && qos_seq_pool_avail_s0;
 
     //qos allocate enable
     assign mshr_alloc_en_s0         = li_req_dyn_alloc_s0 | li_req_static_alloc_s0 | li_seq_alloc_s0;
@@ -1398,7 +1401,7 @@ module hnf_mshr_qos `HNF_PARAM
                   end
 
                   always_ff @(posedge clk)begin
-                      `display_fatal(!(li_mshr_rxreq_valid_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_SNOOPFILTEREVICT) && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
+                      `display_fatal(!(li_mshr_rxreq_valid_s0 && li_mshr_rxreq_seq_s0 && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
                       `display_fatal(!(mshr_dbf_retired_valid_sx1_q&&(!mshr_entry_valid_s1_q[mshr_dbf_retired_idx_sx1_q])),"Fatal info: A invalid mshr entry is retiring\n");
                       `display_fatal(!(mshr_alloc_en_s0&&(mshr_entry_valid_s1_q[mshr_entry_idx_alloc_s0])),"Fatal info: A valid mshr entry is repeat enqueuing\n");
                   end

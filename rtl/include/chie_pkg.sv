@@ -143,7 +143,6 @@ package chie_pkg;
     REQ_ATOMICSWAP                  = {1'h0, 6'h38},
     REQ_ATOMICCOMPARE               = {1'h0, 6'h39},
     REQ_PREFETCHTGT                 = {1'h0, 6'h3a},
-    REQ_SNOOPFILTEREVICT            = {1'h1, 6'h00},
     REQ_MAKEREADUNIQUE              = {1'h1, 6'h01},
     REQ_WRITEEVICTOREVICT           = {1'h1, 6'h02},
     REQ_WRITEUNIQUEZERO             = {1'h1, 6'h03},
