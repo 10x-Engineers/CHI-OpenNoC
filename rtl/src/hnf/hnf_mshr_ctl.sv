@@ -2372,7 +2372,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dmt_sx8_q[entry] <= (mshr_l3_dmt_sx7 | mshr_dmt_sx8_q[entry]);
                 else if(mshr_snp_dmt_s1[entry])
                     mshr_dmt_sx8_q[entry] <= 1'b1;
-                else if(mshr_ro_s1_q[entry] && (l3_fill_busy_sx_q[entry] || mshr_snp_d_s1_q[entry]))
+                // Sec 5.1.5 (p.5-251): "HN-F waits for the data response from memory,
+                // merges the partial Snoop response data with the data response from
+                // memory, and sends the resultant data to the Requester" -- so a read
+                // that owes a merge is never a DMT, whatever its opcode.
+                // mshr_snp_memrd_s1 is the post-snoop memory read and
+                // mshr_snp_getid_s1_q the snoop data waiting to be merged into it.
+                // The ReadOnce-only test alongside cannot see that case: PassDirty is
+                // zero on SnpRespDataPtl_UD (Resp 0b010), and l3_fill_busy never arms
+                // for a ReadOnce.
+                else if((mshr_snp_memrd_s1[entry] && (|mshr_snp_getid_s1_q[entry])) ||
+                        (mshr_ro_s1_q[entry] && (l3_fill_busy_sx_q[entry] || mshr_snp_d_s1_q[entry])))
                     mshr_dmt_sx8_q[entry] <= 1'b0;
                 else
                     ;
