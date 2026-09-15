@@ -37,6 +37,7 @@ module hnf_mshr_qos `HNF_PARAM
     input  wire [11:0]                     li_mshr_rxreq_txnid_s0,
     input  chie_pkg::req_opcode_e          li_mshr_rxreq_opcode_s0,
     input  wire                            li_mshr_rxreq_allowretry_s0,
+    input  wire [3:0]                      li_mshr_rxreq_pcrdtype_s0,
     input  wire                            li_mshr_rxreq_tracetag_s0,
 
     //inputs from hnf_mshr_ctl
@@ -88,7 +89,7 @@ module hnf_mshr_qos `HNF_PARAM
     wire                           li_req_static_avail_s0;
     wire                           li_req_noalloc_s0;
     wire                           li_req_dyn_alloc_fail_s0;
-    wire [3:0]                     li_mshr_rxreq_pcrdtype_s0;
+    wire [3:0]                     retryack_pcrdtype_s0;
     wire                           mshr_dyn_or_seq_alloc_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_dyn_entry_idx_avail_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_static_entry_idx_avail_s0;
@@ -98,6 +99,12 @@ module hnf_mshr_qos `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_static_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_entry_alloc_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_static_en_s0;
+    wire                           pcrdreturn_s0;
+    logic [`MSHR_ENTRIES_NUM-1:0]  mshr_static_free_s0;
+    wire                           mshr_static_free_valid_s0;
+    logic [`MSHR_ENTRIES_WIDTH-1:0] mshr_static_free_idx_s0;
+    wire [`QOS_CLASS_WIDTH-1:0]    mshr_static_freed_class_s0;
+    wire [1:0]                     mshr_static_set_pcrdtype_s0;
     wire                           qos_hhigh_pool_avail_s0;
     wire                           qos_high_pool_avail_s0;
     wire                           qos_med_pool_avail_s0;
@@ -231,6 +238,7 @@ module hnf_mshr_qos `HNF_PARAM
     logic                               qpc_med_s1_q;
     logic                               qpc_low_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]       mshr_static_entry_valid_s1_q;
+    logic [1:0]                         mshr_static_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dyn_idx_alloc_s0;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_static_idx_alloc_s0;
     logic [`MSHR_ENTRIES_NUM-1:0]       mshr_entry_valid_s1_q;
@@ -457,6 +465,42 @@ module hnf_mshr_qos `HNF_PARAM
         end
     endgenerate
 
+    // CHI E.b section 2.11.1 (p.2-147): PCrdReturn "is used to inform the Completer that
+    // the allocated resources are no longer required for the given PCrdType". The
+    // resource this Home allocates per grant is a static MSHR entry plus the QoS pool
+    // slot it keeps charged, so a return must release exactly that pair. Which entry is
+    // free choice -- the reservations of one PCrdType are fungible, section 2.11 (p.2-145):
+    // "There is no fixed relationship between credits and particular transactions."
+    assign pcrdreturn_s0 = li_mshr_rxreq_valid_s0 &
+           (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN);
+
+    always_comb begin: mshr_static_free_comb_logic
+        mshr_static_free_s0 = {`MSHR_ENTRIES_NUM{1'b0}};
+        for (int i = 0; i < `MSHR_ENTRIES_NUM; i = i + 1) begin
+            // ~mshr_entry_alloc_s1: that entry's reservation is being consumed this
+            // cycle by an AllowRetry=0 reissue, which is the OTHER way section 2.11
+            // (p.2-146) discharges a credit. The alloc clear is registered a cycle
+            // behind its request flit, so it overlaps a PCrdReturn arriving in the
+            // next one -- selecting it here would release two reservations into one
+            // entry and strand a third.
+            if (pcrdreturn_s0 && mshr_static_entry_valid_s1_q[i] &&
+                !mshr_entry_alloc_s1[i] &&
+                (mshr_static_pcrdtype_s1_q[i] == li_mshr_rxreq_pcrdtype_s0[1:0]) &&
+                (mshr_static_free_s0 == {`MSHR_ENTRIES_NUM{1'b0}}))
+                mshr_static_free_s0[i] = 1'b1;
+        end
+    end
+
+    assign mshr_static_free_valid_s0  = |mshr_static_free_s0;
+    assign mshr_static_freed_class_s0 = qos_class_pool_s2_q[mshr_static_free_idx_s0];
+
+    always_comb begin: mshr_static_free_idx_comb_logic
+        mshr_static_free_idx_s0 = {`MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int i = 0; i < `MSHR_ENTRIES_NUM; i = i + 1)
+            if (mshr_static_free_s0[i])
+                mshr_static_free_idx_s0 = `MSHR_ENTRIES_WIDTH'(i);
+    end
+
     //mshr static entry valid logic
     assign hh_retire_can_convert_static_sx1 = (qos_pool_retire_class_sx1 == `QOS_CLASS_HHIGH) &
            (hhigh_present_s1);
@@ -482,8 +526,12 @@ module hnf_mshr_qos `HNF_PARAM
 
     //static entry is set on mshr retired.
     //  static entry is cleared on mshr allocate (previously retried).
-    assign mshr_static_en_s0 = mshr_static_set_s0 | mshr_entry_alloc_s1;
-    //(mshr_retire_entry_s0 & mshr_static_entry_valid_s1_q);
+    assign mshr_static_en_s0 = mshr_static_set_s0 | mshr_entry_alloc_s1 | mshr_static_free_s0;
+
+    // Same encoding as pcrdgnt_pcrdtype_s2, taken a cycle earlier: the grant that
+    // reserves this entry is elected by the same *_present_win_s1 terms.
+    assign mshr_static_set_pcrdtype_s0 = {(hh_present_win_s1 | h_present_win_s1),
+                                          (hh_present_win_s1 | m_present_win_s1)};
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1)begin
@@ -492,6 +540,13 @@ module hnf_mshr_qos `HNF_PARAM
                     mshr_static_entry_valid_s1_q[entry] <= 1'b0;
                 else if (mshr_static_en_s0[entry] == 1'b1)
                     mshr_static_entry_valid_s1_q[entry] <= mshr_static_set_s0[entry];
+            end
+
+            always_ff @(posedge clk or posedge rst) begin: update_mshr_static_pcrdtype_timing_logic
+                if (rst == 1'b1)
+                    mshr_static_pcrdtype_s1_q[entry] <= 2'b0;
+                else if (mshr_static_set_s0[entry] == 1'b1)
+                    mshr_static_pcrdtype_s1_q[entry] <= mshr_static_set_pcrdtype_s0;
             end
         end
     endgenerate
@@ -549,8 +604,9 @@ module hnf_mshr_qos `HNF_PARAM
     assign qos_hhigh_pool_alloc_s0 = qos_hhigh_pool_avail_s0 & qpc_hhigh_s0;
 
     assign qos_pool_hhigh_cnt_inc_s0 = li_req_dyn_alloc_s0 & qos_hhigh_pool_alloc_s0;
-    assign qos_pool_hhigh_cnt_dec_s0 = mshr_dbf_retired_valid_sx1_q & ~hhigh_present_s1 &
-           (qos_pool_retire_class_sx1 == `QOS_CLASS_HHIGH);
+    assign qos_pool_hhigh_cnt_dec_s0 = (mshr_dbf_retired_valid_sx1_q & ~hhigh_present_s1 &
+           (qos_pool_retire_class_sx1 == `QOS_CLASS_HHIGH)) |
+           (mshr_static_free_valid_s0 & (mshr_static_freed_class_s0 == `QOS_CLASS_HHIGH));
 
     assign hhigh_cnt_update_s0 = (qos_pool_hhigh_cnt_inc_s0 | qos_pool_hhigh_cnt_dec_s0) &
            ~(qos_pool_hhigh_cnt_inc_s0 & qos_pool_hhigh_cnt_dec_s0);
@@ -586,9 +642,10 @@ module hnf_mshr_qos `HNF_PARAM
            ~(qos_hhigh_pool_alloc_s0);
 
     assign qos_pool_high_cnt_inc_s0 = li_req_dyn_alloc_s0 & qos_high_pool_alloc_s0;
-    assign qos_pool_high_cnt_dec_s0 = mshr_dbf_retired_valid_sx1_q &
+    assign qos_pool_high_cnt_dec_s0 = (mshr_dbf_retired_valid_sx1_q &
            ~(hhigh_present_s1 | high_present_s1) &
-           (qos_pool_retire_class_sx1 == `QOS_CLASS_HIGH);
+           (qos_pool_retire_class_sx1 == `QOS_CLASS_HIGH)) |
+           (mshr_static_free_valid_s0 & (mshr_static_freed_class_s0 == `QOS_CLASS_HIGH));
 
     assign high_cnt_update_s0 = (qos_pool_high_cnt_inc_s0 | qos_pool_high_cnt_dec_s0) &
            ~(qos_pool_high_cnt_inc_s0 & qos_pool_high_cnt_dec_s0);
@@ -624,9 +681,10 @@ module hnf_mshr_qos `HNF_PARAM
            ~(qos_hhigh_pool_alloc_s0 | qos_high_pool_alloc_s0);
 
     assign qos_pool_med_cnt_inc_s0 = li_req_dyn_alloc_s0 & qos_med_pool_alloc_s0;
-    assign qos_pool_med_cnt_dec_s0 = mshr_dbf_retired_valid_sx1_q &
+    assign qos_pool_med_cnt_dec_s0 = (mshr_dbf_retired_valid_sx1_q &
            ~(hhigh_present_s1 | high_present_s1 | med_present_s1) &
-           (qos_pool_retire_class_sx1 == `QOS_CLASS_MED);
+           (qos_pool_retire_class_sx1 == `QOS_CLASS_MED)) |
+           (mshr_static_free_valid_s0 & (mshr_static_freed_class_s0 == `QOS_CLASS_MED));
 
     assign med_cnt_update_s0 = (qos_pool_med_cnt_inc_s0 | qos_pool_med_cnt_dec_s0) &
            ~(qos_pool_med_cnt_inc_s0 & qos_pool_med_cnt_dec_s0);
@@ -662,9 +720,10 @@ module hnf_mshr_qos `HNF_PARAM
            ~(qos_hhigh_pool_alloc_s0 | qos_high_pool_alloc_s0 | qos_med_pool_alloc_s0);
 
     assign qos_pool_low_cnt_inc_s0 = li_req_dyn_alloc_s0 & qos_low_pool_alloc_s0;
-    assign qos_pool_low_cnt_dec_s0 = mshr_dbf_retired_valid_sx1_q &
+    assign qos_pool_low_cnt_dec_s0 = (mshr_dbf_retired_valid_sx1_q &
            ~(hhigh_present_s1 | high_present_s1 | med_present_s1 | low_present_s1) &
-           (qos_pool_retire_class_sx1 == `QOS_CLASS_LOW);
+           (qos_pool_retire_class_sx1 == `QOS_CLASS_LOW)) |
+           (mshr_static_free_valid_s0 & (mshr_static_freed_class_s0 == `QOS_CLASS_LOW));
 
     assign low_cnt_update_s0 = (qos_pool_low_cnt_inc_s0 | qos_pool_low_cnt_dec_s0) &
            ~(qos_pool_low_cnt_inc_s0 & qos_pool_low_cnt_dec_s0);
@@ -722,15 +781,15 @@ module hnf_mshr_qos `HNF_PARAM
     //  qos is QOS_CLASS_HHIGH ,pcrdtype = 3
 
     assign hnf_pcrdtype_enable_sx = 1'b1;
-    assign li_mshr_rxreq_pcrdtype_s0[0] = (qpc_hhigh_s0 | qpc_med_s0 ) & hnf_pcrdtype_enable_sx;
-    assign li_mshr_rxreq_pcrdtype_s0[1] = (qpc_hhigh_s0 | qpc_high_s0) & hnf_pcrdtype_enable_sx;
+    assign retryack_pcrdtype_s0[0] = (qpc_hhigh_s0 | qpc_med_s0 ) & hnf_pcrdtype_enable_sx;
+    assign retryack_pcrdtype_s0[1] = (qpc_hhigh_s0 | qpc_high_s0) & hnf_pcrdtype_enable_sx;
 
     //retry_ack_fifo flit assamble
     assign retry_ackq_datain_s0.srcid    = li_mshr_rxreq_srcid_s0;
     assign retry_ackq_datain_s0.txnid    = li_mshr_rxreq_txnid_s0;
     assign retry_ackq_datain_s0.qos      = li_mshr_rxreq_qos_s0;
     assign retry_ackq_datain_s0.trace    = li_mshr_rxreq_tracetag_s0;
-    assign retry_ackq_datain_s0.pcrdtype = { 2'b0, li_mshr_rxreq_pcrdtype_s0[1:0]};
+    assign retry_ackq_datain_s0.pcrdtype = { 2'b0, retryack_pcrdtype_s0[1:0]};
 
     assign retry_ack_fifo_push = rxreq_retry_enable_s0 & (~retry_ack_fifo_full | (retry_ack_fifo_full & txrsp_mshr_retryack_won_s1));
     assign retry_ack_fifo_pop  = txrsp_mshr_retryack_won_s1 & ~retry_ack_fifo_empty;
@@ -1401,6 +1460,10 @@ module hnf_mshr_qos `HNF_PARAM
                   end
 
                   always_ff @(posedge clk)begin
+                      // A PCrdReturn naming a PCrdType this Home holds no reservation for: section
+                      // 2.11.2 (p.2-147, MUST) requires the field to carry "the value of the credit type
+                      // that is being returned", so there is nothing legal to release.
+                      `display_fatal(!(pcrdreturn_s0 && !mshr_static_free_valid_s0),"Fatal info: PCrdReturn for a PCrdType with no reservation outstanding!\n");
                       `display_fatal(!(li_mshr_rxreq_valid_s0 && li_mshr_rxreq_seq_s0 && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
                       `display_fatal(!(mshr_dbf_retired_valid_sx1_q&&(!mshr_entry_valid_s1_q[mshr_dbf_retired_idx_sx1_q])),"Fatal info: A invalid mshr entry is retiring\n");
                       `display_fatal(!(mshr_alloc_en_s0&&(mshr_entry_valid_s1_q[mshr_entry_idx_alloc_s0])),"Fatal info: A valid mshr entry is repeat enqueuing\n");

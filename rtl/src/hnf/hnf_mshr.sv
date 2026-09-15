@@ -394,6 +394,7 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_txnid_s0                          (li_mshr_rxreq_txnid_s0            ),
                      .li_mshr_rxreq_opcode_s0                         (li_mshr_rxreq_opcode_s0           ),
                      .li_mshr_rxreq_allowretry_s0                     (li_mshr_rxreq_allowretry_s0       ),
+                     .li_mshr_rxreq_pcrdtype_s0                       (li_mshr_rxreq_pcrdtype_s0         ),
                      .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0         ),
                      .mshr_dbf_retired_valid_sx1_q                    (mshr_dbf_retired_valid_sx1_q      ),
                      .mshr_dbf_retired_idx_sx1_q                      (mshr_dbf_retired_idx_sx1_q        ),
