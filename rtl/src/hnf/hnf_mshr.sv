@@ -221,6 +221,7 @@ module hnf_mshr `HNF_PARAM
     output wire [chie_pkg::NID_WIDTH-1:0]      mshr_l3_stash_nid_sx1_q,
     output wire                                mshr_l3_stash_v_sx1_q,
     output wire                                mshr_l3_req_en_sx1_q,
+    output wire                                mshr_l3_dn_err_sx1_q,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_l3_entry_idx_sx1_q,
     output wire                                mshr_l3_fill_dirty_sx1_q
     );
@@ -626,6 +627,7 @@ module hnf_mshr `HNF_PARAM
                      .mshr_l3_stash_nid_sx1_q                         (mshr_l3_stash_nid_sx1_q           ),
                      .mshr_l3_stash_v_sx1_q                           (mshr_l3_stash_v_sx1_q             ),
                      .mshr_l3_req_en_sx1_q                            (mshr_l3_req_en_sx1_q              ),
+                     .mshr_l3_dn_err_sx1_q                            (mshr_l3_dn_err_sx1_q              ),
                      .mshr_l3_entry_idx_sx1_q                         (mshr_l3_entry_idx_sx1_q           ),
                      .mshr_l3_fill_dirty_sx1_q                        (mshr_l3_fill_dirty_sx1_q          )
                  );
