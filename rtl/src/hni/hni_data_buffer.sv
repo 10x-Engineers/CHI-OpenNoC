@@ -708,7 +708,7 @@ module hni_data_buffer `HNI_PARAM
                     if(wr_cdmask_current[j] == 1)begin
                         wdata = wdata_current[j*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                         wstrb = wstrb_current[j*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
-                        wuser = wpoison_current[j*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
+                        wuser[`AXI4_USER_POISON_RANGE] = wpoison_current[j*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                     end
                 end
             end
@@ -716,22 +716,22 @@ module hni_data_buffer `HNI_PARAM
                 if(wr_cdmask_current == 4'b0001)begin
                     wdata = wdata_current[0*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[0*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
-                    wuser = wpoison_current[0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
+                    wuser[`AXI4_USER_POISON_RANGE] = wpoison_current[0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b0010)begin
                     wdata = wdata_current[1*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[1*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
-                    wuser = wpoison_current[1*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
+                    wuser[`AXI4_USER_POISON_RANGE] = wpoison_current[1*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b0100)begin
                     wdata = wdata_current[2*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[2*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
-                    wuser = wpoison_current[2*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
+                    wuser[`AXI4_USER_POISON_RANGE] = wpoison_current[2*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
                 else if(wr_cdmask_current == 4'b1000)begin
                     wdata = wdata_current[3*`AXI4_WDATA_WIDTH+:`AXI4_WDATA_WIDTH];
                     wstrb = wstrb_current[3*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH];
-                    wuser = wpoison_current[3*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
+                    wuser[`AXI4_USER_POISON_RANGE] = wpoison_current[3*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH];
                 end
             end
         end

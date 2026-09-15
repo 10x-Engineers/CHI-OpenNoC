@@ -40,17 +40,39 @@
 // follow `CHIE_MPAM_PRESENT: AXI USER has no presence property and a zero-width port is
 // illegal, so the sideband is always here and the CHI side decides what reads it.
 //
-//   W/RUSER[P-1:0]   Poison,  P = data width / 64
-//   AW/ARUSER[10:0]  MPAM,    section 11.3 Figure 11-3's subdivision
+// Chapter 12 has no AXI carrier either. Section 13.10.38 (p.13-435) gives four Tag bits
+// per 128 bits of data and section 13.10.39 one TU bit per tag, so both follow the data
+// width; TagOp is Table 13-32's two bits and TagGroupID shares the REQ packet's eight
+// LPID bits (section 13.10.40 p.13-435). Section 12.1 (p.12-372) requires "a notification
+// of the failure" reach the Requester but names no AXI encoding, so BUSER's shape is
+// IMPLEMENTATION DEFINED and stated here.
+//
+//   W/RUSER[P-1:0]              Poison,     P = data width / 64
+//   W/RUSER[P+T-1:P]            Tag,        T = data width / 32
+//   W/RUSER[P+T+U-1:P+T]        TU,         U = data width / 128
+//   AW/ARUSER[10:0]             MPAM,       section 11.3 Figure 11-3's subdivision
+//   AW/ARUSER[12:11]            TagOp,      Table 13-32
+//   AW/ARUSER[20:13]            TagGroupID
+//   BUSER[0]                    a TagMatch for this write's group has arrived
+//   BUSER[1]                    its verdict, Table 13-35's (p.13-437) Resp[0]
 // ---------------------------------------------------------------------------
 `define AXI4_POISON_WIDTH        (`AXI4_WDATA_WIDTH/64)
-`define AXI4_WUSER_WIDTH         `AXI4_POISON_WIDTH
-`define AXI4_RUSER_WIDTH         `AXI4_POISON_WIDTH
+`define AXI4_TAG_WIDTH           (`AXI4_WDATA_WIDTH/32)
+`define AXI4_TU_WIDTH            (`AXI4_WDATA_WIDTH/128)
+`define AXI4_WUSER_WIDTH         (`AXI4_POISON_WIDTH+`AXI4_TAG_WIDTH+`AXI4_TU_WIDTH)
+`define AXI4_RUSER_WIDTH         `AXI4_WUSER_WIDTH
 `define AXI4_USER_POISON_RANGE   `AXI4_POISON_WIDTH-1:0
+`define AXI4_USER_TAG_RANGE      `AXI4_POISON_WIDTH+`AXI4_TAG_WIDTH-1:`AXI4_POISON_WIDTH
+`define AXI4_USER_TU_RANGE       `AXI4_POISON_WIDTH+`AXI4_TAG_WIDTH+`AXI4_TU_WIDTH-1:`AXI4_POISON_WIDTH+`AXI4_TAG_WIDTH
 `define AXI4_MPAM_WIDTH          11
-`define AXI4_AWUSER_WIDTH        `AXI4_MPAM_WIDTH
-`define AXI4_ARUSER_WIDTH        `AXI4_MPAM_WIDTH
+`define AXI4_TAGOP_WIDTH         2
+`define AXI4_TAGGROUPID_WIDTH    8
+`define AXI4_AWUSER_WIDTH        (`AXI4_MPAM_WIDTH+`AXI4_TAGOP_WIDTH+`AXI4_TAGGROUPID_WIDTH)
+`define AXI4_ARUSER_WIDTH        `AXI4_AWUSER_WIDTH
+`define AXI4_BUSER_WIDTH         2
 `define AXI4_USER_MPAM_RANGE     `AXI4_MPAM_WIDTH-1:0
+`define AXI4_USER_TAGOP_RANGE    `AXI4_MPAM_WIDTH+`AXI4_TAGOP_WIDTH-1:`AXI4_MPAM_WIDTH
+`define AXI4_USER_TGGID_RANGE    `AXI4_MPAM_WIDTH+`AXI4_TAGOP_WIDTH+`AXI4_TAGGROUPID_WIDTH-1:`AXI4_MPAM_WIDTH+`AXI4_TAGOP_WIDTH
 
 // AXI4 interface
 // AXI4 write address channel fields

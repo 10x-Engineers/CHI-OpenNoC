@@ -658,7 +658,9 @@ module snf_data_buffer `SNF_PARAM
                                       : (({`AXI4_WSTRB_WIDTH/2{wdata_cdmask_q[wdata_to_slave_idx][1:0]}} & dbf_be_q[wdata_to_slave_idx][0*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH])
                                         | ({`AXI4_WSTRB_WIDTH/2{wdata_cdmask_q[wdata_to_slave_idx][3:2]}} & dbf_be_q[wdata_to_slave_idx][1*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH]));
 
-    assign wuser = (AXI_128) ? (({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_poison_q[wdata_to_slave_idx][0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
+    assign wuser[`AXI4_USER_TAG_RANGE] = '0;
+    assign wuser[`AXI4_USER_TU_RANGE]  = '0;
+    assign wuser[`AXI4_USER_POISON_RANGE] = (AXI_128) ? (({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_poison_q[wdata_to_slave_idx][0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
                                         | ({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][1]}} & dbf_poison_q[wdata_to_slave_idx][1*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
                                         | ({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_poison_q[wdata_to_slave_idx][2*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
                                         | ({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][3]}} & dbf_poison_q[wdata_to_slave_idx][3*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH]))

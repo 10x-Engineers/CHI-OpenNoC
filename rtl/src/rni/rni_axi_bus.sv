@@ -43,6 +43,7 @@ module rni_axi_bus `RNI_PARAM
     // B Channel0
     output wire [`AXI4_BID_WIDTH-1:0]      BID0,
     output wire [`AXI4_BRESP_WIDTH-1:0]    BRESP0,
+    output wire [`AXI4_BUSER_WIDTH-1:0]    BUSER0,
     input  opennoc_rni_pkg::b_ch_s         B_CH_S0,
 
     // AR Channel0
@@ -100,6 +101,7 @@ module rni_axi_bus `RNI_PARAM
 
     assign BID0   = B_CH_S0.id;
     assign BRESP0 = B_CH_S0.resp;
+    assign BUSER0 = B_CH_S0.user;
 
     assign RID0   = R_CH_S0.id;
     assign RDATA0 = R_CH_S0.data;

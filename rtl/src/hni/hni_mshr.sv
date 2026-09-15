@@ -1391,7 +1391,11 @@ module hni_mshr `HNI_PARAM
     assign arlock_sx        = 1'b0;
     assign arprot_sx        = {1'b0,rxreq_ns_s1_q[arvalid_entry_idx_s1_q],1'b0};
     assign arqos_sx         = rxreq_qos_s1_q[arvalid_entry_idx_s1_q];
-    assign aruser_sx        = rxreq_mpam_s1_q[arvalid_entry_idx_s1_q];
+    assign aruser_sx[`AXI4_USER_MPAM_RANGE]  = rxreq_mpam_s1_q[arvalid_entry_idx_s1_q];
+    // Section 12.1 (p.12-372, MUST) scopes memory tagging to Normal WriteBack memory,
+    // which this Home fronts none of, so it asks its Subordinate for no tags.
+    assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    assign aruser_sx[`AXI4_USER_TGGID_RANGE] = '0;
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
     assign arlen_sx         = rxreq_axlen_s1_q[arvalid_entry_idx_s1_q];
     assign arsize_sx        = rxreq_axsize_s1_q[arvalid_entry_idx_s1_q];
@@ -1526,7 +1530,9 @@ module hni_mshr `HNI_PARAM
     assign awcache_sx[2]    = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][2];
     assign awcache_sx[3]    = rxreq_memattr_s1_q[awvalid_entry_idx_s2_q][3];
     assign awqos_sx         = rxreq_qos_s1_q[awvalid_entry_idx_s2_q];
-    assign awuser_sx        = rxreq_mpam_s1_q[awvalid_entry_idx_s2_q];
+    assign awuser_sx[`AXI4_USER_MPAM_RANGE]  = rxreq_mpam_s1_q[awvalid_entry_idx_s2_q];
+    assign awuser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    assign awuser_sx[`AXI4_USER_TGGID_RANGE] = '0;
     assign awprot_sx        = {1'b0,rxreq_ns_s1_q[awvalid_entry_idx_s2_q],1'b0};       
     assign awlen_sx         = rxreq_axlen_s1_q[awvalid_entry_idx_s2_q];
     assign awsize_sx        = rxreq_axsize_s1_q[awvalid_entry_idx_s2_q];
