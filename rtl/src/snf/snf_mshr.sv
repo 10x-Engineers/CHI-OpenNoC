@@ -272,6 +272,9 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_cmo_owed_q;
     chie_pkg::rsp_opcode_e               txrsp_cmo_opcode_q [`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_persist_owed_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_tagmatch_owed_q;
+    wire                                 rxreq_tagmatch_s0;
+    wire                                 txrsp_tagmatch_sx;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_any_sent_q;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_queued_sx;
@@ -322,6 +325,12 @@ module snf_mshr `SNF_PARAM
     // WriteNoSnp*, with the CMO leg's CompCMO/CompPersist owed on top.
     assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|rxreq_cw_s0|rxreq_wrzero_s0):1'b0;
     assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSISTSEP);
+    // Table 13-32 (Sec 13.10.37 p.13-435) shares the 0b11 encoding between Match and
+    // Fetch, and the direction tells them apart: on a Write it is Match, which
+    // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Sec 12.11.3 (p.12-387, MUST)
+    // fixes this Completer's verdict -- it holds no Allocation Tag, so the Match
+    // fails, which Table 13-35 (p.13-437) encodes as Resp[0] = 0.
+    assign rxreq_tagmatch_s0    = rxreq_wr_s0 & (rxreq_alloc_flit_s0.tagop == 2'b11);
     // A CMO at a Subordinate holding no cached copy is a no-op that owes only its
     // completion (Sec 2.3.9 p.2-81); Sec 2.3.5 (p.2-74) lets the *PersistSep one
     // fold its Persist into CompPersist.
@@ -508,6 +517,7 @@ module snf_mshr `SNF_PARAM
                     txrsp_cmo_owed_q[entry]     <= 1'b0;
                     txrsp_cmo_opcode_q[entry]   <= chie_pkg::RSP_RSPLCRDRETURN;
                     txrsp_persist_owed_q[entry] <= 1'b0;
+                    txrsp_tagmatch_owed_q[entry] <= 1'b0;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
                     txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0
@@ -520,14 +530,21 @@ module snf_mshr `SNF_PARAM
                     // write leg's Comp and the CMO leg's CompCMO -- three responses,
                     // so the Persist holds a slot of its own.
                     txrsp_persist_owed_q[entry] <= (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) & ~rxreq_persist_fold_s0;
+                    // Sec 12.11.1 (p.12-386): the TagMatch is owed on top of the
+                    // write's own completion, and "must be sent even if the WriteData
+                    // is canceled or a Tag Match is not performed" -- so it is owed
+                    // from allocation, not from the data.
+                    txrsp_tagmatch_owed_q[entry] <= rxreq_tagmatch_s0;
                 end
                 else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
                     if (txrsp_comp_queued_sx[entry])
                         txrsp_q2_valid_q[entry]     <= 1'b0;
                     else if (txrsp_cmo_owed_q[entry])
                         txrsp_cmo_owed_q[entry]     <= 1'b0;
-                    else
+                    else if (txrsp_persist_owed_q[entry])
                         txrsp_persist_owed_q[entry] <= 1'b0;
+                    else
+                        txrsp_tagmatch_owed_q[entry] <= 1'b0;
                 end
                 else if(txrsp_comp_rdy_sx[entry] && txrsp_rdy_sx_q[entry])
                     txrsp_q2_valid_q[entry]   <= 1'b1;
@@ -765,10 +782,11 @@ module snf_mshr `SNF_PARAM
                     txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
-                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry];
+                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry] | txrsp_tagmatch_owed_q[entry];
                     txrsp_opcode_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] ? chie_pkg::RSP_COMP
                                                   : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
                                                   : txrsp_persist_owed_q[entry] ? chie_pkg::RSP_PERSIST
+                                                  : txrsp_tagmatch_owed_q[entry] ? chie_pkg::RSP_TAGMATCH
                                                   : chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))begin
@@ -821,9 +839,14 @@ module snf_mshr `SNF_PARAM
     // Table A-8 (p.A-488) makes its TxnID inapplicable and zero; DoDWT moves only
     // the DBIDResp (Table 13-21 p.13-430).
     assign txrsp_persist_sx             = (txrsp_opcode_sx == chie_pkg::RSP_PERSIST);
+    // Sec 12.11.1 (p.12-386, MUST): a Subordinate's TagMatch takes its TgtID from the
+    // request's ReturnNID (Table 3-1 Sec 3.3.2 p.3-153), Table A-8 (p.A-488) makes its
+    // TxnID inapplicable and zero, and Sec 13.10.40 (p.13-435) keys it by the
+    // TagGroupID the request carried in its LPID bits.
+    assign txrsp_tagmatch_sx            = (txrsp_opcode_sx == chie_pkg::RSP_TAGMATCH);
     assign txrsp_dwt_grant_sx           = rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP);
-    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_dwt_grant_sx) ? mshr_entry_q[txrsp_entry_idx_sx].returnnid : mshr_entry_q[txrsp_entry_idx_sx].srcid;
-    assign txrsp_txnid_sx               = txrsp_persist_sx   ? 12'd0
+    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_tagmatch_sx | txrsp_dwt_grant_sx) ? mshr_entry_q[txrsp_entry_idx_sx].returnnid : mshr_entry_q[txrsp_entry_idx_sx].srcid;
+    assign txrsp_txnid_sx               = (txrsp_persist_sx | txrsp_tagmatch_sx) ? 12'd0
                                         : txrsp_dwt_grant_sx ? mshr_entry_q[txrsp_entry_idx_sx].returntxnid
                                                              : mshr_entry_q[txrsp_entry_idx_sx].txnid;
     assign txrsp_opcode_sx              = txrsp_opcode_rdy_sx_q[txrsp_entry_idx_sx];
@@ -833,12 +856,15 @@ module snf_mshr `SNF_PARAM
     // completion carries it.
     assign txrsp_resperr_sx             = ((rxreq_err_s1_q[txrsp_entry_idx_sx] | bresp_err_q[txrsp_entry_idx_sx])
                                         && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
-                                        && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)) ? chie_pkg::RESP_ERR_NON_DATA
+                                        && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
+                                        && ~txrsp_tagmatch_sx) ? chie_pkg::RESP_ERR_NON_DATA
                                                                                    : chie_pkg::RESP_ERR_NORM_OK;
+    // Table 13-35 (p.13-437): Resp[0] is the Tag Match verdict. Sec 12.11.3
+    // (p.12-387, MUST) fixes it Fail at a Completer that holds no Allocation Tag.
     assign txrsp_resp_sx                = chie_pkg::RESP_I;
     // Table A-8 (p.A-488): Persist and CompPersist carry no DBID -- those bits are
     // the PGroupID they reflect from the request (Sec 13.10.16 p.13-420).
-    assign txrsp_dbid_sx                = (txrsp_persist_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
+    assign txrsp_dbid_sx                = (txrsp_persist_sx || txrsp_tagmatch_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
                                         ? 12'(mshr_entry_q[txrsp_entry_idx_sx].pgroupid)
                                         : {{(12-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_sx};
     assign txrsp_tracetag_sx            = mshr_entry_q[txrsp_entry_idx_sx].tracetag;
