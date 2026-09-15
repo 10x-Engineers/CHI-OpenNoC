@@ -75,6 +75,8 @@ module rni_arctrl
     wire                                 ar_cacheable_w;
     logic [`AXI4_ARSIZE_WIDTH-1:0]       ar_size_r;
     logic [`AXI4_TAGOP_WIDTH-1:0]        ar_axtagop_r;
+    wire                                 ar_lpid_alias_w;
+    logic                                ar_lpid_alias_r;
     wire  [`AXI4_TAGOP_WIDTH-1:0]        ar_tagop_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_alloc_ptr_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdy_s1_w;
@@ -711,6 +713,14 @@ module rni_arctrl
                 ({`AXI4_TAGOP_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].user[`AXI4_USER_TAGOP_RANGE]);
     end
 
+    always_comb begin: ar_lpid_alias_sel_t
+        ar_lpid_alias_r = 1'b0;
+        for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
+            ar_lpid_alias_r = ar_lpid_alias_r |
+                (arctrl_entry_req_ptr_q[i] & (|arctrl_entry_info_q[i].id[`AXI4_ARID_WIDTH-1:8]));
+    end
+    assign ar_lpid_alias_w = ar_lpid_alias_r;
+
     assign ar_tagop_w = (ar_axtagop_r == 2'b01)                    ? 2'b01 :
                         ((ar_axtagop_r == 2'b11) & ~ar_cacheable_w) ? 2'b11 : 2'b00;
 
@@ -752,7 +762,14 @@ module rni_arctrl
         // none, so a Cacheable exclusive access is bridged as a plain read; the
         // Normal OK it then earns is AXI4 A7.2.3's OKAY from a target that does
         // not support the exclusive access.
-        ar_txreqflit_info_r.excl.excl = ar_excl_r & ~ar_cacheable_w;
+        // Sec 6.3.3 (p.6-291, MUST) binds the one-outstanding and the pairing rules
+        // to the LP, which Sec 13.10.20 (p.13-427) makes eight bits -- narrower than
+        // this port's AxID, so IDs differing only above bit 7 would present as one
+        // LP and their sequences would interleave. Sec 6.3 (p.6-287) leaves it
+        // IMPLEMENTATION DEFINED whether a target supports Exclusive accesses, and
+        // AXI4 (IHI 0022) A7.2.3 makes OKAY the answer from one that does not -- so
+        // an AxID that does not fit is declined rather than aliased.
+        ar_txreqflit_info_r.excl.excl = ar_excl_r & ~ar_cacheable_w & ~ar_lpid_alias_w;
         // SS2.9.3 (p.2-127): a Device read "must not read more data than
         // requested", and SS2.10.2 (p.2-134) makes Size decide that window, so a
         // ReadNoSnp takes the segmenter's own per-request size. Table 4-2
