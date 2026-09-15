@@ -441,6 +441,11 @@ module snf_data_buffer `SNF_PARAM
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         txdat_flit.datacheck = chie_pkg::datacheck_of(dbf_txdat_data_sx);
         txdat_flit.poison    = dbf_txdat_poison_sx;
+        // CHI E.b section 11.1.1 (p.11-360, MUST): a memory SN-F that does not source a
+        // useful DataSource "must return 0b0111 as a default value", not the 0b0000 that
+        // section reserves for a responder which is not one. This Subordinate drops
+        // PrefetchTgt, so every read is a complete memory access -- 0b0111 exactly.
+        txdat_flit.datasource.datasource = 4'b0111;
     end
 
     //************************************************************************//
