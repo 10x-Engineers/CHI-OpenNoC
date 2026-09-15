@@ -49,6 +49,7 @@ module rni_wr_buffer `RNI_PARAM
     input  wire [3:0]                          txdat_qos_d2_i,
     input  wire                                txdat_compack_d2_i,
     input  wire [11:0]                         txdat_dbid_d2_i,
+    input  wire                                txdat_tracetag_d2_i,
     input  wire [chie_pkg::NID_WIDTH-1:0]      txdat_tgtid_d2_i,
     input  wire [1:0]                          txdat_ccid_d2_i,
     input  wire [`RNI_DMASK_CT_WIDTH-1:0]      txdat_ctmask_d2_q_i,
@@ -151,6 +152,7 @@ module rni_wr_buffer `RNI_PARAM
     logic [3:0]                                                     txdat_qos_d3_q;
     logic                                                           txdat_compack_d3_q;
     logic [11:0]                                                    txdat_dbid_d3_q;
+    logic                              txdat_tracetag_d3_q;
     logic [chie_pkg::NID_WIDTH-1:0]                                 txdat_tgtid_d3_q;
     logic [1:0]                                                     txdat_ccid_d3_q;
     logic [`RNI_DMASK_CT_WIDTH-1:0]                                 txdat_ctmask_d3_q;
@@ -403,6 +405,7 @@ module rni_wr_buffer `RNI_PARAM
             txdat_tgtid_d3_q    <= 0;
             txdat_ccid_d3_q     <= 0;
             txdat_ctmask_d3_q   <= 0;
+            txdat_tracetag_d3_q <= 1'b0;
         end
         else if(txdat_info_flop_en_d2_w == 1'b1)begin
             txdat_data_d3_q     <= txdat_data_d2_r;
@@ -412,6 +415,7 @@ module rni_wr_buffer `RNI_PARAM
             txdat_qos_d3_q      <= txdat_qos_d2_i;
             txdat_compack_d3_q  <= txdat_compack_d2_i;
             txdat_dbid_d3_q     <= txdat_dbid_d2_i;
+            txdat_tracetag_d3_q <= txdat_tracetag_d2_i;
             txdat_tgtid_d3_q    <= txdat_tgtid_d2_i;
             txdat_ccid_d3_q     <= txdat_ccid_d2_i;
             txdat_ctmask_d3_q   <= txdat_ctmask_d2_q_i;
@@ -479,6 +483,9 @@ module rni_wr_buffer `RNI_PARAM
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         wb_txdatflit_d3_o.datacheck = chie_pkg::datacheck_of(txdatflit_data_d3_w);
         wb_txdatflit_d3_o.poison    = txdatflit_poison_d3_w;
+        // SS11.5.1 (p.11-368, MUST): the TraceTag of the Comp or DBIDResp that caused
+        // this write data is reflected back on it.
+        wb_txdatflit_d3_o.tracetag  = txdat_tracetag_d3_q;
     end
 
     // txdatflit valid
