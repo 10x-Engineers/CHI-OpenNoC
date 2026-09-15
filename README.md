@@ -452,6 +452,26 @@ is fixed by the two tables together.
 | `[1] == 1`, `[3:2] == 00` | Normal Non-cacheable | `ReadNoSnp` | `WriteNoSnpFull` / `WriteNoSnpPtl` |
 | `[1] == 1`, `[3:2] != 00` | Normal Cacheable | `ReadOnce` | `WriteUniqueFull` / `WriteUniquePtl` |
 
+#### Exclusive accesses are carried for `AxID < 256`
+
+CHI E.b section 13.10.20 (p.13-427) makes `LPID` eight bits and section 6.3.3
+(p.6-291, MUST) binds both Exclusive rules to the LP — at most one outstanding,
+and a Store matching its Load in address, MemAttr, SnpAttr, size **and LPID**.
+This port's `AxID` is eleven bits, so IDs differing only above bit 7 would present
+as one Logical Processor and their sequences would interleave.
+
+Serialising them is not a way out: an interlock can keep two aliasing Exclusives
+from being outstanding together, but the *pairing* rule still fails on an
+interleave it permits, and holding an LP from a Load until its own Store has no
+bounded release — AXI4 A7.2 lets a manager abandon the sequence.
+
+So **`Excl` is carried only for `AxID` values that fit in `LPID`** — `AxID < 256`.
+Section 6.3 (p.6-287) leaves it IMPLEMENTATION DEFINED whether a target supports
+Exclusive accesses, and AMBA AXI4 (IHI 0022) A7.2.3 defines the answer from one
+that does not: `OKAY` rather than `EXOKAY`, which a conformant manager reads as a
+failed exclusive and retries. **This is an integration constraint**: a manager that
+needs exclusive access must use an `AxID` below 256.
+
 #### Memory Tagging on the AXI sideband
 
 CHI E.b Chapter 12's fields have no AXI4 encoding, so they cross on the `USER`

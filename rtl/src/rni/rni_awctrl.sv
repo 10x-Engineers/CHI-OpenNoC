@@ -952,6 +952,8 @@ module rni_awctrl `RNI_PARAM
     // WriteUnique* only on the Snoopable row, so a Device or Non-cacheable write
     // is a WriteNoSnp (CHI-OpenNoC#20).
     logic [`AXI4_TAGOP_WIDTH-1:0]      aw_axtagop_r;
+    wire                               aw_lpid_alias_w;
+    logic                              aw_lpid_alias_r;
     logic [`AXI4_TAGGROUPID_WIDTH-1:0] aw_axtggid_r;
     wire  [`AXI4_TAGOP_WIDTH-1:0]      aw_tagop_w;
     wire                               aw_tagop_match_w;
@@ -978,6 +980,14 @@ module rni_awctrl `RNI_PARAM
                 ({`AXI4_TAGGROUPID_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user[`AXI4_USER_TGGID_RANGE]);
         end
     end
+
+    always_comb begin: aw_lpid_alias_sel_t
+        aw_lpid_alias_r = 1'b0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+            aw_lpid_alias_r = aw_lpid_alias_r |
+                (awctrl_entry_req_ptr_q[i] & (|awctrl_entry_info_q[i].id[`AXI4_AWID_WIDTH-1:8]));
+    end
+    assign aw_lpid_alias_w = aw_lpid_alias_r;
 
     assign aw_tagop_w = aw_axtagop_r[1] ? aw_axtagop_r : 2'b00;
 
@@ -1057,7 +1067,8 @@ module rni_awctrl `RNI_PARAM
         // SS2.7 (p.2-113, MUST): see rni_arctrl.sv for the derivation.
         // SS13.10.27 (p.13-432, MUST) gives WriteNoSnp the Excl bit and
         // WriteUnique none; see rni_arctrl.sv for the Cacheable case.
-        aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w;
+        // The write half of the same declaration; see rni_arctrl.sv.
+        aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w & ~aw_lpid_alias_w;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.lpid = aw_txreqflit_info_r.lpid |
