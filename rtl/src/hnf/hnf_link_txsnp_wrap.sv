@@ -27,6 +27,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     input  wire                                txsnp_lcrdv,
     input  wire                                lcrd_return_en,
     input  wire                                txlink_run,
+    input  wire                                sysco_snp_en,
     output wire                                txsnp_flit_avail,
 
     //inputs from hnf_mshr_ctl
@@ -254,7 +255,11 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     // received." The counter already folds this cycle's grant in for the next one,
     // so the counted credits are the whole of what is spendable.
     assign txsnp_crd_avail_s1      = snp_crd_cnt_not_zero_sx;
-    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run);
+    // Table 15-1 (p.15-468): the interconnect "must not send Snoop requests" in
+    // Coherency Disabled and "must not generate new Snoop requests" in Coherency
+    // Disconnect -- both SYSCOREQ LOW. Busy holds the fan-out rather than consuming
+    // it, so Sec 4.4.1 (p.4-194, MUST) is still satisfied once coherency returns.
+    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run) | (~sysco_snp_en);
     assign txsnpflitv_s0           = (txsnp_req_s0 == 1'b1 | txsnp_cnt_q>0) & (txsnp_busy_sx == 1'b0);
 
 

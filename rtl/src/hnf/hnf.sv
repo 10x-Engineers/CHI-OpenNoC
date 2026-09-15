@@ -28,6 +28,10 @@ module hnf `HNF_PARAM
     input  wire                                     TXLINKACTIVEACK,
     input  wire                                     RXLINKACTIVEREQ,
     output wire                                     RXLINKACTIVEACK,
+    // Chapter 15 (p.15-466): the system coherency interface. Sec 16.2 (p.16-474) gives
+    // an interface one set of these, as it does SACTIVE and LINKACTIVE.
+    input  wire                                     SYSCOREQ,
+    output wire                                     SYSCOACK,
     output wire                                     TXSACTIVE,
     input  wire                                     RXSACTIVE,
     input  wire                                     RXREQFLITV,
@@ -356,6 +360,8 @@ module hnf `HNF_PARAM
     wire                                     hnf_txflit_avail;
     wire                                     hnf_txlink_run;
     wire                                     hnf_qos_active_sx;
+    wire                                     hnf_mshr_snp_outstanding_sx;
+    wire                                     hnf_sysco_snp_en;
 
     chi_link_handshake u_chi_link_handshake(
         .clk                (CLK                ),
@@ -383,6 +389,31 @@ module hnf `HNF_PARAM
     // queued.
     assign TXSACTIVE = (hnf_qos_active_sx | hnf_txflit_avail) & (~RST);
 
+    // CHI E.b Sec 15.2.2 (p.15-468, MUST). On SYSCOREQ HIGH the interconnect must
+    // "set SYSCOACK HIGH without waiting for responses to any Snoop requests that it
+    // has sent after SYSCOREQ goes HIGH" -- so the rise is unconditional. On SYSCOREQ
+    // LOW it must "complete all snoop accesses to the interface before it sets
+    // SYSCOACK LOW", which is what mshr_snp_outstanding_sx reports.
+    logic syscoreq_q, syscoack_q;
+    always_ff @(posedge CLK or posedge RST) begin
+        if (RST) syscoreq_q <= 1'b0;
+        else     syscoreq_q <= SYSCOREQ;
+    end
+
+    always_ff @(posedge CLK or posedge RST) begin
+        if (RST)                                        syscoack_q <= 1'b0;
+        else if (syscoreq_q)                            syscoack_q <= 1'b1;
+        else if (!hnf_mshr_snp_outstanding_sx)          syscoack_q <= 1'b0;
+    end
+
+    assign SYSCOACK = syscoack_q;
+
+    // Table 15-1 (p.15-468): the interconnect "must not send Snoop requests" in
+    // Coherency Disabled and "must not generate new Snoop requests" in Coherency
+    // Disconnect -- both of which are SYSCOREQ LOW. Held rather than dropped: the
+    // fan-out Sec 4.4.1 (p.4-194, MUST) owes is still owed once coherency returns.
+    assign hnf_sysco_snp_en = syscoreq_q;
+
     hnf_link `HNF_PARAM_INST
              u_hnf_link(
                  //inputs
@@ -393,6 +424,7 @@ module hnf `HNF_PARAM
                  .txlink_run                                   (hnf_txlink_run                    ),
                  .rxcrd_cnt_full                               (hnf_rxcrd_cnt_full                ),
                  .txflit_avail                                 (hnf_txflit_avail                  ),
+                 .sysco_snp_en                                 (hnf_sysco_snp_en                  ),
                  .rxreqflitv                                   (RXREQFLITV                        ),
                  .rxreqflit                                    (RXREQFLIT                         ),
                  .rxreqflitpend                                (RXREQFLITPEND                     ),
@@ -739,6 +771,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_allowretry_sx1                    (mshr_txreq_allowretry_sx1         ),
                  .mshr_txreq_order_sx1                         (mshr_txreq_order_sx1              ),
                  .mshr_txreq_pcrdtype_sx1                      (mshr_txreq_pcrdtype_sx1           ),
+                 .mshr_snp_outstanding_sx                      (hnf_mshr_snp_outstanding_sx       ),
                  .mshr_txreq_memattr_sx1                       (mshr_txreq_memattr_sx1            ),
                  .mshr_txreq_dodwt_sx1                         (mshr_txreq_dodwt_sx1              ),
                  .mshr_txreq_tracetag_sx1                      (mshr_txreq_tracetag_sx1           ),
