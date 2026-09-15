@@ -59,6 +59,7 @@ module rni_awlink `RNI_PARAM
     wire [`AXI4_AWADDR_WIDTH-1:0]  axi_addr_in_s1_i;
     wire [`AXI4_AWSIZE_WIDTH-1:0]  axi_size_in_s1_i;
     wire [`AXI4_AWBURST_WIDTH-1:0] axi_burst_s1_i;
+    wire [`AXI4_AWCACHE_WIDTH-1:0] axi_cache_s1_i;
     wire                           axi_lock_in_s1_i;
     wire [`AXI4_AWLEN_WIDTH-1:0]   axi_len_in_s1_i;
     wire                           aw_fifo_empty;
@@ -73,6 +74,7 @@ module rni_awlink `RNI_PARAM
     assign axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0] = awbus_out_r1.addr;
     assign axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] = awbus_out_r1.size;
     assign axi_burst_s1_i[`AXI4_AWBURST_WIDTH-1:0] = awbus_out_r1.burst;
+    assign axi_cache_s1_i[`AXI4_AWCACHE_WIDTH-1:0] = awbus_out_r1.cache;
     assign axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] = awbus_out_r1.len;
     assign axi_lock_in_s1_i = awbus_out_r1.lock;
     assign axi_valid_s1_i = !aw_fifo_empty;
@@ -105,6 +107,7 @@ module rni_awlink `RNI_PARAM
                      ,.axi_len_in_s1_i          (axi_len_in_s1_i)
                      ,.axi_size_in_s1_i         (axi_size_in_s1_i)
                      ,.axi_burst_s1_i           (axi_burst_s1_i)
+                     ,.axi_cache_s1_i           (axi_cache_s1_i)
                      ,.axi_lock_in_s1_i         (axi_lock_in_s1_i)
                      ,.stall_flag_s1_i          (stall_flag_s1_i)
 

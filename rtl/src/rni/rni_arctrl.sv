@@ -69,10 +69,10 @@ module rni_arctrl
     wire [`AXI4_ARSIZE_WIDTH-1:0]        arlink_size_s2_w;
     wire                                 arlink_lock_s2_w;
     logic                                ar_excl_r;
-    logic [`AXI4_ARSIZE_WIDTH-1:0]       ar_excl_size_r;
     logic [`AXI4_ARCACHE_WIDTH-1:0]      ar_axcache_r;
     wire                                 ar_device_w;
     wire                                 ar_cacheable_w;
+    logic [`AXI4_ARSIZE_WIDTH-1:0]       ar_size_r;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_alloc_ptr_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdy_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_v_ns_w;
@@ -677,14 +677,14 @@ module rni_arctrl
     assign ar_cacheable_w = ar_axcache_r[1] & (|ar_axcache_r[3:2]);
 
     // The selected entry's AxLOCK, already reduced by rni_segburst to the bursts
-    // one Exclusive ReadNoSnp can carry, and the Size that request owes SS6.3.3.
+    // one Exclusive ReadNoSnp can carry.
     always_comb begin
         ar_excl_r = 1'b0;
-        ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] = {`AXI4_ARSIZE_WIDTH{1'b0}};
+        ar_size_r[`AXI4_ARSIZE_WIDTH-1:0] = {`AXI4_ARSIZE_WIDTH{1'b0}};
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             ar_excl_r = ar_excl_r | (arctrl_entry_req_ptr_q[i] & arctrl_entry_excl_q[i]);
-            ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] = ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0] |
-                ({`AXI4_ARSIZE_WIDTH{arctrl_entry_req_ptr_q[i] & arctrl_entry_excl_q[i]}} & arctrl_entry_size_q[i][`AXI4_ARSIZE_WIDTH-1:0]);
+            ar_size_r[`AXI4_ARSIZE_WIDTH-1:0] = ar_size_r[`AXI4_ARSIZE_WIDTH-1:0] |
+                ({`AXI4_ARSIZE_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_size_q[i][`AXI4_ARSIZE_WIDTH-1:0]);
         end
     end
 
@@ -721,7 +721,13 @@ module rni_arctrl
         // Normal OK it then earns is AXI4 A7.2.3's OKAY from a target that does
         // not support the exclusive access.
         ar_txreqflit_info_r.excl.excl = ar_excl_r & ~ar_cacheable_w;
-        ar_txreqflit_info_r.size = ar_excl_r ? chie_pkg::size_e'(ar_excl_size_r[`AXI4_ARSIZE_WIDTH-1:0]) : chie_pkg::SIZE_64B;
+        // SS2.9.3 (p.2-127): a Device read "must not read more data than
+        // requested", and SS2.10.2 (p.2-134) makes Size decide that window, so a
+        // ReadNoSnp takes the segmenter's own per-request size. Table 4-2
+        // (SS4.2.1 p.4-166) leaves it the only size-flexible read, so the
+        // cacheable ReadOnce stays a whole line.
+        ar_txreqflit_info_r.size = ar_cacheable_w ? chie_pkg::SIZE_64B
+                                                  : chie_pkg::size_e'(ar_size_r[`AXI4_ARSIZE_WIDTH-1:0]);
         ar_txreqflit_info_r.expcompack = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].qos);

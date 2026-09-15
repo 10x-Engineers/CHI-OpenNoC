@@ -18,17 +18,18 @@
 `include "rni_defines.svh"
 `include "axi4_defines.svh"
 
-`define SEGB_STATE_WIDTH       5
+`define SEGB_STATE_WIDTH       6
 `define SEGB_CACHE_OFFSET      6
 `define SEGB_DW_WIDTH          4
 
 
-`define SEGB_PASS                                  `SEGB_STATE_WIDTH'b00000
-`define SEGB_INCR                                  `SEGB_STATE_WIDTH'b00001
-`define SEGB_MULTILINE_WRAP                        `SEGB_STATE_WIDTH'b00010
-`define SEGB_SINGLELINE_WRAP                       `SEGB_STATE_WIDTH'b00100
-`define SEGB_SINGLELINE_WRAP_FIRST_PART            `SEGB_STATE_WIDTH'b01000
-`define SEGB_SINGLELINE_WRAP_SECOND_PART           `SEGB_STATE_WIDTH'b10000
+`define SEGB_PASS                                  `SEGB_STATE_WIDTH'b000000
+`define SEGB_INCR                                  `SEGB_STATE_WIDTH'b000001
+`define SEGB_MULTILINE_WRAP                        `SEGB_STATE_WIDTH'b000010
+`define SEGB_SINGLELINE_WRAP                       `SEGB_STATE_WIDTH'b000100
+`define SEGB_SINGLELINE_WRAP_FIRST_PART            `SEGB_STATE_WIDTH'b001000
+`define SEGB_SINGLELINE_WRAP_SECOND_PART           `SEGB_STATE_WIDTH'b010000
+`define SEGB_DEVICE                                `SEGB_STATE_WIDTH'b100000
 
 module rni_segburst `RNI_PARAM
     (
@@ -46,6 +47,7 @@ module rni_segburst `RNI_PARAM
     input  wire [`AXI4_AWLEN_WIDTH-1:0]   axi_len_in_s1_i,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0]  axi_size_in_s1_i,
     input  wire [`AXI4_AWBURST_WIDTH-1:0] axi_burst_s1_i,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0] axi_cache_s1_i,
     input  wire                           axi_lock_in_s1_i,
     input  wire                           stall_flag_s1_i,
 
@@ -69,6 +71,10 @@ module rni_segburst `RNI_PARAM
     wire                           axi_burst_fix_w;
     wire                           axi_burst_incr_w;
     wire                           axi_burst_wrap_w;
+    wire                           axi_device_w;
+    wire                           dev_seg_w;
+    wire                           dev_multibeat_w;
+    wire [`AXI4_AWADDR_WIDTH-1:0]  dev_next_addr_w;
     wire [`AXI4_AWADDR_WIDTH-1:0]  axi_addr_align_w;
     wire [`AXI4_AWLEN_WIDTH:0]     axi_len_plusone_s1_w;
     wire [`AXI_4KB_WIDTH-1:0]      axi_bytes_subone_w;
@@ -135,6 +141,20 @@ module rni_segburst `RNI_PARAM
     assign axi_burst_incr_w      = axi_burst_s1_i[0];
     assign axi_burst_wrap_w      = axi_burst_s1_i[1];
 
+    // AMBA AXI4 (IHI 0022) Table A4-5: AxCACHE[1] is Modifiable, and an access
+    // without it is Device memory. CHI E.b SS2.9.3 (p.2-127) then forbids
+    // combining its requests or merging its writes, so each AXI beat owes its
+    // own CHI request at the beat's own Size rather than a chunk spanning them.
+    assign axi_device_w     = ~axi_cache_s1_i[1];
+    assign dev_seg_w        = axi_device_w & axi_burst_incr_w;
+    assign dev_multibeat_w  = dev_seg_w & (|axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0]);
+    // A3.4.1: Address_N is Aligned_Address + (N-1) x Number_Bytes, so every beat
+    // after the first sits on a Number_Bytes boundary.
+    assign dev_next_addr_w[`AXI4_AWADDR_WIDTH-1:0] =
+        ((axi_addr_q[`AXI4_AWADDR_WIDTH-1:0] >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0])
+         << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) +
+        ({{(`AXI4_AWADDR_WIDTH-1){1'b0}}, 1'b1} << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]);
+
     assign axi_addr_align_w[`AXI4_AWADDR_WIDTH-1:0]                       = (axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0] >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
     assign axi_len_plusone_s1_w[`AXI4_AWLEN_WIDTH:0]                      = axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] + 1'b1;
     assign {overflow_bit_one_w,axi_bytes_subone_w[`AXI_4KB_WIDTH-1:0]}      = ({4'b0,axi_len_plusone_s1_w[`AXI4_AWLEN_WIDTH:0]} << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) - 1'b1;
@@ -193,7 +213,8 @@ module rni_segburst `RNI_PARAM
     // transactions outstanding -- so AxLOCK is carried only when the burst is a
     // power-of-two total the segmenter passes as ONE request, and that request's
     // Size is the burst's byte count rather than the containing chunk's.
-    assign axi_excl_shape_w = (axi_burst_incr_w | (axi_burst_fix_w & ~|axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0])) &
+    assign axi_excl_shape_w = ~dev_multibeat_w &
+                              (axi_burst_incr_w | (axi_burst_fix_w & ~|axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0])) &
                               ~overflow_bit_one_w & ~|axi_bytes_subone_w[`AXI_4KB_WIDTH-1:6] &
                               ~|(axi_bytes_subone_w[5:0] & (axi_bytes_subone_w[5:0] + 6'd1)) &
                               ~|(axi_addr_in_s1_i[5:0] & axi_bytes_subone_w[5:0]);
@@ -213,11 +234,11 @@ module rni_segburst `RNI_PARAM
                 segburst_valid_s1_o = axi_valid_s1_i & ~stall_flag_s1_i & ~wrap_singleline_w;
                 segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0];
                 segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
-                txn_cnt_s1_r[7:0] = axi_burst_fix_w ? axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] :
+                txn_cnt_s1_r[7:0] = (axi_burst_fix_w | dev_seg_w) ? axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] :
                     axi_burst_incr_w ? {2'b00,cacheline_cnt_incr_w[5:0]} :
                         wrap_multiline_w ? {2'b00,txn_cnt_multi_wrap_w[5:0]} :
                             {2'b00,txn_cnt_single_wrap_w[5:0]} + 1'b1;
-                chi_size_s1_r[3-1:0] = axi_burst_fix_w ? axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] :
+                chi_size_s1_r[3-1:0] = (axi_burst_fix_w | dev_seg_w) ? axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0] :
                     (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) ? (axi_excl_s1_w ? chi_size_excl_r[3-1:0] : chi_size_fastpass_w[3-1:0]) :
                         chi_size_nonfp_w[3-1:0];
             end
@@ -227,6 +248,13 @@ module rni_segburst `RNI_PARAM
                 segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
                 txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
                 chi_size_s1_r[3-1:0] = ((txn_cnt_q[7:0]-1'b1) != 0) ? 3'b110 : (axi_last_trans_addr_q[5:4] == 2'b00) ? 3'b100 : (axi_last_trans_addr_q[5:4] == 2'b01) ? 3'b101 : 3'b110;
+            end
+            `SEGB_DEVICE:begin
+                segburst_valid_s1_o = ~stall_flag_s1_i;
+                segburst_addr_s1_o[`AXI4_AWADDR_WIDTH-1:0] = dev_next_addr_w[`AXI4_AWADDR_WIDTH-1:0];
+                segburst_done_s1_o = segburst_valid_s1_o & (state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS) & ~stall_flag_s1_i;
+                txn_cnt_s1_r[7:0] = txn_cnt_q[7:0] - 1'b1;
+                chi_size_s1_r[3-1:0] = axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
             end
             `SEGB_MULTILINE_WRAP:begin
                 segburst_valid_s1_o = ~stall_flag_s1_i;
@@ -271,7 +299,10 @@ module rni_segburst `RNI_PARAM
     always_comb begin
         unique case (state_q[`SEGB_STATE_WIDTH-1:0])
             `SEGB_PASS:begin
-                if(wrap_singleline_w)begin
+                if(dev_multibeat_w)begin
+                    state_nxt_r[`SEGB_STATE_WIDTH-1:0] = `SEGB_DEVICE;
+                end
+                else if(wrap_singleline_w)begin
                     state_nxt_r[`SEGB_STATE_WIDTH-1:0] = `SEGB_SINGLELINE_WRAP;
                 end
                 else if(wrap_multiline_w)begin
@@ -291,6 +322,14 @@ module rni_segburst `RNI_PARAM
                 end
                 else begin
                     state_nxt_r[`SEGB_STATE_WIDTH-1:0] = `SEGB_INCR;
+                end
+            end
+            `SEGB_DEVICE:begin
+                if((txn_cnt_q[7:0]-1'b1) == 0)begin
+                    state_nxt_r[`SEGB_STATE_WIDTH-1:0] = `SEGB_PASS;
+                end
+                else begin
+                    state_nxt_r[`SEGB_STATE_WIDTH-1:0] = `SEGB_DEVICE;
                 end
             end
             `SEGB_MULTILINE_WRAP:begin
@@ -329,6 +368,14 @@ module rni_segburst `RNI_PARAM
                     chi_pd_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
                     chi_ls_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
                     chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {12'b0,axi_len_in_s1_i[3:0]} << {axi_addr_align_w[5:4],2'b00};
+                end
+                else if(dev_seg_w)begin
+                    // One AXI beat, so one 16B chunk of the line: a beat is at
+                    // most the 128-bit data bus and never crosses a chunk
+                    // boundary, and its beat count in that chunk is 1 (bc = 0).
+                    chi_pd_vec_s1_r[3:0] = 4'b0001 << segburst_addr_s1_o[5:4];
+                    chi_ls_vec_s1_r[3:0] = dev_multibeat_w ? 4'b0000 : (4'b0001 << segburst_addr_s1_o[5:4]);
+                    chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {`RNI_BCVEC_WIDTH{1'b0}};
                 end
                 else if(state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS)begin
                     unique case({axi_addr_align_w[5:4],addr_plus_bytes_w[5:4]})
@@ -394,6 +441,11 @@ module rni_segburst `RNI_PARAM
                     chi_ls_vec_s1_r[3:0] = 4'b0000;
                     chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {chi_bc_middle_w[3:0],chi_bc_middle_w[3:0],chi_bc_middle_w[3:0],chi_bc_first_w[3:0]} << {axi_addr_align_w[5:4],2'b00};
                 end
+            end
+            `SEGB_DEVICE:begin
+                chi_pd_vec_s1_r[3:0] = 4'b0001 << segburst_addr_s1_o[5:4];
+                chi_ls_vec_s1_r[3:0] = ((txn_cnt_q[7:0]-1'b1) == 0) ? (4'b0001 << segburst_addr_s1_o[5:4]) : 4'b0000;
+                chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {`RNI_BCVEC_WIDTH{1'b0}};
             end
             `SEGB_INCR:begin
                 if(state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS)begin

@@ -453,7 +453,13 @@ module rni_awctrl `RNI_PARAM
     assign txdat_packet_0_s2_w = awlink_valid_s2_q & |awlink_dmask_s2_w[`RNI_DMASK_PD_LSB + 1:`RNI_DMASK_PD_LSB];
     assign txdat_packet_1_s2_w = awlink_valid_s2_q & |awlink_dmask_s2_w[`RNI_DMASK_PD_LSB + 3:`RNI_DMASK_PD_LSB + 2];
     assign txdat_two_packets_s2_w = txdat_packet_0_s2_w & txdat_packet_1_s2_w;
-    assign aw_txreq_expcompack_w = awctrl_new_entry_compack_dep_w;
+    // CHI E.b Table 2-9 fn a (SS2.8 p.2-119) makes Ordered Write Observation the
+    // Order=0b10/ExpCompAck=1 pair alone, and Table 2-11 (SS2.9.4 p.2-129) gives
+    // every Device row Order=EndpointOrder -- under which SS2.8.5 (p.2-119) names
+    // the DBIDResp, not a CompAck, as what orders the next request. So a Device
+    // write orders on its own Order field and never joins the CompAck chain.
+    assign aw_txreq_expcompack_w = awctrl_new_entry_compack_dep_w &
+           ~|(awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
 
     always_comb begin
         awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = '0;
