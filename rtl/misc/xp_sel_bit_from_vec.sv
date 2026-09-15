@@ -39,7 +39,6 @@ module xp_sel_bit_from_vec
     logic [VEC_WIDTH-1:0] tmp_low;
     logic [VEC_WIDTH-1:0] tmp_upr;
 
-    int                   ii;
 
     assign lower_mask[VEC_WIDTH-1:0] = (startx[VEC_WIDTH-1:0] - 1'b1);
     assign upper_mask[VEC_WIDTH-1:0] = ~lower_mask[VEC_WIDTH-1:0];
@@ -47,7 +46,7 @@ module xp_sel_bit_from_vec
     always_comb begin:find1_from_bit0
         lower_found = 1'b0;
         lower_ptr_dec = {VEC_WIDTH{1'b0}};
-        for (ii = 0; ii < VEC_WIDTH; ii = ii + 1) begin
+        for (int ii = 0; ii < VEC_WIDTH; ii = ii + 1) begin
             if (in_vec[ii] == 1'b1) begin
                 lower_ptr_dec[ii] = 1'b1;
                 lower_found = 1'b1;
@@ -64,7 +63,7 @@ find1_onehot_lower:
     always_comb begin:hnf_sel_bit_from_nxt
         upper_found = 1'b0;
         upper_ptr_dec = {VEC_WIDTH{1'b0}};
-        for (ii = 0; ii < VEC_WIDTH; ii = ii + 1) begin
+        for (int ii = 0; ii < VEC_WIDTH; ii = ii + 1) begin
             if (in_vecx[ii] == 1'b1) begin
                 upper_ptr_dec[ii] = 1'b1;
                 upper_found = 1'b1;

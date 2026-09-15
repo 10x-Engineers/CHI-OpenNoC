@@ -18,10 +18,14 @@
 
 module {{ module }}
 #(
-  parameter REQ_FLIT_WIDTH,
-  parameter RSP_FLIT_WIDTH,
-  parameter DAT_FLIT_WIDTH,
-  parameter SNP_FLIT_WIDTH
+  // See the mesh wrapper: defaulted so the generated top elaborates standalone,
+  // and the SNP routing sideband follows SS16.1's NodeID_Width rather than a
+  // literal 7.
+  parameter REQ_FLIT_WIDTH = $bits(chie_pkg::req_flit_s),
+  parameter RSP_FLIT_WIDTH = $bits(chie_pkg::rsp_flit_s),
+  parameter DAT_FLIT_WIDTH = $bits(chie_pkg::dat_flit_s),
+  parameter SNP_FLIT_WIDTH = $bits(chie_pkg::snp_flit_s),
+  parameter CHIE_NID_WIDTH_PARAM = chie_pkg::NID_WIDTH
 )
 (
   input clk
@@ -86,7 +90,7 @@ module {{ module }}
   //TXSNP Channel
   ,input    {{ node.name }}_P0_TXSNPFLITPEND
   ,input    {{ node.name }}_P0_TXSNPFLITV
-  ,input    [SNP_FLIT_WIDTH+7-1:0] {{ node.name }}_P0_TXSNPFLIT
+  ,input    [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P0_TXSNPFLIT
   ,output   {{ node.name }}_P0_TXSNPLCRDV
   {% endif %}
 
@@ -157,7 +161,7 @@ module {{ module }}
   //TXSNP Channel
   ,input    {{ node.name }}_P1_TXSNPFLITPEND
   ,input    {{ node.name }}_P1_TXSNPFLITV
-  ,input    [SNP_FLIT_WIDTH+7-1:0] {{ node.name }}_P1_TXSNPFLIT
+  ,input    [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P1_TXSNPFLIT
   ,output   {{ node.name }}_P1_TXSNPLCRDV
   {% endif %}
 
@@ -198,31 +202,48 @@ module {{ module }}
   {% for channel in ['snp'] %}
   {% if x_pos in range(0, xmax) %}
   wire m_{{ channel }}flitv_{{ x_pos }}_{{ x_pos + 1 }};
-  wire [{{channel.upper()}}_FLIT_WIDTH+7-1:0] m_{{ channel }}flit_{{ x_pos }}_{{ x_pos + 1 }};
+  wire [{{channel.upper()}}_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] m_{{ channel }}flit_{{ x_pos }}_{{ x_pos + 1 }};
   wire m_{{ channel }}lcrdv_{{ x_pos }}_{{ x_pos + 1 }};
 
   wire m_{{ channel }}flitv_{{ x_pos + 1 }}_{{ x_pos }};
-  wire [{{channel.upper()}}_FLIT_WIDTH+7-1:0] m_{{ channel }}flit_{{ x_pos + 1 }}_{{ x_pos }};
+  wire [{{channel.upper()}}_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] m_{{ channel }}flit_{{ x_pos + 1 }}_{{ x_pos }};
   wire m_{{ channel }}lcrdv_{{ x_pos + 1 }}_{{ x_pos }};
 
   {% else %}
   wire m_{{ channel }}flitv_{{ x_pos }}_0;
-  wire [{{channel.upper()}}_FLIT_WIDTH+7-1:0] m_{{ channel }}flit_{{ x_pos }}_0;
+  wire [{{channel.upper()}}_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] m_{{ channel }}flit_{{ x_pos }}_0;
   wire m_{{ channel }}lcrdv_{{ x_pos }}_0;
 
   wire m_{{ channel }}flitv_0_{{ x_pos }};
-  wire [{{channel.upper()}}_FLIT_WIDTH+7-1:0] m_{{ channel }}flit_0_{{ x_pos }};
+  wire [{{channel.upper()}}_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] m_{{ channel }}flit_0_{{ x_pos }};
   wire m_{{ channel }}lcrdv_0_{{ x_pos }};
   {% endif %}
   {% endfor %}
   {% endfor %}
 
   {% for node in nodes %}
+  {% if node.P0.value in ['RNF'] %}
+  // The sideband is NoC-internal routing; the delivered snoop is the flit alone.
+  wire [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P0_RXSNPFLIT_int;
+  assign {{ node.name }}_P0_RXSNPFLIT = {{ node.name }}_P0_RXSNPFLIT_int[SNP_FLIT_WIDTH-1:0];
+  {% endif %}
+  {% if node.P1.value in ['RNF'] %}
+  wire [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P1_RXSNPFLIT_int;
+  assign {{ node.name }}_P1_RXSNPFLIT = {{ node.name }}_P1_RXSNPFLIT_int[SNP_FLIT_WIDTH-1:0];
+  {% endif %}
+    // XP_INTF bit 4 is P0 and bit 5 is P1: a port the config calls "NONE" is
+    // disabled, not merely left unconnected.
+    localparam [5:0] {{ node.name }}_PORT_EN = 6'b{{ '0' if node.P1.value == 'NONE' else '1' }}{{ '0' if node.P0.value == 'NONE' else '1' }}1111;
     chi_ring_node #(
+		.REQ_CH_EN({{ node.name }}_PORT_EN),
+		.RSP_CH_EN({{ node.name }}_PORT_EN),
+		.DAT_CH_EN({{ node.name }}_PORT_EN),
+		.SNP_CH_EN({{ node.name }}_PORT_EN),
 		.REQ_FLIT_WIDTH(REQ_FLIT_WIDTH),
 		.RSP_FLIT_WIDTH(RSP_FLIT_WIDTH),
 		.DAT_FLIT_WIDTH(DAT_FLIT_WIDTH),
-		.SNP_FLIT_WIDTH(SNP_FLIT_WIDTH+7),
+		.SNP_FLIT_WIDTH(SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM),
+		.CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
 		.SNP_TGTID_OFFSET(SNP_FLIT_WIDTH),
         .ROUTER_NODE_NUM({{xmax + 1}})
     ) {{ node.name }} (
@@ -246,6 +267,16 @@ module {{ module }}
         ,.RXLINKACTIVEACK_P1({{ node.name }}_P1_TXLINKACTIVEACK)
         ,.TXSACTIVE_P1({{ node.name }}_P1_RXSACTIVE)
         ,.RXSACTIVE_P1({{ node.name }}_P1_TXSACTIVE) 
+        {% else %}
+        // P1 is "NONE": tied off rather than left unmentioned, so the channel's
+        // linkactive inputs do not float into its credit logic. See the mesh
+        // wrapper for the same arm.
+        ,.TXLINKACTIVEREQ_P1()
+        ,.TXLINKACTIVEACK_P1(1'b0)
+        ,.RXLINKACTIVEREQ_P1(1'b0)
+        ,.RXLINKACTIVEACK_P1()
+        ,.TXSACTIVE_P1()
+        ,.RXSACTIVE_P1(1'b0)
         {% endif %}
 
        {% for channel in ['req', 'dat', 'rsp', 'snp'] %}
@@ -372,7 +403,7 @@ module {{ module }}
         {% if channel in ['snp'] %}
         {% if node.P0.value in ['RNF'] %}
         ,.TX{{ channel.upper() }}FLITV_P0({{ node.name }}_P0_RX{{ channel.upper() }}FLITV)
-        ,.TX{{ channel.upper() }}FLIT_P0 ({{ node.name }}_P0_RX{{ channel.upper() }}FLIT)
+        ,.TX{{ channel.upper() }}FLIT_P0 ({{ node.name }}_P0_RX{{ channel.upper() }}FLIT_int)
         ,.TX{{ channel.upper() }}LCRDV_P0({{ node.name }}_P0_RX{{ channel.upper() }}LCRDV)
         {% else %}
         ,.TX{{ channel.upper() }}FLITV_P0 ()
@@ -418,7 +449,7 @@ module {{ module }}
         {% if channel in ['snp'] %}
         {% if node.P1.value in ['RNF'] %}
         ,.TX{{ channel.upper() }}FLITV_P1({{ node.name }}_P1_RX{{ channel.upper() }}FLITV)
-        ,.TX{{ channel.upper() }}FLIT_P1 ({{ node.name }}_P1_RX{{ channel.upper() }}FLIT)
+        ,.TX{{ channel.upper() }}FLIT_P1 ({{ node.name }}_P1_RX{{ channel.upper() }}FLIT_int)
         ,.TX{{ channel.upper() }}LCRDV_P1({{ node.name }}_P1_RX{{ channel.upper() }}LCRDV)
         {% else %}
         ,.TX{{ channel.upper() }}FLITV_P1 ()
