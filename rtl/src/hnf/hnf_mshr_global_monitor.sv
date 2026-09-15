@@ -67,16 +67,16 @@ module hnf_mshr_global_monitor `HNF_PARAM
     wire                                 req_excl_store_as_s0;
     logic                                seq_other_rn_s0;
     wire                                 store_notmatch_wrnosnp_s0;  //req writenosnp not match
-    wire                                 store_notmatch_cu_s0;       //req writenosnp not match
+    wire                                 store_notmatch_poc_s0;      //failed Snoopable Exclusive Store
     logic                                excl_pass_s1_q;
     logic                                excl_fail_s1_q;
     logic                                load_same_lp_s0;            //load req come from same LP
     logic                                load_new_lp_s0;             //load req come from not same LP
     logic                                store_match_s0;             //store req match
-    logic                                cu_addr_notmatch_s0;        //cleanunique req come from same LP but addr not match
+    logic                                poc_addr_notmatch_s0;       //same LP, different address
     logic                                load_samelp_flag;           //judge the same LP or not
     logic                                load_new_flag;              //judge add new entry finish or not
-    logic                                store_cu_newentry_flag;     //judge cleanunique add new entry finish or not
+    logic                                store_poc_newentry_flag;     //judge cleanunique add new entry finish or not
 
     assign req_rdnosnp_s0        = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)&&mshr_alloc_en_s0;
     assign req_rdnosharedirty_s0 = li_mshr_rxreq_excl_s0&&(li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)&&mshr_alloc_en_s0;
@@ -100,7 +100,13 @@ module hnf_mshr_global_monitor `HNF_PARAM
     end
     assign excl_seq_other_rn_s0 = li_mshr_rxreq_valid_s0 && seq_other_rn_s0;
     assign store_notmatch_wrnosnp_s0    = !store_match_s0&&req_wrnosnp_s0;
-    assign store_notmatch_cu_s0 = !store_match_s0&&req_cleanunique_s0;
+    // CHI E.b section 6.2.1 (p.6-283, MUST): a FAILED Exclusive Store still registers --
+    // "the Exclusive Store transaction is failed and is not permitted to proceed. The
+    // monitor must register that the LP is attempting an Exclusive sequence." Section 6.3
+    // (p.6-286) names both Snoopable Exclusive Stores, CleanUnique and MakeReadUnique, so
+    // this is not a CleanUnique property; WriteNoSnp is the Non-snoopable System monitor
+    // (section 6.2.4) and keeps its own reset arm above.
+    assign store_notmatch_poc_s0 = !store_match_s0&&(req_cleanunique_s0 || req_excl_store_as_s0);
 
 
     always_comb begin :load_judge
@@ -141,14 +147,14 @@ module hnf_mshr_global_monitor `HNF_PARAM
         end
     end
 
-    always_comb begin :cleanunique_judge
-        cu_addr_notmatch_s0 = 'd0;
+    always_comb begin :poc_store_judge
+        poc_addr_notmatch_s0 = 'd0;
         for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1)begin
-            if (store_notmatch_cu_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] != li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
-                cu_addr_notmatch_s0 = 'd1;
+            if (store_notmatch_poc_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] != li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
+                poc_addr_notmatch_s0 = 'd1;
             end
             else begin
-                cu_addr_notmatch_s0 = cu_addr_notmatch_s0;
+                poc_addr_notmatch_s0 = poc_addr_notmatch_s0;
             end
         end
     end
@@ -156,7 +162,7 @@ module hnf_mshr_global_monitor `HNF_PARAM
 
     always_comb begin:temp_data
         load_new_flag=1;
-        store_cu_newentry_flag=1;
+        store_poc_newentry_flag=1;
 
         for (int i = 0;i<HNF_MSHR_EXCL_RN_NUM_PARAM;i = i+1) begin:gb_ram_temp
             gb_valid_w[i]=gb_valid_q[i];
@@ -188,18 +194,18 @@ module hnf_mshr_global_monitor `HNF_PARAM
                 gb_lpid_w[i]='d0;
                 gb_addr_w[i]='d0;
             end
-            else if(store_notmatch_cu_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] != li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
+            else if(store_notmatch_poc_s0&&gb_valid_q[i]&&li_mshr_rxreq_srcid_s0 == gb_srcid_q[i]&&li_mshr_rxreq_lpid_s0 == gb_lpid_q[i]&&gb_addr_q[i][CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET] != li_mshr_rxreq_addr_s0[CHIE_REQ_ADDR_WIDTH_PARAM-1:`CACHE_BLOCK_OFFSET])begin
                 gb_valid_w[i]='d1;
                 gb_srcid_w[i]=li_mshr_rxreq_srcid_s0;
                 gb_lpid_w[i]=li_mshr_rxreq_lpid_s0;
                 gb_addr_w[i]=li_mshr_rxreq_addr_s0;
             end
-            else if(store_notmatch_cu_s0&&!cu_addr_notmatch_s0&&!gb_valid_q[i]&&store_cu_newentry_flag)begin
+            else if(store_notmatch_poc_s0&&!poc_addr_notmatch_s0&&!gb_valid_q[i]&&store_poc_newentry_flag)begin
                 gb_valid_w[i]='d1;
                 gb_srcid_w[i]=li_mshr_rxreq_srcid_s0;
                 gb_lpid_w[i]=li_mshr_rxreq_lpid_s0;
                 gb_addr_w[i]=li_mshr_rxreq_addr_s0;
-                store_cu_newentry_flag=0;
+                store_poc_newentry_flag=0;
             end
             else begin
                 gb_valid_w[i]=gb_valid_w[i];
