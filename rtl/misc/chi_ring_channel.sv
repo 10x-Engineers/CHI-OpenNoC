@@ -41,6 +41,19 @@ module chi_ring_channel #(
     input  wire                      TXLINKACTIVEREQ_P1,
     input  wire                      TXLINKACTIVEACK_P1,
 
+    // See chi_xp_channel: Table 14-2 (SS14.5 p.14-450, MUST) gates a Receiver's
+    // credits on its OWN RX link being in RUN, which SS14.6.1 (p.14-454) makes a
+    // separate state machine from the TXLINK.
+    input  wire                      rx_run_P0,
+    input  wire                      rx_run_P1,
+    output wire                      rx_lcrd_out_P0,
+    output wire                      rx_lcrd_out_P1,
+    // See chi_xp_channel: Table 14-2 DEACTIVATE Transmitter (p.14-450, MUST).
+    input  wire                      tx_deact_P0,
+    input  wire                      tx_deact_P1,
+    output wire                      tx_lcrd_held_P0,
+    output wire                      tx_lcrd_held_P1,
+
     input  wire                      RXFLITV_E,
     input  wire                      RXFLITV_W,
     input  wire                      RXFLITV_P0,
@@ -202,14 +215,31 @@ module chi_ring_channel #(
 
     assign rxactive_run[XP_INTF_E]  = XP_PORT_EN[XP_INTF_E];
     assign rxactive_run[XP_INTF_W]  = XP_PORT_EN[XP_INTF_W];
-    assign rxactive_run[XP_INTF_P0] = XP_PORT_EN[XP_INTF_P0] & linkactive_p0;
-    assign rxactive_run[XP_INTF_P1] = XP_PORT_EN[XP_INTF_P1] & linkactive_p1;
+    assign rxactive_run[XP_INTF_P0] = XP_PORT_EN[XP_INTF_P0] & rx_run_P0;
+    assign rxactive_run[XP_INTF_P1] = XP_PORT_EN[XP_INTF_P1] & rx_run_P1;
     always_ff @(posedge clk or posedge rst) begin
         if (rst == 1)
             rxactive_run_q[XP_INTF_MAX-1:0] <= XP_INTF_MAX'(1'b0);
         else
             rxactive_run_q[XP_INTF_MAX-1:0] <= rxactive_run[XP_INTF_MAX-1:0];
     end
+
+    // Granted minus spent; a link flit spends a credit like any other.
+    logic [LCRD_NUM_WIDTH:0] rx_lcrd_out_q [XP_INTF_P0:XP_INTF_P1];
+    generate
+        for (g_src = XP_INTF_P0; g_src <= XP_INTF_P1; g_src = g_src + 1) begin : rx_lcrd_outstanding
+            always_ff @(posedge clk or posedge rst) begin
+                if (rst)
+                    rx_lcrd_out_q[g_src] <= '0;
+                else if (rxlcrdv_q[g_src] & ~rxflitv_r1[g_src])
+                    rx_lcrd_out_q[g_src] <= rx_lcrd_out_q[g_src] + 1'b1;
+                else if (~rxlcrdv_q[g_src] & rxflitv_r1[g_src] & (|rx_lcrd_out_q[g_src]))
+                    rx_lcrd_out_q[g_src] <= rx_lcrd_out_q[g_src] - 1'b1;
+            end
+        end
+    endgenerate
+    assign rx_lcrd_out_P0 = |rx_lcrd_out_q[XP_INTF_P0];
+    assign rx_lcrd_out_P1 = |rx_lcrd_out_q[XP_INTF_P1];
 
     generate
         for (g_src = 0; g_src < XP_INTF_MAX; g_src = g_src + 1) begin : rx_lcredit_mgr
@@ -254,7 +284,10 @@ module chi_ring_channel #(
             end
             assign txlcrd_empty[g_src] = ~(|txlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0]);
             assign txlcrd_inc[g_src] = txlcrdv[g_src] & (!txflitv_d1[g_src]) & XP_PORT_EN[g_src];
-            assign txlcrd_dec[g_src] = txflitv_d1[g_src] & (!txlcrdv[g_src]) & XP_PORT_EN[g_src];
+            assign txlcrd_dec[g_src] = ((g_src == XP_INTF_P0) ? (txflitv_d1[g_src] | lcrd_ret_P0) :
+                                        (g_src == XP_INTF_P1) ? (txflitv_d1[g_src] | lcrd_ret_P1) :
+                                                                 txflitv_d1[g_src])
+                                       & (!txlcrdv[g_src]) & XP_PORT_EN[g_src];
             assign txlcrd_cnt_ns[g_src][LCRD_NUM_WIDTH-1:0] = txlcrd_inc[g_src] ? (txlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0] + 1'b1):
                     (txlcrd_dec[g_src] ? (txlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0] - 1'b1): txlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0]);
 
@@ -641,12 +674,22 @@ module chi_ring_channel #(
     assign TXFLITV_W                             = txflitv_q[XP_INTF_W];
     assign TXFLITPEND_P0                         = txflitv_d1[XP_INTF_P0];
     assign TXFLITPEND_P1                         = txflitv_d1[XP_INTF_P1];
-    assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0];
-    assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1];
+    // SS13.11 (p.13-442): "A link flit is identified by a zero value in the Opcode
+    // field. The TxnID field of the link flit is required to be zero. The remaining
+    // fields are not used" -- an all-zero flit satisfies all three. One per cycle
+    // while credits are held, and only while this TXLINK is in DEACTIVATE, so it
+    // never races a protocol flit.
+    wire lcrd_ret_P0 = tx_deact_P0 & (|txlcrd_cnt_q[XP_INTF_P0]) & ~txflitv_q[XP_INTF_P0];
+    wire lcrd_ret_P1 = tx_deact_P1 & (|txlcrd_cnt_q[XP_INTF_P1]) & ~txflitv_q[XP_INTF_P1];
+    assign tx_lcrd_held_P0 = |txlcrd_cnt_q[XP_INTF_P0];
+    assign tx_lcrd_held_P1 = |txlcrd_cnt_q[XP_INTF_P1];
+
+    assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0] | lcrd_ret_P0;
+    assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1] | lcrd_ret_P1;
 
     assign TXFLIT_E[FLIT_WIDTH-1:0]              = txflit_q[XP_INTF_E][FLIT_WIDTH-1:0];
     assign TXFLIT_W[FLIT_WIDTH-1:0]              = txflit_q[XP_INTF_W][FLIT_WIDTH-1:0];
-    assign TXFLIT_P0[FLIT_WIDTH-1:0]             = txflit_q[XP_INTF_P0][FLIT_WIDTH-1:0];
-    assign TXFLIT_P1[FLIT_WIDTH-1:0]             = txflit_q[XP_INTF_P1][FLIT_WIDTH-1:0];
+    assign TXFLIT_P0[FLIT_WIDTH-1:0]             = lcrd_ret_P0 ? {FLIT_WIDTH{1'b0}} : txflit_q[XP_INTF_P0][FLIT_WIDTH-1:0];
+    assign TXFLIT_P1[FLIT_WIDTH-1:0]             = lcrd_ret_P1 ? {FLIT_WIDTH{1'b0}} : txflit_q[XP_INTF_P1][FLIT_WIDTH-1:0];
 
 endmodule

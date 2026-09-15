@@ -41,7 +41,8 @@
 # =============================================================================
 set -uo pipefail
 TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
-cd "$TOOLS/../rtl" || exit 2
+RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
+cd "$RTL" || exit 2
 
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
 
@@ -176,6 +177,41 @@ else
   echo "==================== generated NoC ===================="
   echo "  SKIPPED: the generators need jinja2 ($PYTHON -m pip install jinja2)"
   rc=1
+fi
+
+# rtl/tb/tb_xp_link.sv -- the crosspoint's Chapter 14 link-activation bench. It
+# runs under Verilator, so unlike tb_hnf_link.sv (which needs a licensed simulator)
+# it can be a gate rather than a manual step. --binary needs a compiler with
+# coroutine support for the bench's own timing controls.
+run_xp_link() {
+  echo "==================== crosspoint link activation ===================="
+  local out d
+  d=$(mktemp -d) || return 1
+  out=$(cd "$d" && verilator --binary -Wno-fatal -DDISPLAY_FATAL \
+          --top-module tb_xp_link \
+          -I"$RTL/include" -I"$RTL/misc" -I"$TOOLS/mesh_generator" \
+          "$RTL/include/chie_pkg.sv" "$RTL/misc/chi_xp_channel.sv" \
+          "$TOOLS/mesh_generator/chi_xp_node.sv" "$RTL/tb/tb_xp_link.sv" \
+          -o xplink 2>&1 && ./obj_dir/xplink 2>&1)
+  echo "$out" | grep -E "^(PASS|FAIL|===)" | sed 's/^/  /'
+  rm -rf "$d"
+  if echo "$out" | grep -q "=== TB PASS ==="; then return 0; fi
+  # Told apart rather than lumped together: a compiler without coroutines cannot
+  # build the bench's timing controls at all, which is a toolchain gap and not an
+  # RTL defect. CI's ubuntu-latest has one; an older local g++ may not.
+  if echo "$out" | grep -q "fcoroutines"; then
+    echo "  SKIPPED: this g++ has no coroutine support, so --binary cannot build"
+    echo "           the bench's timing controls. Try a newer compiler, e.g."
+    echo "           PATH=/opt/rh/gcc-toolset-11/root/usr/bin:\$PATH $0"
+    return 0
+  fi
+  echo "  FAIL: tb_xp_link did not pass"
+  echo "$out" | tail -20 | sed 's/^/  /'
+  return 1
+}
+
+if command -v verilator >/dev/null; then
+  run_xp_link || rc=1
 fi
 
 echo

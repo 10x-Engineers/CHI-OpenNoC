@@ -280,6 +280,13 @@ module chi_xp_node #(
   end
 `endif
 
+
+  wire rx_run_P0, rx_run_P1, tx_deact_P0, tx_deact_P1;
+  wire req_rx_lcrd_out_P0, req_rx_lcrd_out_P1, rsp_rx_lcrd_out_P0, rsp_rx_lcrd_out_P1;
+  wire dat_rx_lcrd_out_P0, dat_rx_lcrd_out_P1, snp_rx_lcrd_out_P0, snp_rx_lcrd_out_P1;
+  wire req_tx_lcrd_held_P0, req_tx_lcrd_held_P1, rsp_tx_lcrd_held_P0, rsp_tx_lcrd_held_P1;
+  wire dat_tx_lcrd_held_P0, dat_tx_lcrd_held_P1, snp_tx_lcrd_held_P0, snp_tx_lcrd_held_P1;
+
   chi_xp_channel #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
       .XP_XID_WIDTH(XP_XID_WIDTH),
@@ -324,6 +331,14 @@ module chi_xp_node #(
       .TXFLITV_W (TXREQFLITV_W),
       .TXFLITV_N (TXREQFLITV_N),
       .TXFLITV_S (TXREQFLITV_S),
+      .rx_run_P0(rx_run_P0),
+      .rx_run_P1(rx_run_P1),
+      .rx_lcrd_out_P0(req_rx_lcrd_out_P0),
+      .rx_lcrd_out_P1(req_rx_lcrd_out_P1),
+      .tx_deact_P0(tx_deact_P0),
+      .tx_deact_P1(tx_deact_P1),
+      .tx_lcrd_held_P0(req_tx_lcrd_held_P0),
+      .tx_lcrd_held_P1(req_tx_lcrd_held_P1),
       .TXFLITPEND_P0(TXREQFLITPEND_P0),
       .TXFLITPEND_P1(TXREQFLITPEND_P1),
       .TXFLITV_P0(TXREQFLITV_P0),
@@ -387,6 +402,14 @@ module chi_xp_node #(
       .TXFLITV_W (TXRSPFLITV_W),
       .TXFLITV_N (TXRSPFLITV_N),
       .TXFLITV_S (TXRSPFLITV_S),
+      .rx_run_P0(rx_run_P0),
+      .rx_run_P1(rx_run_P1),
+      .rx_lcrd_out_P0(rsp_rx_lcrd_out_P0),
+      .rx_lcrd_out_P1(rsp_rx_lcrd_out_P1),
+      .tx_deact_P0(tx_deact_P0),
+      .tx_deact_P1(tx_deact_P1),
+      .tx_lcrd_held_P0(rsp_tx_lcrd_held_P0),
+      .tx_lcrd_held_P1(rsp_tx_lcrd_held_P1),
       .TXFLITPEND_P0(TXRSPFLITPEND_P0),
       .TXFLITPEND_P1(TXRSPFLITPEND_P1),
       .TXFLITV_P0(TXRSPFLITV_P0),
@@ -450,6 +473,14 @@ module chi_xp_node #(
       .TXFLITV_W (TXDATFLITV_W),
       .TXFLITV_N (TXDATFLITV_N),
       .TXFLITV_S (TXDATFLITV_S),
+      .rx_run_P0(rx_run_P0),
+      .rx_run_P1(rx_run_P1),
+      .rx_lcrd_out_P0(dat_rx_lcrd_out_P0),
+      .rx_lcrd_out_P1(dat_rx_lcrd_out_P1),
+      .tx_deact_P0(tx_deact_P0),
+      .tx_deact_P1(tx_deact_P1),
+      .tx_lcrd_held_P0(dat_tx_lcrd_held_P0),
+      .tx_lcrd_held_P1(dat_tx_lcrd_held_P1),
       .TXFLITPEND_P0(TXDATFLITPEND_P0),
       .TXFLITPEND_P1(TXDATFLITPEND_P1),
       .TXFLITV_P0(TXDATFLITV_P0),
@@ -514,6 +545,14 @@ module chi_xp_node #(
       .TXFLITV_W (TXSNPFLITV_W),
       .TXFLITV_N (TXSNPFLITV_N),
       .TXFLITV_S (TXSNPFLITV_S),
+      .rx_run_P0(rx_run_P0),
+      .rx_run_P1(rx_run_P1),
+      .rx_lcrd_out_P0(snp_rx_lcrd_out_P0),
+      .rx_lcrd_out_P1(snp_rx_lcrd_out_P1),
+      .tx_deact_P0(tx_deact_P0),
+      .tx_deact_P1(tx_deact_P1),
+      .tx_lcrd_held_P0(snp_tx_lcrd_held_P0),
+      .tx_lcrd_held_P1(snp_tx_lcrd_held_P1),
       .TXFLITPEND_P0(TXSNPFLITPEND_P0),
       .TXFLITPEND_P1(TXSNPFLITPEND_P1),
       .TXFLITV_P0(TXSNPFLITV_P0),
@@ -572,10 +611,64 @@ module chi_xp_node #(
       end
   end
 
-  assign TXLINKACTIVEREQ_P0 = reset_done;
-  assign TXLINKACTIVEREQ_P1 = reset_done;
-  assign RXLINKACTIVEACK_P0 = RXLINKACTIVE_P0_q;
-  assign RXLINKACTIVEACK_P1 = RXLINKACTIVE_P1_q;
+
+  // ---------------------------------------------------------------------------
+  // Chapter 14 link activation, per external port.
+  //
+  //   SS14.6.1 (p.14-454) makes the TXLINK and RXLINK separate state machines and
+  //   then requires them to be coordinated: "If the RXLINK moves to the DEACTIVATE
+  //   state ... it is required that the TXLINK also moves to the DEACTIVATE state,
+  //   in a timely manner."
+  //
+  //   The handshake is per PORT while the credits are per CHANNEL, so it lives
+  //   here and reads all four channels: Table 14-2 DEACTIVATE (p.14-450, MUST) --
+  //   "The Receiver must wait for all credits to be returned before deasserting
+  //   LINKACTIVEACK" -- is only satisfied once every channel has been repaid.
+  // ---------------------------------------------------------------------------
+  wire rx_drained_P0 = ~(req_rx_lcrd_out_P0 | rsp_rx_lcrd_out_P0 |
+                         dat_rx_lcrd_out_P0 | snp_rx_lcrd_out_P0);
+  wire rx_drained_P1 = ~(req_rx_lcrd_out_P1 | rsp_rx_lcrd_out_P1 |
+                         dat_rx_lcrd_out_P1 | snp_rx_lcrd_out_P1);
+
+  reg rxack_P0_q, rxack_P1_q, txreq_P0_q, txreq_P1_q;
+
+  always @(posedge clk or posedge rst) begin
+      if (rst)                          rxack_P0_q <= 1'b0;
+      else if (RXLINKACTIVEREQ_P0)      rxack_P0_q <= 1'b1;
+      else if (rx_drained_P0)           rxack_P0_q <= 1'b0;
+  end
+  always @(posedge clk or posedge rst) begin
+      if (rst)                          rxack_P1_q <= 1'b0;
+      else if (RXLINKACTIVEREQ_P1)      rxack_P1_q <= 1'b1;
+      else if (rx_drained_P1)           rxack_P1_q <= 1'b0;
+  end
+
+  // The TXLINK follows: up once out of reset, down as soon as the RXLINK is being
+  // taken down by the peer. Table 14-1 (p.14-449) makes a REQ that is low with ACK
+  // still high the DEACTIVATE state, which is what tx_deact_* below names.
+  always @(posedge clk or posedge rst) begin
+      if (rst)                          txreq_P0_q <= 1'b0;
+      else if (!reset_done)             txreq_P0_q <= 1'b0;
+      else                              txreq_P0_q <= RXLINKACTIVEREQ_P0;
+  end
+  always @(posedge clk or posedge rst) begin
+      if (rst)                          txreq_P1_q <= 1'b0;
+      else if (!reset_done)             txreq_P1_q <= 1'b0;
+      else                              txreq_P1_q <= RXLINKACTIVEREQ_P1;
+  end
+
+  assign TXLINKACTIVEREQ_P0 = txreq_P0_q;
+  assign TXLINKACTIVEREQ_P1 = txreq_P1_q;
+  assign RXLINKACTIVEACK_P0 = rxack_P0_q;
+  assign RXLINKACTIVEACK_P1 = rxack_P1_q;
+
+  // What the channels gate on: RUN is REQ and ACK both high (Table 14-1).
+  assign rx_run_P0   = RXLINKACTIVEREQ_P0 & rxack_P0_q;
+  assign rx_run_P1   = RXLINKACTIVEREQ_P1 & rxack_P1_q;
+  // DEACTIVATE on the Transmit side: our REQ down, the peer's ACK still up.
+  assign tx_deact_P0 = ~TXLINKACTIVEREQ_P0 & TXLINKACTIVEACK_P0;
+  assign tx_deact_P1 = ~TXLINKACTIVEREQ_P1 & TXLINKACTIVEACK_P1;
+
   assign TXSACTIVE_P0 = TXLINKACTIVE_P0_q;
   assign TXSACTIVE_P1 = TXLINKACTIVE_P1_q;
 
