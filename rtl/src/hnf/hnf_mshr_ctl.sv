@@ -254,6 +254,10 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [chie_pkg::NID_WIDTH-1:0]     mshr_l3_stash_nid_sx1_q,
     output logic                               mshr_l3_stash_v_sx1_q,
     output logic                               mshr_l3_req_en_sx1_q,
+    // Sec 9.3 (p.9-336, MUST): of an errored transaction's data packets "the data
+    // values are not required to be valid", so this fill's line must not be allocated
+    // into the System cache and later served as OK.
+    output logic                               mshr_l3_dn_err_sx1_q,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_l3_entry_idx_sx1_q,
     output logic                               mshr_l3_fill_dirty_sx1_q,
 
@@ -3928,6 +3932,7 @@ module hnf_mshr_ctl `HNF_PARAM
         if(rst == 1'b1) begin
             mshr_l3_req_en_sx1_q     <= 1'b0;
             mshr_l3_fill_sx1_q       <= 1'b0;
+            mshr_l3_dn_err_sx1_q     <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_snoopme_sx1_q    <= 1'b0;
@@ -3939,6 +3944,7 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_ageq_vec[mshrageq_mshr_idx_sx2_q[0]])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[mshrageq_mshr_idx_sx2_q[0]]);
+            mshr_l3_dn_err_sx1_q     <= mshr_dn_resperr_s1_q[mshrageq_mshr_idx_sx2_q[0]][1];
             mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[mshrageq_mshr_idx_sx2_q[0]] ? mshr_stash_pull_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]
                                                                       : (mshr_srcid_s1_q[mshrageq_mshr_idx_sx2_q[0]]);
             mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[mshrageq_mshr_idx_sx2_q[0]] ? mshr_stash_pull_rd_s1_q[mshrageq_mshr_idx_sx2_q[0]]
@@ -3952,6 +3958,7 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_other_vec[cpl_rob])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_rob]);
+            mshr_l3_dn_err_sx1_q     <= mshr_dn_resperr_s1_q[cpl_rob][1];
             mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[cpl_rob] ? mshr_stash_pull_srcid_s1_q[cpl_rob]
                                                                       : (mshr_srcid_s1_q[cpl_rob]);
             mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[cpl_rob] ? mshr_stash_pull_rd_s1_q[cpl_rob]
@@ -3965,6 +3972,7 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(cpl_wrap_other_ptr[cpl_wrap_other_idx])begin
             mshr_l3_req_en_sx1_q     <= 1'b1;
             mshr_l3_fill_sx1_q       <= (!l3_rd_rdy_s2_q[cpl_wrap_other_idx]);
+            mshr_l3_dn_err_sx1_q     <= mshr_dn_resperr_s1_q[cpl_wrap_other_idx][1];
             mshr_l3_rnf_sx1_q        <= mshr_stash_pull_pend_sx_q[cpl_wrap_other_idx] ? mshr_stash_pull_srcid_s1_q[cpl_wrap_other_idx]
                                                                       : (mshr_srcid_s1_q[cpl_wrap_other_idx]);
             mshr_l3_opcode_sx1_q     <= mshr_stash_pull_pend_sx_q[cpl_wrap_other_idx] ? mshr_stash_pull_rd_s1_q[cpl_wrap_other_idx]
@@ -3978,6 +3986,7 @@ module hnf_mshr_ctl `HNF_PARAM
         else if(!l3_mshr_wr_op_sx7_q && mshr_l3_req_en_sx1_q)begin
             mshr_l3_req_en_sx1_q     <= 1'b0;
             mshr_l3_fill_sx1_q       <= 1'b0;
+            mshr_l3_dn_err_sx1_q     <= 1'b0;
             mshr_l3_rnf_sx1_q        <= {CHIE_NID_WIDTH_PARAM{1'b0}};
             mshr_l3_opcode_sx1_q     <= chie_pkg::REQ_REQLCRDRETURN;
             mshr_l3_snoopme_sx1_q    <= 1'b0;
