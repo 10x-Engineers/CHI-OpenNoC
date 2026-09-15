@@ -42,7 +42,7 @@ module hnf_data_buffer `HNF_PARAM
     input  wire                               mshr_dbf_atm_end_s0,
     input  wire                               mshr_dbf_rd_atm_sx1,
     input  wire [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
-    input  wire [1:0]                         mshr_dbf_rd_atm_pe_sx1,
+    input  wire [1:0]                         mshr_dbf_rd_pe_sx1,
 
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
     input  wire                               mshr_dbf_rd_valid_sx1_q,
@@ -471,8 +471,7 @@ module hnf_data_buffer `HNF_PARAM
     endgenerate
     assign dbf_mshr_be_full_s0 = &temp_li_be;
     assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
-    assign dbf_txdat_pe_sx1    = mshr_dbf_rd_atm_sx1 ? mshr_dbf_rd_atm_pe_sx1
-                                                    : dbf_pe_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_pe_sx1    = dbf_pe_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_pe_sx1;
     assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
 
 endmodule
