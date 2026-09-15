@@ -95,6 +95,8 @@ module rni_awctrl `RNI_PARAM
     output wire                                awctrl_brsp_last_v_d2_o,
     output wire [`AXI4_BID_WIDTH-1:0]          awctrl_brsp_axid_d2_o,
     output chie_pkg::resp_err_e                awctrl_brsp_resperr_d2_o,
+    // Sec 12.1 (p.12-372): the Tag Match verdict, for the B channel sideband.
+    output wire [`AXI4_BUSER_WIDTH-1:0]        awctrl_brsp_buser_d2_o,
 
     // rni_ar_ctl Interface -- Sec 2.9.4's (p.2-130) cross-kind Device ordering
     output wire                                awctrl_device_ordered_pending_o,
@@ -311,6 +313,16 @@ module rni_awctrl `RNI_PARAM
     logic                                brsp_rdy_v_d2_q;
     logic                                brsp_last_v_d2_q;
     logic [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_q;
+    logic [`AXI4_BUSER_WIDTH-1:0]        brsp_buser_d2_ns_r;
+    logic [`AXI4_BUSER_WIDTH-1:0]        brsp_buser_d2_q;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_req_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_owed_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_tagmatch_hit_w;
+    wire                                 rxrsp_tagmatch_recv_w;
+    wire  [7:0]                          rxrsp_tagmatch_group_w;
+    wire                                 rxrsp_tagmatch_pass_w;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_recv_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_pass_q;
 
     genvar                               entry;
 
@@ -1118,6 +1130,45 @@ module rni_awctrl `RNI_PARAM
     assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMP));
     assign rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_comp_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_retryack_recv_flag_w = aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
+
+    // Table A-8 (p.A-488) gives TagMatch TxnID = 0, so it is not admitted by the
+    // TxnID[11] convention the other write responses use: Sec 13.10.40 (p.13-435)
+    // keys it by the TagGroupID the DBID bits carry. Table 13-35 (p.13-437) makes
+    // Resp[0] the verdict, 1 Pass and 0 Fail.
+    assign rxrsp_tagmatch_recv_w = awctrl_rxrspflitv_d1_i &
+           (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_TAGMATCH) &
+           (awctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] == RNI_NID_PARAM);
+    assign rxrsp_tagmatch_group_w[7:0] = awctrl_rxrspflit_d1_i.dbid[7:0];
+    assign rxrsp_tagmatch_pass_w       = awctrl_rxrspflit_d1_i.resp[0];
+
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:tagmatch_track
+            // Sec 13.10.40: a Requester groups its Match requests and processes the
+            // TagMatch responses per group, so one response answers every entry of
+            // that group that is still owed one.
+            assign awctrl_tagmatch_req_w[entry] = (awctrl_entry_tagop_o[entry] == 2'b11);
+            assign rxrsp_tagmatch_hit_w[entry]  = rxrsp_tagmatch_recv_w &
+                   awctrl_entry_v_q[entry] & awctrl_tagmatch_req_w[entry] &
+                   (awctrl_entry_info_q[entry].user[`AXI4_USER_TGGID_RANGE] == rxrsp_tagmatch_group_w[7:0]);
+            assign awctrl_tagmatch_owed_w[entry] = awctrl_tagmatch_req_w[entry] &
+                   ~(awctrl_tagmatch_recv_q[entry] | rxrsp_tagmatch_hit_w[entry]);
+
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i) begin
+                    awctrl_tagmatch_recv_q[entry] <= 1'b0;
+                    awctrl_tagmatch_pass_q[entry] <= 1'b0;
+                end
+                else if (awctrl_entry_dealloc_vec_w[entry]) begin
+                    awctrl_tagmatch_recv_q[entry] <= 1'b0;
+                    awctrl_tagmatch_pass_q[entry] <= 1'b0;
+                end
+                else if (rxrsp_tagmatch_hit_w[entry]) begin
+                    awctrl_tagmatch_recv_q[entry] <= 1'b1;
+                    awctrl_tagmatch_pass_q[entry] <= rxrsp_tagmatch_pass_w;
+                end
+            end
+        end
+    endgenerate
     assign rxrsp_retryack_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_retryack_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_retryack_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_retryack_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
@@ -1710,12 +1761,17 @@ module rni_awctrl `RNI_PARAM
     /////////////////////////////////////////////////////////////
     assign bresp_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
            (txrsp_compack_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
-           ~awctrl_entry_bresp_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~bresp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+           ~awctrl_entry_bresp_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~bresp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+           // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every Match write, and
+           // Sec 12.1 (p.12-372) requires the failure reach the Requester -- which on
+           // this port is BUSER, so B waits for the verdict.
+           ~awctrl_tagmatch_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign bresp_select_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (bresp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{bresp_select_success_w & bresp_credit_avail_w}} & bresp_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_brsp_rdy_v_d2_o = brsp_rdy_v_d2_q;
     assign awctrl_brsp_last_v_d2_o = brsp_last_v_d2_q;
     assign awctrl_brsp_axid_d2_o[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_q[`AXI4_BID_WIDTH-1:0];
     assign awctrl_brsp_resperr_d2_o[2-1:0] = brsp_resperr_d2_q[2-1:0];
+    assign awctrl_brsp_buser_d2_o[`AXI4_BUSER_WIDTH-1:0] = brsp_buser_d2_q[`AXI4_BUSER_WIDTH-1:0];
     assign bresp_credit_avail_w = !bresp_credit_full_w;
 
     poll_with_start_entry
@@ -1754,8 +1810,24 @@ module rni_awctrl `RNI_PARAM
 
     always_comb begin
         brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = '0;
-        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
+        brsp_buser_d2_ns_r[`AXI4_BUSER_WIDTH-1:0] = '0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] = brsp_axid_d2_ns_r[`AXI4_BID_WIDTH-1:0] | ({`AXI4_BID_WIDTH{bresp_select_vec_w[i]}} & awctrl_entry_info_q[i].id);
+            // The hit is folded in combinationally as well: the response may be
+            // selected in the same cycle the TagMatch clears its hold, and the
+            // registered record does not exist yet then.
+            brsp_buser_d2_ns_r[0] = brsp_buser_d2_ns_r[0] | (bresp_select_vec_w[i] & awctrl_tagmatch_req_w[i] &
+                                    (awctrl_tagmatch_recv_q[i] | rxrsp_tagmatch_hit_w[i]));
+            brsp_buser_d2_ns_r[1] = brsp_buser_d2_ns_r[1] | (bresp_select_vec_w[i] & awctrl_tagmatch_req_w[i] &
+                                    (rxrsp_tagmatch_hit_w[i] ? rxrsp_tagmatch_pass_w : awctrl_tagmatch_pass_q[i]));
+        end
+    end
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            brsp_buser_d2_q[`AXI4_BUSER_WIDTH-1:0] <= '0;
+        else
+            brsp_buser_d2_q[`AXI4_BUSER_WIDTH-1:0] <= brsp_buser_d2_ns_r[`AXI4_BUSER_WIDTH-1:0];
     end
 
     always_comb begin
