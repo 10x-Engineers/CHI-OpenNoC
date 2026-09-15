@@ -76,6 +76,8 @@ module rni_awctrl `RNI_PARAM
     // txdatflit request
     input  wire                                wb_not_busy_d1_i,
     input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_i,
+    // Sec 12.13 (p.12-390, MUST): the write data carries its request's TagOp.
+    output wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_o[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output wire                                awctrl_txdat_rdy_v_d2_o,
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_txdat_rdy_entry_d2_o,
     output logic [3:0]                         awctrl_txdat_qos_d2_o,
@@ -937,12 +939,48 @@ module rni_awctrl `RNI_PARAM
     // see rni_arctrl.v for the derivation. Table 2-13 (p.2-132) admits
     // WriteUnique* only on the Snoopable row, so a Device or Non-cacheable write
     // is a WriteNoSnp (CHI-OpenNoC#20).
+    logic [`AXI4_TAGOP_WIDTH-1:0]      aw_axtagop_r;
+    logic [`AXI4_TAGGROUPID_WIDTH-1:0] aw_axtggid_r;
+    wire  [`AXI4_TAGOP_WIDTH-1:0]      aw_tagop_w;
+    wire                               aw_tagop_match_w;
+
     always_comb begin: aw_axcache_sel_t
         aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
             aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] = aw_axcache_r[`AXI4_AWCACHE_WIDTH-1:0] |
                 ({`AXI4_AWCACHE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].cache);
     end
+
+    // Table 12-2 (Sec 12.12 p.12-388) gives every write this bridge elects the
+    // Invalid, Update and Match columns; Transfer belongs to WriteNoSnpFull alone,
+    // which is not known until the data has arrived, so an AWUSER Transfer is
+    // presented as Invalid. Table 13-32 (Sec 13.10.37 p.13-435) encodes Update 0b10
+    // and Match 0b11.
+    always_comb begin: aw_axtagop_sel_t
+        aw_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] = '0;
+        aw_axtggid_r[`AXI4_TAGGROUPID_WIDTH-1:0] = '0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
+            aw_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] = aw_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] |
+                ({`AXI4_TAGOP_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user[`AXI4_USER_TAGOP_RANGE]);
+            aw_axtggid_r[`AXI4_TAGGROUPID_WIDTH-1:0] = aw_axtggid_r[`AXI4_TAGGROUPID_WIDTH-1:0] |
+                ({`AXI4_TAGGROUPID_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user[`AXI4_USER_TGGID_RANGE]);
+        end
+    end
+
+    assign aw_tagop_w = aw_axtagop_r[1] ? aw_axtagop_r : 2'b00;
+
+    // The same narrowing per entry, so the write data can be built from AWUSER that
+    // was latched at the AW handshake rather than from whichever entry is selected.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:aw_entry_tagop
+            assign awctrl_entry_tagop_o[entry] =
+                awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_LSB+1] ?
+                awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_RANGE] : 2'b00;
+        end
+    endgenerate
+    // Sec 13.10.40 (p.13-435): "TagGroupID is applicable in requests where TagOp is
+    // set to Match", and there "the same bits in the packet are used for LPID".
+    assign aw_tagop_match_w = (aw_tagop_w == 2'b11);
 
     assign aw_device_w    = ~aw_axcache_r[1];
     assign aw_cacheable_w = aw_axcache_r[1] & (|aw_axcache_r[3:2]);
@@ -990,6 +1028,7 @@ module rni_awctrl `RNI_PARAM
             ? (aw_full_write_r ? chie_pkg::REQ_WRITEUNIQUEFULL : chie_pkg::REQ_WRITEUNIQUEPTL)
             : (aw_full_write_r ? chie_pkg::REQ_WRITENOSNPFULL  : chie_pkg::REQ_WRITENOSNPPTL);
         aw_txreqflit_info_r.allowretry = ~awctrl_entry_req_select_retry_flag_q;
+        aw_txreqflit_info_r.tagop = aw_tagop_w[`AXI4_TAGOP_WIDTH-1:0];
         // Table 2-11's Device rows carry Order=EndpointOrder; on a Normal row
         // this Requester keeps its Ordered-Write-Observation stream, which
         // Table 2-11 footnote (a) permits for both WriteUnique and WriteNoSnp.
@@ -1010,7 +1049,8 @@ module rni_awctrl `RNI_PARAM
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.lpid = aw_txreqflit_info_r.lpid |
-                ({8{awctrl_entry_req_ptr_q[i] & ~aw_cacheable_w}} & awctrl_entry_info_q[i].id[7:0]);
+                ({8{awctrl_entry_req_ptr_q[i] & ~aw_cacheable_w & ~aw_tagop_match_w}} & awctrl_entry_info_q[i].id[7:0]) |
+                ({8{awctrl_entry_req_ptr_q[i] & aw_tagop_match_w}} & aw_axtggid_r[`AXI4_TAGGROUPID_WIDTH-1:0]);
             aw_txreqflit_info_r.size = chie_pkg::size_e'(aw_txreqflit_info_r.size | ({`AXI4_AWSIZE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_size_q[i][`AXI4_AWSIZE_WIDTH-1:0]));
             aw_txreqflit_info_r.addr = aw_txreqflit_info_r.addr | ({`AXI4_AWADDR_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_addr_q[i][`AXI4_AWADDR_WIDTH-1:0]);
             aw_txreqflit_info_r.pcrdtype = ~awctrl_entry_req_select_retry_flag_q ? '0 :

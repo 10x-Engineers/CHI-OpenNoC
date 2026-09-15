@@ -77,6 +77,7 @@ module rni_wr_buffer `RNI_PARAM
     // meaningful once that entry's last beat has landed (awctrl's
     // wdata_recv_done_q), which is where it is read.
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_o,
+    input  wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_i[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output chie_pkg::dat_flit_s                wb_txdatflit_d3_o,
     output wire                                wb_txdatflitv_d3_o,
     input  wire                                wb_txdatflit_sent_d3_i
@@ -130,6 +131,10 @@ module rni_wr_buffer `RNI_PARAM
     wire [chie_pkg::DATA_WIDTH-1:0]                                 txdatflit_data_d3_w;
     wire [chie_pkg::POISON_WIDTH-1:0]                               txdat_poison_d3_w;
     wire [chie_pkg::POISON_WIDTH-1:0]                               txdatflit_poison_d3_w;
+    wire [chie_pkg::TAG_WIDTH-1:0]                                  txdat_tag_d3_w;
+    wire [chie_pkg::TU_WIDTH-1:0]                                   txdat_tu_d3_w;
+    wire [chie_pkg::TAG_WIDTH-1:0]                                  txdatflit_tag_d3_w;
+    wire [chie_pkg::TU_WIDTH-1:0]                                   txdatflit_tu_d3_w;
     chie_pkg::dat_opcode_e                                          txdatflit_opcode_d3_w;
     wire                                                            txdat_busy_d2_w;
     wire                                                            wb_busy_d1_w;
@@ -140,15 +145,25 @@ module rni_wr_buffer `RNI_PARAM
     // beside the bytes it tags and cleared with the entry.
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH-1:0]         w_poison_d2_q[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH-1:0]         w_poison_nxt_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH-1:0]            w_tag_d2_q[0:RNI_AW_ENTRIES_NUM_PARAM-1];
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH-1:0]            w_tag_nxt_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH-1:0]             w_tu_d2_q[0:RNI_AW_ENTRIES_NUM_PARAM-1];
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH-1:0]             w_tu_nxt_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     logic [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0] w_data_d2_q[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     logic [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0] txdat_data_d2_r;
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]          txdat_be_d2_r;
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH-1:0]         txdat_poison_d2_r;
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH-1:0]            txdat_tag_d2_r;
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH-1:0]             txdat_tu_d2_r;
+    logic [`AXI4_TAGOP_WIDTH-1:0]                                   txdat_tagop_d2_r;
     logic [11:0]                                                    txdat_rdy_idx_d2_r;
     logic [11:0]                                                    txdat_rdy_idx_d3_q;
     logic [`WR_BUFFER_DATA_BANK_NUM*`WR_BUFFER_DATA_BANK_WIDTH-1:0] txdat_data_d3_q;
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]          txdat_be_d3_q;
     logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH-1:0]         txdat_poison_d3_q;
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH-1:0]            txdat_tag_d3_q;
+    logic [`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH-1:0]             txdat_tu_d3_q;
+    logic [`AXI4_TAGOP_WIDTH-1:0]                                   txdat_tagop_d3_q;
     logic [3:0]                                                     txdat_qos_d3_q;
     logic                                                           txdat_compack_d3_q;
     logic [11:0]                                                    txdat_dbid_d3_q;
@@ -283,6 +298,20 @@ module rni_wr_buffer `RNI_PARAM
                          | w_poison_d2_q[entry][bank*`AXI4_POISON_WIDTH + byt]) & ~awctrl_dealloc_entry_i[entry];
                 end
 
+                // Sec 13.10.38 (p.13-435): four Tag bits per 128 bits of data, so a tag
+                // granule is 16 bytes and its strobe window is the same 16.
+                for(byt = 0; byt < `AXI4_TAG_WIDTH; byt = byt + 1)begin:tag_chunk
+                    assign w_tag_nxt_d1_w[entry][bank*`AXI4_TAG_WIDTH + byt] =
+                        ((|wr_wstrb_d1_w[entry][bank*`AXI4_WSTRB_WIDTH + (byt/4)*16 +: 16] & w_user_d1_w[`AXI4_USER_TAG_LSB + byt])
+                         | w_tag_d2_q[entry][bank*`AXI4_TAG_WIDTH + byt]) & ~awctrl_dealloc_entry_i[entry];
+                end
+
+                for(byt = 0; byt < `AXI4_TU_WIDTH; byt = byt + 1)begin:tu_chunk
+                    assign w_tu_nxt_d1_w[entry][bank*`AXI4_TU_WIDTH + byt] =
+                        ((|wr_wstrb_d1_w[entry][bank*`AXI4_WSTRB_WIDTH + byt*16 +: 16] & w_user_d1_w[`AXI4_USER_TU_LSB + byt])
+                         | w_tu_d2_q[entry][bank*`AXI4_TU_WIDTH + byt]) & ~awctrl_dealloc_entry_i[entry];
+                end
+
                 // write wstrb per entry per bank
                 // set when each write bank valid in each valid write entry
                 // clr when write entry deallocate
@@ -322,6 +351,26 @@ module rni_wr_buffer `RNI_PARAM
                         end
                     end
                 end
+
+                for(byt = 0; byt < `AXI4_TAG_WIDTH; byt = byt + 1)begin:tag_bank
+                    always_ff @(posedge clk_i or posedge rst_i) begin
+                        if(rst_i == 1'b1)
+                            w_tag_d2_q[entry][bank*`AXI4_TAG_WIDTH + byt] <= 1'b0;
+                        else if(w_strb_entry_bank_upd_d1_w[entry][bank] == 1'b1)begin
+                            w_tag_d2_q[entry][bank*`AXI4_TAG_WIDTH + byt] <= w_tag_nxt_d1_w[entry][bank*`AXI4_TAG_WIDTH + byt];
+                        end
+                    end
+                end
+
+                for(byt = 0; byt < `AXI4_TU_WIDTH; byt = byt + 1)begin:tu_bank
+                    always_ff @(posedge clk_i or posedge rst_i) begin
+                        if(rst_i == 1'b1)
+                            w_tu_d2_q[entry][bank*`AXI4_TU_WIDTH + byt] <= 1'b0;
+                        else if(w_strb_entry_bank_upd_d1_w[entry][bank] == 1'b1)begin
+                            w_tu_d2_q[entry][bank*`AXI4_TU_WIDTH + byt] <= w_tu_nxt_d1_w[entry][bank*`AXI4_TU_WIDTH + byt];
+                        end
+                    end
+                end
             end
         end
     endgenerate
@@ -349,8 +398,15 @@ module rni_wr_buffer `RNI_PARAM
     // get 64 bits BE from write wstrb bank
     always_comb begin
         txdat_poison_d2_r = {(`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH){1'b0}};
-        for (int i = 0; i < RNI_AW_ENTRIES_NUM_PARAM; i = i + 1)
+        txdat_tag_d2_r    = {(`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH){1'b0}};
+        txdat_tu_d2_r     = {(`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH){1'b0}};
+        txdat_tagop_d2_r  = {`AXI4_TAGOP_WIDTH{1'b0}};
+        for (int i = 0; i < RNI_AW_ENTRIES_NUM_PARAM; i = i + 1)begin
             txdat_poison_d2_r = txdat_poison_d2_r | ({(`WR_BUFFER_DATA_BANK_NUM*`AXI4_POISON_WIDTH){txdat_rdy_entry_d2_q_i[i]}} & w_poison_d2_q[i]);
+            txdat_tag_d2_r    = txdat_tag_d2_r    | ({(`WR_BUFFER_DATA_BANK_NUM*`AXI4_TAG_WIDTH){txdat_rdy_entry_d2_q_i[i]}} & w_tag_d2_q[i]);
+            txdat_tu_d2_r     = txdat_tu_d2_r     | ({(`WR_BUFFER_DATA_BANK_NUM*`AXI4_TU_WIDTH){txdat_rdy_entry_d2_q_i[i]}} & w_tu_d2_q[i]);
+            txdat_tagop_d2_r  = txdat_tagop_d2_r  | ({`AXI4_TAGOP_WIDTH{txdat_rdy_entry_d2_q_i[i]}} & awctrl_entry_tagop_i[i]);
+        end
     end
 
     always_comb begin
@@ -398,6 +454,9 @@ module rni_wr_buffer `RNI_PARAM
             txdat_data_d3_q     <= 0;
             txdat_be_d3_q       <= 0;
             txdat_poison_d3_q   <= 0;
+            txdat_tag_d3_q      <= 0;
+            txdat_tu_d3_q       <= 0;
+            txdat_tagop_d3_q    <= 0;
             txdat_rdy_idx_d3_q  <= 0;
             txdat_qos_d3_q      <= 0;
             txdat_compack_d3_q  <= 0;
@@ -411,6 +470,9 @@ module rni_wr_buffer `RNI_PARAM
             txdat_data_d3_q     <= txdat_data_d2_r;
             txdat_be_d3_q       <= txdat_be_d2_r;
             txdat_poison_d3_q   <= txdat_poison_d2_r;
+            txdat_tag_d3_q      <= txdat_tag_d2_r;
+            txdat_tu_d3_q       <= txdat_tu_d2_r;
+            txdat_tagop_d3_q    <= txdat_tagop_d2_r;
             txdat_rdy_idx_d3_q  <= txdat_rdy_idx_d2_r;
             txdat_qos_d3_q      <= txdat_qos_d2_i;
             txdat_compack_d3_q  <= txdat_compack_d2_i;
@@ -433,6 +495,12 @@ module rni_wr_buffer `RNI_PARAM
 
     assign txdat_poison_d3_w = {chie_pkg::POISON_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_poison_d3_q[chie_pkg::POISON_WIDTH-1:0] |
            {chie_pkg::POISON_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_poison_d3_q[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
+
+    assign txdat_tag_d3_w = {chie_pkg::TAG_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_tag_d3_q[chie_pkg::TAG_WIDTH-1:0] |
+           {chie_pkg::TAG_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_tag_d3_q[(chie_pkg::TAG_WIDTH*2)-1:chie_pkg::TAG_WIDTH];
+
+    assign txdat_tu_d3_w = {chie_pkg::TU_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_tu_d3_q[chie_pkg::TU_WIDTH-1:0] |
+           {chie_pkg::TU_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_tu_d3_q[(chie_pkg::TU_WIDTH*2)-1:chie_pkg::TU_WIDTH];
 
     ////////////////////////////////////////////////////////
     // pack txdatflit and Dispatch
@@ -483,6 +551,10 @@ module rni_wr_buffer `RNI_PARAM
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         wb_txdatflit_d3_o.datacheck = chie_pkg::datacheck_of(txdatflit_data_d3_w);
         wb_txdatflit_d3_o.poison    = txdatflit_poison_d3_w;
+        // Sec 12.13 (p.12-390, MUST): the write data carries its request's TagOp.
+        wb_txdatflit_d3_o.tagop     = txdat_tagop_d3_q;
+        wb_txdatflit_d3_o.tag       = txdatflit_tag_d3_w;
+        wb_txdatflit_d3_o.tu        = txdatflit_tu_d3_w;
         // SS11.5.1 (p.11-368, MUST): the TraceTag of the Comp or DBIDResp that caused
         // this write data is reflected back on it.
         wb_txdatflit_d3_o.tracetag  = txdat_tracetag_d3_q;
@@ -490,6 +562,14 @@ module rni_wr_buffer `RNI_PARAM
 
     // txdatflit valid
     assign wb_txdatflitv_d3_o = txdat_rdy_v_d3_q;
+
+    // CHI E.b Sec 12.5.2 (p.12-379, MUST) fixes the Tag/TU shape of each TagOp on a
+    // Write: Invalid zeroes both; Match makes TU "not applicable and must be set to
+    // zero"; Update on a *Ptl write admits "any combination of TU and BE bits", which
+    // is what the manager's WUSER named. Transfer is not an opcode this bridge elects
+    // (Table 12-2 p.12-388), so it is never presented and needs no row here.
+    assign txdatflit_tag_d3_w = {chie_pkg::TAG_WIDTH{|txdat_tagop_d3_q}} & txdat_tag_d3_w;
+    assign txdatflit_tu_d3_w  = {chie_pkg::TU_WIDTH{txdat_tagop_d3_q == 2'b10}} & txdat_tu_d3_w;
 
     ////////////////////////////////////////////////////////
     // B Response Dispatch
