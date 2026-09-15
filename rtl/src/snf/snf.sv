@@ -144,6 +144,7 @@ module snf `SNF_PARAM
      chie_pkg::resp_err_e            mshr_txdat_resperr_sx;
      logic [11:0]                    mshr_txdat_dbid_sx;
      logic [1:0]                     mshr_txdat_dataid_sx;
+     wire                            mshr_txdat_tag_return_sx;
      logic                           mshr_txdat_tracetag_sx;
      logic [chie_pkg::NID_WIDTH-1:0] mshr_txdat_srcid_sx;
      logic [chie_pkg::NID_WIDTH-1:0] mshr_txdat_homenid_sx;
@@ -410,6 +411,7 @@ module snf `SNF_PARAM
             .mshr_txdat_resperr_sx(mshr_txdat_resperr_sx),
             .mshr_txdat_dbid_sx(mshr_txdat_dbid_sx),
             .mshr_txdat_dataid_sx(mshr_txdat_dataid_sx),
+            .mshr_txdat_tag_return_sx(mshr_txdat_tag_return_sx),
             .mshr_txdat_tracetag_sx(mshr_txdat_tracetag_sx),
             .mshr_txdat_srcid_sx(mshr_txdat_srcid_sx),
             .mshr_txdat_homenid_sx(mshr_txdat_homenid_sx),
@@ -481,6 +483,7 @@ module snf `SNF_PARAM
             .mshr_txdat_resperr_sx(mshr_txdat_resperr_sx),
             .mshr_txdat_dbid_sx(mshr_txdat_dbid_sx),
             .mshr_txdat_dataid_sx(mshr_txdat_dataid_sx),
+            .mshr_txdat_tag_return_sx(mshr_txdat_tag_return_sx),
             .mshr_txdat_tgtid_sx(mshr_txdat_tgtid_sx),
             .mshr_txdat_srcid_sx(mshr_txdat_srcid_sx),
             .mshr_txdat_homenid_sx(mshr_txdat_homenid_sx),
