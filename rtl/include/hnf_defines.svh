@@ -167,7 +167,11 @@
 `define QOS_HIGH_POOL_NUM                  ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 6 : 12)
 `define QOS_MED_POOL_NUM                   ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 8 : 16)
 `define QOS_LOW_POOL_NUM                   ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 15 : 31)
-`define RET_BANK_CNT_WIDTH                 10
+// CHI E.b section 2.11 (p.2-146): a Requester limits itself "so that the Completer is
+// never required to track more than 1024 transactions that require a PCrdGrant
+// response". The legal maximum is AT 1024, which a 10-bit counter cannot hold -- the
+// 1024th RetryAck wrapped it to zero and the Home then owed that Requester nothing.
+`define RET_BANK_CNT_WIDTH                 11
 `define RET_BANK_ENTRIES_NUM               `RN_NUM
 `define RET_BANK_ENTRIES_WIDTH             ((`RET_BANK_ENTRIES_NUM == 1)? 1 : $clog2(`RET_BANK_ENTRIES_NUM))
 `define MAX_WAIT_CNT_WIDTH                 4
@@ -186,6 +190,10 @@
 `define TXDAT_BUFFER_RANGE                  1
 
 `define RETRY_ACKQ_DATA_DEPTH              15
-`define PCRDGRANTQ_DATA_DEPTH              `MSHR_ENTRIES_NUM-1
+// One queued PCrdGrant per static reservation, and a reservation is made only when an
+// MSHR entry retires into one -- so the queue can hold every grant the MSHR can owe at
+// once and the push below can never be refused. At MSHR_ENTRIES_NUM-1 the last one was
+// dropped with its retry-bank debt already paid.
+`define PCRDGRANTQ_DATA_DEPTH              `MSHR_ENTRIES_NUM
 
 `endif
