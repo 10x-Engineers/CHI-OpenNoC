@@ -52,6 +52,10 @@ module chi_ring_channel #(
 
     output wire                      TXFLITV_E,
     output wire                      TXFLITV_W,
+    // SS14.4 (p.14-447, MUST): asserted exactly one cycle before the flit. See
+    // chi_xp_channel for the derivation.
+    output wire                      TXFLITPEND_P0,
+    output wire                      TXFLITPEND_P1,
     output wire                      TXFLITV_P0,
     output wire                      TXFLITV_P1,
 
@@ -619,6 +623,8 @@ module chi_ring_channel #(
 
     assign TXFLITV_E                             = txflitv_q[XP_INTF_E];
     assign TXFLITV_W                             = txflitv_q[XP_INTF_W];
+    assign TXFLITPEND_P0                         = txflitv_d1[XP_INTF_P0];
+    assign TXFLITPEND_P1                         = txflitv_d1[XP_INTF_P1];
     assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0];
     assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1];
 

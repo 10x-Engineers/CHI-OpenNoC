@@ -59,6 +59,8 @@ module chi_xp_node #(
     output TXREQFLITV_W,
     output TXREQFLITV_N,
     output TXREQFLITV_S,
+    output TXREQFLITPEND_P0,
+    output TXREQFLITPEND_P1,
     output TXREQFLITV_P0,
     output TXREQFLITV_P1,
 
@@ -102,6 +104,8 @@ module chi_xp_node #(
     output TXRSPFLITV_W,
     output TXRSPFLITV_N,
     output TXRSPFLITV_S,
+    output TXRSPFLITPEND_P0,
+    output TXRSPFLITPEND_P1,
     output TXRSPFLITV_P0,
     output TXRSPFLITV_P1,
 
@@ -145,6 +149,8 @@ module chi_xp_node #(
     output TXDATFLITV_W,
     output TXDATFLITV_N,
     output TXDATFLITV_S,
+    output TXDATFLITPEND_P0,
+    output TXDATFLITPEND_P1,
     output TXDATFLITV_P0,
     output TXDATFLITV_P1,
 
@@ -187,6 +193,8 @@ module chi_xp_node #(
     output TXSNPFLITV_W,
     output TXSNPFLITV_N,
     output TXSNPFLITV_S,
+    output TXSNPFLITPEND_P0,
+    output TXSNPFLITPEND_P1,
     output TXSNPFLITV_P0,
     output TXSNPFLITV_P1,
 
@@ -273,6 +281,8 @@ module chi_xp_node #(
       .TXFLITV_W (TXREQFLITV_W),
       .TXFLITV_N (TXREQFLITV_N),
       .TXFLITV_S (TXREQFLITV_S),
+      .TXFLITPEND_P0(TXREQFLITPEND_P0),
+      .TXFLITPEND_P1(TXREQFLITPEND_P1),
       .TXFLITV_P0(TXREQFLITV_P0),
       .TXFLITV_P1(TXREQFLITV_P1),
 
@@ -332,6 +342,8 @@ module chi_xp_node #(
       .TXFLITV_W (TXRSPFLITV_W),
       .TXFLITV_N (TXRSPFLITV_N),
       .TXFLITV_S (TXRSPFLITV_S),
+      .TXFLITPEND_P0(TXRSPFLITPEND_P0),
+      .TXFLITPEND_P1(TXRSPFLITPEND_P1),
       .TXFLITV_P0(TXRSPFLITV_P0),
       .TXFLITV_P1(TXRSPFLITV_P1),
 
@@ -391,6 +403,8 @@ module chi_xp_node #(
       .TXFLITV_W (TXDATFLITV_W),
       .TXFLITV_N (TXDATFLITV_N),
       .TXFLITV_S (TXDATFLITV_S),
+      .TXFLITPEND_P0(TXDATFLITPEND_P0),
+      .TXFLITPEND_P1(TXDATFLITPEND_P1),
       .TXFLITV_P0(TXDATFLITV_P0),
       .TXFLITV_P1(TXDATFLITV_P1),
 
@@ -451,6 +465,8 @@ module chi_xp_node #(
       .TXFLITV_W (TXSNPFLITV_W),
       .TXFLITV_N (TXSNPFLITV_N),
       .TXFLITV_S (TXSNPFLITV_S),
+      .TXFLITPEND_P0(TXSNPFLITPEND_P0),
+      .TXFLITPEND_P1(TXSNPFLITPEND_P1),
       .TXFLITV_P0(TXSNPFLITV_P0),
       .TXFLITV_P1(TXSNPFLITV_P1),
 
