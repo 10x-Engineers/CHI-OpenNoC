@@ -74,6 +74,8 @@ module rni_arctrl
     wire                                 ar_device_w;
     wire                                 ar_cacheable_w;
     logic [`AXI4_ARSIZE_WIDTH-1:0]       ar_size_r;
+    logic [`AXI4_TAGOP_WIDTH-1:0]        ar_axtagop_r;
+    wire  [`AXI4_TAGOP_WIDTH-1:0]        ar_tagop_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_alloc_ptr_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdy_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_v_ns_w;
@@ -697,6 +699,21 @@ module rni_arctrl
         end
     end
 
+    // Table 12-2 (Sec 12.12 p.12-388) gives ReadOnce {Invalid, Transfer} and
+    // ReadNoSnp {Invalid, Transfer, Fetch}, and Table 13-32 (Sec 13.10.37 p.13-435)
+    // encodes Transfer 0b01 and Fetch 0b11 -- Update is no read's row. An ARUSER
+    // TagOp the elected opcode does not admit is presented as Invalid, which the
+    // table permits everywhere.
+    always_comb begin: ar_axtagop_sel_t
+        ar_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] = '0;
+        for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
+            ar_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] = ar_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] |
+                ({`AXI4_TAGOP_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].user[`AXI4_USER_TAGOP_RANGE]);
+    end
+
+    assign ar_tagop_w = (ar_axtagop_r == 2'b01)                    ? 2'b01 :
+                        ((ar_axtagop_r == 2'b11) & ~ar_cacheable_w) ? 2'b11 : 2'b00;
+
     // The same Device decode, held per entry rather than for the one currently
     // selected: Table 2-11 (Sec 2.9.4 p.2-129) gives every Device row
     // Order=EndpointOrder, so this is "this entry's request is ordered".
@@ -712,6 +729,7 @@ module rni_arctrl
         ar_txreqflit_info_r.srcid = RNI_NID_PARAM;
         ar_txreqflit_info_r.txnid = ar_txreq_txnid_r[11:0];
         ar_txreqflit_info_r.opcode = ar_cacheable_w ? chie_pkg::REQ_READONCE : chie_pkg::REQ_READNOSNP;
+        ar_txreqflit_info_r.tagop = ar_tagop_w[`AXI4_TAGOP_WIDTH-1:0];
         ar_txreqflit_info_r.allowretry = ~arctrl_entry_req_select_retry_flag_q;
         // Table 2-11's Device rows carry Order=EndpointOrder; every Normal row
         // carries Order[0]=0, and this Requester elects no ordering of its own.
