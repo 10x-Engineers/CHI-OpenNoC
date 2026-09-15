@@ -181,7 +181,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic                               mshr_dbf_atm_end_s0,
     output logic                               mshr_dbf_rd_atm_sx1,
     output logic [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
-    output logic [1:0]                         mshr_dbf_rd_pe_sx1,
+    output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
@@ -4156,22 +4156,7 @@ module hnf_mshr_ctl `HNF_PARAM
                               mshr_atomicrd_s1_q[mshr_dbf_rd_idx_sx1_q];
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
             mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
-    end
-
-    // Sec 2.10.4 (p.2-136, MUST): "The number of packets required is determined by:
-    // Number of bytes, Data bus width", and DataID "represents Addr[5:4] of the lowest
-    // addressed byte within the packet" -- so at 256 bits an upstream transfer below a
-    // whole line is entitled to the single packet holding its address, whatever extent
-    // the buffer happens to hold. Applied as a mask, so the SN-bound read keeps the
-    // buffer's own extent: that request's Size is resized independently of
-    // mshr_size_s1_q (mshr_txreq_size_sx1).
-    always_comb begin : mshr_dbf_rd_pe_shape
-        if (!mshr_dbf_rd_to_rn_sx1_q ||
-            mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::SIZE_64B)
-            mshr_dbf_rd_pe_sx1 = 2'b11;
-        else
-            mshr_dbf_rd_pe_sx1 = mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1]
-                                 ? 2'b10 : 2'b01;
+        mshr_dbf_rd_atm_pe_sx1 = mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01;
     end
 
     // The record hnf_data_buffer executes the operation from, written with the entry.
