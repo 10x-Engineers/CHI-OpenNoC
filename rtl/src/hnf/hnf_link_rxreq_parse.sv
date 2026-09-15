@@ -66,6 +66,7 @@ module hnf_link_rxreq_parse `HNF_PARAM
     output wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
     output chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
     output wire [7:0]                          li_mshr_rxreq_lpid_s0,
+    output wire [1:0]                          li_mshr_rxreq_tagop_s0,
     output wire                                li_mshr_rxreq_excl_s0,
     output wire                                li_mshr_rxreq_endian_s0,
     output wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_stashnid_s0,
@@ -133,6 +134,7 @@ module hnf_link_rxreq_parse `HNF_PARAM
     assign li_mshr_rxreq_pcrdtype_s0   = rxreq_flit_valid_s0? rxreqflit.pcrdtype  :'0;
     assign li_mshr_rxreq_memattr_s0    = rxreq_flit_valid_s0? rxreqflit.memattr   :'0;
     assign li_mshr_rxreq_lpid_s0       = rxreq_flit_valid_s0? rxreqflit.lpid      :'0;
+    assign li_mshr_rxreq_tagop_s0      = rxreq_flit_valid_s0? rxreqflit.tagop     :'0;
     assign li_mshr_rxreq_excl_s0       = rxreq_flit_valid_s0? rxreqflit.excl      :'0;
     // Table 13-6 (p.13-410) overlays Endian on the StashNIDValid bit; SS2.10.5
     // (p.2-138) makes it the operand format an Atomic's arithmetic reads.

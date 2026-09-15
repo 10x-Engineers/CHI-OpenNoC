@@ -209,6 +209,7 @@ module hnf `HNF_PARAM
     wire [3:0]                               li_mshr_rxreq_pcrdtype_s0;
     chie_pkg::memattr_s                      li_mshr_rxreq_memattr_s0;
     wire [7:0]                               li_mshr_rxreq_lpid_s0;
+    wire [1:0]                               li_mshr_rxreq_tagop_s0;
     wire                                     li_mshr_rxreq_excl_s0;
     wire                                     li_mshr_rxreq_endian_s0;
     wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxreq_stashnid_s0;
@@ -552,6 +553,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_pcrdtype_s0                    (li_mshr_rxreq_pcrdtype_s0         ),
                  .li_mshr_rxreq_memattr_s0                     (li_mshr_rxreq_memattr_s0          ),
                  .li_mshr_rxreq_lpid_s0                        (li_mshr_rxreq_lpid_s0             ),
+                 .li_mshr_rxreq_tagop_s0                       (li_mshr_rxreq_tagop_s0            ),
                  .li_mshr_rxreq_excl_s0                        (li_mshr_rxreq_excl_s0             ),
                  .li_mshr_rxreq_endian_s0                      (li_mshr_rxreq_endian_s0           ),
                  .li_mshr_rxreq_stashnid_s0                    (li_mshr_rxreq_stashnid_s0         ),
@@ -635,6 +637,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxreq_pcrdtype_s0                    (li_mshr_rxreq_pcrdtype_s0         ),
                  .li_mshr_rxreq_memattr_s0                     (li_mshr_rxreq_memattr_s0          ),
                  .li_mshr_rxreq_lpid_s0                        (li_mshr_rxreq_lpid_s0             ),
+                 .li_mshr_rxreq_tagop_s0                       (li_mshr_rxreq_tagop_s0            ),
                  .li_mshr_rxreq_excl_s0                        (li_mshr_rxreq_excl_s0             ),
                  .li_mshr_rxreq_endian_s0                      (li_mshr_rxreq_endian_s0           ),
                  .li_mshr_rxreq_stashnid_s0                    (li_mshr_rxreq_stashnid_s0         ),
