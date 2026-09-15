@@ -193,6 +193,7 @@ module rni `RNI_PARAM
     wire                                awctrl_brsp_last_v_d2;
     wire [`AXI4_BID_WIDTH-1:0]          awctrl_brsp_axid_d2;
     chie_pkg::resp_err_e                awctrl_brsp_resperr_d2;
+    wire [`AXI4_BUSER_WIDTH-1:0]        awctrl_brsp_buser_d2;
     chie_pkg::dat_flit_s                wb_txdatflit_d3;
     wire                                wb_txdatflitv_d3;
     wire                                wb_txdatflit_sent_d3;
@@ -382,6 +383,7 @@ module rni `RNI_PARAM
                    ,.awctrl_txdat_not_busy_d2_i            ( awctrl_txdat_not_busy_d2      )
                    ,.awctrl_brsp_fifo_pop_d3_i             ( awctrl_brsp_fifo_pop_d3       )
                    ,.awctrl_brsp_rdy_v_d2_o                ( awctrl_brsp_rdy_v_d2          )
+                   ,.awctrl_brsp_buser_d2_o                ( awctrl_brsp_buser_d2          )
                    ,.awctrl_brsp_last_v_d2_o               ( awctrl_brsp_last_v_d2         )
                    ,.awctrl_brsp_axid_d2_o                 ( awctrl_brsp_axid_d2           )
                    ,.awctrl_brsp_resperr_d2_o              ( awctrl_brsp_resperr_d2        )
@@ -419,6 +421,7 @@ module rni `RNI_PARAM
                       ,.brsp_last_v_d2_q_i                    ( awctrl_brsp_last_v_d2         )
                       ,.brsp_axid_d2_i                        ( awctrl_brsp_axid_d2           )
                       ,.brsp_resperr_d2_i                     ( awctrl_brsp_resperr_d2        )
+                      ,.brsp_buser_d2_i                       ( awctrl_brsp_buser_d2          )
                       ,.W_CH_S0                               ( W_CH_S0                       )
                       ,.WVALID0                               ( WVALID0                       )
                       ,.WREADY0                               ( WREADY0                       )

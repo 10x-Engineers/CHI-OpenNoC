@@ -112,9 +112,10 @@ package opennoc_rni_pkg;
 
   // One AXI write response held between the CHI completion and the B channel.
   typedef struct packed {
-    logic [`AXI4_BID_WIDTH-1:0] axid;
-    chie_pkg::resp_err_e        resperr;
-    logic                       last;
+    logic [`AXI4_BID_WIDTH-1:0]  axid;
+    chie_pkg::resp_err_e         resperr;
+    logic [`AXI4_BUSER_WIDTH-1:0] buser;
+    logic                        last;
   } brsp_fifo_s;
 
 endpackage

@@ -61,6 +61,7 @@ module rni_wr_buffer `RNI_PARAM
     input  wire                                brsp_last_v_d2_q_i,
     input  wire [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_i,
     input  chie_pkg::resp_err_e                brsp_resperr_d2_i,
+    input  wire [`AXI4_BUSER_WIDTH-1:0]        brsp_buser_d2_i,
 
     // W Channel Interface
     input  opennoc_rni_pkg::w_ch_s             W_CH_S0,
@@ -577,7 +578,7 @@ module rni_wr_buffer `RNI_PARAM
 
     // Push into FIFO only when received last data beat
     assign brsp_fifo_push_d2_w = brsp_rdy_v_d2_i;
-    assign brsp_fifo_in_d2_w   = {brsp_axid_d2_i,brsp_resperr_d2_i,brsp_last_v_d2_q_i};
+    assign brsp_fifo_in_d2_w   = {brsp_axid_d2_i,brsp_resperr_d2_i,brsp_buser_d2_i,brsp_last_v_d2_q_i};
 
     sync_fifo #(
                   .FIFO_ENTRIES_WIDTH ( $bits(opennoc_rni_pkg::brsp_fifo_s) ),
@@ -617,7 +618,8 @@ module rni_wr_buffer `RNI_PARAM
 
     assign B_CH_S0.id   = brsp_fifo_out_d3_w.last? brsp_fifo_out_d3_w.axid : 0;
     assign B_CH_S0.resp = brsp_fifo_out_d3_w.last? (brsp_fifo_out_d3_w.resperr | brsp_seg_resperr_q[2-1:0]) : 0;
-    assign B_CH_S0.user = '0;
+    // Sec 12.1 (p.12-372): the Tag Match verdict, on the last beat's response.
+    assign B_CH_S0.user = brsp_fifo_out_d3_w.last ? brsp_fifo_out_d3_w.buser : '0;
 
     assign BVALID0 = ~brsp_fifo_empty_w & brsp_fifo_out_d3_w.last;
 

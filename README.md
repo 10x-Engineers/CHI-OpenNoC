@@ -408,7 +408,7 @@ permitted not to send and does not, 🔴 one whose absence is a gap.
 | Atomics | ⚪ | ⚪ | — | 🟢 | `opennoc_hnf_pkg.sv`'s `hnf_atomic_alu()` / `hnf_atomic_compare_eq()`, the read-modify-write in `hnf_data_buffer.sv`. At the SN-F and HN-I section 16.1 leaves `Atomic_Transactions` False when undeclared and section 16.3.3 makes the error response correct; the HN-F declares them, which section 16.3.2 then makes all-or-nothing over its whole Snoopable range |
 | Stash | ⚪ | ⚪ | — | 🟢 | the HN-F snoops the named Stash target (Table 7-1 p.7-295) and serves the Read that section 7.1.1's (p.7-295) Data Pull implies, addressed per section 2.6 step 6 (p.2-110). A request naming no target completes without stashing, which is section 7.4.2 (p.7-299) |
 | System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
-| MTE / `TagOp` | 🔴 | 🔴 | 🔴 | 🔴 | every `TagOp` field is tied to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
+| MTE / `TagOp` | 🟡 | 🟡 | 🔴 | 🔴 | the RN-I sources `TagOp`, `TagGroupID`, `Tag` and `TU` from the AXI sideband and reports the `TagMatch` verdict on `BUSER` (see [below](#what-the-rn-i-generates)); the HN-I answers every read `TagOp = Invalid`, which section 12.11.3 (p.12-387, MUST) fixes for a Completer holding no Allocation Tag. No node **stores** a tag, so the HN-F and SN-F tie every field to zero — [#166](https://github.com/10x-Engineers/CHI-OpenNoC/issues/166), [#167](https://github.com/10x-Engineers/CHI-OpenNoC/issues/167) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | in the REQ and SNP layout when `CHIE_MPAM_PRESENT` is defined, so `MPAM_Support = MPAM_9_1` (section 16.1 p.16-471); section 11.3 (p.11-365) makes the width 0 or 11 and Figure 11-3 the subdivision, both in `chie_pkg::mpam_s`. The RN-I sources the label from `ARUSER`/`AWUSER` verbatim, MPAMNS included, so a manager that does not use MPAM must itself drive Table 11-5's defaults there — the bridge cannot tell that case from a label whose subfields happen to be zero. The HN-I, SN-F and HN-F latch it per tracker entry. Section 11.3.4's (p.11-366, MUST) propagation lands on the HN-F's `TXREQ` and, the HN-I and SN-F having no downstream CHI port, on their AXI `AWUSER`/`ARUSER`. Section 11.3 (p.11-365) makes MPAM applicable only in Stash snoops, so `hnf_link_txsnp_wrap.sv` builds every snoop with Table 11-5's (p.11-366) defaults and its Stash-target override carries the generating request's own label (section 11.3.3 p.11-366) |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟢 | in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_opt_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Propagated on REQ, dropped on DAT.** The same section makes propagation implementation defined, so a Home declares which it does; this one preserves it, since the field is Reserved for Customer Use and an interconnect that drops it makes it useless end to end. The HN-F latches the REQ field per MSHR entry, clears it on retire so a reused entry cannot leak a previous Requester's value, and drives it at both TXREQ builders. A request the interconnect generated for itself — a snoop-filter evict, a System-cache eviction and its write-back — answers to no request to the Home, so it carries zero: the same gate section 2.9.3 (p.2-129) already puts on those requests' MemAttr. DAT is dropped because the Home re-beats write data out of its data buffer after merging with the L3, so an upstream flit's value maps onto no particular downstream beat. The HN-I, RN-I and SN-F are CHI terminations with an AXI back end, so section 13.10.56 has no CHI-to-CHI propagation for them to do |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | `chie_pkg::datacheck_of()` at each node's DAT builder, so `Data_Check = Odd_Parity` and `Check_Type = Odd_Parity_Byte_Data` (section 16.1 p.16-470/16-471). Sourced, not checked: section 9.6 (p.9-348) puts the parity obligation on the Transmitter, and section 9.8's (p.9-352) conversion MUST applies only where support differs across the interface, which it does not here. **Bit i covers byte lane i** — section 13.10.52 (p.13-436) never fixes the mapping, so a peer must adopt the same convention |
@@ -451,6 +451,37 @@ is fixed by the two tables together.
 | `[1] == 0` | Device | `ReadNoSnp` | `WriteNoSnpFull` / `WriteNoSnpPtl` |
 | `[1] == 1`, `[3:2] == 00` | Normal Non-cacheable | `ReadNoSnp` | `WriteNoSnpFull` / `WriteNoSnpPtl` |
 | `[1] == 1`, `[3:2] != 00` | Normal Cacheable | `ReadOnce` | `WriteUniqueFull` / `WriteUniquePtl` |
+
+#### Memory Tagging on the AXI sideband
+
+CHI E.b Chapter 12's fields have no AXI4 encoding, so they cross on the `USER`
+sidebands `axi4_defines.svh` declares — `AxUSER[12:11]` `TagOp` and `AxUSER[20:13]`
+`TagGroupID`, `W/RUSER` `Tag` above Poison and `TU` above that, and `BUSER` the
+verdict. `BUSER` is this design's own encoding: section 12.1 (p.12-372) requires
+*"a notification of the failure"* reach the Requester and names none.
+
+| `BUSER` | meaning |
+| :--- | :--- |
+| `[0]` | a `TagMatch` for this write's `TagGroupID` arrived |
+| `[1]` | its verdict — Table 13-35's (p.13-437) `Resp[0]`, 1 Pass and 0 Fail |
+
+The bridge — not the manager — elects the CHI opcode, so Table 12-2 (section
+12.12 p.12-388) decides what it may carry: a `ReadOnce` takes `{Invalid,
+Transfer}`, a `ReadNoSnp` also `Fetch`, and every write `{Invalid, Update,
+Match}`. **A `TagOp` the elected opcode has no row for is presented as
+`Invalid`**, which the table permits everywhere — the manager gets no tags rather
+than an error, because AXI has no way to refuse at the address phase.
+
+Section 13.10.40 (p.13-435) puts `TagGroupID` in the `LPID` bits of a
+`TagOp = Match` request, displacing the `AxID`-derived LPID there. Section 12.13
+(p.12-390, MUST) then makes the write data carry the request's `TagOp`, with
+section 12.5.2's (p.12-379, MUST) shape: `Invalid` zeroes `Tag` and `TU`, `Match`
+zeroes `TU` alone, and `Update` on a partial write carries whatever `WUSER` named.
+
+Section 12.11.1 (p.12-386, MUST) owes a `TagMatch` to every `Match` write, so
+**`BVALID` is held until it arrives** — `rni_awctrl.sv`'s `awctrl_tagmatch_owed_w`.
+The response carries TxnID 0 (Table A-8 p.A-488) and is keyed by `TagGroupID`
+alone, so one answers every outstanding write of that group.
 
 `rni_arctrl.sv`'s and `rni_awctrl.sv`'s `*_txreqflit_info_r.opcode`. `Order` is
 EndpointOrder on the Device rows and Ordered Write Observation on a Normal
