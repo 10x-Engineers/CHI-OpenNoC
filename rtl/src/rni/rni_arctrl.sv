@@ -756,7 +756,7 @@ module rni_arctrl
             // Sec 11.3 (p.11-365, MUST): the whole MPAM label is the sender's, so it
             // crosses verbatim from ARUSER -- see axi4_defines.svh for the layout.
             ar_txreqflit_info_r.mpam = chie_pkg::mpam_s'(ar_txreqflit_info_r.mpam |
-                ({chie_pkg::MPAM_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].user));
+                ({chie_pkg::MPAM_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].user[`AXI4_USER_MPAM_RANGE]));
 `endif
         end
     end

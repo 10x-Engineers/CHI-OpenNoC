@@ -48,8 +48,14 @@ package opennoc_rni_pkg;
   parameter int DATA_WIDTH = `AXI4_DATA_WIDTH;
   parameter int STRB_WIDTH = DATA_WIDTH / 8;
   parameter int ID_WIDTH   = `AXI4_AWID_WIDTH;
-  parameter int USER_WIDTH = DATA_WIDTH / 64;   // SS9.5: one Poison bit per 8-byte chunk
-  parameter int AX_USER_WIDTH = `AXI4_MPAM_WIDTH;   // section 11.3: MPAM, 11 bits
+  // The sideband layouts axi4_defines.svh declares: Poison plus the Chapter 12
+  // tags on the data channels, MPAM plus TagOp/TagGroupID on the address ones.
+  // `AXI4_WUSER_WIDTH is written over a module parameter, so the same layout is
+  // restated here against this package's own DATA_WIDTH; opennoc_axi_user_check
+  // holds the two equal.
+  parameter int USER_WIDTH    = (DATA_WIDTH/64) + (DATA_WIDTH/32) + (DATA_WIDTH/128);
+  parameter int AX_USER_WIDTH = `AXI4_AWUSER_WIDTH;
+  parameter int B_USER_WIDTH  = `AXI4_BUSER_WIDTH;
 
   typedef struct packed {
     logic [AX_USER_WIDTH-1:0] user;
@@ -73,6 +79,7 @@ package opennoc_rni_pkg;
   } w_ch_s;
 
   typedef struct packed {
+    logic [B_USER_WIDTH-1:0] user;
     logic [1:0]           resp;
     logic [ID_WIDTH-1:0]  id;
   } b_ch_s;

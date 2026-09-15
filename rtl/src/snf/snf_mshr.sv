@@ -921,7 +921,11 @@ module snf_mshr `SNF_PARAM
     assign arlock_sx        = 1'b0;
     assign arprot_sx        = {1'b0,mshr_entry_q[arvalid_entry_idx_s1_q].ns,1'b0};
     assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
-    assign aruser_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
+    assign aruser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
+    // Section 12.1 (p.12-372, MUST) scopes memory tagging to Normal WriteBack memory;
+    // this Subordinate sources no tag operation of its own.
+    assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    assign aruser_sx[`AXI4_USER_TGGID_RANGE] = '0;
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
     assign arlen_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].axlen;
     assign arsize_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axsize;
@@ -1129,7 +1133,9 @@ module snf_mshr `SNF_PARAM
     assign awcache_sx[2]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[2];
     assign awcache_sx[3]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[3];
     assign awqos_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].qos;
-    assign awuser_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].mpam;
+    assign awuser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[awvalid_entry_idx_s2_q].mpam;
+    assign awuser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    assign awuser_sx[`AXI4_USER_TGGID_RANGE] = '0;
     assign awprot_sx              = {1'b0,mshr_entry_q[awvalid_entry_idx_s2_q].ns,1'b0};
     assign awlen_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].axlen;
     assign awsize_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axsize;

@@ -131,6 +131,7 @@ module rni_rd_buffer `RNI_PARAM
     wire  [`RNI_RD_BANK_NUM-1:0]       bank_wr_en_d2_w;
     wire  [`AXI4_POISON_WIDTH-1:0]     data_bank_poison_d4_w [`RNI_RD_BANK_NUM-1:0];
     wire  [`AXI4_RUSER_WIDTH-1:0]      rdata_user_d4_w;
+    wire  [`AXI4_POISON_WIDTH-1:0]     rdata_poison_d4_w;
     logic [`RNI_BC_WIDTH-1:0]          bcount_q;
 
     genvar                             bank;
@@ -368,10 +369,10 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[2]}} & resperr_128_d4_w[2] |
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[3]}} & resperr_128_d4_w[3] ;
 
-            assign rdata_user_d4_w = {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[0]}} & data_bank_poison_d4_w[0] |
-                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[1]}} & data_bank_poison_d4_w[1] |
-                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[2]}} & data_bank_poison_d4_w[2] |
-                   {`AXI4_RUSER_WIDTH{data_bank_ctmask_d4_w[3]}} & data_bank_poison_d4_w[3] ;
+            assign rdata_poison_d4_w = {`AXI4_POISON_WIDTH{data_bank_ctmask_d4_w[0]}} & data_bank_poison_d4_w[0] |
+                   {`AXI4_POISON_WIDTH{data_bank_ctmask_d4_w[1]}} & data_bank_poison_d4_w[1] |
+                   {`AXI4_POISON_WIDTH{data_bank_ctmask_d4_w[2]}} & data_bank_poison_d4_w[2] |
+                   {`AXI4_POISON_WIDTH{data_bank_ctmask_d4_w[3]}} & data_bank_poison_d4_w[3] ;
         end
         else if(AXI4_AXDATA_WIDTH_PARAM == 256)begin
             for (bank=0; bank<`RNI_RD_BANK_NUM/2; bank=bank+1) begin
@@ -385,10 +386,16 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
             assign rdata_resperr_d4_w = {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[0] & data_bank_ctmask_d4_w[1]}} & resperr_256_d4_w[0] |
                    {`AXI4_RRESP_WIDTH{data_bank_ctmask_d4_w[2] & data_bank_ctmask_d4_w[3]}} & resperr_256_d4_w[1] ;
 
-            assign rdata_user_d4_w = {`AXI4_RUSER_WIDTH/2{data_bank_ctmask_d4_w[0] & data_bank_ctmask_d4_w[1]}} & {data_bank_poison_d4_w[1], data_bank_poison_d4_w[0]} |
-                   {`AXI4_RUSER_WIDTH/2{data_bank_ctmask_d4_w[2] & data_bank_ctmask_d4_w[3]}} & {data_bank_poison_d4_w[3], data_bank_poison_d4_w[2]} ;
+            assign rdata_poison_d4_w = {`AXI4_POISON_WIDTH/2{data_bank_ctmask_d4_w[0] & data_bank_ctmask_d4_w[1]}} & {data_bank_poison_d4_w[1], data_bank_poison_d4_w[0]} |
+                   {`AXI4_POISON_WIDTH/2{data_bank_ctmask_d4_w[2] & data_bank_ctmask_d4_w[3]}} & {data_bank_poison_d4_w[3], data_bank_poison_d4_w[2]} ;
         end
     endgenerate
+
+    // The sideband is Poison plus the Chapter 12 fields; axi4_defines.svh owns the
+    // layout, so the read path names its own window rather than filling the whole.
+    assign rdata_user_d4_w[`AXI4_USER_POISON_RANGE] = rdata_poison_d4_w;
+    assign rdata_user_d4_w[`AXI4_USER_TAG_RANGE]    = '0;
+    assign rdata_user_d4_w[`AXI4_USER_TU_RANGE]     = '0;
 
     //R pending fifo
     assign rp_fifo_push_d4_w = rp_fifo_acpt_d4_o;

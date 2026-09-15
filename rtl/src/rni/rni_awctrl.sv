@@ -1021,7 +1021,7 @@ module rni_awctrl `RNI_PARAM
 `ifdef CHIE_MPAM_PRESENT
             // Sec 11.3 (p.11-365, MUST): see rni_arctrl.sv -- AWUSER carries the label.
             aw_txreqflit_info_r.mpam = chie_pkg::mpam_s'(aw_txreqflit_info_r.mpam |
-                ({chie_pkg::MPAM_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user));
+                ({chie_pkg::MPAM_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user[`AXI4_USER_MPAM_RANGE]));
 `endif
         end
     end

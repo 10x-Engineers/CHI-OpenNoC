@@ -77,6 +77,9 @@ module rni `RNI_PARAM
     output wire                            WREADY0,
     output wire [`AXI4_BID_WIDTH-1:0]      BID0,
     output wire [`AXI4_BRESP_WIDTH-1:0]    BRESP0,
+    // CHI E.b SS12.1 (p.12-372) requires "a notification of the failure" reach the
+    // Requester; see axi4_defines.svh for the encoding.
+    output wire [`AXI4_BUSER_WIDTH-1:0]    BUSER0,
     output wire                            BVALID0,
     input  wire                            BREADY0,
     input  wire [`AXI4_ARID_WIDTH-1:0]     ARID0,
@@ -219,6 +222,7 @@ module rni `RNI_PARAM
                     // B Channel0
                     ,.BID0                                  ( BID0                          )
                     ,.BRESP0                                ( BRESP0                        )
+                    ,.BUSER0                                ( BUSER0                        )
                     ,.B_CH_S0                               ( B_CH_S0                       )
 
                     // AR Channel0
