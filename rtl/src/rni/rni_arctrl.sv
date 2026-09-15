@@ -715,7 +715,12 @@ module rni_arctrl
         ar_txreqflit_info_r.memattr.device = ar_device_w;
         ar_txreqflit_info_r.memattr.cacheable = ar_cacheable_w;
         ar_txreqflit_info_r.snpattr = ar_cacheable_w;
-        ar_txreqflit_info_r.lpid = '0;
+        // CHI E.b SS2.7 (p.2-113, MUST): "The LPID must be set to the correct value
+        // for ... any Non-snoopable Non-cacheable or Device access: ReadNoSnp,
+        // WriteNoSnp" and "for Exclusive accesses". AMBA AXI4 (IHI 0022) A7.2
+        // makes the AXI exclusive monitor per-ID, so an AxID is the logical
+        // processor SS2.7 names. Zero on the cacheable path, which SS2.7 does not
+        // list.
         // SS13.10.27 (p.13-432, MUST) gives ReadNoSnp the Excl bit and ReadOnce
         // none, so a Cacheable exclusive access is bridged as a plain read; the
         // Normal OK it then earns is AXI4 A7.2.3's OKAY from a target that does
@@ -731,6 +736,8 @@ module rni_arctrl
         ar_txreqflit_info_r.expcompack = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].qos);
+            ar_txreqflit_info_r.lpid = ar_txreqflit_info_r.lpid |
+                ({8{arctrl_entry_req_ptr_q[i] & ~ar_cacheable_w}} & arctrl_entry_info_q[i].id[7:0]);
             ar_txreqflit_info_r.addr = ar_txreqflit_info_r.addr | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
             ar_txreqflit_info_r.pcrdtype = ~arctrl_entry_req_select_retry_flag_q ? '0 :
                                ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
