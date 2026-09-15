@@ -1003,12 +1003,14 @@ module rni_awctrl `RNI_PARAM
         aw_txreqflit_info_r.memattr.device = aw_device_w;
         aw_txreqflit_info_r.memattr.cacheable = aw_cacheable_w;
         aw_txreqflit_info_r.snpattr = aw_cacheable_w;
-        aw_txreqflit_info_r.lpid = '0;
+        // SS2.7 (p.2-113, MUST): see rni_arctrl.sv for the derivation.
         // SS13.10.27 (p.13-432, MUST) gives WriteNoSnp the Excl bit and
         // WriteUnique none; see rni_arctrl.sv for the Cacheable case.
         aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
+            aw_txreqflit_info_r.lpid = aw_txreqflit_info_r.lpid |
+                ({8{awctrl_entry_req_ptr_q[i] & ~aw_cacheable_w}} & awctrl_entry_info_q[i].id[7:0]);
             aw_txreqflit_info_r.size = chie_pkg::size_e'(aw_txreqflit_info_r.size | ({`AXI4_AWSIZE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_size_q[i][`AXI4_AWSIZE_WIDTH-1:0]));
             aw_txreqflit_info_r.addr = aw_txreqflit_info_r.addr | ({`AXI4_AWADDR_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_addr_q[i][`AXI4_AWADDR_WIDTH-1:0]);
             aw_txreqflit_info_r.pcrdtype = ~awctrl_entry_req_select_retry_flag_q ? '0 :
