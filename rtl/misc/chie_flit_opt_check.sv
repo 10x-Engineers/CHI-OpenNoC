@@ -44,6 +44,26 @@ module chie_flit_opt_check #(
         if (!(MPAM_WIDTH inside {0, 11}))
             $fatal(1, "%m: MPAM_WIDTH=%0d -- section 11.3 (p.11-365) makes the field either 0 bits or 11 bits.",
                    MPAM_WIDTH);
+
+        // Section 16.1 (p.16-471) gives Data_Width three legal values and section 2.10.4
+        // (p.2-136) makes the packets per 64-byte line follow it. This datapath is
+        // written against "a line is exactly two data packets", which holds only at 256:
+        // snf_data_buffer selects the line's halves off DataID 0b00/0b10 and returns zero
+        // for any other, and hnf_mshr_ctl counts a snoop response's packets the same way.
+        // Refused at elaboration rather than silently mis-serving data.
+        if (chie_pkg::DATA_WIDTH != 256)
+            $fatal(1, "%m: CHIE_DATA_WIDTH=%0d. Section 16.1 (p.16-471) permits 128, 256 and 512, but this design's beat-count and DataID logic assumes a 64-byte line is exactly two data packets, which is true only at 256.",
+                   chie_pkg::DATA_WIDTH);
+
+        // Section 16.1 (p.16-471/16-472) bounds the other two. Both are carried
+        // symbolically through every flit struct rather than assumed, so they are
+        // range-checked rather than pinned -- but only the defaults are swept in CI.
+        if (!(chie_pkg::NID_WIDTH inside {[7:11]}))
+            $fatal(1, "%m: CHIE_NID_WIDTH=%0d -- section 16.1 (p.16-472) gives NodeID_Width the legal values 7 to 11.",
+                   chie_pkg::NID_WIDTH);
+        if (!(chie_pkg::REQ_ADDR_WIDTH inside {[44:52]}))
+            $fatal(1, "%m: CHIE_REQ_ADDR_WIDTH=%0d -- section 16.1 (p.16-471) gives Req_Addr_Width the legal values 44 to 52.",
+                   chie_pkg::REQ_ADDR_WIDTH);
     end
 
 endmodule
