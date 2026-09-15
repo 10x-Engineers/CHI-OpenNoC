@@ -172,7 +172,6 @@ module chi_ring_channel #(
 
     wire [XP_INTF_MAX-1:0][CHIE_NID_WIDTH-1:0]                 rxflit_tgtid_r1;
 
-    int i_src, i_entry, i_dst;
     genvar g_src, g_entry, g_dst;
 
     logic linkactive_p0, linkactive_p1;
@@ -205,7 +204,7 @@ module chi_ring_channel #(
 
             always_ff @(posedge clk) begin
                 if (rst == 1'b1) begin
-                    rxlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0] <= XP_PORT_EN[g_src] ? ({LCRD_NUM_WIDTH{1'b0}} | RX_MAX_ENTRY) : {LCRD_NUM_WIDTH{1'b0}};
+                    rxlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0] <= XP_PORT_EN[g_src] ? LCRD_NUM_WIDTH'(RX_MAX_ENTRY) : {LCRD_NUM_WIDTH{1'b0}};
                 end
                 else begin
                     rxlcrd_cnt_q[g_src][LCRD_NUM_WIDTH-1:0] <= XP_PORT_EN[g_src] ? rxlcrd_cnt_ns[g_src][LCRD_NUM_WIDTH-1:0] : {LCRD_NUM_WIDTH{1'b0}};
@@ -258,10 +257,10 @@ module chi_ring_channel #(
     // Enqueue
     //=====================================================================================================
     always_comb begin : rx_flit_find_free_entry
-        for (i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin : iter_find_free_entry
+        for (int i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin : iter_find_free_entry
             if (XP_PORT_EN[i_src]) begin
                 rxflit_buffer_entry_enq_r1[i_src][0] = rxflitv_r1[i_src] & ~rxflit_buffer_entry_valid_ns[i_src][0];
-                for (i_entry = 1; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin : find_free_entry
+                for (int i_entry = 1; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin : find_free_entry
                     rxflit_buffer_entry_enq_r1[i_src][i_entry] = rxflitv_r1[i_src] & ~rxflit_buffer_entry_enq_r1[i_src][i_entry-1] & ~rxflit_buffer_entry_valid_ns[i_src][i_entry];
                 end
             end
@@ -447,7 +446,7 @@ module chi_ring_channel #(
 
                 always_ff @(posedge clk) begin
                     if (rst) begin
-                        txflit_arb_hh_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {{XP_INTF_MAX * RX_MAX_ENTRY} {1'b0}};
+                        txflit_arb_hh_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {(XP_INTF_MAX * RX_MAX_ENTRY){1'b0}};
                     end
                     else if (txflit_arb_hh_nxt_upd_d1[g_dst]) begin
                         txflit_arb_hh_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= txflit_qos_hh_outvec_d1[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0];
@@ -459,7 +458,7 @@ module chi_ring_channel #(
 
                 always_ff @(posedge clk) begin
                     if (rst) begin
-                        txflit_arb_h_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {{XP_INTF_MAX * RX_MAX_ENTRY} {1'b0}};
+                        txflit_arb_h_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {(XP_INTF_MAX * RX_MAX_ENTRY){1'b0}};
                     end
                     else if (txflit_arb_h_nxt_upd_d1[g_dst]) begin
                         txflit_arb_h_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= txflit_qos_h_outvec_d1[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0];
@@ -471,7 +470,7 @@ module chi_ring_channel #(
 
                 always_ff @(posedge clk) begin
                     if (rst) begin
-                        txflit_arb_m_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {{XP_INTF_MAX * RX_MAX_ENTRY} {1'b0}};
+                        txflit_arb_m_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {(XP_INTF_MAX * RX_MAX_ENTRY){1'b0}};
                     end
                     else if (txflit_arb_m_nxt_upd_d1[g_dst]) begin
                         txflit_arb_m_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= txflit_qos_m_outvec_d1[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0];
@@ -483,7 +482,7 @@ module chi_ring_channel #(
 
                 always_ff @(posedge clk) begin
                     if (rst) begin
-                        txflit_arb_l_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {{XP_INTF_MAX * RX_MAX_ENTRY} {1'b0}};
+                        txflit_arb_l_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= {(XP_INTF_MAX * RX_MAX_ENTRY){1'b0}};
                     end
                     else if (txflit_arb_l_nxt_upd_d1[g_dst]) begin
                         txflit_arb_l_nxt_q[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0] <= txflit_qos_l_outvec_d1[g_dst][(XP_INTF_MAX*RX_MAX_ENTRY)-1:0];
@@ -503,11 +502,11 @@ module chi_ring_channel #(
     endgenerate
 
     always_comb begin
-        for (i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin
-            for (i_entry = 0; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin
+        for (int i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin
+            for (int i_entry = 0; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin
                 rxflit_buffer_entry_deq_d1[i_src][i_entry] = 1'b0;
                 if (XP_PORT_EN[i_src]) begin
-                    for (i_dst = 0; i_dst < XP_INTF_MAX; i_dst = i_dst + 1) begin
+                    for (int i_dst = 0; i_dst < XP_INTF_MAX; i_dst = i_dst + 1) begin
                         rxflit_buffer_entry_deq_d1[i_src][i_entry] = rxflit_buffer_entry_deq_d1[i_src][i_entry] | (txflit_arb_hh_nxt_upd_d1[i_dst] ? 
                                                                         txflit_qos_hh_outvec_d1[i_dst][i_src * RX_MAX_ENTRY + i_entry]:
                                                                         (txflit_arb_h_nxt_upd_d1[i_dst] ? txflit_qos_h_outvec_d1[i_dst][i_src * RX_MAX_ENTRY + i_entry]:
@@ -521,16 +520,16 @@ module chi_ring_channel #(
 
     always_comb begin : gen_txflit_block
 
-        for (i_dst = 0; i_dst < XP_INTF_MAX; i_dst = i_dst + 1) begin
+        for (int i_dst = 0; i_dst < XP_INTF_MAX; i_dst = i_dst + 1) begin
 
             txflit_hh_d1[i_dst][FLIT_WIDTH-1:0] = {FLIT_WIDTH{1'b0}};
             txflit_h_d1[i_dst][FLIT_WIDTH-1:0]  = {FLIT_WIDTH{1'b0}};
             txflit_m_d1[i_dst][FLIT_WIDTH-1:0]  = {FLIT_WIDTH{1'b0}};
             txflit_l_d1[i_dst][FLIT_WIDTH-1:0]  = {FLIT_WIDTH{1'b0}};
 
-            for (i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin
+            for (int i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin
                 if (XP_PORT_EN[i_src]) begin
-                    for (i_entry = 0; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin
+                    for (int i_entry = 0; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin
                         txflit_hh_d1[i_dst][FLIT_WIDTH-1:0] = txflit_hh_d1[i_dst][FLIT_WIDTH-1:0]|({FLIT_WIDTH{txflit_qos_hh_outvec_d1[i_dst][i_src*RX_MAX_ENTRY+i_entry]}} & rxflit_buffer_entry_q[i_src][i_entry][FLIT_WIDTH-1:0]);
                         txflit_h_d1[i_dst][FLIT_WIDTH-1:0] = txflit_h_d1[i_dst][FLIT_WIDTH-1:0]|({FLIT_WIDTH{txflit_qos_h_outvec_d1[i_dst][i_src*RX_MAX_ENTRY+i_entry]}} & rxflit_buffer_entry_q[i_src][i_entry][FLIT_WIDTH-1:0]);
                         txflit_m_d1[i_dst][FLIT_WIDTH-1:0] = txflit_m_d1[i_dst][FLIT_WIDTH-1:0]|({FLIT_WIDTH{txflit_qos_m_outvec_d1[i_dst][i_src*RX_MAX_ENTRY+i_entry]}} & rxflit_buffer_entry_q[i_src][i_entry][FLIT_WIDTH-1:0]);

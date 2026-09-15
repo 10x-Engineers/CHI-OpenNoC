@@ -235,7 +235,8 @@ module chi_xp_node #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
-      .FLIT_WIDTH(REQ_FLIT_WIDTH)
+      .FLIT_WIDTH(REQ_FLIT_WIDTH),
+      .XP_PORT_EN(REQ_CH_EN)
   ) m_req (
       .clk(clk),
       .rst(rst),
@@ -293,7 +294,8 @@ module chi_xp_node #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
-      .FLIT_WIDTH(RSP_FLIT_WIDTH)
+      .FLIT_WIDTH(RSP_FLIT_WIDTH),
+      .XP_PORT_EN(RSP_CH_EN)
   ) m_rsp (
       .clk(clk),
       .rst(rst),
@@ -351,7 +353,8 @@ module chi_xp_node #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
-      .FLIT_WIDTH(DAT_FLIT_WIDTH)
+      .FLIT_WIDTH(DAT_FLIT_WIDTH),
+      .XP_PORT_EN(DAT_CH_EN)
   ) m_dat (
       .clk(clk),
       .rst(rst),
@@ -410,7 +413,8 @@ module chi_xp_node #(
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(SNP_FLIT_WIDTH),
-      .FLIT_TGT_OFFSET(SNP_TGTID_OFFSET)
+      .FLIT_TGT_OFFSET(SNP_TGTID_OFFSET),
+      .XP_PORT_EN(SNP_CH_EN)
   ) m_snp (
       .clk(clk),
       .rst(rst),

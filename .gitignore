@@ -2,3 +2,8 @@ xrun.log
 xrun.history
 xcelium.d/
 obj_dir/
+
+# Generated NoC wrappers -- tools/lint.sh regenerates them on every run, and
+# mesh_gen.py/ring_gen.py write them into the generator directory by design.
+tools/mesh_generator/mesh_wrapper_*.sv
+tools/ring_generator/ring_wrapper_*.sv
