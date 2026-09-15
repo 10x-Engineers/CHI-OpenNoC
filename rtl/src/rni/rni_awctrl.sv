@@ -81,6 +81,7 @@ module rni_awctrl `RNI_PARAM
     output logic [3:0]                         awctrl_txdat_qos_d2_o,
     output wire                                awctrl_txdat_compack_d2_o,
     output logic [11:0]                        awctrl_txdat_dbid_d2_o,
+    output logic                               awctrl_txdat_tracetag_d2_o,
     output logic [chie_pkg::NID_WIDTH-1:0]     awctrl_txdat_tgtid_d2_o,
     output wire [1:0]                          awctrl_txdat_ccid_d2_o,
     output wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_txdat_ctmask_d2_o,
@@ -157,6 +158,7 @@ module rni_awctrl `RNI_PARAM
     wire [CHIE_NID_WIDTH_PARAM-1:0]      aw_tx_send_nid_w;
     wire [chie_pkg::NID_WIDTH-1:0]       awctrl_entry_rxrsp_tgtid_w;
     wire [chie_pkg::NID_WIDTH-1:0]       awctrl_entry_rxrsp_srcid_w;
+    wire                                 awctrl_entry_rxrsp_tracetag_w;
     wire [11:0]                          awctrl_entry_rxrsp_txnid_w;
     chie_pkg::rsp_opcode_e               awctrl_entry_rxrsp_opcode_w;
     wire [11:0]                          awctrl_entry_rxrsp_dbid_w;
@@ -270,6 +272,7 @@ module rni_awctrl `RNI_PARAM
     logic                                rxrsp_pcrdtype_lo_match_d3_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_lo_recv_vec_d3_q;
     logic [chie_pkg::NID_WIDTH-1:0]      rxrsp_dbidresp_srcid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_tracetag_q;
     logic [11:0]                         rxrsp_dbidresp_dbid_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [3:0]                          rxrsp_retryack_pcrdtype_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_retryack_recv_vec_q;
@@ -1056,6 +1059,7 @@ module rni_awctrl `RNI_PARAM
     /////////////////////////////////////////////////////////////
     assign awctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] = awctrl_rxrspflit_d1_i.tgtid;
     assign awctrl_entry_rxrsp_srcid_w[chie_pkg::NID_WIDTH-1:0] = awctrl_rxrspflit_d1_i.srcid;
+    assign awctrl_entry_rxrsp_tracetag_w = awctrl_rxrspflit_d1_i.tracetag;
     assign awctrl_entry_rxrsp_txnid_w[11:0] = awctrl_rxrspflit_d1_i.txnid;
     assign awctrl_entry_rxrsp_opcode_w[5-1:0] = awctrl_rxrspflit_d1_i.opcode;
     assign awctrl_entry_rxrsp_dbid_w[11:0] = awctrl_rxrspflit_d1_i.dbid;
@@ -1229,6 +1233,24 @@ module rni_awctrl `RNI_PARAM
                     end
                 end
             end
+            // SS11.5.1 (p.11-368, MUST): the NCBWrDataCompAck TraceTag "must be set
+            // if either one of Comp or DBIDResp that caused the WriteData response
+            // have the TraceTag bit set", so this is the OR over both, held until
+            // the entry that owes the reflection is done with it.
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1)begin
+                    rxrsp_tracetag_q[entry] <= 1'b0;
+                end
+                else begin
+                    if((rxrsp_dbid_recv_vec_w[entry] | rxrsp_comp_recv_vec_w[entry]) & awctrl_entry_rxrsp_tracetag_w)begin
+                        rxrsp_tracetag_q[entry] <= 1'b1;
+                    end
+                    else if(awctrl_entry_dealloc_vec_w[entry])begin
+                        rxrsp_tracetag_q[entry] <= 1'b0;
+                    end
+                end
+            end
+
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
                     rxrsp_dbidresp_dbid_q[entry][11:0] <= '0;
@@ -1467,6 +1489,14 @@ module rni_awctrl `RNI_PARAM
     end
 
     always_comb begin
+        awctrl_txdat_tracetag_d2_o = 1'b0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
+            if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i])
+                awctrl_txdat_tracetag_d2_o = rxrsp_tracetag_q[i];
+        end
+    end
+
+    always_comb begin
         awctrl_txdat_tgtid_d2_o[chie_pkg::NID_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
             if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i])
@@ -1555,6 +1585,7 @@ module rni_awctrl `RNI_PARAM
         aw_txrspflit_info_r.opcode = chie_pkg::RSP_COMPACK;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txrspflit_info_r.qos = aw_txrspflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{txrsp_select_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
+            aw_txrspflit_info_r.tracetag = aw_txrspflit_info_r.tracetag | (txrsp_select_ptr_q[i] & rxrsp_tracetag_q[i]);
         end
     end
 

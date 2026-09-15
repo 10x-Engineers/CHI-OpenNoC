@@ -178,6 +178,7 @@ module rni `RNI_PARAM
     wire [3:0]                          awctrl_txdat_qos_d2;
     wire                                awctrl_txdat_compack_d2;
     wire [11:0]                         awctrl_txdat_dbid_d2;
+    wire                                awctrl_txdat_tracetag_d2;
     wire [chie_pkg::NID_WIDTH-1:0]      awctrl_txdat_tgtid_d2;
     wire [1:0]                          awctrl_txdat_ccid_d2;
     wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_txdat_ctmask_d2;
@@ -365,6 +366,7 @@ module rni `RNI_PARAM
                    ,.awctrl_txdat_qos_d2_o                 ( awctrl_txdat_qos_d2           )
                    ,.awctrl_txdat_compack_d2_o             ( awctrl_txdat_compack_d2       )
                    ,.awctrl_txdat_dbid_d2_o                ( awctrl_txdat_dbid_d2          )
+                   ,.awctrl_txdat_tracetag_d2_o            ( awctrl_txdat_tracetag_d2      )
                    ,.awctrl_txdat_tgtid_d2_o               ( awctrl_txdat_tgtid_d2         )
                    ,.awctrl_txdat_ccid_d2_o                ( awctrl_txdat_ccid_d2          )
                    ,.awctrl_txdat_ctmask_d2_o              ( awctrl_txdat_ctmask_d2        )
@@ -398,6 +400,7 @@ module rni `RNI_PARAM
                       ,.txdat_qos_d2_i                        ( awctrl_txdat_qos_d2           )
                       ,.txdat_compack_d2_i                    ( awctrl_txdat_compack_d2       )
                       ,.txdat_dbid_d2_i                       ( awctrl_txdat_dbid_d2          )
+                      ,.txdat_tracetag_d2_i                   ( awctrl_txdat_tracetag_d2      )
                       ,.txdat_tgtid_d2_i                      ( awctrl_txdat_tgtid_d2         )
                       ,.txdat_ccid_d2_i                       ( awctrl_txdat_ccid_d2          )
                       ,.txdat_ctmask_d2_q_i                   ( awctrl_txdat_ctmask_d2        )
