@@ -1148,8 +1148,17 @@ module hni_mshr `HNI_PARAM
             // error is not final until the last beat is in. A two-packet transfer
             // therefore holds its first packet until the whole burst has arrived;
             // a single-packet one has nothing to hold.
+            // CHI E.b SS2.10.2 (p.2-134): a Device transaction accesses "the number of
+            // bytes from the transaction address up to the byte before the next Size
+            // boundary", so a Size=64B Device read at Addr[5:4] != 0 asks memory for
+            // fewer than four 16B chunks and a whole-line gate never releases. The
+            // SS9.4.1 (p.9-337, MUST) rule this expresses is over the beats the burst
+            // actually asked for, which SS2.10.4 (p.2-136) then still owes two data
+            // packets for -- "it is required that these data packets are transferred".
+            wire [3:0] rdat_expect_mask_sx = rxreq_device_s1_q[entry] ?
+                                        (4'b1111 << rxreq_ccid_s1_q[entry]) : 4'b1111;
             assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == 3'b110) ?
-                                        (rdat_pdmask_q[entry] == 4'b1111) : 1'b1;
+                                        ((rdat_pdmask_q[entry] & rdat_expect_mask_sx) == rdat_expect_mask_sx) : 1'b1;
 
             assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0]) & rdat_allrcvd_sx[entry]) ? 
                                         (rxreq_device_s1_q[entry] ? (rxreq_ccid_s1_q[entry]==2'b11 ? (rdat_pdmask_q[entry][3]==1'b1) : 
