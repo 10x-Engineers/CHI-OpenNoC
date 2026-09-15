@@ -25,6 +25,12 @@ module chi_xp_channel #(
         // qos is the LSB field of every flit struct and tgtid is next, so a field
         // added to chie_pkg must go at the MSB end.
         parameter FLIT_TGT_OFFSET = 4,
+        // CHI E.b SS13.11 (p.13-442): "A link flit is identified by a zero value in
+        // the Opcode field", and it "terminates at the link Receiver on the other
+        // side of the link" -- so the crosspoint has to read the field to know not
+        // to route it. Position is per-channel, hence a parameter like the TgtID's.
+        parameter FLIT_OPCODE_OFFSET = 0,
+        parameter FLIT_OPCODE_WIDTH  = 7,
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN    = {6{1'b1}},
         parameter CHIE_NID_WIDTH_PARAM = 7,
@@ -114,6 +120,8 @@ module chi_xp_channel #(
     logic [XP_INTF_MAX-1:0]                                    rxactive_run_q;
 
     wire [XP_INTF_MAX-1:0]                                     rxflitv_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflit_link_r1;
+    wire [XP_INTF_MAX-1:0]                                     rxflitv_use_r1;
     wire [XP_INTF_MAX-1:0][FLIT_WIDTH-1:0]                     rxflit_r1;
 
     logic [XP_INTF_MAX-1:0][LCRD_NUM_WIDTH-1:0]                rxlcrd_cnt_q;
@@ -291,9 +299,9 @@ module chi_xp_channel #(
     always_comb begin : rx_flit_find_free_entry
         for (int i_src = 0; i_src < XP_INTF_MAX; i_src = i_src + 1) begin : iter_find_free_entry
             if (XP_PORT_EN[i_src]) begin
-                rxflit_buffer_entry_enq_r1[i_src][0] = rxflitv_r1[i_src] & ~rxflit_buffer_entry_valid_ns[i_src][0];
+                rxflit_buffer_entry_enq_r1[i_src][0] = rxflitv_use_r1[i_src] & ~rxflit_buffer_entry_valid_ns[i_src][0];
                 for (int i_entry = 1; i_entry < RX_MAX_ENTRY; i_entry = i_entry + 1) begin : find_free_entry
-                    rxflit_buffer_entry_enq_r1[i_src][i_entry] = rxflitv_r1[i_src] & ~rxflit_buffer_entry_enq_r1[i_src][i_entry-1] & ~rxflit_buffer_entry_valid_ns[i_src][i_entry];
+                    rxflit_buffer_entry_enq_r1[i_src][i_entry] = rxflitv_use_r1[i_src] & ~rxflit_buffer_entry_enq_r1[i_src][i_entry-1] & ~rxflit_buffer_entry_valid_ns[i_src][i_entry];
                 end
             end
             else begin
@@ -328,7 +336,7 @@ module chi_xp_channel #(
                         end
                     end
 
-                    assign rxflit_buffer_entry_rdy_clr_r1[g_src][g_entry] = rxflitv_r1[g_src] & rxflit_buffer_entry_enq_r1[g_src][g_entry] &
+                    assign rxflit_buffer_entry_rdy_clr_r1[g_src][g_entry] = rxflitv_use_r1[g_src] & rxflit_buffer_entry_enq_r1[g_src][g_entry] &
                            (rxflit_buffer_entry_tgt_r1[g_src][XP_INTF_MAX-1:0] == rxflit_buffer_entry_tgt_q[g_src][RX_MAX_ENTRY-1-g_entry][XP_INTF_MAX-1:0])
                            & rxflit_buffer_valid_q[g_src][RX_MAX_ENTRY-1-g_entry] & ~rxflit_buffer_entry_deq_d1[g_src][RX_MAX_ENTRY-1-g_entry];
                     assign rxflit_buffer_entry_rdy_set_d1[g_src][g_entry] = rxflit_buffer_entry_deq_d1[g_src][RX_MAX_ENTRY-1-g_entry] & ~rxflit_buffer_entry_rdy_q[g_src][g_entry];
@@ -362,6 +370,12 @@ module chi_xp_channel #(
 
                 end
 
+                // SS13.11 (p.13-442): a link flit terminates here. Never enqueued,
+                // so never routed on a TgtID the same clause calls "not used", and
+                // never dequeued -- which is what stops a dequeue re-arming the
+                // credit grant and livelocking the peer's deactivation.
+                assign rxflit_link_r1[g_src] =
+                    ~|rxflit_r1[g_src][FLIT_OPCODE_OFFSET +: FLIT_OPCODE_WIDTH];
                 assign rxflit_qos_hh_r1[g_src] = rxflit_r1[g_src][3];
                 assign rxflit_qos_h_r1[g_src] = !rxflit_r1[g_src][3] & rxflit_r1[g_src][2];
                 assign rxflit_qos_m_r1[g_src] = !rxflit_r1[g_src][3] & !rxflit_r1[g_src][2] & rxflit_r1[g_src][1];
@@ -637,6 +651,8 @@ module chi_xp_channel #(
         route_xy[XP_INTF_P1] = (tgt_xid == my_xid) & (tgt_yid == my_yid) & (tgt_portid == 1'b1);
     endfunction
 
+    assign rxflitv_use_r1[XP_INTF_MAX-1:0]       = rxflitv_r1[XP_INTF_MAX-1:0] &
+                                                   ~rxflit_link_r1[XP_INTF_MAX-1:0];
     assign rxflitv_r1[XP_INTF_E]                 = RXFLITV_E;
     assign rxflitv_r1[XP_INTF_W]                 = RXFLITV_W;
     assign rxflitv_r1[XP_INTF_N]                 = RXFLITV_N;
