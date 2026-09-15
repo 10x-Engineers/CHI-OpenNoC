@@ -100,6 +100,7 @@ module hnf_mshr_qos `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_entry_alloc_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_static_en_s0;
     wire                           pcrdreturn_s0;
+    wire                           pcrdgrant_fifo_can_push;
     logic [`MSHR_ENTRIES_NUM-1:0]  mshr_static_free_s0;
     wire                           mshr_static_free_valid_s0;
     logic [`MSHR_ENTRIES_WIDTH-1:0] mshr_static_free_idx_s0;
@@ -937,7 +938,7 @@ module hnf_mshr_qos `HNF_PARAM
         for(ret_entry=0;ret_entry<`RET_BANK_ENTRIES_NUM;ret_entry=ret_entry+1)begin
             //retry bank hhigh count
             assign ret_cnt_hh_inc_s1[ret_entry] = ret_is_hh_s1 & ret_cnt_inc_ptr_s1_q[ret_entry];
-            assign ret_cnt_hh_dec_s1[ret_entry] = (hh_present_win_s2_q & ~ret_cnt_hh_zero[ret_entry] & ret_cnt_hh_dec_ptr_s2_q[ret_entry]);
+            assign ret_cnt_hh_dec_s1[ret_entry] = (hh_present_win_s2_q & ~ret_cnt_hh_zero[ret_entry] & ret_cnt_hh_dec_ptr_s2_q[ret_entry] & pcrdgrant_fifo_can_push);
             assign ret_cnt_hh_en_s1[ret_entry] = ret_cnt_hh_inc_s1[ret_entry] | ret_cnt_hh_dec_s1[ret_entry];
 
             always_comb begin: determine_hh_entry_cnt_update_comb_logic
@@ -964,7 +965,7 @@ module hnf_mshr_qos `HNF_PARAM
 
             //retry bank high count
             assign ret_cnt_h_inc_s1[ret_entry] = ret_is_h_s1 & ret_cnt_inc_ptr_s1_q[ret_entry];
-            assign ret_cnt_h_dec_s1[ret_entry] = (h_present_win_s2_q & ~ret_cnt_h_zero[ret_entry] & ret_cnt_h_dec_ptr_s2_q[ret_entry]);
+            assign ret_cnt_h_dec_s1[ret_entry] = (h_present_win_s2_q & ~ret_cnt_h_zero[ret_entry] & ret_cnt_h_dec_ptr_s2_q[ret_entry] & pcrdgrant_fifo_can_push);
             assign ret_cnt_h_en_s1[ret_entry] = ret_cnt_h_inc_s1[ret_entry] | ret_cnt_h_dec_s1[ret_entry];
 
             always_comb begin: determine_h_entry_cnt_update_comb_logic
@@ -991,7 +992,7 @@ module hnf_mshr_qos `HNF_PARAM
 
             //retry bank med count
             assign ret_cnt_m_inc_s1[ret_entry]  = ret_is_m_s1  & ret_cnt_inc_ptr_s1_q[ret_entry];
-            assign ret_cnt_m_dec_s1[ret_entry]  = (m_present_win_s2_q & ~ret_cnt_m_zero[ret_entry] & ret_cnt_m_dec_ptr_s2_q[ret_entry]);
+            assign ret_cnt_m_dec_s1[ret_entry]  = (m_present_win_s2_q & ~ret_cnt_m_zero[ret_entry] & ret_cnt_m_dec_ptr_s2_q[ret_entry] & pcrdgrant_fifo_can_push);
             assign ret_cnt_m_en_s1[ret_entry] = ret_cnt_m_inc_s1[ret_entry] | ret_cnt_m_dec_s1[ret_entry];
 
             always_comb begin: determine_m_entry_cnt_update_comb_logic
@@ -1018,7 +1019,7 @@ module hnf_mshr_qos `HNF_PARAM
 
             //retry bank low count
             assign ret_cnt_l_inc_s1[ret_entry] = ret_is_l_s1 & ret_cnt_inc_ptr_s1_q[ret_entry];
-            assign ret_cnt_l_dec_s1[ret_entry] = (l_present_win_s2_q & ~ret_cnt_l_zero[ret_entry] & ret_cnt_l_dec_ptr_s2_q[ret_entry]);
+            assign ret_cnt_l_dec_s1[ret_entry] = (l_present_win_s2_q & ~ret_cnt_l_zero[ret_entry] & ret_cnt_l_dec_ptr_s2_q[ret_entry] & pcrdgrant_fifo_can_push);
             assign ret_cnt_l_en_s1[ret_entry] = ret_cnt_l_inc_s1[ret_entry] | ret_cnt_l_dec_s1[ret_entry];
 
             always_comb begin: determine_l_entry_cnt_update_comb_logic
@@ -1385,7 +1386,12 @@ module hnf_mshr_qos `HNF_PARAM
     assign pcrdgrant_fifo_datain_s2.qos      = pcrdgnt_qos_s2;
     assign pcrdgrant_fifo_datain_s2.pcrdtype = pcrdgnt_pcrdtype_s2;
 
-    assign pcrdgrant_fifo_push = pcrdgnt_req_enable_s2_q & (~pcrdgrant_fifo_full | (pcrdgrant_fifo_full & txrsp_mshr_pcrdgnt_won_s2));
+    // CHI E.b section 2.11.2 (p.2-147, MUST) makes the grant a starvation rule --
+    // "credits are eventually given to every transaction that has received a RetryAck
+    // response" -- so the retry-bank debit and the grant must be one event. A push the
+    // queue refuses leaves the count intact and the Home still owes that credit.
+    assign pcrdgrant_fifo_can_push = ~pcrdgrant_fifo_full | txrsp_mshr_pcrdgnt_won_s2;
+    assign pcrdgrant_fifo_push     = pcrdgnt_req_enable_s2_q & pcrdgrant_fifo_can_push;
     assign pcrdgrant_fifo_pop  = txrsp_mshr_pcrdgnt_won_s2 & ~pcrdgrant_fifo_empty;
 
     sync_fifo #(
@@ -1463,6 +1469,12 @@ module hnf_mshr_qos `HNF_PARAM
                       // A PCrdReturn naming a PCrdType this Home holds no reservation for: section
                       // 2.11.2 (p.2-147, MUST) requires the field to carry "the value of the credit type
                       // that is being returned", so there is nothing legal to release.
+                      // An AllowRetry=0 request with no static entry reserved for it. Section 2.11
+                      // (p.2-145): "This second attempt to carry out the transaction is guaranteed to be
+                      // accepted", so the Home may neither RetryAck it (that would break the same
+                      // sentence) nor drop it -- section 4.5.1 (p.4-197, MUST) owes it a completion.
+                      // Reaching this state means this Home's own credit accounting has broken.
+                      `display_fatal(!(li_req_static_s0 && !li_req_static_avail_s0),"Fatal info: AllowRetry=0 request with no static MSHR entry reserved!\n");
                       `display_fatal(!(pcrdreturn_s0 && !mshr_static_free_valid_s0),"Fatal info: PCrdReturn for a PCrdType with no reservation outstanding!\n");
                       `display_fatal(!(li_mshr_rxreq_valid_s0 && li_mshr_rxreq_seq_s0 && qos_seq_pool_full_s0_q),"Fatal info: Seq repeat enqueue!\n");
                       `display_fatal(!(mshr_dbf_retired_valid_sx1_q&&(!mshr_entry_valid_s1_q[mshr_dbf_retired_idx_sx1_q])),"Fatal info: A invalid mshr entry is retiring\n");
