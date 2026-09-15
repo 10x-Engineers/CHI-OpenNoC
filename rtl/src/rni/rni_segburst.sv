@@ -146,14 +146,19 @@ module rni_segburst `RNI_PARAM
     // combining its requests or merging its writes, so each AXI beat owes its
     // own CHI request at the beat's own Size rather than a chunk spanning them.
     assign axi_device_w     = ~axi_cache_s1_i[1];
-    assign dev_seg_w        = axi_device_w & axi_burst_incr_w;
+    // A FIXED burst is N accesses to ONE location, which is the same clause word
+    // for word -- "combining different requests to the same location into one
+    // request, is not permitted" -- so it is segmented per beat too.
+    assign dev_seg_w        = axi_device_w & (axi_burst_incr_w | axi_burst_fix_w);
     assign dev_multibeat_w  = dev_seg_w & (|axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0]);
-    // A3.4.1: Address_N is Aligned_Address + (N-1) x Number_Bytes, so every beat
-    // after the first sits on a Number_Bytes boundary.
-    assign dev_next_addr_w[`AXI4_AWADDR_WIDTH-1:0] =
-        ((axi_addr_q[`AXI4_AWADDR_WIDTH-1:0] >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0])
-         << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) +
-        ({{(`AXI4_AWADDR_WIDTH-1){1'b0}}, 1'b1} << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]);
+    // A3.4.1: Address_N is Aligned_Address + (N-1) x Number_Bytes on an
+    // incrementing burst, and "the address for every transfer in the burst is the
+    // same address" on a fixed one -- so only the former advances.
+    assign dev_next_addr_w[`AXI4_AWADDR_WIDTH-1:0] = axi_burst_fix_w ?
+        axi_addr_q[`AXI4_AWADDR_WIDTH-1:0] :
+        (((axi_addr_q[`AXI4_AWADDR_WIDTH-1:0] >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0])
+          << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) +
+         ({{(`AXI4_AWADDR_WIDTH-1){1'b0}}, 1'b1} << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]));
 
     assign axi_addr_align_w[`AXI4_AWADDR_WIDTH-1:0]                       = (axi_addr_in_s1_i[`AXI4_AWADDR_WIDTH-1:0] >> axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0]) << axi_size_in_s1_i[`AXI4_AWSIZE_WIDTH-1:0];
     assign axi_len_plusone_s1_w[`AXI4_AWLEN_WIDTH:0]                      = axi_len_in_s1_i[`AXI4_AWLEN_WIDTH-1:0] + 1'b1;
@@ -364,18 +369,24 @@ module rni_segburst `RNI_PARAM
         chi_ct_vec_s1_r[3:0] = 4'b0001 << segburst_addr_s1_o[5:4];
         unique case (state_q[`SEGB_STATE_WIDTH-1:0])
             `SEGB_PASS:begin
-                if(axi_burst_fix_w)begin
-                    chi_pd_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
-                    chi_ls_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
-                    chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {12'b0,axi_len_in_s1_i[3:0]} << {axi_addr_align_w[5:4],2'b00};
-                end
-                else if(dev_seg_w)begin
+                // dev_seg_w first: a Device FIXED burst owes one request per beat,
+                // so it must not take the arm below that records the beat count in
+                // bc_vec and sends one.
+                if(dev_seg_w)begin
                     // One AXI beat, so one 16B chunk of the line: a beat is at
                     // most the 128-bit data bus and never crosses a chunk
                     // boundary, and its beat count in that chunk is 1 (bc = 0).
                     chi_pd_vec_s1_r[3:0] = 4'b0001 << segburst_addr_s1_o[5:4];
                     chi_ls_vec_s1_r[3:0] = dev_multibeat_w ? 4'b0000 : (4'b0001 << segburst_addr_s1_o[5:4]);
                     chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {`RNI_BCVEC_WIDTH{1'b0}};
+                end
+                else if(axi_burst_fix_w)begin
+                    // Normal memory: AXI4 A4.4 makes a Modifiable access mergeable,
+                    // so the beats of a non-Device fixed burst may be carried as one
+                    // request whose bc_vec records how many there were.
+                    chi_pd_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
+                    chi_ls_vec_s1_r[3:0] = 4'b0001 << axi_addr_align_w[5:4];
+                    chi_bc_vec_s1_r[`RNI_BCVEC_WIDTH-1:0] = {12'b0,axi_len_in_s1_i[3:0]} << {axi_addr_align_w[5:4],2'b00};
                 end
                 else if(state_nxt_r[`SEGB_STATE_WIDTH-1:0] == `SEGB_PASS)begin
                     unique case({axi_addr_align_w[5:4],addr_plus_bytes_w[5:4]})
