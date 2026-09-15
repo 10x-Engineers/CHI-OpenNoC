@@ -35,6 +35,7 @@ module rni_rd_buffer `RNI_PARAM
     output wire                               rxdatflitv_d1_o,
     output wire [11:0]                        rxdatflit_txnid_d1_o,
     output wire [1:0]                         rxdatflit_dataid_d1_o,
+    output wire [3:0]                         rxdatflit_opcode_d1_o,
     output wire                               rp_fifo_acpt_d4_o,
 
     //from rni_arctrl
@@ -151,6 +152,7 @@ module rni_rd_buffer `RNI_PARAM
     assign rxdatflitv_d1_o       = rxdatflitv_d1_i;
     assign rxdatflit_txnid_d1_o  = txnid_d1_w;
     assign rxdatflit_dataid_d1_o = dataid_d1_w;
+    assign rxdatflit_opcode_d1_o = rxdatflit_d1_i.opcode;
 
     //forward to d2
     always_ff @(posedge clk_i) begin
