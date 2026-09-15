@@ -239,11 +239,54 @@ module chi_xp_node #(
   reg  RXLINKACTIVE_P1_q;
   reg  reset_done;
 
+
+  // CHI E.b SS13.11 (p.13-442) identifies a link flit by a zero Opcode, so the
+  // crosspoint has to read that field. Its position is the sum of the widths
+  // BELOW it in each chie_pkg flit struct (packed structs are declared MSB-first):
+  //   REQ  qos4 + tgtid + srcid + txnid12 + returnnid + stashnidvalid1 + returntxnid12
+  //   RSP  qos4 + tgtid + srcid + txnid12
+  //   DAT  qos4 + tgtid + srcid + txnid12 + homenid
+  //   SNP  qos4 +         srcid + txnid12 + fwdnid + fwdtxnid12
+  localparam int NIDW = CHIE_NID_WIDTH_PARAM;
+  localparam int REQ_OPC_OFF = 29 + 3*NIDW, REQ_OPC_W = 7;
+  localparam int RSP_OPC_OFF = 16 + 2*NIDW, RSP_OPC_W = 5;
+  localparam int DAT_OPC_OFF = 16 + 3*NIDW, DAT_OPC_W = 4;
+  localparam int SNP_OPC_OFF = 28 + 2*NIDW, SNP_OPC_W = 5;
+
+`ifdef DISPLAY_FATAL
+  // The offsets above are the one thing here that a chie_pkg layout change can
+  // silently invalidate -- a wrong offset decodes some other field as the opcode
+  // and either drops protocol flits or routes link flits. Checked rather than
+  // trusted: set only the opcode and confirm those are exactly the bits that move.
+  initial begin : opcode_offset_check
+    chie_pkg::req_flit_s rq; chie_pkg::rsp_flit_s rs;
+    chie_pkg::dat_flit_s dt; chie_pkg::snp_flit_s sn;
+    logic [$bits(chie_pkg::req_flit_s)-1:0] rqv;
+    logic [$bits(chie_pkg::rsp_flit_s)-1:0] rsv;
+    logic [$bits(chie_pkg::dat_flit_s)-1:0] dtv;
+    logic [$bits(chie_pkg::snp_flit_s)-1:0] snv;
+    rq = '0; rq.opcode = chie_pkg::req_opcode_e'('1); rqv = rq;
+    rs = '0; rs.opcode = chie_pkg::rsp_opcode_e'('1); rsv = rs;
+    dt = '0; dt.opcode = chie_pkg::dat_opcode_e'('1); dtv = dt;
+    sn = '0; sn.opcode = chie_pkg::snp_opcode_e'('1); snv = sn;
+    if (rqv != ($bits(chie_pkg::req_flit_s)'({REQ_OPC_W{1'b1}}) << REQ_OPC_OFF))
+      $fatal(1, "REQ opcode offset %0d/%0d does not match chie_pkg", REQ_OPC_OFF, REQ_OPC_W);
+    if (rsv != ($bits(chie_pkg::rsp_flit_s)'({RSP_OPC_W{1'b1}}) << RSP_OPC_OFF))
+      $fatal(1, "RSP opcode offset %0d/%0d does not match chie_pkg", RSP_OPC_OFF, RSP_OPC_W);
+    if (dtv != ($bits(chie_pkg::dat_flit_s)'({DAT_OPC_W{1'b1}}) << DAT_OPC_OFF))
+      $fatal(1, "DAT opcode offset %0d/%0d does not match chie_pkg", DAT_OPC_OFF, DAT_OPC_W);
+    if (snv != ($bits(chie_pkg::snp_flit_s)'({SNP_OPC_W{1'b1}}) << SNP_OPC_OFF))
+      $fatal(1, "SNP opcode offset %0d/%0d does not match chie_pkg", SNP_OPC_OFF, SNP_OPC_W);
+  end
+`endif
+
   chi_xp_channel #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(REQ_FLIT_WIDTH),
+      .FLIT_OPCODE_OFFSET(REQ_OPC_OFF),
+      .FLIT_OPCODE_WIDTH(REQ_OPC_W),
       .XP_PORT_EN(REQ_CH_EN)
   ) m_req (
       .clk(clk),
@@ -305,6 +348,8 @@ module chi_xp_node #(
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(RSP_FLIT_WIDTH),
+      .FLIT_OPCODE_OFFSET(RSP_OPC_OFF),
+      .FLIT_OPCODE_WIDTH(RSP_OPC_W),
       .XP_PORT_EN(RSP_CH_EN)
   ) m_rsp (
       .clk(clk),
@@ -366,6 +411,8 @@ module chi_xp_node #(
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(DAT_FLIT_WIDTH),
+      .FLIT_OPCODE_OFFSET(DAT_OPC_OFF),
+      .FLIT_OPCODE_WIDTH(DAT_OPC_W),
       .XP_PORT_EN(DAT_CH_EN)
   ) m_dat (
       .clk(clk),
@@ -427,6 +474,8 @@ module chi_xp_node #(
       .XP_XID_WIDTH(XP_XID_WIDTH),
       .XP_YID_WIDTH(XP_YID_WIDTH),
       .FLIT_WIDTH(SNP_FLIT_WIDTH),
+      .FLIT_OPCODE_OFFSET(SNP_OPC_OFF),
+      .FLIT_OPCODE_WIDTH(SNP_OPC_W),
       .FLIT_TGT_OFFSET(SNP_TGTID_OFFSET),
       .XP_PORT_EN(SNP_CH_EN)
   ) m_snp (
