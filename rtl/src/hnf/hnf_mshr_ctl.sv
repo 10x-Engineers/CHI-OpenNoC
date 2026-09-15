@@ -198,6 +198,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output chie_pkg::req_opcode_e              mshr_txreq_opcode_sx1,
     output chie_pkg::size_e                    mshr_txreq_size_sx1,
     output wire                                mshr_txreq_ns_sx1,
+    output wire                                mshr_snp_outstanding_sx,
     output wire                                mshr_txreq_allowretry_sx1,
     output chie_pkg::order_e                   mshr_txreq_order_sx1,
     output wire [3:0]                          mshr_txreq_pcrdtype_sx1,
@@ -689,6 +690,11 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txsnp_entry_idx_sx1 = mshr_txsnp_txnid_sx1_q[`MSHR_ENTRIES_WIDTH-1:0];
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_memrd_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_getall_s1;
+
+    // Chapter 15 (p.15-468, MUST): the interconnect must "complete all snoop accesses
+    // to the interface before it sets SYSCOACK LOW". A fan-out whose count is set but
+    // whose responses are not all back is exactly such an access in progress.
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_pending_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_snp_get_64B_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_clr_l3busy_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_rd_l3fill_sx7;
@@ -1738,6 +1744,7 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_snp_dmt_s1[entry]          = (mshr_snp_memrd_s1[entry] & mshr_ru_s1_q[entry] &
                    ~(|mshr_snp_getid_s1_q[entry]));
             assign mshr_snp_getall_s1[entry]       = ((mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) & (mshr_snpcnt_sx_q[entry] != {`MSHR_SNPCNT_WIDTH{1'b0}}));
+            assign mshr_snp_pending_sx[entry]      = (mshr_snpcnt_sx_q[entry] != {`MSHR_SNPCNT_WIDTH{1'b0}}) & ~mshr_snp_getall_s1[entry];
             assign mshr_snp_get_64B_s1[entry]      = (mshr_snp_getid_s1_q[entry][0] & mshr_snp_getid_s1_q[entry][1]);
             // Both data packets arrived, AND every byte in them is valid. Sec 2.10.3
             // (p.2-135) lets SnpRespDataPtl assert "any combination of byte enables",
@@ -3661,6 +3668,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_size_sx1        = mshr_txreq_is_cmo_sx1 ? chie_pkg::SIZE_64B :
                                         (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1)? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
+    assign mshr_snp_outstanding_sx    = |mshr_snp_pending_sx;
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
