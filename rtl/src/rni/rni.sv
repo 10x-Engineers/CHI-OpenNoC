@@ -114,6 +114,7 @@ module rni `RNI_PARAM
     chie_pkg::dat_flit_s                rxdatflit_d1;
     wire [11:0]                         rxdatflit_txnid_d1;
     wire [1:0]                          rxdatflit_dataid_d1;
+    wire [3:0]                          rxdatflit_opcode_d1;
     wire                                arctrl_rxdat_rb_v_d2;
     wire [`RNI_AR_ENTRIES_WIDTH-1:0]    arctrl_rxdat_rb_idx_d2;
     wire                                rp_fifo_acpt_d4;
@@ -253,6 +254,7 @@ module rni `RNI_PARAM
                       ,.rxdatflitv_d1_o                       ( rxdatflitv_d1_w               )
                       ,.rxdatflit_txnid_d1_o                  ( rxdatflit_txnid_d1            )
                       ,.rxdatflit_dataid_d1_o                 ( rxdatflit_dataid_d1           )
+                      ,.rxdatflit_opcode_d1_o                 ( rxdatflit_opcode_d1           )
                       ,.rp_fifo_acpt_d4_o                     ( rp_fifo_acpt_d4               )
                       ,.arctrl_rb_valid_d4_i                  ( arctrl_rb_valid_d4            )
                       ,.arctrl_rb_idx_d4_i                    ( arctrl_rb_idx_d4              )
@@ -281,6 +283,7 @@ module rni `RNI_PARAM
                    ,.rxdatflitv_d1_i                       ( rxdatflitv_d1_w               )
                    ,.rxdatflit_txnid_d1_i                  ( rxdatflit_txnid_d1            )
                    ,.rxdatflit_dataid_d1_i                 ( rxdatflit_dataid_d1           )
+                   ,.rxdatflit_opcode_d1_i                 ( rxdatflit_opcode_d1           )
                    ,.rp_fifo_acpt_d4_i                     ( rp_fifo_acpt_d4               )
                    ,.arctrl_rb_valid_d4_o                  ( arctrl_rb_valid_d4            )
                    ,.arctrl_rb_ctmask_d4_o                 ( arctrl_rb_ctmask_d4           )

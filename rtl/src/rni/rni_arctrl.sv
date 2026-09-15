@@ -35,6 +35,7 @@ module rni_arctrl
     input  wire                             rxdatflitv_d1_i,
     input  wire [11:0]                      rxdatflit_txnid_d1_i,
     input  wire [1:0]                       rxdatflit_dataid_d1_i,
+    input  wire [3:0]                       rxdatflit_opcode_d1_i,
 
     input  wire                             rxrspflitv_d1_i,
     input  chie_pkg::rsp_flit_s             rxrspflit_d1_i,
@@ -132,6 +133,13 @@ module rni_arctrl
     wire [`RNI_DMASK_CT_WIDTH-1:0]       arctrl_rdat_ctmask_ns_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_rdata_select_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_dealloc_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_rdata_retire_w;
+    logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_retired_q;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_respsep_recv_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxdat_sepform_vec_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_respsep_owed_w;
+    logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_sepform_q;
+    logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_respsep_recv_q;
     wire                                 arctrl_entry_dealloc_v_w;
 
     logic                                arctrl_entry_full_r;
@@ -196,6 +204,7 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] rxrsp_pcrdgrant_recv_vec_q;
     logic                                rxdat_flitv_q;
     logic [11:0]                         rxdat_txnid_q;
+    logic [3:0]                          rxdat_opcode_q;
     logic [1:0]                          rxdat_dataid_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_start_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_send_q;
@@ -803,6 +812,47 @@ module rni_arctrl
     // dealloc -- so a RetryAck'd ordered request keeps blocking the next one,
     // which is Figure 2-34 step 5 (p.2-121).
     assign rxrsp_ordrsp_recv_flag_w = ar_rxrsp_correct_w & ((arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_READRECEIPT) | (arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RESPSEPDATA));
+
+    // CHI E.b SS2.5.2 (p.2-87): a TxnID may be reused only once "all responses
+    // associated with a previous transaction that have used the same value" have
+    // arrived. SS2.3.1 Alternative 2's separate form owes two -- RespSepData on
+    // RSP and DataSepResp on DAT -- so the data half alone does not free the ID.
+    // Which form the Home elected is not known until the data arrives, hence a
+    // per-entry record rather than a property of the request.
+    assign rxrsp_respsep_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] =
+        {RNI_AR_ENTRIES_NUM_PARAM{ar_rxrsp_correct_w &
+            (arctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RESPSEPDATA)}} &
+        arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    assign rxdat_sepform_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] =
+        {RNI_AR_ENTRIES_NUM_PARAM{rxdat_opcode_q[3:0] == chie_pkg::DAT_DATASEPRESP}} &
+        arctrl_rxdat_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    // Owed once the data says the form was separate, until the RSP half lands.
+    // Both halves are folded in combinationally as well, so an arrival in the
+    // same cycle as a dealloc is judged on this cycle's state, not last cycle's.
+    assign arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] =
+        (arctrl_sepform_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] |
+         rxdat_sepform_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]) &
+        ~(arctrl_respsep_recv_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] |
+          rxrsp_respsep_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
+
+    generate
+        for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:respsep_track
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i) begin
+                    arctrl_sepform_q[entry]     <= 1'b0;
+                    arctrl_respsep_recv_q[entry] <= 1'b0;
+                end
+                else if (arctrl_entry_dealloc_vec_w[entry]) begin
+                    arctrl_sepform_q[entry]     <= 1'b0;
+                    arctrl_respsep_recv_q[entry] <= 1'b0;
+                end
+                else begin
+                    if (rxdat_sepform_vec_w[entry])       arctrl_sepform_q[entry]      <= 1'b1;
+                    if (rxrsp_respsep_recv_vec_w[entry])  arctrl_respsep_recv_q[entry] <= 1'b1;
+                end
+            end
+        end
+    endgenerate
     assign rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rxrsp_ordrsp_recv_flag_w}} & arctrl_rxrsp_ptr_r[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | ({RNI_AR_ENTRIES_NUM_PARAM{arctrl_entry_req_select_success_flag_w}} & arctrl_entry_req_ptr_ns_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & arctrl_entry_ordered_w[RNI_AR_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_ordered_pending_any_w = |arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
@@ -1131,6 +1181,15 @@ module rni_arctrl
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
+            rxdat_opcode_q[3:0] <= '0;
+        end
+        else begin
+            rxdat_opcode_q[3:0] <= rxdatflit_opcode_d1_i[3:0];
+        end
+    end
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
             rxdat_dataid_q[1:0] <= '0;
         end
         else begin
@@ -1206,6 +1265,27 @@ module rni_arctrl
     /////////////////////////////////////////////////////////////
     // dealloc
     /////////////////////////////////////////////////////////////
-    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rp_fifo_acpt_d4_i && !(|arctrl_rdat_pdmask_ns_w[`RNI_DMASK_PD_WIDTH-1:0])}} & arctrl_rdata_send_q;
+    assign arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{rp_fifo_acpt_d4_i && !(|arctrl_rdat_pdmask_ns_w[`RNI_DMASK_PD_WIDTH-1:0])}} & arctrl_rdata_send_q;
+
+    // The retire is a single cycle and the entry is not re-selected for read data
+    // once its mask is empty, so it is held rather than dropped while SS2.5.2's
+    // remaining response is owed.
+    generate
+        for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:rdata_retired
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i) begin
+                    arctrl_rdata_retired_q[entry] <= 1'b0;
+                end
+                else if (arctrl_entry_dealloc_vec_w[entry]) begin
+                    arctrl_rdata_retired_q[entry] <= 1'b0;
+                end
+                else if (arctrl_rdata_retire_w[entry]) begin
+                    arctrl_rdata_retired_q[entry] <= 1'b1;
+                end
+            end
+        end
+    endgenerate
+
+    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] | arctrl_rdata_retired_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_dealloc_v_w = |arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 endmodule
