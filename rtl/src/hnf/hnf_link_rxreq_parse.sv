@@ -184,11 +184,21 @@ module hnf_link_rxreq_parse `HNF_PARAM
     always_ff @(posedge clk or posedge rst) begin: rxreqcrdv_s1_q_logic_t
         if (rst == 1'b1)
             rxreqcrdv_s1_q <= 1'b0;
-        else
+        else if (rxcrd_en)
             rxreqcrdv_s1_q <= rxreqcrdv_ns_s0;
     end
 
-    assign rxreq_lcrdv = rxreqcrdv_s1_q;
+    // Table 14-2 (p.14-450, MUST) bars a Receiver from sending credits outside RUN:
+    // "The Receiver must not send any credits" in STOP and ACTIVATE, and in DEACTIVATE
+    // it "stops sending credits and collects all returned credits". The grant is
+    // decided combinationally on rxcrd_en but the valid is registered, so a grant
+    // decided in the last RUN cycle left one cycle late, after the link had gone. The
+    // peer rightly ignores such a credit, and this Receiver's outstanding count could
+    // then never return to zero -- which is what held LINKACTIVEACK asserted for good,
+    // since Table 14-2's DEACTIVATE row has the Receiver wait for every credit back.
+    // Held rather than dropped, so the pool needs no compensating term: the grant is
+    // already debited and is emitted when RUN resumes.
+    assign rxreq_lcrdv = rxreqcrdv_s1_q & rxcrd_en;
     //-----------------------------------------------------------------------------
     // DISPLAY INFO
     //-----------------------------------------------------------------------------
