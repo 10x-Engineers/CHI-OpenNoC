@@ -1577,14 +1577,19 @@ module rni_awctrl `RNI_PARAM
             aw_txrsp_txnid_r[11:0] = aw_txrsp_txnid_r[11:0] | ({12{txrsp_select_ptr_q[i]}} & rxrsp_dbidresp_dbid_q[i][11:0]);
     end
 
+    // Table 3-1 (SS3.3.2 p.3-153, MUST) derives a CompAck's TgtID from "Comp.SrcID
+    // or DBIDResp.SrcID or CompDBIDResp.SrcID", not from a build parameter: SS3.3.1
+    // (p.3-152, MUST) has a Requester "expect the interconnect to remap the target
+    // ID of a request", so the Home that answers need not be the one addressed.
     always_comb begin
         aw_txrspflit_info_r = '0;
-        aw_txrspflit_info_r.tgtid = aw_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         aw_txrspflit_info_r.srcid = RNI_NID_PARAM;
         aw_txrspflit_info_r.txnid = aw_txrsp_txnid_r[11:0];
         aw_txrspflit_info_r.opcode = chie_pkg::RSP_COMPACK;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txrspflit_info_r.qos = aw_txrspflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{txrsp_select_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
+            aw_txrspflit_info_r.tgtid = aw_txrspflit_info_r.tgtid |
+                ({chie_pkg::NID_WIDTH{txrsp_select_ptr_q[i]}} & rxrsp_dbidresp_srcid_q[i][chie_pkg::NID_WIDTH-1:0]);
             aw_txrspflit_info_r.tracetag = aw_txrspflit_info_r.tracetag | (txrsp_select_ptr_q[i] & rxrsp_tracetag_q[i]);
         end
     end
