@@ -178,9 +178,9 @@ passes them down a hierarchy.
 
 | Parameter | Default | Notes |
 | :-- | --: | :-- |
-| `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | CHI request address width. |
-| `CHIE_NID_WIDTH_PARAM` | `chie_pkg::NID_WIDTH` (7) | NodeID width. Section 16.1 allows 7..11; only the crosspoint range-checks it. |
-| `CHIE_DATA_WIDTH_PARAM` | 256 | CHI data width. **Not currently configurable** — the beat-count and DataID logic assumes a 64-byte line is exactly two packets, which only holds at 256. Section 16.1 makes 128 and 512 legal too — [#170](https://github.com/10x-Engineers/CHI-OpenNoC/issues/170). |
+| `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | CHI request address width. Carried symbolically, so 44..52 build; section 16.1's range is now refused at elaboration outside it, but only 44 is exercised. |
+| `CHIE_NID_WIDTH_PARAM` | `chie_pkg::NID_WIDTH` (7) | NodeID width. Carried symbolically, so 7..11 build; section 16.1's range is refused at elaboration outside it, but only 7 is exercised. The mesh/ring generators still pin 7 — [#220](https://github.com/10x-Engineers/CHI-OpenNoC/issues/220). |
+| `CHIE_DATA_WIDTH_PARAM` | 256 | CHI data width. **256 only, and now enforced**: the beat-count and DataID logic assumes a 64-byte line is exactly two packets, which holds only at 256, so `chie_flit_opt_check` refuses any other value rather than mis-serving data. Section 16.1 (p.16-471) makes 128 and 512 legal for a component that implements them. |
 | `CHIE_BE_WIDTH_PARAM` | `chie_pkg::BE_WIDTH` (32) | Derived as `DATA_WIDTH/8`; no longer settable independently. |
 | `CHIE_POISON_WIDTH_PARAM` | `chie_pkg::POISON_WIDTH` (4) | Derived as `DATA_WIDTH/64`; no longer settable independently. |
 | `CHIE_DATACHECK_WIDTH_PARAM` | `chie_pkg::DATACHECK_WIDTH` (32) | Derived as `DATA_WIDTH/8`; no longer settable independently. |
