@@ -47,6 +47,9 @@ module snf_data_buffer `SNF_PARAM
         input  chie_pkg::resp_err_e                 mshr_txdat_resperr_sx,
         input  logic [11:0]                         mshr_txdat_dbid_sx,
         input  logic [1:0]                          mshr_txdat_dataid_sx,
+        // Sec 12.10 (p.12-385) gives a Home-to-Subordinate Read the Transfer and Fetch
+        // columns; this says the request asked for one of them.
+        input  wire                                 mshr_txdat_tag_return_sx,
         input  logic                                mshr_txdat_tracetag_sx,
         input  logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_srcid_sx,
         input  logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_homenid_sx,
@@ -89,6 +92,11 @@ module snf_data_buffer `SNF_PARAM
     // propagated along with the data", so the tag is held beside the line it
     // tags -- one bit per 64-bit chunk, both halves of the line.
     logic [2*chie_pkg::POISON_WIDTH-1:0] dbf_poison_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    // CHI E.b SS12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes, so a
+    // 64-byte line's worth is two packets' Tag fields; SS13.10.39 (p.13-435) pairs a
+    // TU bit with each. Buffered beside the data they tag, like Poison.
+    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [2*chie_pkg::TU_WIDTH-1:0]    dbf_tu_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_rec_idx_sx_q;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_fifo_set_vec;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_fifo_get_vec;
@@ -113,11 +121,14 @@ module snf_data_buffer `SNF_PARAM
     logic [2*chie_pkg::DATA_WIDTH-1:0]     wdata_recv_data_sx;
     logic [2*chie_pkg::BE_WIDTH-1:0]       wdata_recv_be_sx;
     logic [2*chie_pkg::POISON_WIDTH-1:0]   wdata_recv_poison_sx;
+    logic [2*chie_pkg::TAG_WIDTH-1:0]      wdata_recv_tag_sx;
+    logic [2*chie_pkg::TU_WIDTH-1:0]       wdata_recv_tu_sx;
     wire                                   wdata_cancel_recv_s0;
     wire                                   wrzero_inject_sx;
     logic [chie_pkg::DATA_WIDTH-1:0]       dbf_txdat_data_sx;
     logic [chie_pkg::BE_WIDTH-1:0]         dbf_txdat_be_sx;
     logic [chie_pkg::POISON_WIDTH-1:0]     dbf_txdat_poison_sx;
+    logic [chie_pkg::TAG_WIDTH-1:0]        dbf_txdat_tag_sx;
     wire                                   dbf_txdat_en_sx;
     wire [`SNF_MASK_CD_WIDTH-1:0]          dbf_cdmask_s0;
     wire [`SNF_MASK_CD_WIDTH-1:0]          dbf_rd_cdmask_next_sel;
@@ -129,12 +140,15 @@ module snf_data_buffer `SNF_PARAM
     logic [1:0]                            rxdat_dataid_s0;
     logic [chie_pkg::DATA_WIDTH-1:0]       rxdat_data_s0;
     logic [chie_pkg::POISON_WIDTH-1:0]     rxdat_poison_s0;
+    logic [chie_pkg::TAG_WIDTH-1:0]        rxdat_tag_s0;
+    logic [chie_pkg::TU_WIDTH-1:0]         rxdat_tu_s0;
     logic [`AXI4_RRESP_WIDTH-1:0]          rresp_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     wire                                   rdata_recv_update_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]     rdata_recv_entry_idx_sx;
     logic [1:0] [chie_pkg::DATA_WIDTH-1:0] rdata_recv_data_sx;
     logic [1:0] [chie_pkg::BE_WIDTH-1:0]   rdata_recv_be_sx;
     logic [2*chie_pkg::POISON_WIDTH-1:0]   rdata_recv_poison_sx;
+    logic [2*chie_pkg::TAG_WIDTH-1:0]      rdata_recv_tag_sx;
      logic [1:0] mshr_txdat_ccid_sx;
 
     genvar entry;
@@ -146,6 +160,10 @@ module snf_data_buffer `SNF_PARAM
     assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.dataid : '0;
     assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.data   : '0;
     assign rxdat_poison_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.poison : '0;
+    // SS12.5.2 (p.12-379, MUST): only a TagOp=Update write installs tags, and only
+    // where TU says. Every other TagOp leaves the location's tags alone.
+    assign rxdat_tag_s0    = ((rxdat_valid_s0 == 1'b1) && (rxdatflit_s0.tagop == 2'b10)) ? rxdatflit_s0.tag : '0;
+    assign rxdat_tu_s0     = ((rxdat_valid_s0 == 1'b1) && (rxdatflit_s0.tagop == 2'b10)) ? rxdatflit_s0.tu  : '0;
 
     assign AXI_128 = (`AXI4_AXDATA_WIDTH == 128) ? 1'b1 : 1'b0;
 
@@ -301,21 +319,28 @@ module snf_data_buffer `SNF_PARAM
                     dbf_data_q[entry]   <= '0;
                     dbf_be_q[entry]     <= '0;
                     dbf_poison_q[entry] <= '0;
+                    dbf_tag_q[entry]    <= '0;
+                    dbf_tu_q[entry]     <= '0;
                 end
                 else if (rdata_recv_update_sx && (entry == rdata_recv_entry_idx_sx))begin
                     dbf_data_q[entry]   <= dbf_data_q[entry] | rdata_recv_data_sx;
                     dbf_be_q[entry]     <= dbf_be_q[entry] | rdata_recv_be_sx;
                     dbf_poison_q[entry] <= dbf_poison_q[entry] | rdata_recv_poison_sx;
+                    dbf_tag_q[entry]    <= dbf_tag_q[entry]    | rdata_recv_tag_sx;
                 end
                 else if (wdata_recv_update && (entry == wdata_recv_idx))begin
                     dbf_data_q[entry]   <= dbf_data_q[entry] | wdata_recv_data_sx;
                     dbf_be_q[entry]     <= dbf_be_q[entry] | wdata_recv_be_sx;
                     dbf_poison_q[entry] <= dbf_poison_q[entry] | wdata_recv_poison_sx;
+                    dbf_tag_q[entry]    <= dbf_tag_q[entry]    | wdata_recv_tag_sx;
+                    dbf_tu_q[entry]     <= dbf_tu_q[entry]     | wdata_recv_tu_sx;
                 end
                 else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))begin
                     dbf_data_q[entry]   <= '0;
                     dbf_be_q[entry]     <= '0;
                     dbf_poison_q[entry] <= '0;
+                    dbf_tag_q[entry]    <= '0;
+                    dbf_tu_q[entry]     <= '0;
                 end
                 else begin
                     ;
@@ -389,6 +414,16 @@ module snf_data_buffer `SNF_PARAM
     end
     endgenerate
     assign rdata_recv_be_sx = '1;
+    // The AXI sideband carries the location's Allocation Tags beside its Poison; see
+    // axi4_defines.svh. One tag per 16 bytes, so the granule count follows the bus.
+    generate if (`AXI4_AXDATA_WIDTH == 128) begin: rdata_recv_tag_128_gen
+        assign rdata_recv_tag_sx = {{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][3]}},{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][2]}},{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][1]}},{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][0]}}} & {4{ruser[`AXI4_USER_TAG_RANGE]}};
+    end
+    else begin: rdata_recv_tag_256_gen
+        assign rdata_recv_tag_sx = {{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][3]}},{`AXI4_TAG_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][1]}}} & {2{ruser[`AXI4_USER_TAG_RANGE]}};
+    end
+    endgenerate
+
     generate if (`AXI4_AXDATA_WIDTH == 128) begin: rdata_recv_poison_128_gen
         assign rdata_recv_poison_sx = {{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][3]}},{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][2]}},{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][1]}},{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][0]}}} & {4{ruser[`AXI4_USER_POISON_RANGE]}};
     end
@@ -408,6 +443,7 @@ module snf_data_buffer `SNF_PARAM
     assign dbf_txdat_en_sx = mshr_txdat_en_sx && txdat_dbf_rdy_s1;
     assign dbf_txdat_entry_idx_sx = mshr_txdat_entry_idx_sx;
     assign dbf_txdat_data_sx = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_data_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::DATA_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_data_q[dbf_txdat_entry_idx_sx][chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] : '0)) : '0;
+    assign dbf_txdat_tag_sx    = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_tag_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::TAG_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_tag_q[dbf_txdat_entry_idx_sx][chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH] : '0)) : '0;
     assign dbf_txdat_poison_sx = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_poison_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::POISON_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_poison_q[dbf_txdat_entry_idx_sx][chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] : '0)) : '0;
     assign dbf_txdat_be_sx = (dbf_txdat_en_sx) ?  ((mshr_txdat_dataid_sx == 2'b00) ? dbf_be_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::BE_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_be_q[dbf_txdat_entry_idx_sx][chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH] : '0)) : '0;
 
@@ -441,6 +477,14 @@ module snf_data_buffer `SNF_PARAM
         // CHI E.b section 9.6 (p.9-348): odd byte parity over the data this packet carries.
         txdat_flit.datacheck = chie_pkg::datacheck_of(dbf_txdat_data_sx);
         txdat_flit.poison    = dbf_txdat_poison_sx;
+        // CHI E.b Sec 12.4.1 (p.12-376, MUST): a Completer that holds the location's
+        // Allocation Tags answers a Transfer or Fetch read with TagOp=Transfer. Table
+        // 13-32 (Sec 13.10.37 p.13-435) makes those tags Clean and its TU field "not
+        // applicable and must be set to zero", and requires "all tags corresponding to
+        // data in the packet" -- which is the whole of this packet's Tag field.
+        txdat_flit.tagop     = mshr_txdat_tag_return_sx ? 2'b01 : 2'b00;
+        txdat_flit.tag       = mshr_txdat_tag_return_sx ? dbf_txdat_tag_sx : '0;
+        txdat_flit.tu        = '0;
         // CHI E.b section 11.1.1 (p.11-360, MUST): a memory SN-F that does not source a
         // useful DataSource "must return 0b0111 as a default value", not the 0b0000 that
         // section reserves for a responder which is not one. This Subordinate drops
@@ -536,16 +580,22 @@ module snf_data_buffer `SNF_PARAM
         wdata_recv_data_sx   = '0;
         wdata_recv_be_sx     = wrzero_inject_sx ? '1 : '0;
         wdata_recv_poison_sx = '0;
+        wdata_recv_tag_sx    = '0;
+        wdata_recv_tu_sx     = '0;
         if (!wrzero_inject_sx && (wdata_cancel_recv_s0 == 1'b0)) begin
             if (rxdat_dataid_s0 == 2'b00) begin
                 wdata_recv_data_sx[0 +: chie_pkg::DATA_WIDTH]       = rxdat_data_s0;
                 wdata_recv_be_sx[0 +: chie_pkg::BE_WIDTH]           = rxdat_be_s0;
                 wdata_recv_poison_sx[0 +: chie_pkg::POISON_WIDTH]   = rxdat_poison_s0;
+                wdata_recv_tag_sx[0 +: chie_pkg::TAG_WIDTH]         = rxdat_tag_s0;
+                wdata_recv_tu_sx[0 +: chie_pkg::TU_WIDTH]           = rxdat_tu_s0;
             end
             else if (rxdat_dataid_s0 == 2'b10) begin
                 wdata_recv_data_sx[chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH]     = rxdat_data_s0;
                 wdata_recv_be_sx[chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH]           = rxdat_be_s0;
                 wdata_recv_poison_sx[chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] = rxdat_poison_s0;
+                wdata_recv_tag_sx[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]          = rxdat_tag_s0;
+                wdata_recv_tu_sx[chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH]             = rxdat_tu_s0;
             end
         end
     end
@@ -658,8 +708,22 @@ module snf_data_buffer `SNF_PARAM
                                       : (({`AXI4_WSTRB_WIDTH/2{wdata_cdmask_q[wdata_to_slave_idx][1:0]}} & dbf_be_q[wdata_to_slave_idx][0*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH])
                                         | ({`AXI4_WSTRB_WIDTH/2{wdata_cdmask_q[wdata_to_slave_idx][3:2]}} & dbf_be_q[wdata_to_slave_idx][1*`AXI4_WSTRB_WIDTH+:`AXI4_WSTRB_WIDTH]));
 
-    assign wuser[`AXI4_USER_TAG_RANGE] = '0;
-    assign wuser[`AXI4_USER_TU_RANGE]  = '0;
+    // SS12.5.2 (p.12-379, MUST): a TagOp=Update write installs "only the Tags that
+    // have TU asserted", so the TU bits cross with them and memory applies the mask.
+    assign wuser[`AXI4_USER_TAG_RANGE] = (AXI_128)
+        ? (({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_tag_q[wdata_to_slave_idx][0*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH])
+         | ({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][1]}} & dbf_tag_q[wdata_to_slave_idx][1*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH])
+         | ({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_tag_q[wdata_to_slave_idx][2*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH])
+         | ({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][3]}} & dbf_tag_q[wdata_to_slave_idx][3*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH]))
+        : (({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_tag_q[wdata_to_slave_idx][0*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH])
+         | ({`AXI4_TAG_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_tag_q[wdata_to_slave_idx][1*`AXI4_TAG_WIDTH +: `AXI4_TAG_WIDTH]));
+    assign wuser[`AXI4_USER_TU_RANGE]  = (AXI_128)
+        ? (({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_tu_q[wdata_to_slave_idx][0*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH])
+         | ({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][1]}} & dbf_tu_q[wdata_to_slave_idx][1*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH])
+         | ({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_tu_q[wdata_to_slave_idx][2*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH])
+         | ({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][3]}} & dbf_tu_q[wdata_to_slave_idx][3*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH]))
+        : (({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_tu_q[wdata_to_slave_idx][0*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH])
+         | ({`AXI4_TU_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_tu_q[wdata_to_slave_idx][1*`AXI4_TU_WIDTH +: `AXI4_TU_WIDTH]));
     assign wuser[`AXI4_USER_POISON_RANGE] = (AXI_128) ? (({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][0]}} & dbf_poison_q[wdata_to_slave_idx][0*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
                                         | ({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][1]}} & dbf_poison_q[wdata_to_slave_idx][1*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
                                         | ({`AXI4_POISON_WIDTH{wdata_cdmask_q[wdata_to_slave_idx][2]}} & dbf_poison_q[wdata_to_slave_idx][2*`AXI4_POISON_WIDTH+:`AXI4_POISON_WIDTH])
