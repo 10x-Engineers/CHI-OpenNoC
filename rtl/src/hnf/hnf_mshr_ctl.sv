@@ -48,6 +48,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
     input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
     input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
+    input  wire [1:0]                          li_mshr_rxreq_tagop_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_excl_noexok_s0,
     // opennoc_hnf_pkg::hnf_write_zero() of the request as sent. The opcode this
@@ -349,6 +350,12 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_sent_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_owed_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_owed_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_rdy_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_rdy_set_sx;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_sent_sx;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_win_sx;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_match_s1_q;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_set_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_sent_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_rsp_busy_wr_sx;
@@ -1529,6 +1536,18 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_pgroupid_s1_q[entry] <= '0;
                 else if(mshr_req_set_s0[entry] == 1'b1)
                     mshr_pgroupid_s1_q[entry] <= li_mshr_rxreq_lpid_s0;
+                else
+                    ;
+            end
+
+            // Sec 12.12 Table 12-2 (p.12-388) gives TagOp Match to the Write requests
+            // alone; the same encoding on a Read is Fetch. Sec 13.10.40 (p.13-435) puts
+            // the TagGroupID in the LPID bits, which mshr_pgroupid_s1_q already holds.
+            always_ff @(posedge clk)begin : mshr_tagop_match_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_tagop_match_s1_q[entry] <= 1'b0;
+                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_tagop_match_s1_q[entry] <= (li_mshr_rxreq_tagop_s0 == 2'b11);
                 else
                     ;
             end
@@ -3123,7 +3142,8 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_mem_busy_sx[entry]      = mshr_mem_rd_busy_sx_q[entry] | mshr_mem_wr_busy_sx_q[entry] | mshr_mem_cmo_busy_sx_q[entry];
             assign mshr_datbuf_busy_sx[entry]   = mshr_rn_data_busy_sx_q[entry] | mshr_sn_data_busy_sx_q[entry];
             assign mshr_rsp_busy_wr_sx[entry]   = mshr_comp_busy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry];
-            assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry];
+            assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry] |
+                   mshr_tagmatch_owed_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry];
             // Sec 4.2.4 (p.4-183): a receiver that separates the two legs must order
             // "the CMO request ... behind the write", and Sec 2.3.2 (p.2-58) lets the
             // Home wait for the write before returning CompCMO. Armed at the one
@@ -3135,10 +3155,21 @@ module hnf_mshr_ctl `HNF_PARAM
                    ~(mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] |
                      mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry]);
             assign mshr_cw_sent_sx[entry]       = mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_cw_rdy_sx_q[entry];
+            // Sec 12.11.1 (p.12-386, MUST): a TagOp Match write is owed a TagMatch
+            // "even if the WriteData is canceled or a Tag Match is not performed", so
+            // the debt is taken at allocation and outlives the entry's own completion.
+            assign mshr_tagmatch_rdy_set_sx[entry] = mshr_tagmatch_owed_sx_q[entry] & mshr_entry_valid_sx_q[entry] & ~sleep_sx_q[entry] &
+                   ~(mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] |
+                     mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry]);
+            // The CompCMO owns the slot where an entry owes both, so the two sent
+            // terms name disjoint cycles and neither clears the other's debt.
+            assign mshr_tagmatch_win_sx[entry]  = mshr_tagmatch_rdy_sx_q[entry] & ~mshr_cw_rdy_sx_q[entry] &
+                   ~mshr_comp_rdy_s2_q[entry] & ~mshr_dbid_rdy_s2_q[entry] & ~mshr_rd_receipt_rdy_s2_q[entry];
+            assign mshr_tagmatch_sent_sx[entry] = mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_tagmatch_win_sx[entry];
             assign mshr_txdat_rdy_sx[entry]     = mshr_txdat_rn_rdy_sx_q[entry] | mshr_txdat_sn_rdy_sx_q[entry];
             assign mshr_txreq_rdy_sx[entry]     = mshr_mem_rd_rdy_sx_q[entry] | mshr_mem_wr_rdy_sx_q[entry] | mshr_mem_cmo_rdy_sx_q[entry];
             assign mshr_pipeline_rdy_sx[entry]  = l3_rd_rdy_s2_q[entry] | l3_fill_rdy_s2_q[entry];
-            assign mshr_txrsp_rdy_sx[entry]     = mshr_comp_rdy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry] | mshr_cw_rdy_sx_q[entry];
+            assign mshr_txrsp_rdy_sx[entry]     = mshr_comp_rdy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry] | mshr_cw_rdy_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry];
             // mshr_stash_pull_busy_sx_q is its own term rather than a claim on the data
             // buffer or the CompAck: SS7.3 (p.7-297) lets the Stash request's own Comp go
             // out before the Snoop response, so the entry would otherwise read as idle
@@ -3169,6 +3200,29 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_cw_rdy_sx_q[entry] <= 1'b0;
                 else if(mshr_cw_rdy_set_sx[entry])
                     mshr_cw_rdy_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_tagmatch_owed_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
+                else if(mshr_tagmatch_sent_sx[entry])
+                    mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
+                else if(mshr_can_alloc_entry_s1_q[entry])
+                    mshr_tagmatch_owed_sx_q[entry] <= mshr_tagop_match_s1_q[entry] &
+                        (mshr_wu_s1_q[entry] | mshr_wrnosnp_s1_q[entry] | mshr_wrnosnpp_s1_q[entry]);
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_tagmatch_rdy_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_tagmatch_rdy_sx_q[entry] <= 1'b0;
+                else if(mshr_tagmatch_sent_sx[entry])
+                    mshr_tagmatch_rdy_sx_q[entry] <= 1'b0;
+                else if(mshr_tagmatch_rdy_set_sx[entry])
+                    mshr_tagmatch_rdy_sx_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -3789,7 +3843,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_persist_rsp_sx1 = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q] & mshr_persist_rsp_s1_q[mshr_txrsp_idx_sx1_q];
     assign mshr_txrsp_opcode_sx1   = mshr_txrsp_persist_rsp_sx1?chie_pkg::RSP_COMPPERSIST:
                                      mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?
-                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):chie_pkg::RSP_DBIDRESP);
+                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:chie_pkg::RSP_DBIDRESP));
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
@@ -3801,13 +3855,18 @@ module hnf_mshr_ctl `HNF_PARAM
                                      mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_ERR_NON_DATA :
                                      mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
                                      (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
-    assign mshr_txrsp_resp_sx1     = ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
+    // Sec 12.11.3 (p.12-387, MUST): a Completer with no MTE support for the address
+    // still owes the TagMatch, and Table 13-35 (p.13-437) puts the verdict in Resp[0]
+    // -- zero for Fail, which is the only answer this Home can give.
+    assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH) ? chie_pkg::RESP_I :
+                                     ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
     // same DBID field value in the Comp and DBIDResp or DBIDRespOrd message." The
     // MSHR index IS that value where this Home granted the buffer itself; under DWT
     // it never did, so the Comp echoes the DBID the Subordinate granted.
-    assign mshr_txrsp_dbid_sx1     = mshr_txrsp_persist_rsp_sx1
+    assign mshr_txrsp_dbid_sx1     = (mshr_txrsp_persist_rsp_sx1 ||
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH))
                                    ? {4'd0, mshr_pgroupid_s1_q[mshr_txrsp_idx_sx1_q]}
                                    : mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
                                    ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]

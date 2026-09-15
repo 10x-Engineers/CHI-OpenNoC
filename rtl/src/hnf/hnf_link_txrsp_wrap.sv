@@ -205,7 +205,10 @@ module hnf_link_txrsp_wrap `HNF_PARAM
         txrspflit_mshr_sx1.qos        = mshr_txrsp_qos_sx1;
         txrspflit_mshr_sx1.tgtid      = mshr_txrsp_tgtid_sx1;
         txrspflit_mshr_sx1.srcid      = HNF_NID_PARAM;
-        txrspflit_mshr_sx1.txnid      = mshr_txrsp_txnid_sx1_q;
+        // Table A-8 (p.A-488) gives TagMatch no TxnID: it is matched by the
+        // TagGroupID in the DBID bits (Sec 13.10.40 p.13-435) instead.
+        txrspflit_mshr_sx1.txnid      = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
+                                      ? '0 : mshr_txrsp_txnid_sx1_q;
         txrspflit_mshr_sx1.opcode     = mshr_txrsp_opcode_sx1;
         txrspflit_mshr_sx1.resperr    = mshr_txrsp_resperr_sx1;
         txrspflit_mshr_sx1.resp       = mshr_txrsp_resp_sx1;
