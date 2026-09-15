@@ -76,6 +76,7 @@ module rni_misc `RNI_PARAM
     //reg
     logic [`PCRD_CNT_WIDTH-1:0]      pcrd_cnt_q[`PCRD_TYPE_NUM];
     logic [3:0]                      pcrd_cur_type_q;
+    logic [3:0]                      pcrd_offer_type_d3_q;
     logic [1:0]                      pcrd_settle_cnt_q;
     logic                            pcrd_return_v_q;
     logic [3:0]                      pcrd_return_type_q;
@@ -109,8 +110,8 @@ module rni_misc `RNI_PARAM
     generate
         for (t = 0; t < `PCRD_TYPE_NUM; t = t + 1) begin: pcrd_pool
             wire inc_w = pcrdgnt_recv_d1_w   & (pcrdgnt_pcrdtype_d1_w  == t[3:0]);
-            wire dec_w = (pcrdgnt_claimed_d3_w & (pcrd_cur_type_q    == t[3:0]))
-                       | (pcrd_return_sent_w  & (pcrd_return_type_q == t[3:0]));
+            wire dec_w = (pcrdgnt_claimed_d3_w & (pcrd_offer_type_d3_q == t[3:0]))
+                       | (pcrd_return_sent_w  & (pcrd_return_type_q   == t[3:0]));
             assign pcrd_held_vec_w[t] = (pcrd_cnt_q[t] != {`PCRD_CNT_WIDTH{1'b0}});
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)
@@ -149,6 +150,20 @@ module rni_misc `RNI_PARAM
             pcrd_cur_type_q <= 4'd0;
         else if (pcrd_rotate_w == 1'b1)
             pcrd_cur_type_q <= pcrd_nxt_type_r;
+    end
+
+    // The claimant matched the offer one cycle earlier (present at d2, win at d3),
+    // and the offer can rotate in between -- pcrd_unclaimed_w steps a type nobody
+    // has taken. CHI E.b SS2.11 (p.2-146) makes a credit spendable only on a
+    // transaction RetryAck'd with "that particular Protocol Credit Type", so the
+    // reissue carries the claimant's own type: debiting the type the pool happens
+    // to be offering NOW destroys a credit of a type nobody claimed, and leaves
+    // the claimed one on the books with nothing left to spend it.
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            pcrd_offer_type_d3_q <= 4'd0;
+        else
+            pcrd_offer_type_d3_q <= pcrd_cur_type_q;
     end
 
     always_ff @(posedge clk_i or posedge rst_i) begin
