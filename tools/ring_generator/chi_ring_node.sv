@@ -51,6 +51,8 @@ module chi_ring_node #(
 
     output TXREQFLITV_E,
     output TXREQFLITV_W,
+    output TXREQFLITPEND_P0,
+    output TXREQFLITPEND_P1,
     output TXREQFLITV_P0,
     output TXREQFLITV_P1,
 
@@ -82,6 +84,8 @@ module chi_ring_node #(
 
     output TXRSPFLITV_E,
     output TXRSPFLITV_W,
+    output TXRSPFLITPEND_P0,
+    output TXRSPFLITPEND_P1,
     output TXRSPFLITV_P0,
     output TXRSPFLITV_P1,
 
@@ -113,6 +117,8 @@ module chi_ring_node #(
 
     output TXDATFLITV_E,
     output TXDATFLITV_W,
+    output TXDATFLITPEND_P0,
+    output TXDATFLITPEND_P1,
     output TXDATFLITV_P0,
     output TXDATFLITV_P1,
 
@@ -143,6 +149,8 @@ module chi_ring_node #(
 
     output TXSNPFLITV_E,
     output TXSNPFLITV_W,
+    output TXSNPFLITPEND_P0,
+    output TXSNPFLITPEND_P1,
     output TXSNPFLITV_P0,
     output TXSNPFLITV_P1,
 
@@ -215,6 +223,8 @@ module chi_ring_node #(
 
       .TXFLITV_E (TXREQFLITV_E),
       .TXFLITV_W (TXREQFLITV_W),
+      .TXFLITPEND_P0(TXREQFLITPEND_P0),
+      .TXFLITPEND_P1(TXREQFLITPEND_P1),
       .TXFLITV_P0(TXREQFLITV_P0),
       .TXFLITV_P1(TXREQFLITV_P1),
 
@@ -260,6 +270,8 @@ module chi_ring_node #(
 
       .TXFLITV_E (TXRSPFLITV_E),
       .TXFLITV_W (TXRSPFLITV_W),
+      .TXFLITPEND_P0(TXRSPFLITPEND_P0),
+      .TXFLITPEND_P1(TXRSPFLITPEND_P1),
       .TXFLITV_P0(TXRSPFLITV_P0),
       .TXFLITV_P1(TXRSPFLITV_P1),
 
@@ -305,6 +317,8 @@ module chi_ring_node #(
 
       .TXFLITV_E (TXDATFLITV_E),
       .TXFLITV_W (TXDATFLITV_W),
+      .TXFLITPEND_P0(TXDATFLITPEND_P0),
+      .TXFLITPEND_P1(TXDATFLITPEND_P1),
       .TXFLITV_P0(TXDATFLITV_P0),
       .TXFLITV_P1(TXDATFLITV_P1),
 
@@ -351,6 +365,8 @@ module chi_ring_node #(
 
       .TXFLITV_E (TXSNPFLITV_E),
       .TXFLITV_W (TXSNPFLITV_W),
+      .TXFLITPEND_P0(TXSNPFLITPEND_P0),
+      .TXFLITPEND_P1(TXSNPFLITPEND_P1),
       .TXFLITV_P0(TXSNPFLITV_P0),
       .TXFLITV_P1(TXSNPFLITV_P1),
 

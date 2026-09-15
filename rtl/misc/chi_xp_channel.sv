@@ -67,6 +67,11 @@ module chi_xp_channel #(
     output wire                    TXFLITV_W,
     output wire                    TXFLITV_N,
     output wire                    TXFLITV_S,
+    // CHI E.b SS14.4 (p.14-447, MUST): "the signal is asserted exactly one cycle
+    // before a flit is sent from the Transmitter". txflitv_d1 is the combinational
+    // stage whose registered copy drives TXFLITV, so it is that cycle exactly.
+    output wire                    TXFLITPEND_P0,
+    output wire                    TXFLITPEND_P1,
     output wire                    TXFLITV_P0,
     output wire                    TXFLITV_P1,
 
@@ -664,6 +669,8 @@ module chi_xp_channel #(
     assign TXFLITV_W                             = txflitv_q[XP_INTF_W];
     assign TXFLITV_N                             = txflitv_q[XP_INTF_N];
     assign TXFLITV_S                             = txflitv_q[XP_INTF_S];
+    assign TXFLITPEND_P0                         = txflitv_d1[XP_INTF_P0];
+    assign TXFLITPEND_P1                         = txflitv_d1[XP_INTF_P1];
     assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0];
     assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1];
 
