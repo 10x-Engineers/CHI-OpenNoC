@@ -80,6 +80,8 @@ module rni_misc `RNI_PARAM
     logic [1:0]                      pcrd_settle_cnt_q;
     logic                            pcrd_return_v_q;
     logic [3:0]                      pcrd_return_type_q;
+    logic [chie_pkg::NID_WIDTH-1:0]  pcrd_src_q[`PCRD_TYPE_NUM];
+    logic [chie_pkg::NID_WIDTH-1:0]  pcrd_return_src_q;
     logic                            h_pcrdgnt_ptr_q;
     logic                            l_pcrdgnt_ptr_q;
     logic [`L_DISABLE_CNT_WIDTH-1:0] l_disable_h_cnt_q;
@@ -96,12 +98,15 @@ module rni_misc `RNI_PARAM
     // it to a transaction is Table 13-31's (SS13.10.36 p.13-434) PCrdType.
     // Presenting grants in arrival order instead lets one type no entry is waiting
     // for hold up every credit behind it.
-    // Only this bridge's own Home can grant it a credit, so the grant's node IDs
-    // are checked here rather than carried per credit -- SS2.6.5 (p.2-112) fixes
-    // both: "The TgtID is set to the same value as the SrcID of the request. The
-    // SrcID is a fixed value for the Completer."
+    // Admitted on the TgtID alone. SS2.6.5 (p.2-112) fixes it -- "The TgtID is set
+    // to the same value as the SrcID of the request" -- while the grant's SrcID is
+    // the Completer's own, which SS3.3.1 (p.3-152, MUST) does not let a Requester
+    // assume: "A Request Node must expect the interconnect to remap the target ID
+    // of a request", so the Home that answers need not be the build-time one this
+    // bridge addresses. The granting SrcID is recorded instead, because SS3.3.1
+    // (p.3-152, MUST) then requires the PCrdReturn's TgtID to "match the source ID
+    // included in the prior PCrdGrant which provided the credit being returned".
     assign pcrdgnt_recv_d1_w      = rxrspflitv_d1_i & (rxrspflit_d1_q_i.opcode == chie_pkg::RSP_PCRDGRANT)
-                                    & (rxrspflit_d1_q_i.srcid == HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0])
                                     & (rxrspflit_d1_q_i.tgtid == RNI_NID_PARAM[chie_pkg::NID_WIDTH-1:0]);
     assign pcrdgnt_pcrdtype_d1_w  = rxrspflit_d1_q_i.pcrdtype;
     assign pcrdgnt_claimed_d3_w   = (ar_pcrdgnt_l_present_d3_i | ar_pcrdgnt_h_present_d3_i | aw_pcrdgnt_l_present_d3_i | aw_pcrdgnt_h_present_d3_i);
@@ -113,6 +118,12 @@ module rni_misc `RNI_PARAM
             wire dec_w = (pcrdgnt_claimed_d3_w & (pcrd_offer_type_d3_q == t[3:0]))
                        | (pcrd_return_sent_w  & (pcrd_return_type_q   == t[3:0]));
             assign pcrd_held_vec_w[t] = (pcrd_cnt_q[t] != {`PCRD_CNT_WIDTH{1'b0}});
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1)
+                    pcrd_src_q[t] <= {chie_pkg::NID_WIDTH{1'b0}};
+                else if (inc_w)
+                    pcrd_src_q[t] <= rxrspflit_d1_q_i.srcid;
+            end
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)
                     pcrd_cnt_q[t] <= {`PCRD_CNT_WIDTH{1'b0}};
@@ -201,10 +212,12 @@ module rni_misc `RNI_PARAM
         if (rst_i == 1'b1) begin
             pcrd_return_v_q    <= 1'b0;
             pcrd_return_type_q <= 4'd0;
+            pcrd_return_src_q  <= {chie_pkg::NID_WIDTH{1'b0}};
         end
         else if (pcrd_return_v_q == 1'b0) begin
             pcrd_return_v_q    <= pcrd_surplus_w;
             pcrd_return_type_q <= pcrd_cur_type_q;
+            pcrd_return_src_q  <= pcrd_src_q[pcrd_cur_type_q];
         end
         else if (misc_txreqflit_sent_s4_i == 1'b1) begin
             pcrd_return_v_q    <= 1'b0;
@@ -222,7 +235,7 @@ module rni_misc `RNI_PARAM
         // SS3.3.1 (p.3-152, MUST): "The target ID provided by the Request Node must
         // match the source ID included in the prior PCrdGrant which provided the
         // credit being returned."
-        misc_txreqflit_s4_o.tgtid    = HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
+        misc_txreqflit_s4_o.tgtid    = pcrd_return_src_q[chie_pkg::NID_WIDTH-1:0];
         misc_txreqflit_s4_o.srcid    = RNI_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
         // SS2.11.2 (p.2-147, MUST): "A PCrdReturn transaction must have the credit
         // type set to the value of the credit type that is being returned."
