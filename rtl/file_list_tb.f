@@ -69,6 +69,7 @@
 ./src/rni/rni_rd_buffer.sv
 ./misc/chi_lcrd_hdlr.sv
 ./src/rnf/rnf_link_ctl.sv
+./src/rnf/rnf_sysco.sv
 ./src/rnf/rnf.sv
 ./misc/chi_link_handshake.sv
 ./src/snf/snf_rxdat.sv

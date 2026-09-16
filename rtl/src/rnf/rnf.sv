@@ -25,6 +25,15 @@ module rnf `RNF_PARAM
     input  wire                 CLK,
     input  wire                 RST,
 
+    // Chapter 15 system coherency interface. Not carried by the mesh: SS15.1
+    // (p.15-466) makes it a direct pair between the Requester and the
+    // interconnect, as hnf.sv has it.
+    output wire                 SYSCOREQ,
+    input  wire                 SYSCOACK,
+    // SS15.2 (p.15-467): entering and leaving coherency is the Request Node's
+    // own decision, and what prompts it is outside the CHI interface.
+    input  wire                 COHERENCY_EN,
+
     // link handshake
     output wire                 TXSACTIVE,
     input  wire                 RXSACTIVE,
@@ -80,6 +89,7 @@ module rnf `RNF_PARAM
     wire                 prot_rxdatflitv;
     wire                 prot_rxsnpflitv;
     wire                 prot_link_run;
+    wire                 sysco_transition;
 
     assign prot_txreqflit  = '0;
     assign prot_txrspflit  = '0;
@@ -137,10 +147,25 @@ module rnf `RNF_PARAM
                      ,.prot_link_run_o       ( prot_link_run       )
                  );
 
+    rnf_sysco u_rnf_sysco(
+                      .clk_i                     ( CLK              )
+                     ,.rst_i                     ( RST              )
+                     ,.SYSCOREQ                  ( SYSCOREQ         )
+                     ,.SYSCOACK                  ( SYSCOACK         )
+                     ,.coh_req_i                 ( COHERENCY_EN     )
+                     ,.caching_txn_outstanding_i ( 1'b0             )
+                     ,.holds_coherent_data_i     ( 1'b0             )
+                     ,.coh_enabled_o             (                  )
+                     ,.snoop_service_req_o       (                  )
+                     ,.sysco_transition_o        ( sysco_transition )
+                 );
+
     // SS14.7.1 (p.14-460): TXSACTIVE reports "a transaction either in progress or
     // about to start", which SS14.7.4 (p.14-463) makes orthogonal to LINKACTIVE --
     // so it is derived from this node's own work, never from the handshake.
-    assign TXSACTIVE = (prot_txreqflitv | prot_txrspflitv | prot_txdatflitv)
-                       & (~RST);
+    // SS15.2.1 (p.15-467, MUST) adds the coherency transitions: SACTIVE must be
+    // asserted across them "to guarantee the SYSCOACK transition occurs".
+    assign TXSACTIVE = (prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
+                        | sysco_transition) & (~RST);
 
 endmodule
