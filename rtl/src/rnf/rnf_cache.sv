@@ -16,7 +16,7 @@
 // The RN-F's coherent cache: SS4.1's (p.4-160) seven states, with the tag and
 // data a line needs. Capacity, associativity and replacement are SS4.6's
 // (p.4-209) IMPLEMENTATION DEFINED axes and are declared as parameters; the
-// 64-byte line is not, SS2.10.1 (p.2-133) fixes it.
+// 64-byte line is not, SS2.10.1 (p.2-134) fixes it.
 //
 // Replacement is round-robin per set -- one of SS4.6's permitted choices, and
 // the one whose victim is a function of the set alone, so a fill never has to
@@ -42,9 +42,11 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_LINE_BITS-1:0]           snp_data_o,
 
     // The way a fill for this address would take, and what it would displace.
+    // vic_data_o is what a CopyBack of a Dirty victim sends.
     output wire [`RNF_WAY_W-1:0]               vic_way_o,
     output wire [`RNF_CS_WIDTH-1:0]            vic_state_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] vic_addr_o,
+    output wire [`RNF_LINE_BITS-1:0]           vic_data_o,
 
     // Fill: install a line in a state, with its data.
     input  wire                                fill_v_i,
@@ -57,7 +59,16 @@ module rnf_cache `RNF_PARAM
     input  wire                                upd_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] upd_addr_i,
     input  wire [`RNF_WAY_W-1:0]               upd_way_i,
-    input  wire [`RNF_CS_WIDTH-1:0]            upd_state_i
+    input  wire [`RNF_CS_WIDTH-1:0]            upd_state_i,
+
+    // A second state-only port, for the core side. The two cannot be muxed: a
+    // snoop retiring one line and a CopyBack invalidating another in the same
+    // cycle are both real, and dropping either leaves the cache claiming a state
+    // the node no longer holds.
+    input  wire                                upd2_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] upd2_addr_i,
+    input  wire [`RNF_WAY_W-1:0]               upd2_way_i,
+    input  wire [`RNF_CS_WIDTH-1:0]            upd2_state_i
     );
 
     localparam int SETS = RNF_CACHE_SETS_PARAM;
@@ -134,10 +145,12 @@ module rnf_cache `RNF_PARAM
     assign vic_state_o = state_q[lu_set][victim_way];
     assign vic_addr_o  = {tag_q[lu_set][victim_way], lu_set,
                           {`RNF_LINE_OFFSET_W{1'b0}}};
+    assign vic_data_o  = data_q[lu_set][victim_way];
 
     wire [`RNF_SET_W-1:0] fill_set = fill_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
     wire [`RNF_TAG_W-1:0] fill_tag = fill_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
     wire [`RNF_SET_W-1:0] upd_set  = upd_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
+    wire [`RNF_SET_W-1:0] upd2_set = upd2_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
@@ -160,6 +173,12 @@ module rnf_cache `RNF_PARAM
             end
             if (upd_v_i == 1'b1)
                 state_q[upd_set][upd_way_i] <= upd_state_i;
+            // Last, so that a CopyBack retiring the line it has just written back
+            // wins over a snoop landing on it in the same cycle. The snoop's own
+            // answer still stands: SS4.6's Table 4-32 (p.4-209) makes the drop to
+            // Invalid behind it a permitted silent transition.
+            if (upd2_v_i == 1'b1)
+                state_q[upd2_set][upd2_way_i] <= upd2_state_i;
         end
     end
 

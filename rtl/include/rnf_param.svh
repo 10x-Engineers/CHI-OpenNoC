@@ -15,7 +15,7 @@
 
 // SS4.6 (p.4-209) makes cache capacity, associativity and replacement policy
 // IMPLEMENTATION DEFINED, so the geometry below is a declaration rather than a
-// constant the spec fixes. Line size is not: SS2.10.1 (p.2-133) fixes it at 64B.
+// constant the spec fixes. Line size is not: SS2.10.1 (p.2-134) fixes it at 64B.
 //
 // RNF_NID_PARAM defaults to 8, the first entry of hnf_param.svh's
 // RNF_NID_LIST_PARAM {48,16,40,8}, so a default-parameterised RN-F and HN-F pair

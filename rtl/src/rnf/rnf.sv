@@ -72,9 +72,8 @@ module rnf `RNF_PARAM
     input  chie_pkg::snp_flit_s RXSNPFLIT,
     output wire                 RXSNPLCRDV,
 
-    // Core-side AXI4 subordinate. Read channels only for now: a line this node
-    // installs is SC or UC, which Table 4-32 (SS4.6 p.4-209) lets it drop
-    // silently, so no CopyBack path is owed yet.
+    // Core-side AXI4 subordinate: reads and writes both, the writes being what
+    // makes a line Dirty and a CopyBack owed with it.
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
@@ -86,7 +85,22 @@ module rnf `RNF_PARAM
     output wire [`AXI4_RRESP_WIDTH-1:0]  RRESP,
     output wire                          RLAST,
     output wire                          RVALID,
-    input  wire                          RREADY
+    input  wire                          RREADY,
+    input  wire [`AXI4_AWID_WIDTH-1:0]   AWID,
+    input  wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
+    input  wire [`AXI4_AWLEN_WIDTH-1:0]  AWLEN,
+    input  wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE,
+    input  wire                          AWVALID,
+    output wire                          AWREADY,
+    input  wire [`AXI4_WDATA_WIDTH-1:0]  WDATA,
+    input  wire [`AXI4_WSTRB_WIDTH-1:0]  WSTRB,
+    input  wire                          WLAST,
+    input  wire                          WVALID,
+    output wire                          WREADY,
+    output wire [`AXI4_BID_WIDTH-1:0]    BID,
+    output wire [`AXI4_BRESP_WIDTH-1:0]  BRESP,
+    output wire                          BVALID,
+    input  wire                          BREADY
     );
 
     chie_pkg::req_flit_s prot_txreqflit;
@@ -124,9 +138,14 @@ module rnf `RNF_PARAM
     chie_pkg::rsp_flit_s                 ctl_txrspflit;
     wire                                 ctl_txrspflitv;
 
-    // TXDAT carries a SnpRespData only; there is no store path yet.
-    assign prot_txdatflit  = snp_txdatflit;
-    assign prot_txdatflitv = snp_txdatflitv;
+    chie_pkg::dat_flit_s                 ctl_txdatflit;
+    wire                                 ctl_txdatflitv;
+
+    // A snoop response takes TXDAT ahead of a CopyBack, for the same reason it
+    // takes TXRSP: SS4.11.1 (p.4-242, MUST) has the RN-F answer a snoop without
+    // making it wait on a request of its own.
+    assign prot_txdatflit  = snp_txdatflitv ? snp_txdatflit  : ctl_txdatflit;
+    assign prot_txdatflitv = snp_txdatflitv | ctl_txdatflitv;
 
     wire                                 coh_enabled;
     wire                                 snoop_service_req;
@@ -139,6 +158,11 @@ module rnf `RNF_PARAM
     wire [`RNF_WAY_W-1:0]                cache_vic_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_vic_state;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr;
+    wire [`RNF_LINE_BITS-1:0]            cache_vic_data;
+    wire                                 ctl_upd_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_upd_addr;
+    wire [`RNF_WAY_W-1:0]                ctl_upd_way;
+    wire [`RNF_CS_WIDTH-1:0]             ctl_upd_state;
     wire                                 cache_fill_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_fill_addr;
     wire [`RNF_WAY_W-1:0]                cache_fill_way;
@@ -156,6 +180,7 @@ module rnf `RNF_PARAM
                      ,.vic_way_o    ( cache_vic_way    )
                      ,.vic_state_o  ( cache_vic_state  )
                      ,.vic_addr_o   ( cache_vic_addr   )
+                     ,.vic_data_o   ( cache_vic_data   )
                      ,.fill_v_i     ( cache_fill_v     )
                      ,.fill_addr_i  ( cache_fill_addr  )
                      ,.fill_way_i   ( cache_fill_way   )
@@ -170,6 +195,10 @@ module rnf `RNF_PARAM
                      ,.upd_addr_i   ( snp_upd_addr     )
                      ,.upd_way_i    ( snp_upd_way      )
                      ,.upd_state_i  ( snp_upd_state    )
+                     ,.upd2_v_i     ( ctl_upd_v        )
+                     ,.upd2_addr_i  ( ctl_upd_addr     )
+                     ,.upd2_way_i   ( ctl_upd_way      )
+                     ,.upd2_state_i ( ctl_upd_state    )
                  );
 
     rnf_snp `RNF_PARAM_INST u_rnf_snp(
@@ -215,22 +244,52 @@ module rnf `RNF_PARAM
                      ,.RLAST                 ( RLAST                )
                      ,.RVALID                ( RVALID               )
                      ,.RREADY                ( RREADY               )
+                     ,.AWID                  ( AWID                 )
+                     ,.AWADDR                ( AWADDR               )
+                     ,.AWLEN                 ( AWLEN                )
+                     ,.AWSIZE                ( AWSIZE               )
+                     ,.AWVALID               ( AWVALID              )
+                     ,.AWREADY               ( AWREADY              )
+                     ,.WDATA                 ( WDATA                )
+                     ,.WSTRB                 ( WSTRB                )
+                     ,.WLAST                 ( WLAST                )
+                     ,.WVALID                ( WVALID               )
+                     ,.WREADY                ( WREADY               )
+                     ,.BID                   ( BID                  )
+                     ,.BRESP                 ( BRESP                )
+                     ,.BVALID                ( BVALID               )
+                     ,.BREADY                ( BREADY               )
                      ,.cache_lu_addr_o       ( cache_lu_addr        )
                      ,.cache_lu_hit_i        ( cache_lu_hit         )
                      ,.cache_lu_state_i      ( cache_lu_state       )
+                     ,.cache_lu_way_i        ( cache_lu_way         )
                      ,.cache_lu_data_i       ( cache_lu_data        )
                      ,.cache_vic_way_i       ( cache_vic_way        )
+                     ,.cache_vic_state_i     ( cache_vic_state      )
+                     ,.cache_vic_addr_i      ( cache_vic_addr       )
+                     ,.cache_vic_data_i      ( cache_vic_data       )
                      ,.cache_fill_v_o        ( cache_fill_v         )
                      ,.cache_fill_addr_o     ( cache_fill_addr      )
                      ,.cache_fill_way_o      ( cache_fill_way       )
                      ,.cache_fill_state_o    ( cache_fill_state     )
                      ,.cache_fill_data_o     ( cache_fill_data      )
+                     ,.cache_upd_v_o         ( ctl_upd_v            )
+                     ,.cache_upd_addr_o      ( ctl_upd_addr         )
+                     ,.cache_upd_way_o       ( ctl_upd_way          )
+                     ,.cache_upd_state_o     ( ctl_upd_state        )
+                     ,.snp_upd_v_i           ( snp_upd_v            )
+                     ,.snp_upd_addr_i        ( snp_upd_addr         )
+                     ,.snp_upd_way_i         ( snp_upd_way          )
+                     ,.snp_upd_state_i       ( snp_upd_state        )
                      ,.prot_txreqflit_o      ( prot_txreqflit       )
                      ,.prot_txreqflitv_o     ( prot_txreqflitv      )
                      ,.prot_txreqflit_sent_i ( prot_txreqflit_sent  )
                      ,.prot_txrspflit_o      ( ctl_txrspflit        )
                      ,.prot_txrspflitv_o     ( ctl_txrspflitv       )
                      ,.prot_txrspflit_sent_i ( prot_txrspflit_sent & ~snp_txrspflitv )
+                     ,.prot_txdatflit_o      ( ctl_txdatflit        )
+                     ,.prot_txdatflitv_o     ( ctl_txdatflitv       )
+                     ,.prot_txdatflit_sent_i ( prot_txdatflit_sent & ~snp_txdatflitv )
                      ,.prot_rxdatflitv_i     ( prot_rxdatflitv      )
                      ,.prot_rxdatflit_i      ( prot_rxdatflit       )
                      ,.prot_rxrspflitv_i     ( prot_rxrspflitv      )

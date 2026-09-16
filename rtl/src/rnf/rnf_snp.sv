@@ -16,10 +16,11 @@
 // The RN-F's snoop port: section 4.8's response tables for the states this node
 // can hold.
 //
-// Reads fill the cache, and Table 4-33 (SS4.7.1 p.4-211) lets the Home answer
-// even a ReadShared with a PassDirty grant, so a line here is I, SC, UC, UD or
-// SD. UCE and UDP need a MakeUnique or a partial write, which this node has no
-// path to, and are not decoded.
+// A line here is I, SC, UC, UD or SD: reads fill it, Table 4-33 (SS4.7.1
+// p.4-211) lets the Home answer even a ReadShared with a PassDirty grant, and
+// stores make it Dirty. UCE and UDP are not decoded -- reaching either needs a
+// CleanUnique issued from Invalid, which rnf_ctl never does, since Table 4-38
+// (SS4.7.2 p.4-218) gives a whole-line store MakeUnique and ends it UD.
 //
 // Where a table offers the Snoopee a choice of final state this node takes the
 // one that is legal for every modifier: the Clean family leaves a Dirty line SC
