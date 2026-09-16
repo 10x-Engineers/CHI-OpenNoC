@@ -77,6 +77,8 @@ module rnf_link_ctl `RNF_PARAM
     output chie_pkg::dat_flit_s prot_rxdatflit_o,
     output logic                prot_rxsnpflitv_o,
     output chie_pkg::snp_flit_s prot_rxsnpflit_o,
+    // A snoop the protocol layer has taken off its queue.
+    input  wire                 prot_snp_pop_i,
 
     // both directions in RUN, so the protocol layer may present a flit
     output wire                 prot_link_run_o
@@ -422,13 +424,34 @@ module rnf_link_ctl `RNF_PARAM
             RXSNPLCRDV <= rxsnplcrdv_w;
     end
 
+    // SS14.2.1 (p.14-445): a Receiver grants an L-Credit only for a flit it can
+    // accept. A snoop's slot comes free when the protocol layer takes it off its
+    // queue, not when it arrives -- granting on arrival let the Home send snoops
+    // faster than they were answered.
+    //
+    // A SnpLCrdReturn has no protocol-layer work, so its credit is back at once;
+    // the handler takes one increment a cycle, so one that lands in the same cycle
+    // as a pop waits here rather than being lost.
+    wire rxsnp_is_lcrdret = rxsnpflitv_q &&
+                            (prot_rxsnpflit_o.opcode == chie_pkg::SNP_SNPLCRDRETURN);
+    logic [4:0] rxsnp_ret_owed_q;
+    wire        rxsnp_ret_apply = (rxsnp_ret_owed_q != 5'd0) && !prot_snp_pop_i;
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            rxsnp_ret_owed_q <= 5'd0;
+        else
+            rxsnp_ret_owed_q <= rxsnp_ret_owed_q + {4'd0, rxsnp_is_lcrdret}
+                                                 - {4'd0, rxsnp_ret_apply};
+    end
+
     chi_lcrd_hdlr #(
                        .LCRD_INIT_CNT_VAL ( RNF_LCRD_NUM_PARAM  )
                       ,.LCRD_MAX_CNT_VAL  ( RNF_LCRD_NUM_PARAM  )
                   )rxsnp_lcrd_hdlr(
                        .clk               ( clk_i               )
                       ,.rst               ( rst_i               )
-                      ,.lcrd_inc          ( rxsnpflitv_q        )
+                      ,.lcrd_inc          ( prot_snp_pop_i | rxsnp_ret_apply )
                       ,.lcrd_dec          ( rxsnplcrdv_w        )
                       ,.lcrd_full         ( rxsnp_lcrd_full     )
                       ,.lcrd_avail        ( rxsnp_lcrd_avail    )
