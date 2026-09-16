@@ -131,8 +131,14 @@ module rnf_ctl `RNF_PARAM
     input  chie_pkg::rsp_flit_s                 prot_rxrspflit_i,
 
     // Table 15-1 (p.15-468): only Coherency Enabled permits a transaction that
-    // caches a coherent location.
+    // caches a coherent location, and leaving it requires an empty cache.
     input  wire                                 coh_enabled_i,
+    input  wire                                 coh_req_i,
+    input  wire                                 cache_any_valid_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_flush_addr_i,
+    input  wire [`RNF_WAY_W-1:0]                cache_flush_way_i,
+    input  wire [`RNF_CS_WIDTH-1:0]             cache_flush_state_i,
+    input  wire [`RNF_LINE_BITS-1:0]            cache_flush_data_i,
     input  wire                                 link_run_i,
 
     // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
@@ -206,6 +212,10 @@ module rnf_ctl `RNF_PARAM
     logic [11:0]                                cb_txnid_q;
     logic                                       cb_hi_q;
     logic                                       cb_done_q;
+    // Emptying the cache before leaving coherency: a CopyBack that is not followed
+    // by a fill, and a Clean line dropped outright.
+    logic                                       flush_q;
+    logic                                       drop_q;
 
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD) || (cs == `RNF_CS_UDP);
@@ -264,7 +274,7 @@ module rnf_ctl `RNF_PARAM
     // A surplus P-Credit goes back before new work is taken: offering READY in
     // the same cycle the FSM leaves to return it would complete an AXI handshake
     // for a request nothing then serves.
-    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i;
+    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
     assign WREADY  = (st_q == S_WDATA);
@@ -411,6 +421,11 @@ module rnf_ctl `RNF_PARAM
     end
     wire pcrd_ret_sent = (st_q == S_PCRD_RET) && prot_txreqflit_sent_i;
 
+    // Table 15-1 (p.15-468): no coherent data in Disconnect, so a Requester that has
+    // decided to leave empties its cache first. Held while the previous invalidate
+    // has yet to land: the scan would still see that line and write it back twice.
+    wire flush_v = !coh_req_i && cache_any_valid_i && !cb_done_q && !drop_q;
+
     // SS9.3 (p.9-336): NormalOkay and ExclusiveOkay are both success; the other
     // two are the endpoint reporting an error.
     function automatic bit is_err(chie_pkg::resp_err_e e);
@@ -476,10 +491,13 @@ module rnf_ctl `RNF_PARAM
             cb_txnid_q   <= '0;
             cb_hi_q      <= 1'b0;
             cb_done_q    <= 1'b0;
+            flush_q      <= 1'b0;
+            drop_q       <= 1'b0;
         end
         else begin
             fill_v_q  <= 1'b0;
             cb_done_q <= 1'b0;
+            drop_q    <= 1'b0;
 
             // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
             // its CopyBack is in flight, and the WriteData must say so.
@@ -508,6 +526,19 @@ module rnf_ctl `RNF_PARAM
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
+                    end
+                    else if (flush_v) begin
+                        vic_addr_q  <= cache_flush_addr_i;
+                        vic_way_q   <= cache_flush_way_i;
+                        vic_state_q <= cache_flush_state_i;
+                        vic_data_q  <= cache_flush_data_i;
+                        // SS4.1 (p.4-160): a Dirty line is the only copy, so it goes
+                        // back; Table 4-32 (p.4-209) lets a Clean one go silently.
+                        if (is_dirty(cache_flush_state_i)) begin
+                            flush_q <= 1'b1;
+                            st_q    <= S_CB_REQ;
+                        end
+                        else drop_q <= 1'b1;
                     end
                     else if (ARVALID && ARREADY) begin
                         id_q       <= ARID;
@@ -619,7 +650,8 @@ module rnf_ctl `RNF_PARAM
                             // a snoop on this line is still answered from it.
                             cb_done_q <= 1'b1;
                             txnid_q   <= txnid_q + 12'd1;
-                            st_q      <= S_REQ;
+                            flush_q   <= 1'b0;
+                            st_q      <= flush_q ? S_IDLE : S_REQ;
                         end
                         else cb_hi_q <= 1'b1;
                     end
@@ -759,7 +791,7 @@ module rnf_ctl `RNF_PARAM
 
     // Retiring the written-back way, which the fill behind it would otherwise
     // leave Dirty for the window between the two.
-    assign cache_upd_v_o     = cb_done_q;
+    assign cache_upd_v_o     = cb_done_q || drop_q;
     assign cache_upd_addr_o  = vic_addr_q;
     assign cache_upd_way_o   = vic_way_q;
     assign cache_upd_state_o = `RNF_CS_I;

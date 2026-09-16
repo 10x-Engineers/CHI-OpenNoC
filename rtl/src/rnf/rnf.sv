@@ -162,6 +162,11 @@ module rnf `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0]             cache_vic_state;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr;
     wire [`RNF_LINE_BITS-1:0]            cache_vic_data;
+    wire                                 cache_any_valid;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_flush_addr;
+    wire [`RNF_WAY_W-1:0]                cache_flush_way;
+    wire [`RNF_CS_WIDTH-1:0]             cache_flush_state;
+    wire [`RNF_LINE_BITS-1:0]            cache_flush_data;
     wire                                 ctl_upd_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_upd_addr;
     wire [`RNF_WAY_W-1:0]                ctl_upd_way;
@@ -184,6 +189,11 @@ module rnf `RNF_PARAM
                      ,.vic_state_o  ( cache_vic_state  )
                      ,.vic_addr_o   ( cache_vic_addr   )
                      ,.vic_data_o   ( cache_vic_data   )
+                     ,.any_valid_o  ( cache_any_valid  )
+                     ,.flush_addr_o ( cache_flush_addr )
+                     ,.flush_way_o  ( cache_flush_way  )
+                     ,.flush_state_o( cache_flush_state)
+                     ,.flush_data_o ( cache_flush_data )
                      ,.fill_v_i     ( cache_fill_v     )
                      ,.fill_addr_i  ( cache_fill_addr  )
                      ,.fill_way_i   ( cache_fill_way   )
@@ -301,6 +311,12 @@ module rnf `RNF_PARAM
                      ,.prot_rxrspflitv_i     ( prot_rxrspflitv      )
                      ,.prot_rxrspflit_i      ( prot_rxrspflit       )
                      ,.coh_enabled_i         ( coh_enabled          )
+                     ,.coh_req_i             ( COHERENCY_EN         )
+                     ,.cache_any_valid_i     ( cache_any_valid      )
+                     ,.cache_flush_addr_i    ( cache_flush_addr     )
+                     ,.cache_flush_way_i     ( cache_flush_way      )
+                     ,.cache_flush_state_i   ( cache_flush_state    )
+                     ,.cache_flush_data_i    ( cache_flush_data     )
                      ,.link_run_i            ( prot_link_run        )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
@@ -363,8 +379,8 @@ module rnf `RNF_PARAM
                      ,.SYSCOREQ                  ( SYSCOREQ         )
                      ,.SYSCOACK                  ( SYSCOACK         )
                      ,.coh_req_i                 ( COHERENCY_EN     )
-                     ,.caching_txn_outstanding_i ( txn_active       )
-                     ,.holds_coherent_data_i     ( 1'b0             )
+                     ,.caching_txn_outstanding_i ( txn_active | snp_busy )
+                     ,.holds_coherent_data_i     ( cache_any_valid  )
                      ,.coh_enabled_o             ( coh_enabled      )
                      ,.snoop_service_req_o       ( snoop_service_req )
                      ,.sysco_transition_o        ( sysco_transition )

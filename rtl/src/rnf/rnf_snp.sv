@@ -230,7 +230,9 @@ module rnf_snp `RNF_PARAM
     assign cache_upd_addr_o  = snp_addr;
     assign cache_upd_way_o   = cache_lu_way_i;
     assign cache_upd_state_o = nxt_state;
-    assign snp_busy_o        = (st_q != S_IDLE);
+    // A queued snoop is owed an answer too, so it counts as work in progress: SS15.2.1
+    // (p.15-467) holds SYSCOREQ until "All data packets are sent for snoops".
+    assign snp_busy_o        = (st_q != S_IDLE) || !q_empty;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin

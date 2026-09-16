@@ -48,6 +48,14 @@ module rnf_cache `RNF_PARAM
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] vic_addr_o,
     output wire [`RNF_LINE_BITS-1:0]           vic_data_o,
 
+    // The first resident line, for the flush a Requester owes before it leaves
+    // coherency: Table 15-1 (p.15-468) allows no coherent data in Disconnect.
+    output wire                                any_valid_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] flush_addr_o,
+    output wire [`RNF_WAY_W-1:0]               flush_way_o,
+    output wire [`RNF_CS_WIDTH-1:0]            flush_state_o,
+    output wire [`RNF_LINE_BITS-1:0]           flush_data_o,
+
     // Fill: install a line in a state, with its data.
     input  wire                                fill_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] fill_addr_i,
@@ -146,6 +154,31 @@ module rnf_cache `RNF_PARAM
     assign vic_addr_o  = {tag_q[lu_set][victim_way], lu_set,
                           {`RNF_LINE_OFFSET_W{1'b0}}};
     assign vic_data_o  = data_q[lu_set][victim_way];
+
+    logic                  fl_v_c;
+    logic [`RNF_SET_W-1:0] fl_set_c;
+    logic [`RNF_WAY_W-1:0] fl_way_c;
+
+    always_comb begin
+        fl_v_c   = 1'b0;
+        fl_set_c = '0;
+        fl_way_c = '0;
+        for (int st = 0; st < SETS; st++) begin
+            for (int w = 0; w < WAYS; w++) begin
+                if (!fl_v_c && (state_q[st][w] != `RNF_CS_I)) begin
+                    fl_v_c   = 1'b1;
+                    fl_set_c = `RNF_SET_W'(st);
+                    fl_way_c = `RNF_WAY_W'(w);
+                end
+            end
+        end
+    end
+
+    assign any_valid_o   = fl_v_c;
+    assign flush_way_o   = fl_way_c;
+    assign flush_state_o = state_q[fl_set_c][fl_way_c];
+    assign flush_data_o  = data_q[fl_set_c][fl_way_c];
+    assign flush_addr_o  = {tag_q[fl_set_c][fl_way_c], fl_set_c, {`RNF_LINE_OFFSET_W{1'b0}}};
 
     wire [`RNF_SET_W-1:0] fill_set = fill_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
     wire [`RNF_TAG_W-1:0] fill_tag = fill_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
