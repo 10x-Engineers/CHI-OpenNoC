@@ -40,6 +40,14 @@
 // Displacing a Dirty victim owes a WriteBackFull (Table 4-16 SS4.2.2 p.4-175);
 // a Clean one is dropped silently, which Table 4-32 permits.
 //
+// Every request goes out with AllowRetry set, which SS2.11 (p.2-145, MUST)
+// requires of a first attempt, so any of them may draw a RetryAck. The node then
+// holds it until a PCrdGrant of the RetryAck's PCrdType, and resends it with
+// AllowRetry clear. A P-Credit can land before the RetryAck it answers, so credits
+// are banked per type rather than matched to a request; one the node holds when it
+// has nothing left that could draw a RetryAck is surplus, and SS2.11.1 (p.2-147,
+// MUST) has it returned.
+//
 // One transaction at a time: SS2.5.2 (p.2-87) bounds TxnID reuse by what is
 // outstanding, so a single context needs no MSHR to stay legal.
 module rnf_ctl `RNF_PARAM
@@ -146,6 +154,8 @@ module rnf_ctl `RNF_PARAM
     localparam logic [3:0] S_ACK     = 4'd7;
     localparam logic [3:0] S_RESP    = 4'd8;
     localparam logic [3:0] S_BRESP   = 4'd9;
+    localparam logic [3:0] S_PCRD    = 4'd10;
+    localparam logic [3:0] S_PCRD_RET= 4'd11;
 
     logic [3:0]                                 st_q;
     logic [`AXI4_ARID_WIDTH-1:0]                id_q;
@@ -175,6 +185,19 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_WAY_W-1:0]                      vic_way_q;
     logic [`RNF_CS_WIDTH-1:0]                   vic_state_q;
     logic [`RNF_LINE_BITS-1:0]                  vic_data_q;
+    // SS2.11 (p.2-145): the request that drew a RetryAck, and what it waits for.
+    logic                                       retry_q;
+    logic [3:0]                                 retry_type_q;
+    logic                                       retry_cb_q;
+    // P-Credits held, per PCrdType, and the Completer each came from -- SS2.6.6
+    // (p.2-112) addresses a PCrdReturn to "the SrcID of the credit that was
+    // obtained".
+    logic [1:0]                                 pcrd_cnt_q [16];
+    logic [CHIE_NID_WIDTH_PARAM-1:0]            pcrd_src_q [16];
+    logic [3:0]                                 ret_type_q;
+    logic [3:0]                                 surplus_type;
+    logic                                       surplus_v;
+
     // The acquire's own line, tracked the same way while the request is out.
     logic [`RNF_CS_WIDTH-1:0]                   acq_cs_q;
     logic                                       fill_uce_q;
@@ -238,7 +261,10 @@ module rnf_ctl `RNF_PARAM
 
     // SS15.2.1 (p.15-467, MUST) forbids issuing a caching transaction before
     // SYSCOACK, so neither channel is accepted before Coherency Enabled.
-    wire accept_ok = (st_q == S_IDLE) && link_run_i && coh_enabled_i;
+    // A surplus P-Credit goes back before new work is taken: offering READY in
+    // the same cycle the FSM leaves to return it would complete an AXI handshake
+    // for a request nothing then serves.
+    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
     assign WREADY  = (st_q == S_WDATA);
@@ -272,14 +298,25 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.srcid        = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txreqflit_o.tgtid        = CHIE_NID_WIDTH_PARAM'(HNF_NID_PARAM);
         prot_txreqflit_o.size         = chie_pkg::SIZE_64B;
-        prot_txreqflit_o.allowretry   = 1'b1;
+        prot_txreqflit_o.allowretry   = !retry_q;
+        prot_txreqflit_o.pcrdtype     = retry_q ? retry_type_q : 4'd0;
         prot_txreqflit_o.order        = chie_pkg::ORDER_NONE;
         prot_txreqflit_o.memattr.allocate     = 1'b1;
         prot_txreqflit_o.memattr.cacheable    = 1'b1;
         prot_txreqflit_o.memattr.device       = 1'b0;
         prot_txreqflit_o.memattr.early_wr_ack = 1'b1;
         prot_txreqflit_o.snpattr.snpattr      = 1'b1;
-        if (st_q == S_CB_REQ) begin
+        if (st_q == S_PCRD_RET) begin
+            // SS2.6.6 (p.2-112): addressed to the credit's source, TxnID zero, and
+            // the PCrdType it was granted under. Table A-2 (p.A-484) leaves every
+            // other field inapplicable, so zero.
+            prot_txreqflit_o          = '0;
+            prot_txreqflit_o.srcid    = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
+            prot_txreqflit_o.tgtid    = pcrd_src_q[ret_type_q];
+            prot_txreqflit_o.opcode   = chie_pkg::REQ_PCRDRETURN;
+            prot_txreqflit_o.pcrdtype = ret_type_q;
+        end
+        else if (st_q == S_CB_REQ) begin
             prot_txreqflit_o.txnid      = txnid_q;
             prot_txreqflit_o.opcode     = chie_pkg::REQ_WRITEBACKFULL;
             prot_txreqflit_o.addr       = vic_addr_q;
@@ -293,7 +330,7 @@ module rnf_ctl `RNF_PARAM
         end
     end
 
-    assign prot_txreqflitv_o = (st_q == S_REQ) || (st_q == S_CB_REQ);
+    assign prot_txreqflitv_o = (st_q == S_REQ) || (st_q == S_CB_REQ) || (st_q == S_PCRD_RET);
 
     // SS2.6.1 (p.2-100, MUST): a CompAck takes its TgtID from the completion's
     // HomeNID and its TxnID from its DBID, not from this node's own request.
@@ -347,6 +384,33 @@ module rnf_ctl `RNF_PARAM
     wire rx_cb_dbid = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
                       (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPDBIDRESP);
 
+    wire rx_retryack  = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
+                        (prot_rxrspflit_i.opcode == chie_pkg::RSP_RETRYACK);
+    // A PCrdGrant names no transaction, so it is taken whatever this node is doing.
+    wire rx_pcrdgrant = prot_rxrspflitv_i &&
+                        (prot_rxrspflit_i.opcode == chie_pkg::RSP_PCRDGRANT);
+
+    // SS2.11 (p.2-145): "The transaction must only be retried by the Requester when
+    // a PCrdGrant is received with the correct PCrdType" -- one already banked, or
+    // one landing this cycle.
+    wire pcrd_ready = (pcrd_cnt_q[retry_type_q] != 2'd0) ||
+                      (rx_pcrdgrant && (prot_rxrspflit_i.pcrdtype == retry_type_q));
+    wire pcrd_use   = (st_q == S_PCRD) && pcrd_ready;
+
+    // Idle, nothing outstanding can still draw a RetryAck, so a held credit is one
+    // no request needs.
+    always_comb begin
+        surplus_v    = 1'b0;
+        surplus_type = 4'd0;
+        for (int t = 0; t < 16; t++) begin
+            if (!surplus_v && (pcrd_cnt_q[t] != 2'd0)) begin
+                surplus_v    = 1'b1;
+                surplus_type = 4'(t);
+            end
+        end
+    end
+    wire pcrd_ret_sent = (st_q == S_PCRD_RET) && prot_txreqflit_sent_i;
+
     // SS9.3 (p.9-336): NormalOkay and ExclusiveOkay are both success; the other
     // two are the endpoint reporting an error.
     function automatic bit is_err(chie_pkg::resp_err_e e);
@@ -398,6 +462,14 @@ module rnf_ctl `RNF_PARAM
             vic_state_q  <= `RNF_CS_I;
             vic_data_q   <= '0;
             acq_cs_q     <= `RNF_CS_I;
+            retry_q      <= 1'b0;
+            retry_type_q <= 4'd0;
+            retry_cb_q   <= 1'b0;
+            ret_type_q   <= 4'd0;
+            for (int t = 0; t < 16; t++) begin
+                pcrd_cnt_q[t] <= 2'd0;
+                pcrd_src_q[t] <= '0;
+            end
             fill_uce_q   <= 1'b0;
             chain_ru_q   <= 1'b0;
             cb_tgt_q     <= '0;
@@ -411,6 +483,14 @@ module rnf_ctl `RNF_PARAM
 
             // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
             // its CopyBack is in flight, and the WriteData must say so.
+            for (int t = 0; t < 16; t++) begin
+                automatic logic inc = rx_pcrdgrant && (prot_rxrspflit_i.pcrdtype == 4'(t));
+                automatic logic dec = (pcrd_use      && (retry_type_q == 4'(t))) ||
+                                      (pcrd_ret_sent && (ret_type_q   == 4'(t)));
+                pcrd_cnt_q[t] <= pcrd_cnt_q[t] + {1'b0, inc} - {1'b0, dec};
+                if (inc) pcrd_src_q[t] <= prot_rxrspflit_i.srcid;
+            end
+
             if (acq_snp_now && (st_q != S_IDLE))
                 acq_cs_q <= snp_upd_state_i;
 
@@ -425,7 +505,11 @@ module rnf_ctl `RNF_PARAM
                     got_hi_q  <= 1'b0;
                     got_rsp_q <= 1'b0;
                     err_q     <= 1'b0;
-                    if (ARVALID && ARREADY) begin
+                    if (surplus_v) begin
+                        ret_type_q <= surplus_type;
+                        st_q       <= S_PCRD_RET;
+                    end
+                    else if (ARVALID && ARREADY) begin
                         id_q       <= ARID;
                         addr_q     <= ar_line;
                         is_wr_q    <= 1'b0;
@@ -513,7 +597,14 @@ module rnf_ctl `RNF_PARAM
                 end
 
                 S_CB_DBID: begin
-                    if (rx_cb_dbid) begin
+                    if (rx_retryack) begin
+                        retry_q      <= 1'b1;
+                        retry_type_q <= prot_rxrspflit_i.pcrdtype;
+                        retry_cb_q   <= 1'b1;
+                        st_q         <= S_PCRD;
+                    end
+                    else if (rx_cb_dbid) begin
+                        retry_q    <= 1'b0;
                         cb_tgt_q   <= prot_rxrspflit_i.srcid;
                         cb_txnid_q <= prot_rxrspflit_i.dbid;
                         cb_hi_q    <= 1'b0;
@@ -539,6 +630,13 @@ module rnf_ctl `RNF_PARAM
                 end
 
                 S_DATA: begin
+                    if (rx_retryack) begin
+                        retry_q      <= 1'b1;
+                        retry_type_q <= prot_rxrspflit_i.pcrdtype;
+                        retry_cb_q   <= 1'b0;
+                        st_q         <= S_PCRD;
+                    end
+                    else begin
                     if (rx_err) err_q <= 1'b1;
 
                     if (rx_rsp_mine) begin
@@ -594,9 +692,22 @@ module rnf_ctl `RNF_PARAM
                             end
                         end
                     end
+                    end
+                end
+
+                // SS2.11 (p.2-145): held until a P-Credit of the RetryAck's type,
+                // then resent. The resend keeps its TxnID, which the same section
+                // frees for reuse as soon as the RetryAck arrives.
+                S_PCRD: begin
+                    if (pcrd_ready) st_q <= retry_cb_q ? S_CB_REQ : S_REQ;
+                end
+
+                S_PCRD_RET: begin
+                    if (prot_txreqflit_sent_i) st_q <= S_IDLE;
                 end
 
                 S_ACK: begin
+                    retry_q <= 1'b0;
                     if (prot_txrspflit_sent_i) begin
                         if (chain_ru_q) begin
                             // p.4-215: the other transaction the lost line costs.
@@ -683,6 +794,25 @@ module rnf_ctl `RNF_PARAM
     assign defer_v_o    = ((st_q == S_DATA) && (got_lo_q || got_hi_q || rx_dat_mine)) || fill_v_q;
     assign defer_addr_o = addr_q;
 
-    assign txn_active_o = (st_q != S_IDLE);
+    // SS14.7.1 (p.14-460): a held surplus P-Credit is a PCrdReturn this node still
+    // owes, so it counts as work in progress even from idle.
+    assign txn_active_o = (st_q != S_IDLE) || surplus_v;
+
+    // A single-outstanding Requester draws at most one RetryAck at a time, so a
+    // conformant Completer never grants it more than a few credits of one type
+    // before they are used or returned. Two bits wrapping would silently lose one.
+`ifdef ASSERT_CHECKER_ON
+    for (genvar gt = 0; gt < 16; gt++) begin : g_pcrd_sat
+        assert_checker #(
+                           3,
+                           "RN-F P-Credit bank saturated: a PCrdGrant arrived with three of its type already held")
+                       PCRD_SAT_check (
+                           .clk   ( clk_i ),
+                           .rst   ( rst_i ),
+                           .cond  ( rx_pcrdgrant && (prot_rxrspflit_i.pcrdtype == 4'(gt)) &&
+                                    (pcrd_cnt_q[gt] == 2'd3) )
+                       );
+    end
+`endif
 
 endmodule
