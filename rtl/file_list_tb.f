@@ -66,7 +66,7 @@
 ./src/rni/rni_arctrl.sv
 ./src/rni/rni_datbuf_bank.sv
 ./src/rni/rni_rd_buffer.sv
-./src/rni/rni_lcrd_hdlr.sv
+./misc/chi_lcrd_hdlr.sv
 ./misc/chi_link_handshake.sv
 ./src/snf/snf_rxdat.sv
 ./src/snf/snf_txrsp.sv
