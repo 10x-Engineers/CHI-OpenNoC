@@ -107,9 +107,26 @@ module rnf `RNF_PARAM
     wire                 prot_link_run;
     wire                 sysco_transition;
 
-    // No write path yet, so nothing sources TXDAT.
-    assign prot_txdatflit  = '0;
-    assign prot_txdatflitv = 1'b0;
+    wire                                 snp_lu_hit;
+    wire [`RNF_CS_WIDTH-1:0]             snp_lu_state;
+    wire [`RNF_WAY_W-1:0]                snp_lu_way;
+    wire [`RNF_LINE_BITS-1:0]            snp_lu_data;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_lu_addr;
+    wire                                 snp_upd_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_upd_addr;
+    wire [`RNF_WAY_W-1:0]                snp_upd_way;
+    wire [`RNF_CS_WIDTH-1:0]             snp_upd_state;
+    chie_pkg::rsp_flit_s                 snp_txrspflit;
+    wire                                 snp_txrspflitv;
+    chie_pkg::dat_flit_s                 snp_txdatflit;
+    wire                                 snp_txdatflitv;
+    wire                                 snp_busy;
+    chie_pkg::rsp_flit_s                 ctl_txrspflit;
+    wire                                 ctl_txrspflitv;
+
+    // TXDAT carries a SnpRespData only; there is no store path yet.
+    assign prot_txdatflit  = snp_txdatflit;
+    assign prot_txdatflitv = snp_txdatflitv;
 
     wire                                 coh_enabled;
     wire                                 snoop_service_req;
@@ -144,11 +161,44 @@ module rnf `RNF_PARAM
                      ,.fill_way_i   ( cache_fill_way   )
                      ,.fill_state_i ( cache_fill_state )
                      ,.fill_data_i  ( cache_fill_data  )
-                     ,.upd_v_i      ( 1'b0             )
-                     ,.upd_addr_i   ( '0               )
-                     ,.upd_way_i    ( '0               )
-                     ,.upd_state_i  ( `RNF_CS_I        )
+                     ,.snp_addr_i   ( snp_lu_addr      )
+                     ,.snp_hit_o    ( snp_lu_hit       )
+                     ,.snp_state_o  ( snp_lu_state     )
+                     ,.snp_way_o    ( snp_lu_way       )
+                     ,.snp_data_o   ( snp_lu_data      )
+                     ,.upd_v_i      ( snp_upd_v        )
+                     ,.upd_addr_i   ( snp_upd_addr     )
+                     ,.upd_way_i    ( snp_upd_way      )
+                     ,.upd_state_i  ( snp_upd_state    )
                  );
+
+    rnf_snp `RNF_PARAM_INST u_rnf_snp(
+                      .clk_i                 ( CLK              )
+                     ,.rst_i                 ( RST              )
+                     ,.prot_rxsnpflitv_i     ( prot_rxsnpflitv  )
+                     ,.prot_rxsnpflit_i      ( prot_rxsnpflit   )
+                     ,.cache_lu_addr_o       ( snp_lu_addr      )
+                     ,.cache_lu_hit_i        ( snp_lu_hit       )
+                     ,.cache_lu_state_i      ( snp_lu_state     )
+                     ,.cache_lu_way_i        ( snp_lu_way       )
+                     ,.cache_lu_data_i       ( snp_lu_data      )
+                     ,.cache_upd_v_o         ( snp_upd_v        )
+                     ,.cache_upd_addr_o      ( snp_upd_addr     )
+                     ,.cache_upd_way_o       ( snp_upd_way      )
+                     ,.cache_upd_state_o     ( snp_upd_state    )
+                     ,.snp_txrspflit_o       ( snp_txrspflit    )
+                     ,.snp_txrspflitv_o      ( snp_txrspflitv   )
+                     ,.snp_txrspflit_sent_i  ( prot_txrspflit_sent &  snp_txrspflitv )
+                     ,.snp_txdatflit_o       ( snp_txdatflit    )
+                     ,.snp_txdatflitv_o      ( snp_txdatflitv   )
+                     ,.snp_txdatflit_sent_i  ( prot_txdatflit_sent )
+                     ,.snp_busy_o            ( snp_busy         )
+                 );
+
+    // A snoop response takes the channel first: it is what releases the Home's
+    // own transaction, and the CompAck behind it is this node's to hold.
+    assign prot_txrspflit  = snp_txrspflitv ? snp_txrspflit  : ctl_txrspflit;
+    assign prot_txrspflitv = snp_txrspflitv | ctl_txrspflitv;
 
     rnf_ctl `RNF_PARAM_INST u_rnf_ctl(
                       .clk_i                 ( CLK                  )
@@ -178,9 +228,9 @@ module rnf `RNF_PARAM
                      ,.prot_txreqflit_o      ( prot_txreqflit       )
                      ,.prot_txreqflitv_o     ( prot_txreqflitv      )
                      ,.prot_txreqflit_sent_i ( prot_txreqflit_sent  )
-                     ,.prot_txrspflit_o      ( prot_txrspflit       )
-                     ,.prot_txrspflitv_o     ( prot_txrspflitv      )
-                     ,.prot_txrspflit_sent_i ( prot_txrspflit_sent  )
+                     ,.prot_txrspflit_o      ( ctl_txrspflit        )
+                     ,.prot_txrspflitv_o     ( ctl_txrspflitv       )
+                     ,.prot_txrspflit_sent_i ( prot_txrspflit_sent & ~snp_txrspflitv )
                      ,.prot_rxdatflitv_i     ( prot_rxdatflitv      )
                      ,.prot_rxdatflit_i      ( prot_rxdatflit       )
                      ,.prot_rxrspflitv_i     ( prot_rxrspflitv      )
@@ -257,7 +307,7 @@ module rnf `RNF_PARAM
     // so it is derived from this node's own work, never from the handshake.
     // SS15.2.1 (p.15-467, MUST) adds the coherency transitions: SACTIVE must be
     // asserted across them "to guarantee the SYSCOACK transition occurs".
-    assign TXSACTIVE = (txn_active | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
+    assign TXSACTIVE = (txn_active | snp_busy | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
                         | sysco_transition) & (~RST);
 
 endmodule

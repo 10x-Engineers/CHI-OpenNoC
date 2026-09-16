@@ -33,6 +33,14 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_WAY_W-1:0]               lu_way_o,
     output wire [`RNF_LINE_BITS-1:0]           lu_data_o,
 
+    // Snoop lookup -- an independent read port, so a snoop is never queued behind
+    // the core's own access.
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_addr_i,
+    output wire                                snp_hit_o,
+    output wire [`RNF_CS_WIDTH-1:0]            snp_state_o,
+    output wire [`RNF_WAY_W-1:0]               snp_way_o,
+    output wire [`RNF_LINE_BITS-1:0]           snp_data_o,
+
     // The way a fill for this address would take, and what it would displace.
     output wire [`RNF_WAY_W-1:0]               vic_way_o,
     output wire [`RNF_CS_WIDTH-1:0]            vic_state_o,
@@ -81,6 +89,28 @@ module rnf_cache `RNF_PARAM
     assign lu_way_o   = hit_way_c;
     assign lu_state_o = hit_c ? state_q[lu_set][hit_way_c] : `RNF_CS_I;
     assign lu_data_o  = data_q[lu_set][hit_way_c];
+
+    wire [`RNF_SET_W-1:0] snp_set = snp_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
+    wire [`RNF_TAG_W-1:0] snp_tag = snp_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
+
+    logic                  snp_hit_c;
+    logic [`RNF_WAY_W-1:0] snp_way_c;
+
+    always_comb begin
+        snp_hit_c = 1'b0;
+        snp_way_c = '0;
+        for (int w = 0; w < WAYS; w++) begin
+            if ((state_q[snp_set][w] != `RNF_CS_I) && (tag_q[snp_set][w] == snp_tag)) begin
+                snp_hit_c = 1'b1;
+                snp_way_c = `RNF_WAY_W'(w);
+            end
+        end
+    end
+
+    assign snp_hit_o   = snp_hit_c;
+    assign snp_way_o   = snp_way_c;
+    assign snp_state_o = snp_hit_c ? state_q[snp_set][snp_way_c] : `RNF_CS_I;
+    assign snp_data_o  = data_q[snp_set][snp_way_c];
 
     // An invalid way is taken before the round-robin victim, so a cold cache
     // fills before it ever evicts.
