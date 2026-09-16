@@ -29,10 +29,13 @@
 //   write miss, whole line   -> MakeUnique, which needs no data fetched
 //   write miss, part of one  -> ReadUnique, whose data the store merges into
 //
-// A line can therefore be I, SC, UC, UD or SD. UCE and UDP are not entered:
-// both need a request this engine does not issue -- CleanUnique from Invalid
-// for the first, a partial store into that line for the second -- and SS4.1
-// (p.4-160) requires no Requester to use them.
+// A line is I, SC, UC, UD or SD, and UCE for the length of one race. A snoop can
+// take a Shared line away while its CleanUnique is in flight, and Table 4-38
+// then ends that CleanUnique -- from Invalid -- in UCE: owned, with no valid
+// bytes. p.4-215 names the cost, "the Requester needing to issue another
+// transaction", so a store that does not cover the whole line follows it with a
+// ReadUnique, which Table 4-33 (p.4-212) permits from UCE. UDP is never entered:
+// that store is merged into the ReadUnique's data, not into the empty line.
 //
 // Displacing a Dirty victim owes a WriteBackFull (Table 4-16 SS4.2.2 p.4-175);
 // a Clean one is dropped silently, which Table 4-32 permits.
@@ -172,6 +175,10 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_WAY_W-1:0]                      vic_way_q;
     logic [`RNF_CS_WIDTH-1:0]                   vic_state_q;
     logic [`RNF_LINE_BITS-1:0]                  vic_data_q;
+    // The acquire's own line, tracked the same way while the request is out.
+    logic [`RNF_CS_WIDTH-1:0]                   acq_cs_q;
+    logic                                       fill_uce_q;
+    logic                                       chain_ru_q;
     logic [CHIE_NID_WIDTH_PARAM-1:0]            cb_tgt_q;
     logic [11:0]                                cb_txnid_q;
     logic                                       cb_hi_q;
@@ -355,6 +362,14 @@ module rnf_ctl `RNF_PARAM
     wire [`RNF_LINE_BITS-1:0] fill_line = is_wr_q ? merge_line(line_q, wbuf_q, wbe_q)
                                                   : line_q;
 
+    // The acquire's line as it stands this cycle, including a snoop writing it on
+    // the very edge its completion arrives -- acq_cs_q alone would miss that one.
+    wire acq_snp_now = snp_upd_v_i &&
+        (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
+         addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]);
+    wire [`RNF_CS_WIDTH-1:0] acq_cs_now = acq_snp_now ? snp_upd_state_i : acq_cs_q;
+    wire                     acq_lost   = (acq_cs_now == `RNF_CS_I);
+
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
             st_q         <= S_IDLE;
@@ -382,6 +397,9 @@ module rnf_ctl `RNF_PARAM
             vic_way_q    <= '0;
             vic_state_q  <= `RNF_CS_I;
             vic_data_q   <= '0;
+            acq_cs_q     <= `RNF_CS_I;
+            fill_uce_q   <= 1'b0;
+            chain_ru_q   <= 1'b0;
             cb_tgt_q     <= '0;
             cb_txnid_q   <= '0;
             cb_hi_q      <= 1'b0;
@@ -393,6 +411,9 @@ module rnf_ctl `RNF_PARAM
 
             // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
             // its CopyBack is in flight, and the WriteData must say so.
+            if (acq_snp_now && (st_q != S_IDLE))
+                acq_cs_q <= snp_upd_state_i;
+
             if (snp_upd_v_i && (snp_upd_way_i == vic_way_q) &&
                 (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
                  vic_addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]))
@@ -462,6 +483,7 @@ module rnf_ctl `RNF_PARAM
                                     // SC or SD: Table 4-38 (p.4-218) ends both
                                     // Unique, and no data need move.
                                     line_q     <= cache_lu_data_i;
+                                    acq_cs_q   <= lu_state;
                                     acq_op_q   <= chie_pkg::REQ_CLEANUNIQUE;
                                     acq_data_q <= 1'b0;
                                     st_q       <= S_REQ;
@@ -561,11 +583,35 @@ module rnf_ctl `RNF_PARAM
                     else if (got_rsp_q || rx_comp_dataless) begin
                         fill_v_q <= 1'b1;
                         st_q     <= S_ACK;
+                        // Table 4-38 (p.4-218): the line went Invalid under the
+                        // CleanUnique, which therefore ends UCE. The bytes held in
+                        // line_q are what the snoop took away, so none survive.
+                        if ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) && acq_lost) begin
+                            line_q <= '0;
+                            if (!(&wbe_q)) begin
+                                fill_uce_q <= 1'b1;
+                                chain_ru_q <= 1'b1;
+                            end
+                        end
                     end
                 end
 
                 S_ACK: begin
-                    if (prot_txrspflit_sent_i) st_q <= is_wr_q ? S_BRESP : S_RESP;
+                    if (prot_txrspflit_sent_i) begin
+                        if (chain_ru_q) begin
+                            // p.4-215: the other transaction the lost line costs.
+                            chain_ru_q <= 1'b0;
+                            fill_uce_q <= 1'b0;
+                            got_lo_q   <= 1'b0;
+                            got_hi_q   <= 1'b0;
+                            got_rsp_q  <= 1'b0;
+                            acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                            acq_data_q <= 1'b1;
+                            txnid_q    <= txnid_q + 12'd1;
+                            st_q       <= S_REQ;
+                        end
+                        else st_q <= is_wr_q ? S_BRESP : S_RESP;
+                    end
                 end
 
                 S_RESP: begin
@@ -595,8 +641,9 @@ module rnf_ctl `RNF_PARAM
     assign cache_fill_v_o     = fill_v_q;
     assign cache_fill_addr_o  = addr_q;
     assign cache_fill_way_o   = way_q;
-    assign cache_fill_state_o = is_wr_q ? (hit_q ? `RNF_CS_UD : wr_fill_state)
-                                        : fill_state_q;
+    assign cache_fill_state_o = fill_uce_q ? `RNF_CS_UCE :
+                                is_wr_q    ? (hit_q ? `RNF_CS_UD : wr_fill_state)
+                                           : fill_state_q;
     assign cache_fill_data_o  = fill_line;
 
     // Retiring the written-back way, which the fill behind it would otherwise
