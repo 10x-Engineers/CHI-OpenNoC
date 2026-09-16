@@ -141,6 +141,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                txdat_mshr_busy_sx,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_rd_idx_sx2,
     input  wire                                txdat_mshr_rd_to_rn_sx2,
+    input  wire                                txdat_mshr_rd_sent_sx2,
     input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_be_full_sx,
     input  wire                                dbf_mshr_be_full_s0,
@@ -369,6 +370,11 @@ module hnf_mshr_ctl `HNF_PARAM
     // hands over to a later same-line request.
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_evict_pending_sx_q;
     chie_pkg::resp_err_e                 mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    // Sec 9.4.1 (p.9-337, MUST): NDERR "in none or in all data response packets", so
+    // the RespErr of an entry's first RN-bound data packet is held for the rest.
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rd_resperr_held_v_sx_q;
+    chie_pkg::resp_err_e                 mshr_rd_resperr_held_sx_q[0:`MSHR_ENTRIES_NUM-1];
+    chie_pkg::resp_err_e                 mshr_txdat_rd_resperr_live_sx2;
     logic                                mshr_ns_s1_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::order_e                    mshr_order_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_compack_s1_q;
@@ -1560,6 +1566,23 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_evict_pending_sx_q[entry] <= 1'b0;
                 else if(mshr_l3_evict_sx7[entry])
                     mshr_evict_pending_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_rd_resperr_held_sx_q_timing_logic
+                if(rst == 1'b1) begin
+                    mshr_rd_resperr_held_v_sx_q[entry] <= 1'b0;
+                    mshr_rd_resperr_held_sx_q[entry]   <= chie_pkg::RESP_ERR_NORM_OK;
+                end
+                else if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_rd_resperr_held_v_sx_q[entry] <= 1'b0;
+                else if(txdat_mshr_rd_sent_sx2 && txdat_mshr_rd_to_rn_sx2 &&
+                        (txdat_mshr_rd_idx_sx2 == entry) &&
+                        !mshr_rd_resperr_held_v_sx_q[entry]) begin
+                    mshr_rd_resperr_held_v_sx_q[entry] <= 1'b1;
+                    mshr_rd_resperr_held_sx_q[entry]   <= mshr_txdat_resperr_sx2;
+                end
                 else
                     ;
             end
@@ -4096,10 +4119,13 @@ module hnf_mshr_ctl `HNF_PARAM
         // carry OK or DERR only. An NDERR is the Completer's verdict on the access,
         // so it rides out upstream on the Comp and never on the NonCopyBackWrData
         // the Home sends its Subordinate.
-        mshr_txdat_resperr_sx2 = ~txdat_mshr_rd_to_rn_sx2 ? chie_pkg::RESP_ERR_NORM_OK :
+        mshr_txdat_rd_resperr_live_sx2 =
                                  mshr_err_s1_q[txdat_mshr_rd_idx_sx2] ? chie_pkg::RESP_ERR_NON_DATA :
                                  mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2][1] ? mshr_dn_resperr_s1_q[txdat_mshr_rd_idx_sx2] :
                                  ((mshr_excl_s1_q[txdat_mshr_rd_idx_sx2] & ~mshr_excl_noexok_s1_q[txdat_mshr_rd_idx_sx2] & (~mshr_excl_fail_s2_q[txdat_mshr_rd_idx_sx2]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
+        mshr_txdat_resperr_sx2 = ~txdat_mshr_rd_to_rn_sx2 ? chie_pkg::RESP_ERR_NORM_OK :
+                                 mshr_rd_resperr_held_v_sx_q[txdat_mshr_rd_idx_sx2] ? mshr_rd_resperr_held_sx_q[txdat_mshr_rd_idx_sx2] :
+                                 mshr_txdat_rd_resperr_live_sx2;
         mshr_txdat_dbid_sx2    = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, txdat_mshr_rd_idx_sx2};
         // Sec 2.10.6 (p.2-139, MUST): "The CCID field must match the value of
         // Addr[5:4] of the original request."

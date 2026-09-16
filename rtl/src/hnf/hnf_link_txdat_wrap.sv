@@ -62,6 +62,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     output logic [`MSHR_ENTRIES_WIDTH-1:0]   txdat_mshr_clr_dbf_busy_idx_sx3,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]    txdat_mshr_rd_idx_sx2,
     output wire                              txdat_mshr_rd_to_rn_sx2,
+    output wire                              txdat_mshr_rd_sent_sx2,
     output wire                              txdat_mshr_busy_sx
     );
 
@@ -334,6 +335,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     assign txdat_mshr_rd_idx_sx2 = dbf_txdat_valid_entry2_sx_ns? dbf_txdat_idx_entry2_sx : dbf_txdat_valid_entry1_sx? dbf_txdat_idx_entry1_sx : {`MSHR_ENTRIES_WIDTH{1'b0}};
     assign txdat_mshr_rd_to_rn_sx2 = dbf_txdat_valid_entry2_sx_ns? dbf_txdat_to_rn_entry2_sx : dbf_txdat_to_rn_entry1_sx;
+    // The packet described by txdat_mshr_rd_idx_sx2 is registered onto TXDAT this cycle.
+    assign txdat_mshr_rd_sent_sx2  = txdatflitv_s0 & txdat_crd_avail_s1 & ~txdat_lcrd_rtn_sx;
 
     //receive dbf_txdat_valid_sx1, pass data
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_data_entry1_sx_logic_t

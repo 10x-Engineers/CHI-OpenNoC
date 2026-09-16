@@ -258,6 +258,7 @@ module hnf `HNF_PARAM
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_clr_dbf_busy_idx_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_rd_idx_sx2;
     wire                                     txdat_mshr_rd_to_rn_sx2;
+    wire                                     txdat_mshr_rd_sent_sx2;
     wire                                     txdat_mshr_busy_sx;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      pipe_mshr_addr_sx2_q;
     wire                                     pipe_mshr_addr_valid_sx2_q;
@@ -615,6 +616,7 @@ module hnf `HNF_PARAM
                  .txdat_mshr_clr_dbf_busy_idx_sx3              (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                  .txdat_mshr_rd_idx_sx2                        (txdat_mshr_rd_idx_sx2             ),
                  .txdat_mshr_rd_to_rn_sx2                      (txdat_mshr_rd_to_rn_sx2           ),
+                 .txdat_mshr_rd_sent_sx2                       (txdat_mshr_rd_sent_sx2            ),
                  .txdat_mshr_busy_sx                           (txdat_mshr_busy_sx                )
              );
 
@@ -683,6 +685,7 @@ module hnf `HNF_PARAM
                  .txdat_mshr_busy_sx                           (txdat_mshr_busy_sx                ),
                  .txdat_mshr_rd_idx_sx2                        (txdat_mshr_rd_idx_sx2             ),
                  .txdat_mshr_rd_to_rn_sx2                      (txdat_mshr_rd_to_rn_sx2           ),
+                 .txdat_mshr_rd_sent_sx2                       (txdat_mshr_rd_sent_sx2            ),
                  .txdat_mshr_clr_dbf_busy_valid_sx3            (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                  .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
                  .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               ),
