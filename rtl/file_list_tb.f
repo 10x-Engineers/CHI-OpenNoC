@@ -10,6 +10,7 @@
 ./include/hni_defines.svh
 ./include/rni_param.svh
 ./include/rni_defines.svh
+./include/rnf_param.svh
 ./include/snf_param.svh
 ./include/snf_defines.svh
 ./tb/tb_hnf.sv
@@ -67,6 +68,8 @@
 ./src/rni/rni_datbuf_bank.sv
 ./src/rni/rni_rd_buffer.sv
 ./misc/chi_lcrd_hdlr.sv
+./src/rnf/rnf_link_ctl.sv
+./src/rnf/rnf.sv
 ./misc/chi_link_handshake.sv
 ./src/snf/snf_rxdat.sv
 ./src/snf/snf_txrsp.sv
