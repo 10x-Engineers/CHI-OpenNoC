@@ -17,14 +17,14 @@ source.
    (AXI manager)      │                                    │
                       ├─ CHI ─┤ crosspoint ├─ CHI ─┤  HN-F ─┴─ CHI ─┤  SN-F
         RN-F  ────────┘        (mesh / ring)          HN-I ───AXI4──┘
-     (yours)
+   (AXI subordinate)
 ```
 
 | | |
 | :-- | :-- |
 | **Protocol** | AMBA CHI Issue E.b (Arm IHI 0050E.b) |
 | **Language** | SystemVerilog throughout — packed structs, enums, ANSI ports |
-| **Nodes** | HN-F (coherent Home + L3 + snoop filter), HN-I (I/O Home), RN-I (AXI4→CHI bridge), SN-F (CHI→AXI4 memory Subordinate), mesh/ring crosspoints |
+| **Nodes** | HN-F (coherent Home + L3 + snoop filter), HN-I (I/O Home), RN-I (AXI4→CHI bridge), RN-F (coherent Requester, in progress), SN-F (CHI→AXI4 memory Subordinate), mesh/ring crosspoints |
 | **Dependencies** | none — all memories are inferred arrays; no technology cells, no third-party IP |
 | **Licence** | Mulan PSL v2 |
 
@@ -44,7 +44,6 @@ source.
 - [Configuration](#configuration)
 - [The nodes](#the-nodes)
 - [CHI feature support](#chi-feature-support)
-- [Verification](#verification)
 - [Repository layout](#repository-layout)
 - [Contributing](#contributing)
 - [Licence](#licence)
@@ -59,8 +58,8 @@ anything around it.
 | | |
 | :-- | :-- |
 | ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
-| ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way; see [Verification](#verification). |
-| ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. See [Types, not bit ranges](#types-not-bit-ranges). |
+| ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way, each one an issue here naming the clause it violated. A design can lint clean and pass its own directed benches while still violating the protocol in ways only an independent oracle notices. |
+| ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. Fields the spec overlays on one another are `union packed`, so one set of bits carries several names rather than several fields. |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
 | ⚠️ **Feature-incomplete against the spec** | MTE and DVM are not implemented. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
@@ -189,84 +188,11 @@ passes them down a hierarchy.
 | `HNF_MSHR_RNF_NUM_PARAM` + `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | How many coherent Requesters the Home serves, and their NodeIDs. |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | L3 geometry. Line size is fixed at 64 B. |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | Snoop filter geometry. |
+| `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | RN-F cache geometry. Section 4.6 (p.4-209) makes capacity, associativity and replacement IMPLEMENTATION DEFINED, so these are a declaration rather than a spec constant; the 64-byte line is not, section 2.10.1 (p.2-133) fixes it. |
+| `RNF_LCRD_NUM_PARAM` | 15 | L-Credits the RN-F grants per RX channel. Section 14.2.1 caps outstanding credits at 15. |
 | `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Outstanding transactions per node. |
+| `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` | undefined | Optional flit fields, and `` `define ``s rather than parameters: section 13.10.56 makes RSVDC optional with an implementation-defined width, section 11.3 gives MPAM 0 or 11 bits, and a packed struct cannot hold a zero-width member — so *defining* one is what puts it in the layout. `chie_flit_opt_check` holds every node's parameter to the package, and `tools/lint.sh` lints each node a second time with all of them declared. |
 | `XP_LCRD_NUM_PARAM` | 15 | Maximum outstanding L-Credits per channel. Section 14.2.1 caps this at 15; the counters are 4 bits wide, so a larger value will not fit. |
-
-### Types, not bit ranges
-
-Flits and AXI channels are **packed structs**, not vectors sliced by macro:
-
-```systemverilog
-input  chie_pkg::req_flit_s  rxreqflit;          // not [`CHIE_REQ_FLIT_RANGE]
-assign rxreq_valid_s0 = rxreqflit.opcode != chie_pkg::REQ_REQLCRDRETURN;
-```
-
-`rtl/include/chie_pkg.sv` carries the REQ/RSP/DAT/SNP layouts, the opcode enums
-for each channel, and enums for RespErr, Resp, Order, Size and MemAttr. Fields the
-spec overlays on one another — Table 13-6's Excl/SnoopMe, section 13.10.24's SnpAttr/DoDWT,
-section 13.10.54's DataSource/FwdState/DataPull, section 13.10.11's FwdTxnID/StashLPID/VMIDExt —
-are `union packed`, which is what makes them one set of bits with several names
-rather than several fields.
-
-Three consequences worth knowing:
-
-- **Field access is tool-checked.** A TxnID slice can no longer be written with a
-  DBID value, and an opcode constant cannot be compared against another channel's
-  encoding — the enums are distinct types.
-- **The section 16.1 widths are seeded by `` `define ``.** `CHIE_NID_WIDTH`,
-  `CHIE_REQ_ADDR_WIDTH` and `CHIE_DATA_WIDTH` default in `chie_pkg.sv` and are
-  overridable at compile time; each node's `*_param.svh` derives its own
-  `CHIE_*_WIDTH_PARAM` from them, so a node cannot disagree with the package.
-- **RSVDC and MPAM are present only when declared.** Section 13.10.56 makes RSVDC
-  optional and its width implementation defined, and section 11.3 gives MPAM a width
-  of "either 0 bits or 11 bits"; a packed struct cannot hold a zero-width member — so
-  `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` being *defined*
-  is what puts each in the layout. `chie_flit_opt_check` holds every node's parameter
-  to the package rather than letting the layout silently shift, and `tools/lint.sh`
-  lints each node a second time with all of them declared — the default build compiles
-  none of the code that carries them. A field that is *carried* between a node's
-  ingress and its egress needs a non-zero wire either way, so `REQ_RSVDC_BUS_WIDTH`
-  pads the absent case to one bit and `req_rsvdc_of()` is the single read — which is
-  what keeps the `ifdef`s at the two flit endpoints instead of along the whole plumb.
-
-`chi_chan_if.sv` bundles one channel's link-layer signals (flit, FLITV, FLITPEND,
-LCRDV) with `tx`/`rx` modports. Node **port lists stay flat** — an integrator wires
-those — so the interface is for use inside a node.
-
-### Sharp edges
-
-These are real, and none of them is checked at elaboration:
-
-- **The AXI address width differs by node** — 44 bits on RN-I (a manager port
-  carrying the full PA) against 32 on HN-I and SN-F (memory-side ports). That
-  one is deliberate: they are different buses. The **CHI** widths no longer
-  diverge — every node's `CHIE_*_WIDTH_PARAM` default now derives from
-  `chie_pkg`, so four nodes on one link can no longer default to different flit
-  widths the way they used to (RN-I once defaulted NodeID to 11 against the
-  others' 7, and Poison/DataCheck to 0 against 4/32).
-- **`*_MSHR_ENTRIES_WIDTH_PARAM` must be kept equal to `$clog2` of its
-  `_NUM_PARAM` by hand.** Nothing checks it.
-- **The HN-F's QoS pool sizes are baked into a `HNF_MSHR_ENTRIES_NUM_PARAM == 32`
-  ternary** (`hnf_defines.svh`'s `QOS_*_POOL_NUM`), so any value other than 32 silently gets
-  the 64-entry pool numbers.
-- **The Back-Invalidate Queue depth is not a parameter** —
-  `localparam BIQ_NUM = 8` in `hnf_cache_pipeline.sv`.
-- **The generated mesh and ring wrappers pin NodeID width to 7** and X/Y IDs to 3
-  bits; only the hand-written `chi_xp_node.sv` / `chi_ring_node.sv` forward
-  `CHIE_NID_WIDTH_PARAM`.
-
-### FPGA and ASIC memories
-
-The four HN-F SRAM wrappers (`hnf_tag_sram.sv`, `hnf_data_sram.sv`, `hnf_sf_sram.sv`,
-`hnf_lru_sram.sv`) each carry an `` `ifndef FPGA_MEMORY `` / `` `else `` pair. The
-default branch is a behavioural inferred array; the `FPGA_MEMORY` branch is the
-swap-in point for a block-RAM primitive or a compiled macro.
-`` `HNF_DELAY_ONE_CYCLE `` adds a registered read output for a pipelined macro.
-Both switches are commented out in `rtl/include/hnf_defines.svh`.
-
----
-
----
 
 ## The nodes
 
@@ -278,13 +204,16 @@ one AXI4 port. There is no top-level SoC wrapper — you instantiate what you ne
 | **HN-F** | `rtl/src/hnf/hnf.sv` | RX REQ/RSP/DAT, TX REQ/RSP/SNP/DAT | — | Coherent Home. Point of Coherency **and** Point of Serialisation: L3 cache, snoop filter, snoop generation, exclusive monitor, and a downstream REQ port to an SN-F. |
 | **HN-I** | `rtl/src/hni/hni.sv` | RX REQ/RSP/DAT, TX RSP/DAT | AXI4 **manager** | I/O Home. Non-coherent: no snoop port, no cache. Terminates Non-snoopable traffic onto AXI4, with a 16-region address decode. |
 | **RN-I** | `rtl/src/rni/rni.sv` | TX REQ/RSP/DAT, RX RSP/DAT | AXI4 **subordinate** | Requester bridge. Turns AXI4 bursts into CHI requests, segmented at 64-byte and 4 KB boundaries. No snoop port — it is an I/O Requester, not an RN-F. |
+| **RN-F** | `rtl/src/rnf/rnf.sv` | TX REQ/RSP/DAT, RX RSP/DAT/**SNP** | AXI4 **subordinate** (planned) | Coherent Requester, **in progress** — see [#241](https://github.com/10x-Engineers/CHI-OpenNoC/issues/241). Its Chapter 14 link layer and Chapter 15 coherency interface are complete and VIP-verified; the cache, request generation and the section 4.8 snoop responses are not yet built, so it issues no request and answers no snoop. |
 | **SN-F** | `rtl/src/snf/snf.sv` | RX REQ/DAT, TX RSP/DAT | AXI4 **manager** | Memory Subordinate. Terminates the Home's downstream reads and writes onto AXI4. |
 | **Crosspoint** | `rtl/misc/chi_xp_channel.sv`, `chi_ring_channel.sv` | one channel each | — | Routing element, **one CHI channel per instance**. Four are assembled into a node by `tools/*/chi_*_node.sv`; a whole mesh or ring is assembled by the generators. |
 
-**There is no RN-F in this repository.** The HN-F is built to serve coherent
-Request Nodes with caches — that is the whole point of its snoop filter and snoop
-generation — but the RN-F itself is yours to bring. `HNF_MSHR_RNF_NUM_PARAM` and
-`RNF_NID_LIST_PARAM` are how you tell the Home about them.
+**The RN-F is not finished.** The HN-F is built to serve coherent Request Nodes
+with caches — that is the whole point of its snoop filter and snoop generation —
+and `rtl/src/rnf/` is now where that Requester is being built. Until the
+protocol layer lands it links up and nothing more, so a coherent Requester is
+still yours to bring. `HNF_MSHR_RNF_NUM_PARAM` and `RNF_NID_LIST_PARAM` are how
+you tell the Home about them.
 
 ---
 
@@ -320,6 +249,7 @@ at both Homes — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68).
 | **HN-I** | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.sv`'s `rxreq_err_s0` |
 | **HN-F** | 69, plus 9 snoops and their 5 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
 | **RN-I** | generates 7 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
+| **RN-F** | generates 0 so far | link layer and coherency interface only; the protocol layer lands per area of [#241](https://github.com/10x-Engineers/CHI-OpenNoC/issues/241) |
 
 All three Completers now answer everything they do not implement. The HN-F count
 is the 20 opcodes `hnf_mshr_ctl.sv` decodes in its own right — plus the thirty
@@ -529,25 +459,6 @@ otherwise always a 64-byte request, and only an exclusive one carries the burst'
 own `Size`.
 
 ---
-
----
-
-## Verification
-
-Three layers, in increasing cost:
-
-| Layer | What it proves | Runs where |
-| :-- | :-- | :-- |
-| `tools/lint.sh` | The design elaborates and contains no never-executing logic, inferred latches, incomplete cases, or part-selects that read past their operand once a `for` loop is unrolled. | CI, every push and PR. Licence-free. |
-| `rtl/tb/` | Directed behavioural benches: 136 recorded HN-F cases, an RN-I AXI bench, an SN-F bench, and a Chapter 14 link-activation conformance bench. | Locally, needs VCS or Xcelium. |
-| **An external CHI VIP** | Conformance against the Issue E.b specification itself: every node driven as a DUT by an independent UVM verification IP whose checkers cite spec clauses, with a golden reference model behind them. | The 10xEngineers CHI VIP. This is where essentially every protocol defect in the fork log was found. |
-
-The third layer is what the fork exists for. A design can lint clean and pass its
-own directed benches while still violating the protocol in ways only an
-independent oracle notices. Over 90 such defects have been found and fixed
-here — a Completer that accepted a request and never answered it, a link that
-granted credits before it was in RUN, an error status that never reached the
-Requester — each one an issue on this repository naming the clause it violated.
 
 ---
 
