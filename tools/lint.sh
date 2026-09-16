@@ -44,7 +44,7 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni snf); fi
+if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni rnf snf); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
 # clean run under a different binary does not prove a clean run in CI: 5.020 also

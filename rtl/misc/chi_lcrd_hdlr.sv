@@ -14,7 +14,7 @@
 *    Wenhao Li <liwenhao@bosc.ac.cn>
 */
 
-module rni_lcrd_hdlr #(
+module chi_lcrd_hdlr #(
         parameter LCRD_INIT_CNT_VAL = 4,
         parameter LCRD_MAX_CNT_VAL  = 4
     )

@@ -257,7 +257,7 @@ module rni_link_ctl `RNI_PARAM
             RXRSPLCRDV <= rxrsplcrdv_d1_w;
     end
 
-    rni_lcrd_hdlr #(
+    chi_lcrd_hdlr #(
                       .LCRD_INIT_CNT_VAL ( XP_LCRD_NUM_PARAM      )
                       ,.LCRD_MAX_CNT_VAL  ( XP_LCRD_NUM_PARAM      )
                   )rxrsp_lcrd_hdlr(
@@ -317,7 +317,7 @@ module rni_link_ctl `RNI_PARAM
             RXDATLCRDV <= rxdatlcrdv_d1_w;
     end
 
-    rni_lcrd_hdlr #(
+    chi_lcrd_hdlr #(
                       .LCRD_INIT_CNT_VAL ( XP_LCRD_NUM_PARAM      )
                       ,.LCRD_MAX_CNT_VAL  ( XP_LCRD_NUM_PARAM      )
                   )rxdat_lcrd_hdlr(
@@ -336,7 +336,7 @@ module rni_link_ctl `RNI_PARAM
     //  wb_txdatflit_sent_d3_o
     //    TXDATFLITPEND
     //*************************************************
-    rni_lcrd_hdlr #(
+    chi_lcrd_hdlr #(
                       .LCRD_INIT_CNT_VAL ( 0                      )
                       ,.LCRD_MAX_CNT_VAL  ( XP_LCRD_NUM_PARAM      )
                   )txdat_lcrd_hdlr(
@@ -378,7 +378,7 @@ module rni_link_ctl `RNI_PARAM
     //  ax_txrspflit_sent_d0_o
     //    TXRSPFLITPEND
     //*************************************************
-    rni_lcrd_hdlr #(
+    chi_lcrd_hdlr #(
                       .LCRD_INIT_CNT_VAL ( 0                      )
                       ,.LCRD_MAX_CNT_VAL  ( XP_LCRD_NUM_PARAM      )
                   )txrsp_lcrd_hdlr(
@@ -438,7 +438,7 @@ module rni_link_ctl `RNI_PARAM
     //  ax_txreqflit_sent_s4_o
     //    TXREQFLITPEND
     //*************************************************
-    rni_lcrd_hdlr #(
+    chi_lcrd_hdlr #(
                       .LCRD_INIT_CNT_VAL ( 0                      )
                       ,.LCRD_MAX_CNT_VAL  ( XP_LCRD_NUM_PARAM      )
                   )txreq_lcrd_hdlr(
