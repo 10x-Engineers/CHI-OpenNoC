@@ -37,6 +37,15 @@ module rnf_snp `RNF_PARAM
     input  wire                                 prot_rxsnpflitv_i,
     input  chie_pkg::snp_flit_s                 prot_rxsnpflit_i,
 
+    // A snoop taken off the queue, so its L-Credit can be granted again: SS14.2.1
+    // (p.14-445) has a Receiver grant only what it can accept.
+    output wire                                 snp_pop_o,
+
+    // SS4.11.1 (p.4-242, MUST): a request of this node's own to the same line
+    // that has received part of its data holds the snoop until the rest lands.
+    input  wire                                 defer_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] defer_addr_i,
+
     // Cache
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_lu_addr_o,
     input  wire                                 cache_lu_hit_i,
@@ -115,15 +124,56 @@ module rnf_snp `RNF_PARAM
         endcase
     endfunction
 
+    // The Home may hold as many SNP L-Credits as this node grants, and so may send
+    // that many snoops before the first is answered. Queued rather than dropped:
+    // a snoop that arrived while another was being answered used to be lost, and
+    // SS4.11.1 (p.4-242, MUST) owes every one a response.
+    localparam int SNPQ_DEPTH = RNF_LCRD_NUM_PARAM;
+
+    logic [chie_pkg::SNP_FLIT_WIDTH-1:0]  head_bits;
+    logic                                 take;
+    wire                                  q_empty;
+    wire                                  q_full;
+    wire [$clog2(SNPQ_DEPTH):0]           q_count;
+
+    sync_fifo #(
+        .FIFO_ENTRIES_WIDTH ( chie_pkg::SNP_FLIT_WIDTH ),
+        .FIFO_ENTRIES_DEPTH ( SNPQ_DEPTH               )
+    ) u_snp_q (
+        .clk      ( clk_i             ),
+        .rst      ( rst_i             ),
+        .push     ( prot_rxsnpflitv_i ),
+        .pop      ( take              ),
+        .data_in  ( prot_rxsnpflit_i  ),
+        .data_out ( head_bits         ),
+        .empty    ( q_empty           ),
+        .full     ( q_full            ),
+        .count    ( q_count           )
+    );
+
+    chie_pkg::snp_flit_s head;
+    assign head = chie_pkg::snp_flit_s'(head_bits);
+
+    wire head_line_deferred =
+        defer_v_i &&
+        ({head.addr, 3'b000} >> `RNF_LINE_OFFSET_W) == (defer_addr_i >> `RNF_LINE_OFFSET_W);
+
+    // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
+    // the snoops behind it, but only for as long as the Home takes to send the rest
+    // of a message it has already started -- SS4.11.2 (p.4-243) forbids it waiting
+    // on anything to do so.
+    assign take = (st_q == S_IDLE) && !q_empty && !head_line_deferred;
+    assign snp_pop_o = take;
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_addr =
-        {prot_rxsnpflit_i.addr, 3'b000};
+        {head.addr, 3'b000};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_addr_q =
         {snp_q.addr, 3'b000};
 
     assign cache_lu_addr_o = (st_q == S_IDLE) ? snp_addr : snp_addr_q;
 
     wire [`RNF_CS_WIDTH-1:0] cur_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
-    wire [`RNF_CS_WIDTH-1:0] nxt_state = final_state(prot_rxsnpflit_i.opcode, cur_state);
+    wire [`RNF_CS_WIDTH-1:0] nxt_state = final_state(head.opcode, cur_state);
 
     // SS4.9 (p.4-240): a Dirty line goes back whatever RetToSrc says, a Shared
     // Clean one only when RetToSrc is asserted, and a Unique Clean one is that
@@ -134,11 +184,11 @@ module rnf_snp `RNF_PARAM
     // Snoopee retains a copy", which would exempt SnpUnique from SC -- but
     // Table 4-43 (p.4-224) gives that cell SnpRespData_I as its only response,
     // so the table governs.
-    wire data_eligible = (prot_rxsnpflit_i.opcode != chie_pkg::SNP_SNPMAKEINVALID) &&
-                         (prot_rxsnpflit_i.opcode != chie_pkg::SNP_SNPQUERY);
+    wire data_eligible = (head.opcode != chie_pkg::SNP_SNPMAKEINVALID) &&
+                         (head.opcode != chie_pkg::SNP_SNPQUERY);
     wire want_data     = data_eligible &&
                          (is_dirty(cur_state) ||
-                          ((cur_state == `RNF_CS_SC) && prot_rxsnpflit_i.rettosrc));
+                          ((cur_state == `RNF_CS_SC) && head.rettosrc));
 
     // A Dirty line whose snoop leaves it Clean hands the dirtiness to the Home
     // with it; one that stays Dirty keeps it (Table 4-41's SnpOnce UD -> UD).
@@ -169,7 +219,7 @@ module rnf_snp `RNF_PARAM
 
     assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q;
     assign snp_txdatflitv_o  = (st_q == S_DAT);
-    assign cache_upd_v_o     = (st_q == S_IDLE) && prot_rxsnpflitv_i &&
+    assign cache_upd_v_o     = take &&
                                cache_lu_hit_i && (nxt_state != cur_state);
     assign cache_upd_addr_o  = snp_addr;
     assign cache_upd_way_o   = cache_lu_way_i;
@@ -189,8 +239,8 @@ module rnf_snp `RNF_PARAM
         else begin
             case (st_q)
                 S_IDLE: begin
-                    if (prot_rxsnpflitv_i) begin
-                        snp_q         <= prot_rxsnpflit_i;
+                    if (take) begin
+                        snp_q         <= head;
                         final_q       <= nxt_state;
                         data_q        <= cache_lu_data_i;
                         with_data_q   <= want_data;
@@ -215,5 +265,19 @@ module rnf_snp `RNF_PARAM
             endcase
         end
     end
+
+    // SS14.2.1 (p.14-445): a credit is granted back only when a snoop leaves the
+    // queue, so the Home can never have more outstanding than the queue holds. A
+    // push onto a full queue is that accounting broken.
+`ifdef ASSERT_CHECKER_ON
+    assert_checker #(
+                       3,
+                       "RN-F snoop queue overflowed: an SNP L-Credit was granted with no slot behind it")
+                   SNPQ_OVERFLOW_check (
+                       .clk   ( clk_i ),
+                       .rst   ( rst_i ),
+                       .cond  ( prot_rxsnpflitv_i && q_full && !take )
+                   );
+`endif
 
 endmodule

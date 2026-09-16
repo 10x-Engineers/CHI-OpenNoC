@@ -124,6 +124,12 @@ module rnf_ctl `RNF_PARAM
     input  wire                                 coh_enabled_i,
     input  wire                                 link_run_i,
 
+    // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
+    // in waits for the rest. Held until the fill has landed, since before then the
+    // cache still shows the line as it was.
+    output wire                                 defer_v_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] defer_addr_o,
+
     output wire                                 txn_active_o
     );
 
@@ -541,22 +547,25 @@ module rnf_ctl `RNF_PARAM
                         end
                     end
 
+                    // The line takes its granted state on the completion, not on
+                    // this node's CompAck, so the fill lands now: a snoop released
+                    // by the deferral below must find the state already there.
                     if (acq_data_q) begin
                         if ((got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0))) &&
                             (got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0))) &&
-                            (got_rsp_q || rx_rsp_mine || rx_dat_comb))
-                            st_q <= S_ACK;
+                            (got_rsp_q || rx_rsp_mine || rx_dat_comb)) begin
+                            fill_v_q <= 1'b1;
+                            st_q     <= S_ACK;
+                        end
                     end
                     else if (got_rsp_q || rx_comp_dataless) begin
-                        st_q <= S_ACK;
+                        fill_v_q <= 1'b1;
+                        st_q     <= S_ACK;
                     end
                 end
 
                 S_ACK: begin
-                    if (prot_txrspflit_sent_i) begin
-                        fill_v_q <= 1'b1;
-                        st_q     <= is_wr_q ? S_BRESP : S_RESP;
-                    end
+                    if (prot_txrspflit_sent_i) st_q <= is_wr_q ? S_BRESP : S_RESP;
                 end
 
                 S_RESP: begin
@@ -622,6 +631,10 @@ module rnf_ctl `RNF_PARAM
     assign BVALID = (st_q == S_BRESP);
     assign BID    = `AXI4_BID_WIDTH'(id_q);
     assign BRESP  = axi_resp;
+
+    // From the first Data packet until the fill it completes has been written.
+    assign defer_v_o    = ((st_q == S_DATA) && (got_lo_q || got_hi_q || rx_dat_mine)) || fill_v_q;
+    assign defer_addr_o = addr_q;
 
     assign txn_active_o = (st_q != S_IDLE);
 
