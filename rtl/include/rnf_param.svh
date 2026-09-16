@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2024 Beijing Institute of Open Source Chip
+* Copyright (c) 2026 10xEngineers
 * OpenNoC is licensed under Mulan PSL v2.
 * You can use this software according to the terms and conditions of the Mulan PSL v2.
 * You may obtain a copy of Mulan PSL v2 at:
@@ -13,6 +13,10 @@
 `ifndef RNF_PARAM_V
 `define RNF_PARAM_V
 
+// SS4.6 (p.4-209) makes cache capacity, associativity and replacement policy
+// IMPLEMENTATION DEFINED, so the geometry below is a declaration rather than a
+// constant the spec fixes. Line size is not: SS2.10.1 (p.2-133) fixes it at 64B.
+//
 // RNF_NID_PARAM defaults to 8, the first entry of hnf_param.svh's
 // RNF_NID_LIST_PARAM {48,16,40,8}, so a default-parameterised RN-F and HN-F pair
 // up without either being overridden.
@@ -28,6 +32,11 @@
     parameter CHIE_DAT_RSVDC_WIDTH_PARAM = chie_pkg::DAT_RSVDC_WIDTH,   \
     parameter CHIE_MPAM_WIDTH_PARAM      = chie_pkg::MPAM_WIDTH,        \
     parameter RNF_LCRD_NUM_PARAM         = 15,                          \
+    parameter AXI4_PA_WIDTH_PARAM        = chie_pkg::REQ_ADDR_WIDTH,    \
+    parameter AXI4_AXDATA_WIDTH_PARAM    = 128,                         \
+    parameter RNF_CACHE_SETS_PARAM       = 16,                          \
+    parameter RNF_CACHE_WAYS_PARAM       = 2,                           \
+    parameter RNF_MSHR_ENTRIES_PARAM     = 8,                           \
     parameter HNF_NID_PARAM              = 0,                           \
     parameter RNF_NID_PARAM              = 8    )
 
@@ -43,6 +52,11 @@
     .CHIE_DAT_RSVDC_WIDTH_PARAM     (CHIE_DAT_RSVDC_WIDTH_PARAM  ), \
     .CHIE_MPAM_WIDTH_PARAM          (CHIE_MPAM_WIDTH_PARAM       ), \
     .RNF_LCRD_NUM_PARAM             (RNF_LCRD_NUM_PARAM          ), \
+    .AXI4_PA_WIDTH_PARAM            (AXI4_PA_WIDTH_PARAM         ), \
+    .AXI4_AXDATA_WIDTH_PARAM        (AXI4_AXDATA_WIDTH_PARAM     ), \
+    .RNF_CACHE_SETS_PARAM           (RNF_CACHE_SETS_PARAM        ), \
+    .RNF_CACHE_WAYS_PARAM           (RNF_CACHE_WAYS_PARAM        ), \
+    .RNF_MSHR_ENTRIES_PARAM         (RNF_MSHR_ENTRIES_PARAM      ), \
     .HNF_NID_PARAM                  (HNF_NID_PARAM               ), \
     .RNF_NID_PARAM                  (RNF_NID_PARAM               ))
 
