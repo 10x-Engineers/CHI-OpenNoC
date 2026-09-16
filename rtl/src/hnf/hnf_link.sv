@@ -219,6 +219,7 @@ module hnf_link `HNF_PARAM
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_rd_idx_sx2,
     output wire                                txdat_mshr_rd_to_rn_sx2,
+    output wire                                txdat_mshr_rd_sent_sx2,
     output wire                                txdat_mshr_busy_sx
     );
 
@@ -502,6 +503,7 @@ module hnf_link `HNF_PARAM
                             .txdat_mshr_clr_dbf_busy_idx_sx3                (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                             .txdat_mshr_rd_idx_sx2                          (txdat_mshr_rd_idx_sx2             ),
                             .txdat_mshr_rd_to_rn_sx2                        (txdat_mshr_rd_to_rn_sx2           ),
+                            .txdat_mshr_rd_sent_sx2                         (txdat_mshr_rd_sent_sx2            ),
                             .txdat_mshr_busy_sx                             (txdat_mshr_busy_sx                )
                         );
 
