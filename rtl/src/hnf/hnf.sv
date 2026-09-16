@@ -295,6 +295,7 @@ module hnf `HNF_PARAM
     wire                                     mshr_dbf_rd_atm_sx1;
     wire [chie_pkg::BE_WIDTH*2-1:0]          mshr_dbf_rd_atm_be_sx1;
     wire [1:0]                               mshr_dbf_rd_atm_pe_sx1;
+    wire [1:0]                               mshr_dbf_rd_pe_sx1    ;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_home_fill_idx_sx1_q;
     wire                                     mshr_dbf_home_fill_valid_sx1_q;
     wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_home_fill_be_sx1_q;
@@ -758,6 +759,7 @@ module hnf `HNF_PARAM
                  .mshr_dbf_rd_atm_sx1                          (mshr_dbf_rd_atm_sx1),
                  .mshr_dbf_rd_atm_be_sx1                       (mshr_dbf_rd_atm_be_sx1),
                  .mshr_dbf_rd_atm_pe_sx1                       (mshr_dbf_rd_atm_pe_sx1),
+                 .mshr_dbf_rd_pe_sx1                           (mshr_dbf_rd_pe_sx1),
                  .mshr_dbf_home_fill_idx_sx1_q                 (mshr_dbf_home_fill_idx_sx1_q       ),
                  .mshr_dbf_home_fill_valid_sx1_q               (mshr_dbf_home_fill_valid_sx1_q     ),
                  .mshr_dbf_home_fill_be_sx1_q                  (mshr_dbf_home_fill_be_sx1_q        ),
@@ -918,6 +920,7 @@ module hnf `HNF_PARAM
                         .mshr_dbf_rd_atm_sx1                          (mshr_dbf_rd_atm_sx1),
                         .mshr_dbf_rd_atm_be_sx1                       (mshr_dbf_rd_atm_be_sx1),
                         .mshr_dbf_rd_atm_pe_sx1                       (mshr_dbf_rd_atm_pe_sx1),
+                        .mshr_dbf_rd_pe_sx1                           (mshr_dbf_rd_pe_sx1),
                         .mshr_dbf_home_fill_idx_sx1_q                 (mshr_dbf_home_fill_idx_sx1_q       ),
                         .mshr_dbf_home_fill_valid_sx1_q               (mshr_dbf_home_fill_valid_sx1_q     ),
                         .mshr_dbf_home_fill_be_sx1_q                  (mshr_dbf_home_fill_be_sx1_q        ),

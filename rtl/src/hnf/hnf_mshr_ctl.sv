@@ -183,6 +183,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic                               mshr_dbf_rd_atm_sx1,
     output logic [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
     output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
+    output logic [1:0]                         mshr_dbf_rd_pe_sx1,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
@@ -4216,6 +4217,25 @@ module hnf_mshr_ctl `HNF_PARAM
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
             mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
         mshr_dbf_rd_atm_pe_sx1 = mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01;
+    end
+
+    // Sec 2.10.4 (p.2-136): the packets a read owes follow its Size and the data
+    // bus width, and DataID follows Addr[5:4] -- not what the buffer happens to
+    // hold. A line read out of the L3 fills it whole, so a sub-line read served
+    // from one would otherwise emit two packets for a one-packet transfer.
+    //
+    // Keyed on the request opcode, not on Size alone: Table 4-1 (Sec 4.2.1 p.4-165)
+    // pins every other read at Size=64, and a Stash Data Pull's completion is a
+    // whole line whatever its entry's own Size says -- masking by Size cut one to a
+    // single packet and hung the Requester (CHI-OpenNoC#248, reverted by #253).
+    always_comb begin : mshr_dbf_rd_pe_comb
+        if ((mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNP) ||
+            (mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNPSEP))
+            mshr_dbf_rd_pe_sx1 = (mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::SIZE_64B)
+                               ? 2'b11
+                               : (mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01);
+        else
+            mshr_dbf_rd_pe_sx1 = 2'b11;
     end
 
     // The record hnf_data_buffer executes the operation from, written with the entry.
