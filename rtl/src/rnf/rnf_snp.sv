@@ -18,9 +18,9 @@
 //
 // A line here is I, SC, UC, UD or SD: reads fill it, Table 4-33 (SS4.7.1
 // p.4-211) lets the Home answer even a ReadShared with a PassDirty grant, and
-// stores make it Dirty. UCE and UDP are not decoded -- reaching either needs a
-// CleanUnique issued from Invalid, which rnf_ctl never does, since Table 4-38
-// (SS4.7.2 p.4-218) gives a whole-line store MakeUnique and ends it UD.
+// stores make it Dirty. It is UCE for as long as a CleanUnique whose line a
+// snoop took away waits on the ReadUnique behind it (see rnf_ctl). UDP is never
+// entered and is not decoded.
 //
 // Where a table offers the Snoopee a choice of final state this node takes the
 // one that is legal for every modifier: the Clean family leaves a Dirty line SC
@@ -104,6 +104,9 @@ module rnf_snp `RNF_PARAM
         if (is_invalidating(op))     return `RNF_CS_I;
         if (is_state_preserving(op)) return cur;
         if (cur == `RNF_CS_I)        return `RNF_CS_I;
+        // Tables 4-42 (p.4-223) and 4-44 (p.4-225): with no valid bytes there is
+        // nothing to keep shared, so every other snoop ends UCE Invalid.
+        if (cur == `RNF_CS_UCE)      return `RNF_CS_I;
         if (op == chie_pkg::SNP_SNPCLEANSHARED)
             return (cur == `RNF_CS_UD) ? `RNF_CS_UC :
                    (cur == `RNF_CS_SD) ? `RNF_CS_SC : cur;
@@ -119,6 +122,9 @@ module rnf_snp `RNF_PARAM
             `RNF_CS_SC: return pass_dirty ? chie_pkg::RESP_SC_PD : chie_pkg::RESP_SC;
             `RNF_CS_UC: return pass_dirty ? chie_pkg::RESP_UC_PD : chie_pkg::RESP_UC_UD;
             `RNF_CS_UD: return chie_pkg::RESP_UC_UD;
+            // Table 4-41 (p.4-222) and Table 4-45 (p.4-226): a UCE line that the
+            // snoop leaves in place is reported SnpResp_UC.
+            `RNF_CS_UCE: return chie_pkg::RESP_UC_UD;
             `RNF_CS_SD: return chie_pkg::RESP_SD;
             default:    return pass_dirty ? chie_pkg::RESP_I_PD  : chie_pkg::RESP_I;
         endcase
