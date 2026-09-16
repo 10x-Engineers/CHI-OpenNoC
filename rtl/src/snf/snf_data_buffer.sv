@@ -57,6 +57,11 @@ module snf_data_buffer `SNF_PARAM
         input  wire                                 txdat_dbf_rdy_s1,
         input  wire                                 txdat_dbf_won_sx,
         output chie_pkg::dat_flit_s                 txdat_flit,
+        output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagfetch_req_sx,
+        input  wire                                 mshr_dbf_tagfetch_ack_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_tagfetch_idx_sx,
+        output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_done_sx,
+        output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_pass_sx,
         output wire                                 dbf_mshr_rxdat_ok_sx,
         output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rxdat_ok_idx_sx,
         output wire                                 dbf_mshr_rxdat_cancel_sx,
@@ -97,6 +102,25 @@ module snf_data_buffer `SNF_PARAM
     // TU bit with each. Buffered beside the data they tag, like Poison.
     logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [2*chie_pkg::TU_WIDTH-1:0]    dbf_tu_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    // SS12.11.1 (p.12-386, MUST) owes a TagMatch its real verdict, so a TagOp=Match
+    // write has to compare the Physical Tags it carries against the Allocation Tags
+    // the location holds. Those live in AXI memory, so the write fetches them on the
+    // read channel once its own data has been taken -- the fetch clobbers dbf_data_q
+    // and dbf_be_q, which is why the operands are snapshotted here rather than read
+    // back out of the shared buffer.
+    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_match_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [2*chie_pkg::BE_WIDTH-1:0]    dbf_match_be_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_alloc_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_MASK_CD_WIDTH-1:0]      dbf_match_cdmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_MASK_WL_WIDTH-1:0]      dbf_match_wlmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   match_perform_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagfetch_req_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagfetch_busy_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagmatch_done_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagmatch_pass_q;
+    logic [2*chie_pkg::TAG_WIDTH-1:0]   wdata_recv_match_tag_sx;
+    logic [chie_pkg::TAG_WIDTH-1:0]     rxdat_match_tag_s0;
+    wire                                rxdat_match_s0;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_rec_idx_sx_q;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_fifo_set_vec;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_fifo_get_vec;
@@ -164,6 +188,11 @@ module snf_data_buffer `SNF_PARAM
     // where TU says. Every other TagOp leaves the location's tags alone.
     assign rxdat_tag_s0    = ((rxdat_valid_s0 == 1'b1) && (rxdatflit_s0.tagop == 2'b10)) ? rxdatflit_s0.tag : '0;
     assign rxdat_tu_s0     = ((rxdat_valid_s0 == 1'b1) && (rxdatflit_s0.tagop == 2'b10)) ? rxdatflit_s0.tu  : '0;
+    // SS12.5 (p.12-378, MUST): "When the TagOp values in the WriteData and Write
+    // request are different, whether or not to perform a Tag Match must be decided
+    // based on the TagOp value in the WriteData request."
+    assign rxdat_match_s0     = (rxdat_valid_s0 == 1'b1) && (rxdatflit_s0.tagop == 2'b11);
+    assign rxdat_match_tag_s0 = rxdat_match_s0 ? rxdatflit_s0.tag : '0;
 
     assign AXI_128 = (`AXI4_AXDATA_WIDTH == 128) ? 1'b1 : 1'b0;
 
@@ -322,6 +351,10 @@ module snf_data_buffer `SNF_PARAM
                     dbf_tag_q[entry]    <= '0;
                     dbf_tu_q[entry]     <= '0;
                 end
+                else if (rdata_recv_update_sx && (entry == rdata_recv_entry_idx_sx)
+                         && tagfetch_busy_q[entry])begin
+                    ;// a tag fetch carries no data this entry owes -- see dbf_alloc_tag_q
+                end
                 else if (rdata_recv_update_sx && (entry == rdata_recv_entry_idx_sx))begin
                     dbf_data_q[entry]   <= dbf_data_q[entry] | rdata_recv_data_sx;
                     dbf_be_q[entry]     <= dbf_be_q[entry] | rdata_recv_be_sx;
@@ -363,6 +396,12 @@ module snf_data_buffer `SNF_PARAM
                         rdata_cdmask_q[entry]   <= dbf_cdmask_s0;
                         rdata_wlmask_q[entry]   <= dbf_wlmask_s1_q;
                 end
+                // A write entry's own tag fetch reuses the read chunk mask, which is
+                // free by then: nothing else on a write entry reads the R channel.
+                else if(mshr_dbf_tagfetch_ack_sx && (entry == mshr_dbf_tagfetch_idx_sx))begin
+                        rdata_cdmask_q[entry]   <= dbf_match_cdmask_q[entry];
+                        rdata_wlmask_q[entry]   <= dbf_match_wlmask_q[entry];
+                end
                 else if(rdata_recv_update_sx && rlast && (entry == rdata_recv_entry_idx_sx))begin
                         rdata_cdmask_q[entry]    <= {`SNF_MASK_CD_WIDTH{1'b0}};
                         rdata_wlmask_q[entry]    <= {`SNF_MASK_WL_WIDTH{1'b0}};
@@ -402,6 +441,104 @@ module snf_data_buffer `SNF_PARAM
         end
     endgenerate
 
+    //************************************************************************//
+    //                    SS12.11.1 Tag Match verdict                          //
+    //************************************************************************//
+    // SS12.11.1 (p.12-386, MUST) fixes the TagMatch Resp three ways: Fail when MTE
+    // is not supported, Pass when it is supported but the match was not performed,
+    // and Accurate when it was. This Subordinate stores Allocation Tags, so only the
+    // last two arms are reachable here.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin: tagmatch_logic
+            // The read window of this entry's own address, snapshotted at allocation
+            // because dbf_cdmask_s0 is only live in that cycle.
+            always_ff @(posedge clk or posedge rst) begin: dbf_match_mask_timing_logic
+                if(rst)begin
+                    dbf_match_cdmask_q[entry] <= {`SNF_MASK_CD_WIDTH{1'b0}};
+                    dbf_match_wlmask_q[entry] <= {`SNF_MASK_WL_WIDTH{1'b0}};
+                end
+                else if(rxreq_dbf_en_s1 && rxreq_dbf_wr_s1 && (entry == rxreq_dbf_entry_idx_s1))begin
+                    dbf_match_cdmask_q[entry] <= dbf_cdmask_s0;
+                    dbf_match_wlmask_q[entry] <= dbf_wlmask_s1_q;
+                end
+            end
+
+            // SS12.5.2 (p.12-379, MUST): "Tag Match must be performed for only those
+            // tags that have at least one corresponding BE bit asserted." The byte
+            // enables are snapshotted with the Physical Tags because the fetch that
+            // follows overwrites dbf_be_q.
+            always_ff @(posedge clk or posedge rst) begin: dbf_match_operand_timing_logic
+                if(rst || (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx)))begin
+                    dbf_match_tag_q[entry] <= '0;
+                    dbf_match_be_q[entry]  <= '0;
+                    match_perform_q[entry] <= 1'b0;
+                end
+                else if(wdata_recv_update && (entry == wdata_recv_idx))begin
+                    dbf_match_tag_q[entry] <= dbf_match_tag_q[entry] | wdata_recv_match_tag_sx;
+                    dbf_match_be_q[entry]  <= dbf_match_be_q[entry]  | wdata_recv_be_sx;
+                    match_perform_q[entry] <= match_perform_q[entry] | rxdat_match_s0;
+                end
+            end
+
+            always_ff @(posedge clk or posedge rst) begin: dbf_alloc_tag_timing_logic
+                if(rst || (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx)))
+                    dbf_alloc_tag_q[entry] <= '0;
+                else if(rdata_recv_update_sx && (entry == rdata_recv_entry_idx_sx)
+                        && tagfetch_busy_q[entry])
+                    dbf_alloc_tag_q[entry] <= dbf_alloc_tag_q[entry] | rdata_recv_tag_sx;
+            end
+
+            always_ff @(posedge clk or posedge rst) begin: tagmatch_state_timing_logic
+                if(rst || (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx)))begin
+                    tagfetch_req_q[entry]  <= 1'b0;
+                    tagfetch_busy_q[entry] <= 1'b0;
+                    tagmatch_done_q[entry] <= 1'b0;
+                    tagmatch_pass_q[entry] <= 1'b0;
+                end
+                // The write data is in. Either there are tags to compare, or SS12.5.2
+                // (p.12-379) forbids the comparison -- all byte enables deasserted --
+                // or SS12.5.1 (p.12-378) downgraded the WriteData TagOp to Invalid
+                // because the write was canceled. The last two are SS12.11.1's
+                // "supported but not performed", which is a Pass.
+                else if(dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx)
+                        && ~tagmatch_done_q[entry] && ~tagfetch_busy_q[entry]
+                        && ~tagfetch_req_q[entry])begin
+                    if(match_perform_q[entry] && (|dbf_match_be_q[entry]))
+                        tagfetch_req_q[entry]  <= 1'b1;
+                    else begin
+                        tagmatch_done_q[entry] <= 1'b1;
+                        tagmatch_pass_q[entry] <= 1'b1;
+                    end
+                end
+                else if(dbf_mshr_rxdat_cancel_sx && (entry == dbf_mshr_rxdat_cancel_idx_sx)
+                        && ~tagmatch_done_q[entry])begin
+                    tagmatch_done_q[entry] <= 1'b1;
+                    tagmatch_pass_q[entry] <= 1'b1;
+                end
+                else if(mshr_dbf_tagfetch_ack_sx && (entry == mshr_dbf_tagfetch_idx_sx))begin
+                    tagfetch_req_q[entry]  <= 1'b0;
+                    tagfetch_busy_q[entry] <= 1'b1;
+                end
+
+
+                else if(rdata_recv_update_sx && rlast && (entry == rdata_recv_entry_idx_sx)
+                        && tagfetch_busy_q[entry])begin
+                    tagfetch_busy_q[entry] <= 1'b0;
+                    tagmatch_done_q[entry] <= 1'b1;
+                    tagmatch_pass_q[entry] <= chie_pkg::tag_match_pass(
+                        dbf_match_tag_q[entry],
+                        dbf_alloc_tag_q[entry] | rdata_recv_tag_sx,
+                        dbf_match_be_q[entry]);
+                end
+            end
+
+        end
+    endgenerate
+
+    assign dbf_mshr_tagfetch_req_sx  = tagfetch_req_q;
+    assign dbf_mshr_tagmatch_done_sx = tagmatch_done_q;
+    assign dbf_mshr_tagmatch_pass_sx = tagmatch_pass_q;
+
     assign rdata_recv_update_sx = rready && rvalid;
     assign dbf_rd_cdmask_next_sel = rdata_cdmask_q[rdata_recv_entry_idx_sx] << 1;
     assign dbf_rd_cdmask_next = ((|dbf_rd_cdmask_next_sel) == 1'b0) ? 4'b0001 : dbf_rd_cdmask_next_sel;
@@ -431,7 +568,10 @@ module snf_data_buffer `SNF_PARAM
         assign rdata_recv_poison_sx = {{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][3]}},{`AXI4_POISON_WIDTH{rdata_cdmask_q[rdata_recv_entry_idx_sx][1]}}} & {2{ruser[`AXI4_USER_POISON_RANGE]}};
     end
     endgenerate
-    assign dbf_mshr_rdata_en_sx = rdata_recv_update_sx;
+    // A tag fetch rides the read channel on a WRITE entry, so it must not look like
+    // that entry's read data arriving -- nothing upstream is waiting for a data
+    // response from it.
+    assign dbf_mshr_rdata_en_sx = rdata_recv_update_sx & (~tagfetch_busy_q[rdata_recv_entry_idx_sx]);
     assign dbf_mshr_rdata_idx_sx = rdata_recv_entry_idx_sx;
     assign dbf_mshr_rdata_cdmask_sx = rdata_cdmask_q[rdata_recv_entry_idx_sx];
 
@@ -582,6 +722,7 @@ module snf_data_buffer `SNF_PARAM
         wdata_recv_poison_sx = '0;
         wdata_recv_tag_sx    = '0;
         wdata_recv_tu_sx     = '0;
+        wdata_recv_match_tag_sx = '0;
         if (!wrzero_inject_sx && (wdata_cancel_recv_s0 == 1'b0)) begin
             if (rxdat_dataid_s0 == 2'b00) begin
                 wdata_recv_data_sx[0 +: chie_pkg::DATA_WIDTH]       = rxdat_data_s0;
@@ -589,6 +730,7 @@ module snf_data_buffer `SNF_PARAM
                 wdata_recv_poison_sx[0 +: chie_pkg::POISON_WIDTH]   = rxdat_poison_s0;
                 wdata_recv_tag_sx[0 +: chie_pkg::TAG_WIDTH]         = rxdat_tag_s0;
                 wdata_recv_tu_sx[0 +: chie_pkg::TU_WIDTH]           = rxdat_tu_s0;
+                wdata_recv_match_tag_sx[0 +: chie_pkg::TAG_WIDTH]   = rxdat_match_tag_s0;
             end
             else if (rxdat_dataid_s0 == 2'b10) begin
                 wdata_recv_data_sx[chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH]     = rxdat_data_s0;
@@ -596,6 +738,7 @@ module snf_data_buffer `SNF_PARAM
                 wdata_recv_poison_sx[chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] = rxdat_poison_s0;
                 wdata_recv_tag_sx[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]          = rxdat_tag_s0;
                 wdata_recv_tu_sx[chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH]             = rxdat_tu_s0;
+                wdata_recv_match_tag_sx[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]     = rxdat_match_tag_s0;
             end
         end
     end

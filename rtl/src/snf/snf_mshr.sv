@@ -86,6 +86,11 @@ module snf_mshr `SNF_PARAM
         output wire [`AXI4_ARQOS_WIDTH-1:0]         arqos_sx,
         output wire [`AXI4_ARUSER_WIDTH-1:0]        aruser_sx,
         output wire [`AXI4_ARREGION_WIDTH-1:0]      arregion_sx,
+        input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagfetch_req_sx,
+        output wire                                 mshr_dbf_tagfetch_ack_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_tagfetch_idx_sx,
+        input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_done_sx,
+        input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_pass_sx,
         output logic                                arvalid_sx,
         input  wire                                 arready_sx,
         output wire [`AXI4_AWID_WIDTH-1:0]          awid_sx,
@@ -158,6 +163,8 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx_q;
     logic [1:0]                          txdat_sent_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_tagfetch_q;
+    logic                                arvalid_tagfetch_s1_q;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_idx_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_set_vec;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_vec;
@@ -252,6 +259,9 @@ module snf_mshr `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     rdat_allrcvd_sx;
     wire                                 arvalid_en_s1;
     wire                                 arvalid_en2_s1;
+    wire                                 tagfetch_push_sx;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  tagfetch_idx_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_tagmatch_armable_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     bresp_ok_sx;
     wire                                 wakeup_valid;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   wakeup_idx_sx;
@@ -332,10 +342,13 @@ module snf_mshr `SNF_PARAM
     assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSISTSEP);
     // Table 13-32 (Sec 13.10.37 p.13-435) shares the 0b11 encoding between Match and
     // Fetch, and the direction tells them apart: on a Write it is Match, which
-    // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Sec 12.11.3 (p.12-387, MUST)
-    // fixes this Completer's verdict -- it holds no Allocation Tag, so the Match
-    // fails, which Table 13-35 (p.13-437) encodes as Resp[0] = 0.
-    assign rxreq_tagmatch_s0    = rxreq_wr_s0 & (rxreq_alloc_flit_s0.tagop == 2'b11);
+    // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Table 12-2 (Sec 12.12 p.12-389)
+    // gives Match to the standalone WriteNoSnp forms alone -- every Combined Write
+    // row and both Write Zero rows are N.
+    assign rxreq_tagmatch_s0    = rxreq_alloc_en_s0
+                                & ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)
+                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL))
+                                & (rxreq_alloc_flit_s0.tagop == 2'b11);
     // Table 13-32 shares 0b11 between Match and Fetch: on a Read it is Fetch, which
     // Sec 12.10 (p.12-385) joins Transfer in asking for the location's tags.
     assign rxreq_tagreturn_s0   = rxreq_rd_s0 & ((rxreq_alloc_flit_s0.tagop == 2'b01) |
@@ -554,7 +567,10 @@ module snf_mshr `SNF_PARAM
                         txrsp_cmo_owed_q[entry]     <= 1'b0;
                     else if (txrsp_persist_owed_q[entry])
                         txrsp_persist_owed_q[entry] <= 1'b0;
-                    else
+                    // Keyed to the TagMatch actually going out, not to any send by
+                    // this entry: its verdict can still be in flight when the write's
+                    // own grant is sent, and a bare `else` retires the debt there.
+                    else if (txrsp_opcode_sx == chie_pkg::RSP_TAGMATCH)
                         txrsp_tagmatch_owed_q[entry] <= 1'b0;
                 end
                 else if(txrsp_comp_rdy_sx[entry] && txrsp_rdy_sx_q[entry])
@@ -793,11 +809,15 @@ module snf_mshr `SNF_PARAM
                     txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
-                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry] | txrsp_tagmatch_owed_q[entry];
+                    // The debts are cleared by NBA in this same cycle, so the one
+                    // being sent still reads as owed here and must be excluded or the
+                    // entry arms it a second time.
+                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry]
+                                           | (txrsp_tagmatch_armable_sx[entry] & (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH));
                     txrsp_opcode_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] ? chie_pkg::RSP_COMP
                                                   : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
                                                   : txrsp_persist_owed_q[entry] ? chie_pkg::RSP_PERSIST
-                                                  : txrsp_tagmatch_owed_q[entry] ? chie_pkg::RSP_TAGMATCH
+                                                  : (txrsp_tagmatch_armable_sx[entry] & (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RSP_TAGMATCH
                                                   : chie_pkg::RSP_RSPLCRDRETURN;
                 end
                 else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))begin
@@ -816,7 +836,24 @@ module snf_mshr `SNF_PARAM
                     txrsp_rdy_sx_q[entry] <= 1'b1;
                     txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_COMP;
                 end
+                // The verdict can land after the entry's other responses have gone,
+                // leaving the slot idle with the TagMatch still owed. Lowest
+                // priority, so it never displaces a Comp that is ready this cycle.
+                else if (txrsp_tagmatch_armable_sx[entry] && (~txrsp_rdy_sx_q[entry])) begin
+                    txrsp_rdy_sx_q[entry] <= 1'b1;
+                    txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_TAGMATCH;
+                end
             end
+        end
+    endgenerate
+
+    // Sec 12.11.1 (p.12-386): "The TagMatch response can be sent as soon as the
+    // Completer can determine the result", so the debt is not armable until the data
+    // buffer has one.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign txrsp_tagmatch_armable_sx[entry] = txrsp_tagmatch_owed_q[entry]
+                                                    & dbf_mshr_tagmatch_done_sx[entry];
         end
     endgenerate
 
@@ -871,9 +908,13 @@ module snf_mshr `SNF_PARAM
                                         && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                                         && ~txrsp_tagmatch_sx) ? chie_pkg::RESP_ERR_NON_DATA
                                                                                    : chie_pkg::RESP_ERR_NORM_OK;
-    // Table 13-35 (p.13-437): Resp[0] is the Tag Match verdict. Sec 12.11.3
-    // (p.12-387, MUST) fixes it Fail at a Completer that holds no Allocation Tag.
-    assign txrsp_resp_sx                = chie_pkg::RESP_I;
+    // Table 13-35 (p.13-437): Resp[0] is the Tag Match verdict, 0b001 Pass and
+    // 0b000 Fail. Sec 12.11.1 (p.12-386, MUST) fixes it three ways -- Fail when MTE
+    // is not supported, Pass when it is supported but the match was not performed,
+    // Accurate when it was. This Subordinate stores Allocation Tags, so the Fail arm
+    // describes it no longer and the verdict comes from the comparison.
+    assign txrsp_resp_sx                = (txrsp_tagmatch_sx & dbf_mshr_tagmatch_pass_sx[txrsp_entry_idx_sx])
+                                        ? chie_pkg::RESP_SC : chie_pkg::RESP_I;
     // Table A-8 (p.A-488): Persist and CompPersist carry no DBID -- those bits are
     // the PGroupID they reflect from the request (Sec 13.10.16 p.13-420).
     assign txrsp_dbid_sx                = (txrsp_persist_sx || txrsp_tagmatch_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
@@ -891,12 +932,28 @@ module snf_mshr `SNF_PARAM
     assign arvalid_en_s1 = rxreq_alloc_en_s1_q ? ((~sleep_s2_q[mshr_entry_idx_alloc_s1_q]) && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q]) : 1'b0;
     assign arvalid_en2_s1 = wakeup_valid ? rxreq_rd_s1_q[wakeup_idx_sx] : 1'b0;
 
+    // A TagOp=Match write fetches the location's Allocation Tags on the read channel
+    // so Sec 12.11.1's (p.12-386, MUST) verdict can be accurate. It is a third
+    // producer for the AR FIFO and takes the lowest priority of the three: the
+    // request is a level held in the data buffer until acknowledged, so losing the
+    // cycle costs a wait and never a fetch. It drains because an entry owing a
+    // TagMatch cannot retire, so a Subordinate whose MSHR has filled with them stops
+    // allocating and both higher-priority producers go quiet.
+    always_comb begin: tagfetch_idx_comb_logic
+        tagfetch_idx_sx = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int i = `SNF_MSHR_ENTRIES_NUM-1; i >= 0; i--)
+            if (dbf_mshr_tagfetch_req_sx[i]) tagfetch_idx_sx = i[`SNF_MSHR_ENTRIES_WIDTH-1:0];
+    end
+    assign tagfetch_push_sx         = (|dbf_mshr_tagfetch_req_sx) & (~arvalid_en_s1) & (~arvalid_en2_s1);
+    assign mshr_dbf_tagfetch_ack_sx = tagfetch_push_sx;
+    assign mshr_dbf_tagfetch_idx_sx = tagfetch_idx_sx;
+
     always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
         if(rst == 1'b1)
             arvalid_fifo_set_vec <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         else if(arvalid_en_s1 && arvalid_en2_s1)
             arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST_M1) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec == IDX_LAST) ? IDX_ONE : (arvalid_fifo_set_vec + IDX_TWO);
-        else if ((arvalid_en_s1 && (~arvalid_en2_s1)) | ((~arvalid_en_s1) && arvalid_en2_s1))
+        else if ((arvalid_en_s1 && (~arvalid_en2_s1)) | ((~arvalid_en_s1) && arvalid_en2_s1) | tagfetch_push_sx)
             arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec + 1'b1);
     end
 
@@ -910,18 +967,27 @@ module snf_mshr `SNF_PARAM
                 else if (arvalid_en_s1 && arvalid_en2_s1 && (arvalid_fifo_set_vec == entry)) begin
                     arvalid_fifo_s1_q[entry]        <= 1'b1;
                     arvalid_fifo_idx_sx_q[entry]    <= wakeup_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
                 end
                 else if (arvalid_en_s1 && arvalid_en2_s1 && (((arvalid_fifo_set_vec == IDX_LAST) & (entry == 0)) | ((arvalid_fifo_set_vec +1) == entry))) begin
                     arvalid_fifo_s1_q[entry]        <= 1'b1;
                     arvalid_fifo_idx_sx_q[entry]    <= mshr_entry_idx_alloc_s1_q;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
                 end
                 else if (arvalid_en_s1 && (arvalid_fifo_set_vec == entry)) begin
                     arvalid_fifo_s1_q[entry]        <= 1'b1;
                     arvalid_fifo_idx_sx_q[entry]    <= mshr_entry_idx_alloc_s1_q;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
                 end
                 else if (arvalid_en2_s1 && (arvalid_fifo_set_vec == entry)) begin
                     arvalid_fifo_s1_q[entry]        <= 1'b1;
                     arvalid_fifo_idx_sx_q[entry]    <= wakeup_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
+                end
+                else if (tagfetch_push_sx && (arvalid_fifo_set_vec == entry)) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= tagfetch_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b1;
                 end
             end
         end
@@ -946,6 +1012,7 @@ module snf_mshr `SNF_PARAM
         else if(arvalid_fifo_s1_q[arvalid_fifo_vec])begin
             arvalid_sx                <= 1'b1;
             arvalid_entry_idx_s1_q    <= arvalid_fifo_idx_sx_q[arvalid_fifo_vec];
+            arvalid_tagfetch_s1_q     <= arvalid_fifo_tagfetch_q[arvalid_fifo_vec];
         end
     end
 
@@ -960,9 +1027,11 @@ module snf_mshr `SNF_PARAM
     assign arprot_sx        = {1'b0,mshr_entry_q[arvalid_entry_idx_s1_q].ns,1'b0};
     assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
     assign aruser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
-    // Section 12.1 (p.12-372, MUST) scopes memory tagging to Normal WriteBack memory;
-    // this Subordinate sources no tag operation of its own.
-    assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    // The one tag operation this Subordinate sources for itself: the fetch that a
+    // TagOp=Match write needs before Sec 12.11.1's (p.12-386, MUST) verdict can be
+    // accurate. Table 13-32 (Sec 13.10.37 p.13-435) makes Transfer the Clean-tag
+    // read, which is what memory holds (Sec 12.4.1 p.12-376).
+    assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = arvalid_tagfetch_s1_q ? 2'b01 : '0;
     assign aruser_sx[`AXI4_USER_TGGID_RANGE] = '0;
     assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
     assign arlen_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].axlen;
@@ -1300,9 +1369,13 @@ module snf_mshr `SNF_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every TagOp=Match write,
+            // so the debt holds the entry open the way the CMO and Persist legs do.
+            // txrsp_rdy_sx_q alone does not cover it: the verdict can still be in
+            // flight, and an entry freed then would drop the response.
             assign all_rsp_sent_sx[entry] = txrsp_any_sent_q[entry] && (~txrsp_rdy_sx_q[entry])
                                          && (~txrsp_comp_queued_sx[entry]) && (~txrsp_cmo_owed_q[entry])
-                                         && (~txrsp_persist_owed_q[entry]);
+                                         && (~txrsp_persist_owed_q[entry]) && (~txrsp_tagmatch_owed_q[entry]);
         end
     endgenerate
 
