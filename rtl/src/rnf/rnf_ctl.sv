@@ -88,6 +88,8 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_LINE_BITS-1:0]                  line_q;
     logic [`RNF_CS_WIDTH-1:0]                   fill_state_q;
     logic                                       got_lo_q, got_hi_q, got_rsp_q;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]            ack_tgt_q;
+    logic [11:0]                                ack_txnid_q;
     logic                                       fill_v_q;
     logic                                       hit_q;
 
@@ -124,12 +126,16 @@ module rnf_ctl `RNF_PARAM
 
     assign prot_txreqflitv_o = (st_q == S_REQ);
 
-    // SS2.8.3 (p.2-116): CompAck names the transaction by its own TxnID.
+    // SS2.6.3 (p.2-100, MUST): a read's CompAck takes its TgtID from the HomeNID
+    // of the read data and its TxnID from that response's DBID -- not from this
+    // node's own request. Table 3-1 (SS3.3.2 p.3-153) names the separate form's
+    // carrier, RespSepData.SrcID. A Completer whose DBID happens to equal the
+    // TxnID it answers is the only case in which the two readings agree.
     always_comb begin
         prot_txrspflit_o        = '0;
-        prot_txrspflit_o.tgtid  = CHIE_NID_WIDTH_PARAM'(HNF_NID_PARAM);
+        prot_txrspflit_o.tgtid  = ack_tgt_q;
         prot_txrspflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
-        prot_txrspflit_o.txnid  = txnid_q;
+        prot_txrspflit_o.txnid  = ack_txnid_q;
         prot_txrspflit_o.opcode = chie_pkg::RSP_COMPACK;
     end
 
@@ -172,6 +178,8 @@ module rnf_ctl `RNF_PARAM
             got_lo_q     <= 1'b0;
             got_hi_q     <= 1'b0;
             got_rsp_q    <= 1'b0;
+            ack_tgt_q    <= '0;
+            ack_txnid_q  <= '0;
             fill_v_q     <= 1'b0;
             hit_q        <= 1'b0;
         end
@@ -203,13 +211,23 @@ module rnf_ctl `RNF_PARAM
 
                 S_DATA: begin
                     // The response half: RespSepData in the separate form,
-                    // CompData in the combined one, both carrying the granted
-                    // state Table 4-33 (SS4.7.1 p.4-211) names.
+                    // CompData in the combined one. SS2.5.5 (p.2-89) makes the
+                    // former's HomeNID and DBID the values "that can always be
+                    // used", so the CompAck's identifiers come from there.
                     if (rx_rsp_mine) begin
-                        fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
                         got_rsp_q    <= 1'b1;
+                        ack_tgt_q    <= prot_rxrspflit_i.srcid;
+                        ack_txnid_q  <= prot_rxrspflit_i.dbid;
                     end
-                    if (rx_dat_comb) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
+                    if (rx_dat_comb) begin
+                        ack_tgt_q    <= prot_rxdatflit_i.homenid;
+                        ack_txnid_q  <= prot_rxdatflit_i.dbid;
+                    end
+                    // Table 4-33 (SS4.7.1 p.4-211) puts the granted state on the
+                    // DATA half of both shapes: its separate column reads
+                    // "RespSepData + DataSepResp_<state>", carrying no state on
+                    // the RespSepData at all.
+                    if (rx_dat_mine) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
 
                     // SS2.10.4 (p.2-136): a 64-byte transfer at Data_Width 256 is
                     // two packets, DataID 0 then 2.
