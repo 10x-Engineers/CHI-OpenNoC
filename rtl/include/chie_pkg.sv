@@ -455,6 +455,23 @@ package chie_pkg;
   // is a declared convention rather than a derived one -- it matches the CHI VIP's
   // chi_pkg::compute_datacheck(), and a peer that orders the bits differently would
   // disagree on every beat. See the DataCheck row of the README's Features table.
+  // SS12.5.2 (p.12-379, MUST): "Tag Match must be performed for only those tags that
+  // have at least one corresponding BE bit asserted. A Tag Match must not be performed
+  // when all BE bits are set to zero." Over one 64-byte line: SS12.2 (p.12-373) gives
+  // it 2*TAG_WIDTH tag bits, four bits per aligned 16 bytes, against 2*BE_WIDTH byte
+  // enables. A line with no enabled byte returns 1, which SS12.11.1 (p.12-386, MUST)
+  // makes a Pass at a Completer that supports MTE -- the caller decides that it does.
+  parameter int LINE_TAG_NUM = (2*TAG_WIDTH)/4;
+  parameter int LINE_BE_PER_TAG = (2*BE_WIDTH)/LINE_TAG_NUM;
+  function automatic logic tag_match_pass(logic [(2*TAG_WIDTH)-1:0] phys,
+                                          logic [(2*TAG_WIDTH)-1:0] alloc,
+                                          logic [(2*BE_WIDTH)-1:0]  be);
+    tag_match_pass = 1'b1;
+    for (int t = 0; t < LINE_TAG_NUM; t++)
+      if (|be[t*LINE_BE_PER_TAG +: LINE_BE_PER_TAG])
+        if (phys[t*4 +: 4] != alloc[t*4 +: 4]) tag_match_pass = 1'b0;
+  endfunction
+
   function automatic logic [DATACHECK_WIDTH-1:0] datacheck_of(logic [DATA_WIDTH-1:0] data);
     for (int i = 0; i < DATACHECK_WIDTH; i++) datacheck_of[i] = ~(^data[i*8 +: 8]);
   endfunction
