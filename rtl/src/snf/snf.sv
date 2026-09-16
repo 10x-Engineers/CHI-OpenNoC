@@ -152,6 +152,11 @@ module snf `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    mshr_wdat_entry_idx_sx;
     wire                                  mshr_txdat_won_sx;
     wire                                  dbf_mshr_rxdat_ok_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagfetch_req_sx;
+    wire                                  mshr_dbf_tagfetch_ack_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    mshr_dbf_tagfetch_idx_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagmatch_done_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagmatch_pass_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    dbf_mshr_rxdat_ok_idx_sx;
     wire                                  dbf_mshr_rxdat_cancel_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    dbf_mshr_rxdat_cancel_idx_sx;
@@ -421,6 +426,11 @@ module snf `SNF_PARAM
             .dbf_txdat_valid_sx(dbf_txdat_valid_sx),
             .txdat_flit(txdat_flit),
             .mshr_txdat_won_sx(mshr_txdat_won_sx),
+            .dbf_mshr_tagfetch_req_sx(dbf_mshr_tagfetch_req_sx),
+            .mshr_dbf_tagfetch_ack_sx(mshr_dbf_tagfetch_ack_sx),
+            .mshr_dbf_tagfetch_idx_sx(mshr_dbf_tagfetch_idx_sx),
+            .dbf_mshr_tagmatch_done_sx(dbf_mshr_tagmatch_done_sx),
+            .dbf_mshr_tagmatch_pass_sx(dbf_mshr_tagmatch_pass_sx),
             .dbf_mshr_rxdat_ok_sx(dbf_mshr_rxdat_ok_sx),
             .dbf_mshr_rxdat_ok_idx_sx(dbf_mshr_rxdat_ok_idx_sx),
             .dbf_mshr_rxdat_cancel_sx(dbf_mshr_rxdat_cancel_sx),
@@ -471,6 +481,11 @@ module snf `SNF_PARAM
             .dbf_mshr_rdata_en_sx(dbf_mshr_rdata_en_sx),
             .dbf_mshr_rdata_idx_sx(dbf_mshr_rdata_idx_sx),
             .dbf_mshr_rdata_cdmask_sx(dbf_mshr_rdata_cdmask_sx),
+            .dbf_mshr_tagfetch_req_sx(dbf_mshr_tagfetch_req_sx),
+            .mshr_dbf_tagfetch_ack_sx(mshr_dbf_tagfetch_ack_sx),
+            .mshr_dbf_tagfetch_idx_sx(mshr_dbf_tagfetch_idx_sx),
+            .dbf_mshr_tagmatch_done_sx(dbf_mshr_tagmatch_done_sx),
+            .dbf_mshr_tagmatch_pass_sx(dbf_mshr_tagmatch_pass_sx),
             .dbf_mshr_rxdat_ok_sx(dbf_mshr_rxdat_ok_sx),
             .dbf_mshr_rxdat_ok_idx_sx(dbf_mshr_rxdat_ok_idx_sx),
             .dbf_mshr_rxdat_cancel_sx(dbf_mshr_rxdat_cancel_sx),
