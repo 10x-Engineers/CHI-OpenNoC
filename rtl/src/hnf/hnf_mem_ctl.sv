@@ -64,6 +64,7 @@ module hnf_mem_ctl `HNF_PARAM
     input  wire [`LOC_WAY_NUM-1:0]                   cpl_l3_rd_ways_q,
     input  wire [`CACHE_LINE_WIDTH-1:0]              dbf_l3_wr_data_q,
     input  wire [`CACHE_POISON_WIDTH-1:0]            dbf_l3_wr_poison_q,
+    input  wire [`CACHE_TAGV_WIDTH-1:0]              dbf_l3_wr_tagv_q,
     input  wire [`LOC_WAY_NUM-1:0]                   cpl_l3_wr_ways_q,
     input  wire [`LOC_INDEX_WIDTH-1:0]               cpl_loc_index_q,
     input  wire                                      cpl_loc_rd_en_q,
@@ -102,6 +103,7 @@ module hnf_mem_ctl `HNF_PARAM
     output wire [`LOC_WAY_NUM-1:0]                   l3_wr_ways_q,
     output wire [`CACHE_LINE_WIDTH-1:0]              l3_wr_data_q,
     output wire [`CACHE_POISON_WIDTH-1:0]            l3_wr_poison_q,
+    output wire [`CACHE_TAGV_WIDTH-1:0]              l3_wr_tagv_q,
 
     // notify output reg port
     output logic [2:0]                               notify_reg
@@ -262,6 +264,7 @@ module hnf_mem_ctl `HNF_PARAM
     assign l3_rd_ways_q      = dbg_l3_valid_q? dbg_l3_rd_ways_q : cpl_l3_rd_ways_q;
     assign l3_wr_data_q      = dbg_l3_valid_q? dbg_l3_wr_data_q : dbf_l3_wr_data_q;
     assign l3_wr_poison_q    = dbg_l3_valid_q? '0                : dbf_l3_wr_poison_q;
+    assign l3_wr_tagv_q      = dbg_l3_valid_q? '0                : dbf_l3_wr_tagv_q;
     assign l3_wr_ways_q      = dbg_l3_valid_q? dbg_l3_wr_ways_q : cpl_l3_wr_ways_q;
     assign dbg_l3_rd_data_q  = l3_rd_data_q;
 
@@ -292,6 +295,7 @@ module hnf_mem_ctl `HNF_PARAM
     assign l3_rd_ways_q   = cpl_l3_rd_ways_q;
     assign l3_wr_data_q   = dbf_l3_wr_data_q;
     assign l3_wr_poison_q = dbf_l3_wr_poison_q;
+    assign l3_wr_tagv_q   = dbf_l3_wr_tagv_q;
     assign l3_wr_ways_q   = cpl_l3_wr_ways_q;
 `endif
 

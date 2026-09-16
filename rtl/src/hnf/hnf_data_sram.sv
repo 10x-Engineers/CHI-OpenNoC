@@ -30,20 +30,24 @@ module hnf_data_sram `HNF_PARAM
     input  wire [`LOC_WAY_NUM-1:0]       l3_wr_ways_q,
     input  wire [`CACHE_LINE_WIDTH-1:0]  l3_wr_data_q,
     input  wire [`CACHE_POISON_WIDTH-1:0] l3_wr_poison_q,
+    input  wire [`CACHE_TAGV_WIDTH -1:0] l3_wr_tagv_q  ,
 
     //outputs to hnf_cache_pipeline
     output logic [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q,
-    output logic [`CACHE_POISON_WIDTH-1:0] l3_rd_poison_q
+    output logic [`CACHE_POISON_WIDTH-1:0] l3_rd_poison_q,
+    output logic [`CACHE_TAGV_WIDTH -1:0] l3_rd_tagv_q  
     );
 
     //internal reg signals
     logic [`CACHE_LINE_WIDTH-1:0]             l3_rd_data;
     logic [`CACHE_POISON_WIDTH-1:0]           l3_rd_poison;
+    logic [`CACHE_TAGV_WIDTH -1:0]           l3_rd_tagv;  
     logic [`LOC_WAY_NUM-1:0]                  l3_rd_ways_q_nxt;
 
     //internal wire signals
     wire [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0]   sram_out;
     wire [`CACHE_POISON_WIDTH*`LOC_WAY_NUM-1:0] sram_poison_out;
+    wire [`CACHE_TAGV_WIDTH*`LOC_WAY_NUM-1:0]   sram_tagv_out;
 
     //internal variables
     int                                       i;
@@ -77,6 +81,22 @@ module hnf_data_sram `HNF_PARAM
                       .DATA_OUT       (sram_poison_out    )
                   );
 
+    // Sec 12.3 (p.12-374, MUST): "Tags can be Valid only when data is Valid", so the
+    // line's Allocation Tags sit on its own index and way strobes and leave with it.
+    hnf_sram_mask #(
+                      .RAM_ADDR_WIDTH (`LOC_INDEX_WIDTH   ),
+                      .RAM_DATA_WIDTH (`CACHE_TAGV_WIDTH  ),
+                      .RAM_MASK_WIDTH (`LOC_WAY_NUM       )
+                  ) u_tagv_sram (
+                      .CLK            (clk                ),
+                      .WE             (|l3_wr_ways_q      ),
+                      .WMASK          (l3_wr_ways_q       ),
+                      .ADDR           (l3_index_q         ),
+                      .DATA_IN        (l3_wr_tagv_q       ),
+                      .DATA_OUT       (sram_tagv_out      )
+                  );
+
+
     //main function
 
 `ifdef HNF_DELAY_ONE_CYCLE
@@ -94,9 +114,11 @@ module hnf_data_sram `HNF_PARAM
     always_comb begin
         l3_rd_data   = {`CACHE_LINE_WIDTH{1'b0}};
         l3_rd_poison = {`CACHE_POISON_WIDTH{1'b0}};
+        l3_rd_tagv   = {`CACHE_TAGV_WIDTH{1'b0}};
         for(i=0;i<`LOC_WAY_NUM;i=i+1)begin
             l3_rd_data   = l3_rd_data | (sram_out[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] & {`CACHE_LINE_WIDTH{l3_rd_ways_q_nxt[i]}});
             l3_rd_poison = l3_rd_poison | (sram_poison_out[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] & {`CACHE_POISON_WIDTH{l3_rd_ways_q_nxt[i]}});
+            l3_rd_tagv = l3_rd_tagv | (sram_tagv_out[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] & {`CACHE_TAGV_WIDTH{l3_rd_ways_q_nxt[i]}});
         end
     end
 
@@ -106,9 +128,11 @@ module hnf_data_sram `HNF_PARAM
     always_comb begin
         l3_rd_data   = {`CACHE_LINE_WIDTH{1'b0}};
         l3_rd_poison = {`CACHE_POISON_WIDTH{1'b0}};
+        l3_rd_tagv   = {`CACHE_TAGV_WIDTH{1'b0}};
         for(i=0;i<`LOC_WAY_NUM;i=i+1)begin
             l3_rd_data   = l3_rd_data | (sram_out[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] & {`CACHE_LINE_WIDTH{l3_rd_ways_q[i]}});
             l3_rd_poison = l3_rd_poison | (sram_poison_out[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] & {`CACHE_POISON_WIDTH{l3_rd_ways_q[i]}});
+            l3_rd_tagv = l3_rd_tagv | (sram_tagv_out[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] & {`CACHE_TAGV_WIDTH{l3_rd_ways_q[i]}});
         end
     end
 `endif
@@ -118,10 +142,12 @@ module hnf_data_sram `HNF_PARAM
         if(rst == 1'b1)begin
             l3_rd_data_q   <= {`CACHE_LINE_WIDTH{1'b0}};
             l3_rd_poison_q <= {`CACHE_POISON_WIDTH{1'b0}};
+            l3_rd_tagv_q   <= {`CACHE_TAGV_WIDTH{1'b0}};
         end
         else begin
             l3_rd_data_q   <= l3_rd_data;
             l3_rd_poison_q <= l3_rd_poison;
+            l3_rd_tagv_q   <= l3_rd_tagv;
         end
     end
 
@@ -140,22 +166,27 @@ module hnf_data_sram `HNF_PARAM
     input  wire [`LOC_WAY_NUM-1:0]       l3_wr_ways_q,
     input  wire [`CACHE_LINE_WIDTH-1:0]  l3_wr_data_q,
     input  wire [`CACHE_POISON_WIDTH-1:0] l3_wr_poison_q,
+    input  wire [`CACHE_TAGV_WIDTH -1:0] l3_wr_tagv_q  ,
 
     //outputs to hnf_cache_pipeline
     output logic [`CACHE_LINE_WIDTH-1:0] l3_rd_data_q,
-    output logic [`CACHE_POISON_WIDTH-1:0] l3_rd_poison_q
+    output logic [`CACHE_POISON_WIDTH-1:0] l3_rd_poison_q,
+    output logic [`CACHE_TAGV_WIDTH -1:0] l3_rd_tagv_q  
     );
 
     //internal reg signals
     logic [`CACHE_LINE_WIDTH-1:0]              l3_rd_data;
     logic [`CACHE_POISON_WIDTH-1:0]            l3_rd_poison;
+    logic [`CACHE_TAGV_WIDTH -1:0]            l3_rd_tagv;  
     logic [`LOC_WAY_NUM-1:0]                   l3_rd_ways_q_nxt;
     logic [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0] sram_in;
     logic [`CACHE_POISON_WIDTH*`LOC_WAY_NUM-1:0] sram_poison_in;
+    logic [`CACHE_TAGV_WIDTH*`LOC_WAY_NUM-1:0]   sram_tagv_in;
 
     //internal wire signals
     wire [`CACHE_LINE_WIDTH*`LOC_WAY_NUM-1:0]  sram_out, sram_out1;
     wire [`CACHE_POISON_WIDTH*`LOC_WAY_NUM-1:0] sram_poison_out, sram_poison_out1;
+    wire [`CACHE_TAGV_WIDTH*`LOC_WAY_NUM-1:0]   sram_tagv_out, sram_tagv_out1;
 
     //internal variables
     int                                        i;
@@ -208,14 +239,32 @@ module hnf_data_sram `HNF_PARAM
                       .DATA_OUT       (sram_poison_out1   )
                   );
 
+    // Sec 12.3 (p.12-374, MUST): "Tags can be Valid only when data is Valid", so the
+    // line's Allocation Tags sit on its own index and way strobes and leave with it.
+    hnf_sram_mask #(
+                      .RAM_ADDR_WIDTH (`LOC_INDEX_WIDTH   ),
+                      .RAM_DATA_WIDTH (`CACHE_TAGV_WIDTH  ),
+                      .RAM_MASK_WIDTH (`LOC_WAY_NUM       )
+                  ) u_tagv_sram (
+                      .CLK            (clk                ),
+                      .WE             (|l3_wr_ways_q      ),
+                      .WMASK          (l3_wr_ways_q       ),
+                      .ADDR           (l3_index_q         ),
+                      .DATA_IN        (sram_tagv_in       ),
+                      .DATA_OUT       (sram_tagv_out1     )
+                  );
+
+
     //main function
     //wrap data to 1024 bytes
     always_comb begin
         sram_in        = {`CACHE_LINE_WIDTH*`LOC_WAY_NUM{1'b0}};
         sram_poison_in = {`CACHE_POISON_WIDTH*`LOC_WAY_NUM{1'b0}};
+        sram_tagv_in   = {`CACHE_TAGV_WIDTH*`LOC_WAY_NUM{1'b0}};
         for(i=0;i<`LOC_WAY_NUM;i=i+1)begin
             sram_in[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] = sram_in[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] | (l3_wr_data_q & {`CACHE_LINE_WIDTH{l3_wr_ways_q[i]}});
             sram_poison_in[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] = sram_poison_in[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] | (l3_wr_poison_q & {`CACHE_POISON_WIDTH{l3_wr_ways_q[i]}});
+            sram_tagv_in[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] = sram_tagv_in[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] | (l3_wr_tagv_q & {`CACHE_TAGV_WIDTH{l3_wr_ways_q[i]}});
         end
     end
     always_ff @(posedge clk or posedge rst)begin
@@ -234,9 +283,11 @@ module hnf_data_sram `HNF_PARAM
     always_comb begin
         l3_rd_data   = {`CACHE_LINE_WIDTH{1'b0}};
         l3_rd_poison = {`CACHE_POISON_WIDTH{1'b0}};
+        l3_rd_tagv   = {`CACHE_TAGV_WIDTH{1'b0}};
         for(i=0;i<`LOC_WAY_NUM;i=i+1)begin
             l3_rd_data   = l3_rd_data | (sram_out[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] & {`CACHE_LINE_WIDTH{l3_rd_ways_q_nxt[i]}});
             l3_rd_poison = l3_rd_poison | (sram_poison_out[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] & {`CACHE_POISON_WIDTH{l3_rd_ways_q_nxt[i]}});
+            l3_rd_tagv = l3_rd_tagv | (sram_tagv_out[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] & {`CACHE_TAGV_WIDTH{l3_rd_ways_q_nxt[i]}});
         end
     end
 
@@ -246,9 +297,11 @@ module hnf_data_sram `HNF_PARAM
 always_comb begin
     l3_rd_data   = {`CACHE_LINE_WIDTH{1'b0}};
     l3_rd_poison = {`CACHE_POISON_WIDTH{1'b0}};
+    l3_rd_tagv   = {`CACHE_TAGV_WIDTH{1'b0}};
     for(i=0;i<`LOC_WAY_NUM;i=i+1)begin
         l3_rd_data   = l3_rd_data | (sram_out[i*`CACHE_LINE_WIDTH +: `CACHE_LINE_WIDTH] & {`CACHE_LINE_WIDTH{l3_rd_ways_q_nxt[i]}});
         l3_rd_poison = l3_rd_poison | (sram_poison_out[i*`CACHE_POISON_WIDTH +: `CACHE_POISON_WIDTH] & {`CACHE_POISON_WIDTH{l3_rd_ways_q_nxt[i]}});
+        l3_rd_tagv = l3_rd_tagv | (sram_tagv_out[i*`CACHE_TAGV_WIDTH +: `CACHE_TAGV_WIDTH] & {`CACHE_TAGV_WIDTH{l3_rd_ways_q_nxt[i]}});
     end
 end
 `endif
@@ -259,10 +312,12 @@ end
         if(rst == 1'b1)begin
             l3_rd_data_q   <= {`CACHE_LINE_WIDTH{1'b0}};
             l3_rd_poison_q <= {`CACHE_POISON_WIDTH{1'b0}};
+            l3_rd_tagv_q   <= {`CACHE_TAGV_WIDTH{1'b0}};
         end
         else begin
             l3_rd_data_q   <= l3_rd_data;
             l3_rd_poison_q <= l3_rd_poison;
+            l3_rd_tagv_q   <= l3_rd_tagv;
         end
     end
 

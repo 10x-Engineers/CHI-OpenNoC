@@ -31,6 +31,9 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [chie_pkg::BE_WIDTH-1:0]      li_dbf_rxdat_be_s0,
     input  wire [chie_pkg::DATA_WIDTH-1:0]    li_dbf_rxdat_data_s0,
     input  wire [chie_pkg::POISON_WIDTH-1:0]  li_dbf_rxdat_poison_s0,
+    input  wire [1:0]                         li_dbf_rxdat_tagop_s0,
+    input  wire [chie_pkg::TAG_WIDTH-1:0]     li_dbf_rxdat_tag_s0,
+    input  wire [chie_pkg::TU_WIDTH-1:0]      li_dbf_rxdat_tu_s0,
 
     //inputs from hnf_mshr_ctl
     //inputs from hnf_mshr_ctl -- Atomic execution (SS4.2.5 p.4-184)
@@ -64,6 +67,7 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_wr_idx_sx9_q,
     input  wire [chie_pkg::DATA_WIDTH*2-1:0]  pipe_dbf_wr_data_sx9_q,
     input  wire [`CACHE_POISON_WIDTH-1:0]     pipe_dbf_wr_poison_sx9_q,
+    input  wire [`CACHE_TAGV_WIDTH-1:0]       pipe_dbf_wr_tagv_sx9_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_rd_idx_sx2_q,
     input  wire                               pipe_dbf_rd_idx_sx2_valid_q,
 
@@ -71,6 +75,7 @@ module hnf_data_buffer `HNF_PARAM
     //outputs to hnf_cache_pipeline
     output logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx7_q,
     output logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx7_q,
+    output logic [`CACHE_TAGV_WIDTH-1:0]      dbf_pipe_rd_tagv_sx7_q,
 
     //outputs to hnf_link_txdat_wrap
     //outputs to hnf_mshr_ctl
@@ -88,7 +93,8 @@ module hnf_data_buffer `HNF_PARAM
     output wire [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_sx1,
     output wire [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_sx1,
     output wire [1:0]                         dbf_txdat_pe_sx1,
-    output wire [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_sx1
+    output wire [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_sx1,
+    output wire [`CACHE_TAGV_WIDTH-1:0]       dbf_txdat_tagv_sx1
     );
 
     //internal signals
@@ -106,6 +112,12 @@ module hnf_data_buffer `HNF_PARAM
     // with the data." Chunk-granular, so it accumulates per 64-bit chunk rather
     // than following the byte-wise merge below.
     logic [`CACHE_POISON_WIDTH-1:0]    dbf_poison_q[0:`MSHR_ENTRIES_NUM-1];
+    // Sec 12.2 (p.12-373): the line's four Allocation Tags, with a valid bit each.
+    // Sec 12.4.1 (p.12-376) makes memory's tags Clean, and this Home writes them back
+    // with the line, so Clean is the only state it holds or returns.
+    logic [`CACHE_TAGV_WIDTH-1:0]      dbf_tagv_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_TAGV_WIDTH-1:0]      temp_li_tagv;
+    logic [`CACHE_TAGV_WIDTH-1:0]      temp_pipe_tagv;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_li_poison;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_pipe_poison;
     // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
@@ -127,6 +139,10 @@ module hnf_data_buffer `HNF_PARAM
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx4_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx5_q;
     logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx6_q;
+    logic [`CACHE_TAGV_WIDTH-1:0]      dbf_pipe_rd_tagv_sx3_q;
+    logic [`CACHE_TAGV_WIDTH-1:0]      dbf_pipe_rd_tagv_sx4_q;
+    logic [`CACHE_TAGV_WIDTH-1:0]      dbf_pipe_rd_tagv_sx5_q;
+    logic [`CACHE_TAGV_WIDTH-1:0]      dbf_pipe_rd_tagv_sx6_q;
     logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx3_q;
     logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx4_q;
     logic [`CACHE_POISON_WIDTH-1:0]    dbf_pipe_rd_poison_sx5_q;
@@ -264,6 +280,34 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
 
+    // Sec 12.5.2 (p.12-379, MUST): a TagOp=Update write installs "only the Tags that
+    // have TU asserted" -- so unlike Poison, which Sec 9.5 can only accumulate, a tag
+    // is REPLACED where TU says and left alone everywhere else.
+    generate
+        for(i = 0;i<`CACHE_TV_WIDTH;i = i+1) begin:get_tagv_temp
+            wire tag_covered;
+            assign tag_covered = li_dbf_rxdat_valid_s0
+                              && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
+                              && (li_dbf_rxdat_tagop_s0 == 2'b10)
+                              && li_dbf_rxdat_tu_s0[i % chie_pkg::TU_WIDTH]
+                              && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::TU_WIDTH))
+                               || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::TU_WIDTH)));
+
+            assign temp_li_tagv[i*4 +: 4] = tag_covered
+                ? li_dbf_rxdat_tag_s0[(i % chie_pkg::TU_WIDTH)*4 +: 4]
+                : dbf_tagv_q[li_dbf_rxdat_txnid_s0][i*4 +: 4];
+            assign temp_li_tagv[`CACHE_TAG_WIDTH + i] =
+                dbf_tagv_q[li_dbf_rxdat_txnid_s0][`CACHE_TAG_WIDTH + i] | tag_covered;
+
+            // A fill supplies a tag only where the buffer holds none of its own.
+            assign temp_pipe_tagv[i*4 +: 4] = dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i]
+                ? dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][i*4 +: 4]
+                : pipe_dbf_wr_tagv_sx9_q[i*4 +: 4];
+            assign temp_pipe_tagv[`CACHE_TAG_WIDTH + i] =
+                dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i] | pipe_dbf_wr_tagv_sx9_q[`CACHE_TAG_WIDTH + i];
+        end
+    endgenerate
+
     generate
         for(i = 0;i<`MSHR_ENTRIES_NUM;i = i+1) begin:load_wt_temp
             always_ff @(posedge clk or posedge rst)begin
@@ -273,6 +317,7 @@ module hnf_data_buffer `HNF_PARAM
                     dbf_fill_q[i]   <= 'd0;
                     dbf_pe_q[i]     <= 'd0;
                     dbf_poison_q[i] <= 'd0;
+                    dbf_tagv_q[i]   <= 'd0;
                 end
                 else begin
                     if (mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q) begin//entry retired
@@ -281,6 +326,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_fill_q[i]   <= 'd0;
                         dbf_pe_q[i]     <= 'd0;
                         dbf_poison_q[i] <= 'd0;
+                        dbf_tagv_q[i]   <= 'd0;
                     end
                     else if (li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         //Atomic operand: kept out of the line, see dbf_atm_data_q
@@ -290,6 +336,7 @@ module hnf_data_buffer `HNF_PARAM
                             dbf_fill_q[i]   <= temp_pipe_fill;
                             dbf_pe_q[i]     <= 2'b11;
                             dbf_poison_q[i] <= temp_pipe_poison;
+                            dbf_tagv_q[i]   <= temp_pipe_tagv;
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
@@ -298,6 +345,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_fill_q[i]   <= temp_li_fill;
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
+                        dbf_tagv_q[i]   <= temp_li_tagv;
                     end
                     else if(li_dbf_rxdat_valid_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         dbf_data_q[i]   <= temp_li_data;
@@ -305,6 +353,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_fill_q[i]   <= temp_li_fill;
                         dbf_pe_q[i]     <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
                         dbf_poison_q[i] <= temp_li_poison;
+                        dbf_tagv_q[i]   <= temp_li_tagv;
                     end
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i]   <= temp_pipe_data;
@@ -312,6 +361,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_fill_q[i]   <= temp_pipe_fill;
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_pipe_poison;
+                        dbf_tagv_q[i]   <= temp_pipe_tagv;
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
                         // SS9.4.4 (p.9-342) / a Write Zero: the Home's own bytes, not a fill
@@ -321,6 +371,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_fill_q[i]   <= 'd0;
                         dbf_pe_q[i]     <= mshr_dbf_home_fill_pe_sx1_q;
                         dbf_poison_q[i] <= 'd0;
+                        dbf_tagv_q[i]   <= 'd0;
                     end
                     else begin
                     end
@@ -430,27 +481,38 @@ module hnf_data_buffer `HNF_PARAM
             dbf_pipe_rd_data_sx6_q   <= 'd0;
             dbf_pipe_rd_data_sx7_q   <= 'd0;
             dbf_pipe_rd_poison_sx3_q <= 'd0;
+            dbf_pipe_rd_tagv_sx3_q <= 'd0;
             dbf_pipe_rd_poison_sx4_q <= 'd0;
+            dbf_pipe_rd_tagv_sx4_q <= 'd0;
             dbf_pipe_rd_poison_sx5_q <= 'd0;
+            dbf_pipe_rd_tagv_sx5_q <= 'd0;
             dbf_pipe_rd_poison_sx6_q <= 'd0;
+            dbf_pipe_rd_tagv_sx6_q <= 'd0;
             dbf_pipe_rd_poison_sx7_q <= 'd0;
+            dbf_pipe_rd_tagv_sx7_q <= 'd0;
         end
         else begin
             dbf_pipe_rd_data_sx3_q   <= pipe_dbf_rd_idx_sx2_valid_q?dbf_atm_result_sx2:dbf_pipe_rd_data_sx3_q;
             dbf_pipe_rd_data_sx4_q   <= dbf_pipe_rd_data_sx3_q;
             dbf_pipe_rd_data_sx5_q   <= dbf_pipe_rd_data_sx4_q;
             dbf_pipe_rd_poison_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_poison_q[pipe_dbf_rd_idx_sx2_q]:dbf_pipe_rd_poison_sx3_q;
+            dbf_pipe_rd_tagv_sx3_q <= pipe_dbf_rd_idx_sx2_valid_q?dbf_tagv_q[pipe_dbf_rd_idx_sx2_q]:dbf_pipe_rd_tagv_sx3_q;
             dbf_pipe_rd_poison_sx4_q <= dbf_pipe_rd_poison_sx3_q;
+            dbf_pipe_rd_tagv_sx4_q <= dbf_pipe_rd_tagv_sx3_q;
             dbf_pipe_rd_poison_sx5_q <= dbf_pipe_rd_poison_sx4_q;
+            dbf_pipe_rd_tagv_sx5_q <= dbf_pipe_rd_tagv_sx4_q;
 `ifdef HNF_DELAY_ONE_CYCLE
 
             dbf_pipe_rd_data_sx6_q   <= dbf_pipe_rd_data_sx5_q;
             dbf_pipe_rd_data_sx7_q   <= dbf_pipe_rd_data_sx6_q;
             dbf_pipe_rd_poison_sx6_q <= dbf_pipe_rd_poison_sx5_q;
+            dbf_pipe_rd_tagv_sx6_q <= dbf_pipe_rd_tagv_sx5_q;
             dbf_pipe_rd_poison_sx7_q <= dbf_pipe_rd_poison_sx6_q;
+            dbf_pipe_rd_tagv_sx7_q <= dbf_pipe_rd_tagv_sx6_q;
 `else
             dbf_pipe_rd_data_sx7_q   <= dbf_pipe_rd_data_sx5_q;
             dbf_pipe_rd_poison_sx7_q <= dbf_pipe_rd_poison_sx5_q;
+            dbf_pipe_rd_tagv_sx7_q <= dbf_pipe_rd_tagv_sx5_q;
 `endif
 
         end
@@ -477,5 +539,6 @@ module hnf_data_buffer `HNF_PARAM
     assign dbf_txdat_pe_sx1    = mshr_dbf_rd_atm_sx1 ? mshr_dbf_rd_atm_pe_sx1
                                                     : (dbf_pe_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_pe_sx1);
     assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_tagv_sx1   = dbf_tagv_q[mshr_dbf_rd_idx_sx1_q];
 
 endmodule
