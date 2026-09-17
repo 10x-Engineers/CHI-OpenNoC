@@ -32,7 +32,7 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_CS_WIDTH-1:0]            lu_state_o,
     output wire [`RNF_WAY_W-1:0]               lu_way_o,
     output wire [`RNF_LINE_BITS-1:0]           lu_data_o,
-    output wire                                lu_err_o,
+    output wire [`RNF_META_W-1:0]             lu_meta_o,
 
     // Snoop lookup -- an independent read port, so a snoop is never queued behind
     // the core's own access.
@@ -41,7 +41,7 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_CS_WIDTH-1:0]            snp_state_o,
     output wire [`RNF_WAY_W-1:0]               snp_way_o,
     output wire [`RNF_LINE_BITS-1:0]           snp_data_o,
-    output wire                                snp_err_o,
+    output wire [`RNF_META_W-1:0]             snp_meta_o,
 
     // The way a fill for this address would take, and what it would displace.
     // vic_data_o is what a CopyBack of a Dirty victim sends.
@@ -49,7 +49,7 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_CS_WIDTH-1:0]            vic_state_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] vic_addr_o,
     output wire [`RNF_LINE_BITS-1:0]           vic_data_o,
-    output wire                                vic_err_o,
+    output wire [`RNF_META_W-1:0]             vic_meta_o,
 
     // The first resident line, for the flush a Requester owes before it leaves
     // coherency: Table 15-1 (p.15-468) allows no coherent data in Disconnect.
@@ -58,17 +58,17 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_WAY_W-1:0]               flush_way_o,
     output wire [`RNF_CS_WIDTH-1:0]            flush_state_o,
     output wire [`RNF_LINE_BITS-1:0]           flush_data_o,
-    output wire                                flush_err_o,
+    output wire [`RNF_META_W-1:0]             flush_meta_o,
 
-    // Fill: install a line in a state, with its data. fill_err_i marks bytes known
-    // to be corrupt, which SS9.4.7 (p.9-345, MUST) and SS9.4.3 (p.9-340, MUST)
-    // require to carry an error indication wherever they are sent.
+    // Fill: install a line in a state, with its data and what is known about it
+    // (rnf_defines.svh's RNF_META), which SS9.4.7 (p.9-345, MUST), SS9.4.3
+    // (p.9-340, MUST) and SS9.5 (p.9-347, MUST) carry wherever the bytes are sent.
     input  wire                                fill_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] fill_addr_i,
     input  wire [`RNF_WAY_W-1:0]               fill_way_i,
     input  wire [`RNF_CS_WIDTH-1:0]            fill_state_i,
     input  wire [`RNF_LINE_BITS-1:0]           fill_data_i,
-    input  wire                                fill_err_i,
+    input  wire [`RNF_META_W-1:0]             fill_meta_i,
 
     // State-only update of a resident line (a snoop, or a silent transition).
     input  wire                                upd_v_i,
@@ -92,7 +92,7 @@ module rnf_cache `RNF_PARAM
     logic [`RNF_TAG_W-1:0]    tag_q   [SETS][WAYS];
     logic [`RNF_CS_WIDTH-1:0] state_q [SETS][WAYS];
     logic [`RNF_LINE_BITS-1:0] data_q [SETS][WAYS];
-    logic                      err_q  [SETS][WAYS];
+    logic [`RNF_META_W-1:0]    meta_q [SETS][WAYS];
     logic [`RNF_WAY_W-1:0]    rr_q    [SETS];
 
     wire [`RNF_SET_W-1:0] lu_set = lu_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
@@ -116,7 +116,7 @@ module rnf_cache `RNF_PARAM
     assign lu_way_o   = hit_way_c;
     assign lu_state_o = hit_c ? state_q[lu_set][hit_way_c] : `RNF_CS_I;
     assign lu_data_o  = data_q[lu_set][hit_way_c];
-    assign lu_err_o   = hit_c && err_q[lu_set][hit_way_c];
+    assign lu_meta_o  = meta_q[lu_set][hit_way_c];
 
     wire [`RNF_SET_W-1:0] snp_set = snp_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
     wire [`RNF_TAG_W-1:0] snp_tag = snp_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
@@ -139,7 +139,7 @@ module rnf_cache `RNF_PARAM
     assign snp_way_o   = snp_way_c;
     assign snp_state_o = snp_hit_c ? state_q[snp_set][snp_way_c] : `RNF_CS_I;
     assign snp_data_o  = data_q[snp_set][snp_way_c];
-    assign snp_err_o   = snp_hit_c && err_q[snp_set][snp_way_c];
+    assign snp_meta_o  = meta_q[snp_set][snp_way_c];
 
     // An invalid way is taken before the round-robin victim, so a cold cache
     // fills before it ever evicts.
@@ -164,7 +164,7 @@ module rnf_cache `RNF_PARAM
     assign vic_addr_o  = {tag_q[lu_set][victim_way], lu_set,
                           {`RNF_LINE_OFFSET_W{1'b0}}};
     assign vic_data_o  = data_q[lu_set][victim_way];
-    assign vic_err_o   = err_q[lu_set][victim_way];
+    assign vic_meta_o  = meta_q[lu_set][victim_way];
 
     logic                  fl_v_c;
     logic [`RNF_SET_W-1:0] fl_set_c;
@@ -189,7 +189,7 @@ module rnf_cache `RNF_PARAM
     assign flush_way_o   = fl_way_c;
     assign flush_state_o = state_q[fl_set_c][fl_way_c];
     assign flush_data_o  = data_q[fl_set_c][fl_way_c];
-    assign flush_err_o   = err_q[fl_set_c][fl_way_c];
+    assign flush_meta_o  = meta_q[fl_set_c][fl_way_c];
     assign flush_addr_o  = {tag_q[fl_set_c][fl_way_c], fl_set_c, {`RNF_LINE_OFFSET_W{1'b0}}};
 
     wire [`RNF_SET_W-1:0] fill_set = fill_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
@@ -205,7 +205,7 @@ module rnf_cache `RNF_PARAM
                     state_q[s][w] <= `RNF_CS_I;
                     tag_q[s][w]   <= '0;
                     data_q[s][w]  <= '0;
-                    err_q[s][w]   <= 1'b0;
+                    meta_q[s][w]  <= `RNF_META_FULL;
                 end
             end
         end
@@ -214,7 +214,7 @@ module rnf_cache `RNF_PARAM
                 tag_q[fill_set][fill_way_i]   <= fill_tag;
                 state_q[fill_set][fill_way_i] <= fill_state_i;
                 data_q[fill_set][fill_way_i]  <= fill_data_i;
-                err_q[fill_set][fill_way_i]   <= fill_err_i;
+                meta_q[fill_set][fill_way_i]  <= fill_meta_i;
                 rr_q[fill_set] <= (rr_q[fill_set] == `RNF_WAY_W'(WAYS-1)) ? '0
                                                                           : (rr_q[fill_set] + 1'b1);
             end

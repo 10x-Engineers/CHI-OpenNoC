@@ -34,13 +34,22 @@
 //                               CleanInvalid, MakeInvalid, and the Table 4-17
 //                               (SS4.2.4 p.4-182) combinations of them
 //
-// A line is I, SC, UC, UD or SD, and UCE for the length of one race. A snoop can
-// take a Shared line away while its CleanUnique is in flight, and Table 4-38
-// then ends that CleanUnique -- from Invalid -- in UCE: owned, with no valid
-// bytes. p.4-215 names the cost, "the Requester needing to issue another
-// transaction", so a store that does not cover the whole line follows it with a
-// ReadUnique, which Table 4-33 (p.4-212) permits from UCE. UDP is never entered:
-// that store is merged into the ReadUnique's data, not into the empty line.
+// A line is UCE when a CleanUnique ends from Invalid (Table 4-38 p.4-218): owned,
+// with no valid bytes. A partial store into it makes it UDP (Table 4-32 p.4-209),
+// which AWCOH=PARTIAL asks for; otherwise the store follows the CleanUnique with a
+// ReadUnique (p.4-215: "the Requester needing to issue another transaction"), which
+// Table 4-33 (p.4-212) permits from UCE. A UDP line is read by ReadUnique, merging
+// the returned bytes under its own (Table 4-33 fn c), and written back by
+// WriteBackPtl (Table 4-16 p.4-181).
+//
+// An AXI access with AxLOCK set and an AxID below 256 is an exclusive one for the
+// Logical Processor AxID[7:0] names (SS6.3 p.6-286); a larger AxID is served as a
+// plain access, since LPID is eight bits and IDs above it would alias. The Load
+// sets that LP's monitor on the line, and the monitor is reset by the line leaving
+// the cache -- an invalidating snoop among the ways -- or by a store to it
+// (SS6.2.1 p.6-283). The Store passes silently from a Unique line, issues
+// CleanUnique(Excl) or MakeReadUnique(Excl) from a Shared one, and fails without a
+// transaction once the monitor is reset (SS6.3.3 p.6-290).
 //
 // Displacing a Dirty victim owes a WriteBackFull (Table 4-16 SS4.2.3 p.4-181);
 // a Clean one is dropped silently, which Table 4-32 permits.
@@ -66,11 +75,14 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE,
     input  wire [`RNF_AR_COH_W-1:0]             ARCOH,
+    input  wire [`AXI4_ARLOCK_WIDTH-1:0]        ARLOCK,
+    input  wire [`AXI4_ARUSER_WIDTH-1:0]        ARUSER,
     input  wire                                 ARVALID,
     output wire                                 ARREADY,
     output wire [`AXI4_RID_WIDTH-1:0]           RID,
     output wire [`AXI4_RDATA_WIDTH-1:0]         RDATA,
     output wire [`AXI4_RRESP_WIDTH-1:0]         RRESP,
+    output logic [`AXI4_RUSER_WIDTH-1:0]        RUSER,
     output wire                                 RLAST,
     output wire                                 RVALID,
     input  wire                                 RREADY,
@@ -81,10 +93,13 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_AWLEN_WIDTH-1:0]         AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0]        AWSIZE,
     input  wire [`RNF_AW_COH_W-1:0]             AWCOH,
+    input  wire [`AXI4_AWLOCK_WIDTH-1:0]        AWLOCK,
+    input  wire [`AXI4_AWUSER_WIDTH-1:0]        AWUSER,
     input  wire                                 AWVALID,
     output wire                                 AWREADY,
     input  wire [`AXI4_WDATA_WIDTH-1:0]         WDATA,
     input  wire [`AXI4_WSTRB_WIDTH-1:0]         WSTRB,
+    input  wire [`AXI4_WUSER_WIDTH-1:0]         WUSER,
     input  wire                                 WLAST,
     input  wire                                 WVALID,
     output wire                                 WREADY,
@@ -107,18 +122,18 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_CS_WIDTH-1:0]             cache_lu_state_i,
     input  wire [`RNF_WAY_W-1:0]                cache_lu_way_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_lu_data_i,
-    input  wire                                 cache_lu_err_i,
+    input  wire [`RNF_META_W-1:0]               cache_lu_meta_i,
     input  wire [`RNF_WAY_W-1:0]                cache_vic_way_i,
     input  wire [`RNF_CS_WIDTH-1:0]             cache_vic_state_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_vic_data_i,
-    input  wire                                 cache_vic_err_i,
+    input  wire [`RNF_META_W-1:0]               cache_vic_meta_i,
     output wire                                 cache_fill_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_fill_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_fill_way_o,
     output wire [`RNF_CS_WIDTH-1:0]             cache_fill_state_o,
     output wire [`RNF_LINE_BITS-1:0]            cache_fill_data_o,
-    output wire                                 cache_fill_err_o,
+    output wire [`RNF_META_W-1:0]               cache_fill_meta_o,
     output wire                                 cache_upd_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_upd_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_upd_way_o,
@@ -157,7 +172,7 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_WAY_W-1:0]                cache_flush_way_i,
     input  wire [`RNF_CS_WIDTH-1:0]             cache_flush_state_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_flush_data_i,
-    input  wire                                 cache_flush_err_i,
+    input  wire [`RNF_META_W-1:0]               cache_flush_meta_i,
     input  wire                                 link_run_i,
 
     // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
@@ -214,8 +229,24 @@ module rnf_ctl `RNF_PARAM
     logic                                       nderr_q;
     // A Data packet of this transaction carried DERR.
     logic                                       data_err_q;
-    // The bytes in line_q are known to be corrupt.
+    // What is known of the bytes in line_q: DERR on them, the Poison of each
+    // chunk, and which bytes are valid.
     logic                                       line_err_q;
+    logic [7:0]                                 line_poison_q;
+    logic [`RNF_LINE_BYTES-1:0]                 line_vmask_q;
+    // The acquire was issued for a UDP line, whose own bytes survive it.
+    logic                                       base_udp_q;
+    // The store is applied to the line the transaction completes with.
+    logic                                       apply_q;
+    logic [7:0]                                 wpoison_q;
+
+    // The Logical Processor of the access, and whether it is exclusive.
+    logic [7:0]                                 lpid_q;
+    logic                                       excl_q;
+    logic                                       excl_pass_q;
+    logic                                       exok_q;
+    logic                                       core_q;
+    logic [`AXI4_MPAM_WIDTH-1:0]                mpam_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -239,7 +270,7 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_WAY_W-1:0]                      vic_way_q;
     logic [`RNF_CS_WIDTH-1:0]                   vic_state_q;
     logic [`RNF_LINE_BITS-1:0]                  vic_data_q;
-    logic                                       vic_err_q;
+    logic [`RNF_META_W-1:0]                     vic_meta_q;
     chie_pkg::req_opcode_e                      cb_op_q;
     logic                                       cb_then_req_q;  // a request follows the CopyBack
     logic                                       cb_keep_q;      // WriteClean: the line stays, Clean
@@ -269,6 +300,14 @@ module rnf_ctl `RNF_PARAM
     logic                                       wr_sent_q;
     logic                                       cb_done_q;
     logic                                       drop_q;
+
+    // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
+    localparam int MON = RNF_EXCL_LP_NUM_PARAM;
+    logic                                       mon_v_q    [MON];
+    logic [7:0]                                 mon_lp_q   [MON];
+    logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]       mon_addr_q [MON];
+    logic [`RNF_WAY_W-1:0]                      mon_way_q  [MON];
+    logic [$clog2(MON+1)-1:0]                   mon_rr_q;
 
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD) || (cs == `RNF_CS_UDP);
@@ -306,7 +345,7 @@ module rnf_ctl `RNF_PARAM
     // in when the data is sent, which a snoop may have moved since the request.
     function automatic chie_pkg::resp_state_e cb_resp_of(logic [`RNF_CS_WIDTH-1:0] cs);
         case (cs)
-            `RNF_CS_UD:  return chie_pkg::RESP_UC_PD;
+            `RNF_CS_UD, `RNF_CS_UDP: return chie_pkg::RESP_UC_PD;
             `RNF_CS_SD:  return chie_pkg::RESP_SD_PD;
             `RNF_CS_UC:  return chie_pkg::RESP_UC_UD;
             `RNF_CS_SC:  return chie_pkg::RESP_SC;
@@ -326,6 +365,32 @@ module rnf_ctl `RNF_PARAM
         endcase
     endfunction
 
+    // Table 4-16 (SS4.2.3 p.4-181): a Dirty line goes back Full, a UDP one Ptl.
+    function automatic chie_pkg::req_opcode_e back_op(logic [`RNF_CS_WIDTH-1:0] cs);
+        return (cs == `RNF_CS_UDP) ? chie_pkg::REQ_WRITEBACKPTL : chie_pkg::REQ_WRITEBACKFULL;
+    endfunction
+
+    // SS6.3 (p.6-286): the Snoopable Exclusive Loads this node issues.
+    function automatic bit excl_load_op(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_READSHARED) || (op == chie_pkg::REQ_READCLEAN) ||
+               (op == chie_pkg::REQ_READPREFERUNIQUE);
+    endfunction
+
+    // A line whose bytes are not all valid cannot be served, nor kept Clean.
+    function automatic bit is_short(logic [`RNF_CS_WIDTH-1:0] cs);
+        return (cs == `RNF_CS_UCE) || (cs == `RNF_CS_UDP);
+    endfunction
+
+    // The Poison of each chunk after a merge: a chunk wholly overwritten takes the
+    // new tag, and one only partly overwritten keeps the old one beside it, which
+    // SS9.5 (p.9-347) permits as over-poisoning.
+    function automatic logic [7:0] merge_poison(logic [7:0] base, logic [7:0] wpois,
+                                                logic [`RNF_LINE_BYTES-1:0] be);
+        for (int c = 0; c < 8; c++)
+            merge_poison[c] = (&be[c*8 +: 8]) ? wpois[c]
+                                             : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
+    endfunction
+
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_READONCE) ||
                (op == chie_pkg::REQ_READONCECLEANINVALID) ||
@@ -340,6 +405,12 @@ module rnf_ctl `RNF_PARAM
             merge_line[b*8 +: 8] = be[b] ? wdat[b*8 +: 8] : base[b*8 +: 8];
     endfunction
 
+    function automatic bit same_line(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
+                                     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
+        return a[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
+               b[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W];
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ar_line =
         {ARADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] aw_line =
@@ -348,6 +419,9 @@ module rnf_ctl `RNF_PARAM
     // SS4.2.1 (p.4-163): the ReadOnce family is non-allocating, so its data is not
     // cached and nothing is displaced for it.
     wire ar_alloc = !is_read_once(ar_op);
+    // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
+    wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
+    wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cm_line =
         {CMADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
 
@@ -370,6 +444,14 @@ module rnf_ctl `RNF_PARAM
 
     wire [`RNF_CS_WIDTH-1:0] lu_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
 
+    // Whether an LP's monitor is still set on a line.
+    function automatic bit mon_set(logic [7:0] lp, logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] line);
+        mon_set = 1'b0;
+        for (int i = 0; i < MON; i++)
+            if (mon_v_q[i] && (mon_lp_q[i] == lp) && same_line(mon_addr_q[i], line))
+                mon_set = 1'b1;
+    endfunction
+
     // The write including the beat being accepted this cycle: wbe_q and wbuf_q do
     // not carry it until the next edge, and the whole-line question is asked on
     // WLAST, which is that same cycle.
@@ -386,6 +468,17 @@ module rnf_ctl `RNF_PARAM
         endcase
     end
     wire wr_full = &wbe_now;
+    // SS9.5 (p.9-347): WUSER carries one Poison bit per 64 bits of WDATA.
+    logic [7:0] wpoison_now;
+    always_comb begin
+        wpoison_now = wpoison_q;
+        case (wchunk_q)
+            2'd0:    wpoison_now[1:0] = WUSER[`AXI4_USER_POISON_RANGE];
+            2'd1:    wpoison_now[3:2] = WUSER[`AXI4_USER_POISON_RANGE];
+            2'd2:    wpoison_now[5:4] = WUSER[`AXI4_USER_POISON_RANGE];
+            default: wpoison_now[7:6] = WUSER[`AXI4_USER_POISON_RANGE];
+        endcase
+    end
     wire wr_zero = wr_full && (wbuf_now == '0);
 
     // Whether the displaced way owes a write-back. Evaluated at the point the
@@ -410,6 +503,15 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.memattr.early_wr_ack = 1'b1;
         prot_txreqflit_o.snpattr.snpattr      = 1'b1;
         prot_txreqflit_o.txnid        = txnid_q;
+        // SS2.7 (p.2-113): the LP the access was made by; the node's own requests (a
+        // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
+        prot_txreqflit_o.lpid         = core_q ? lpid_q : 8'd0;
+`ifdef CHIE_MPAM_PRESENT
+        // SS11.3 (p.11-365, MUST): the core's label from AxUSER, and Table 11-5's
+        // (p.11-366) defaults on a request the core did not make.
+        prot_txreqflit_o.mpam         = core_q ? chie_pkg::mpam_s'(mpam_q)
+                                               : chie_pkg::mpam_default(prot_txreqflit_o.ns);
+`endif
         if (st_q == S_PCRD_RET) begin
             // SS2.6.6 (p.2-112): addressed to the credit's source, TxnID zero, and
             // the PCrdType it was granted under. Table A-2 (p.A-484) leaves every
@@ -419,10 +521,17 @@ module rnf_ctl `RNF_PARAM
             prot_txreqflit_o.tgtid    = pcrd_src_q[ret_type_q];
             prot_txreqflit_o.opcode   = chie_pkg::REQ_PCRDRETURN;
             prot_txreqflit_o.pcrdtype = ret_type_q;
+`ifdef CHIE_MPAM_PRESENT
+            prot_txreqflit_o.mpam     = chie_pkg::mpam_default(1'b0);
+`endif
         end
         else if (st_q == S_CB_REQ) begin
             prot_txreqflit_o.opcode       = cb_op_q;
             prot_txreqflit_o.addr         = vic_addr_q;
+            prot_txreqflit_o.lpid         = 8'd0;
+`ifdef CHIE_MPAM_PRESENT
+            prot_txreqflit_o.mpam         = chie_pkg::mpam_default(prot_txreqflit_o.ns);
+`endif
             prot_txreqflit_o.memattr.allocate = 1'b1;
             // SS2.8.3 (p.2-116, MUST): WriteEvictOrEvict sets ExpCompAck; SS4.2.3
             // (p.4-177) encodes the line's initial state in LikelyShared.
@@ -433,6 +542,11 @@ module rnf_ctl `RNF_PARAM
             prot_txreqflit_o.opcode       = acq_op_q;
             prot_txreqflit_o.addr         = addr_q;
             prot_txreqflit_o.expcompack   = ack_q;
+            // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores.
+            prot_txreqflit_o.excl.excl    = excl_q && core_q &&
+                                            (excl_load_op(acq_op_q) ||
+                                             (acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
+                                             (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE));
             // Table 4-1 (SS4.2.1 p.4-165) and Table 4-7 (SS4.2.2 p.4-172):
             // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
             prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
@@ -460,6 +574,20 @@ module rnf_ctl `RNF_PARAM
     // asserts all 64 (SS4.2.3 p.4-177).
     wire cb_invalid = (cb_resp_of(vic_state_q) == chie_pkg::RESP_I);
     wire [`RNF_LINE_BITS-1:0] wu_line = merge_line('0, wbuf_q, wbe_q);
+    // SS2.10.3 (p.2-135): a WriteBackPtl asserts the enables of the valid bytes, and
+    // any deasserted enable zeroes its byte.
+    wire [`RNF_LINE_BYTES-1:0] cb_be   = cb_invalid ? '0 :
+                                         (cb_op_q == chie_pkg::REQ_WRITEBACKPTL) ? vic_meta_q[`RNF_META_VMASK]
+                                                                                 : '1;
+    wire [`RNF_LINE_BITS-1:0]  cb_line = merge_line('0, vic_data_q, cb_be);
+    // SS9.5 (p.9-347, MUST): the Poison travels with the bytes it tags.
+    logic [7:0] cb_poison, wu_poison;
+    always_comb begin
+        for (int c = 0; c < 8; c++) begin
+            cb_poison[c] = vic_meta_q[64 + c] && (|cb_be[c*8 +: 8]);
+            wu_poison[c] = wpoison_q[c]       && (|wbe_q[c*8 +: 8]);
+        end
+    end
 
     always_comb begin
         prot_txdatflit_o        = '0;
@@ -472,18 +600,21 @@ module rnf_ctl `RNF_PARAM
             prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
             prot_txdatflit_o.be     = wr_hi_q ? wbe_q[63:32]    : wbe_q[31:0];
             prot_txdatflit_o.data   = wr_hi_q ? wu_line[511:256] : wu_line[255:0];
+            prot_txdatflit_o.poison = wr_hi_q ? wu_poison[7:4]   : wu_poison[3:0];
         end
         else begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
             prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
-            prot_txdatflit_o.be     = cb_invalid ? '0 : '1;
+            prot_txdatflit_o.be     = wr_hi_q ? cb_be[63:32]     : cb_be[31:0];
             // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an
             // error indication, and Table 9-7 makes DERR the one WriteData may carry.
-            prot_txdatflit_o.resperr = (vic_err_q && !cb_invalid) ? chie_pkg::RESP_ERR_DATA
-                                                                  : chie_pkg::RESP_ERR_NORM_OK;
-            prot_txdatflit_o.data   = cb_invalid ? '0 :
-                                      (wr_hi_q ? vic_data_q[511:256] : vic_data_q[255:0]);
+            prot_txdatflit_o.resperr = (vic_meta_q[`RNF_META_DERR] && !cb_invalid)
+                                       ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
+            prot_txdatflit_o.data   = wr_hi_q ? cb_line[511:256] : cb_line[255:0];
+            prot_txdatflit_o.poison = wr_hi_q ? cb_poison[7:4]   : cb_poison[3:0];
         end
+        // SS9.6 (p.9-348): odd byte parity over the data sent.
+        prot_txdatflit_o.datacheck = chie_pkg::datacheck_of(prot_txdatflit_o.data);
     end
 
     assign prot_txdatflitv_o = (st_q == S_CB_DAT) || (st_q == S_WU_DAT);
@@ -551,20 +682,17 @@ module rnf_ctl `RNF_PARAM
 
     // The line the transaction installs: the store merged over whatever the
     // acquire brought back, or over the copy already resident.
-    wire [`RNF_LINE_BITS-1:0] fill_line = is_wr_q ? merge_line(line_q, wbuf_q, wbe_q)
-                                                  : line_q;
+    wire [`RNF_LINE_BITS-1:0] fill_line = (is_wr_q && apply_q) ? merge_line(line_q, wbuf_q, wbe_q)
+                                                               : line_q;
 
     // The acquire's line as it stands this cycle, including a snoop writing it on
     // the very edge its completion arrives -- acq_cs_q alone would miss that one.
-    wire acq_snp_now = snp_upd_v_i &&
-        (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
-         addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]);
+    wire acq_snp_now = snp_upd_v_i && same_line(snp_upd_addr_i, addr_q);
     wire [`RNF_CS_WIDTH-1:0] acq_cs_now = acq_snp_now ? snp_upd_state_i : acq_cs_q;
     wire                     acq_lost   = (acq_cs_now == `RNF_CS_I);
 
     wire vic_snp_now = snp_upd_v_i && (snp_upd_way_i == vic_way_q) &&
-        (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
-         vic_addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]);
+                       same_line(snp_upd_addr_i, vic_addr_q);
     wire [`RNF_CS_WIDTH-1:0] vic_state_now = vic_snp_now ? snp_upd_state_i : vic_state_q;
 
     // Table 4-34 (SS4.7.1 p.4-213): MakeReadUnique's data is the Requester's to
@@ -578,6 +706,59 @@ module rnf_ctl `RNF_PARAM
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
     wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
+
+    function automatic bit same_set(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
+                                    logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
+        return a[`RNF_LINE_OFFSET_W +: `RNF_SET_W] == b[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
+    endfunction
+
+    function automatic bit mon_has_lp(logic [7:0] lp);
+        mon_has_lp = 1'b0;
+        for (int i = 0; i < MON; i++)
+            if (mon_v_q[i] && (mon_lp_q[i] == lp)) mon_has_lp = 1'b1;
+    endfunction
+
+    function automatic bit mon_full();
+        mon_full = 1'b1;
+        for (int i = 0; i < MON; i++)
+            if (!mon_v_q[i]) mon_full = 1'b0;
+    endfunction
+
+    // The LP's own entry, else a free one, else the round-robin victim.
+    function automatic int set_slot(logic [7:0] lp);
+        set_slot = -1;
+        for (int i = MON-1; i >= 0; i--)
+            if (mon_v_q[i] && (mon_lp_q[i] == lp)) set_slot = i;
+        if (set_slot < 0)
+            for (int i = MON-1; i >= 0; i--)
+                if (!mon_v_q[i]) set_slot = i;
+        if (set_slot < 0) set_slot = int'(mon_rr_q);
+    endfunction
+
+    wire rx_exok  = (rx_rsp_txn  && (prot_rxrspflit_i.resperr == chie_pkg::RESP_ERR_EX_OK)) ||
+                    (rx_dat_mine && (prot_rxdatflit_i.resperr == chie_pkg::RESP_ERR_EX_OK));
+    wire exok_now = exok_q || rx_exok;
+    // A procedural read, so the monitor table itself is in its sensitivity.
+    logic mon_ok;
+    always_comb mon_ok = mon_set(lpid_q, addr_q);
+
+    // The bytes the line still holds valid, which returned data does not overwrite.
+    wire [`RNF_LINE_BYTES-1:0] merge_vm = acq_lost ? '0 : line_vmask_q;
+
+    // SS6.3.1 (p.6-288, MUST): a MakeReadUnique(Excl) response in Shared state fails,
+    // and one in Unique state passes only if the LP monitor is still set. Table 4-37
+    // (SS4.7.1 p.4-217) keeps a held line as it was on a failure, and fills a lost
+    // one Shared from the data returned.
+    wire [`RNF_CS_WIDTH-1:0] mru_rsp_cs = rx_dat_mine ? cs_of_resp(prot_rxdatflit_i.resp) :
+                                          rx_comp     ? cs_of_resp(prot_rxrspflit_i.resp) :
+                                                        fill_state_q;
+    wire mru_shared = (mru_rsp_cs == `RNF_CS_SC);
+    wire mru_pass   = (kind_q != K_MRU) || (!mru_shared && !acq_lost && mon_ok);
+    wire mru_fill   = !excl_q || (kind_q != K_MRU) || acq_lost || mru_pass;
+    // SPEC-AMBIGUITY: SS6.3.3 (p.6-291) -- Table 4-38 (p.4-218) lists only Comp_UC for
+    // CleanUnique; a failed CleanUnique(Excl) "has not propagated", so the Home has
+    // invalidated no other copy and the line is left as the request found it.
+    wire own_pass   = exok_now && !acq_lost && mon_ok;
 
     logic [3:0] fin_st;
     always_comb begin
@@ -608,6 +789,24 @@ module rnf_ctl `RNF_PARAM
             nderr_q       <= 1'b0;
             data_err_q    <= 1'b0;
             line_err_q    <= 1'b0;
+            line_poison_q <= 8'h00;
+            line_vmask_q  <= '0;
+            base_udp_q    <= 1'b0;
+            apply_q       <= 1'b1;
+            wpoison_q     <= 8'h00;
+            lpid_q        <= 8'd0;
+            excl_q        <= 1'b0;
+            excl_pass_q   <= 1'b0;
+            exok_q        <= 1'b0;
+            core_q        <= 1'b0;
+            mpam_q        <= '0;
+            for (int i = 0; i < MON; i++) begin
+                mon_v_q[i]    <= 1'b0;
+                mon_lp_q[i]   <= 8'd0;
+                mon_addr_q[i] <= '0;
+                mon_way_q[i]  <= '0;
+            end
+            mon_rr_q      <= '0;
             is_wr_q       <= 1'b0;
             wbuf_q        <= '0;
             wbe_q         <= '0;
@@ -624,7 +823,7 @@ module rnf_ctl `RNF_PARAM
             vic_way_q     <= '0;
             vic_state_q   <= `RNF_CS_I;
             vic_data_q    <= '0;
-            vic_err_q     <= 1'b0;
+            vic_meta_q    <= `RNF_META_FULL;
             cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
             cb_then_req_q <= 1'b0;
             cb_keep_q     <= 1'b0;
@@ -649,6 +848,10 @@ module rnf_ctl `RNF_PARAM
             drop_q        <= 1'b0;
         end
         else begin
+            automatic logic                                 set_now  = 1'b0;
+            automatic logic [7:0]                           set_lp   = lpid_q;
+            automatic logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] set_addr = addr_q;
+            automatic logic [`RNF_WAY_W-1:0]                set_way  = way_q;
             fill_v_q  <= 1'b0;
             cb_done_q <= 1'b0;
             drop_q    <= 1'b0;
@@ -681,6 +884,8 @@ module rnf_ctl `RNF_PARAM
                     wr_dbid_q  <= 1'b0;
                     wr_sent_q  <= 1'b0;
                     cb_keep_q  <= 1'b0;
+                    exok_q     <= 1'b0;
+                    base_udp_q <= 1'b0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
@@ -690,29 +895,59 @@ module rnf_ctl `RNF_PARAM
                         vic_way_q   <= cache_flush_way_i;
                         vic_state_q <= cache_flush_state_i;
                         vic_data_q  <= cache_flush_data_i;
-                        vic_err_q   <= cache_flush_err_i;
+                        vic_meta_q  <= cache_flush_meta_i;
                         rsp_ch_q    <= CH_NONE;
+                        core_q      <= 1'b0;
+                        excl_q      <= 1'b0;
                         // SS4.1 (p.4-160): a Dirty line is the only copy, so it goes
                         // back; Table 4-32 (p.4-209) lets a Clean one go silently.
                         if (is_dirty(cache_flush_state_i)) begin
-                            cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                            cb_op_q       <= back_op(cache_flush_state_i);
                             cb_then_req_q <= 1'b0;
                             st_q          <= S_CB_REQ;
                         end
                         else drop_q <= 1'b1;
                     end
                     else if (ARVALID && ARREADY) begin
-                        id_q       <= ARID;
-                        addr_q     <= ar_line;
-                        rchunk_q   <= ARADDR[5:4];
-                        is_wr_q    <= 1'b0;
-                        rsp_ch_q   <= CH_R;
-                        way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
-                        line_err_q <= cache_lu_err_i;
-                        if (cache_lu_hit_i) begin
-                            line_q <= cache_lu_data_i;
-                            hit_q  <= 1'b1;
-                            st_q   <= S_RESP;
+                        id_q          <= ARID;
+                        addr_q        <= ar_line;
+                        rchunk_q      <= ARADDR[5:4];
+                        is_wr_q       <= 1'b0;
+                        rsp_ch_q      <= CH_R;
+                        core_q        <= 1'b1;
+                        lpid_q        <= ARID[7:0];
+                        excl_q        <= ar_excl;
+                        mpam_q        <= ARUSER[`AXI4_USER_MPAM_RANGE];
+                        excl_pass_q   <= 1'b0;
+                        way_q         <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+                        line_err_q    <= cache_lu_hit_i && cache_lu_meta_i[`RNF_META_DERR];
+                        line_poison_q <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
+                        line_vmask_q  <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                        acq_cs_q      <= lu_state;
+                        if (cache_lu_hit_i && !is_short(lu_state)) begin
+                            line_q      <= cache_lu_data_i;
+                            hit_q       <= 1'b1;
+                            // SS6.3.3 (p.6-290): a Load of a line already held needs
+                            // no transaction, and sets the monitor.
+                            excl_pass_q <= ar_excl;
+                            set_now      = ar_excl;
+                            set_lp       = ARID[7:0];
+                            set_addr     = ar_line;
+                            set_way      = cache_lu_way_i;
+                            st_q        <= S_RESP;
+                        end
+                        // Table 4-4 (SS4.2.1 p.4-167): a line short of valid bytes is
+                        // read by ReadUnique, which Table 4-33 (p.4-212) ends UD from
+                        // UDP, merging the returned bytes under its own.
+                        else if (cache_lu_hit_i) begin
+                            line_q     <= cache_lu_data_i;
+                            hit_q      <= 1'b0;
+                            base_udp_q <= (lu_state == `RNF_CS_UDP);
+                            acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                            kind_q     <= K_READ;
+                            alloc_q    <= 1'b1;
+                            ack_q      <= 1'b1;
+                            st_q       <= S_REQ;
                         end
                         else begin
                             hit_q    <= 1'b0;
@@ -724,8 +959,8 @@ module rnf_ctl `RNF_PARAM
                             vic_way_q  <= cache_vic_way_i;
                             vic_state_q<= cache_vic_state_i;
                             vic_data_q <= cache_vic_data_i;
-                            vic_err_q  <= cache_vic_err_i;
-                            cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                            vic_meta_q <= cache_vic_meta_i;
+                            cb_op_q       <= back_op(cache_vic_state_i);
                             cb_then_req_q <= 1'b1;
                             st_q <= (need_cb && ar_alloc) ? S_CB_REQ : S_REQ;
                         end
@@ -736,6 +971,13 @@ module rnf_ctl `RNF_PARAM
                         is_wr_q  <= 1'b1;
                         rsp_ch_q <= CH_B;
                         aw_coh_q <= AWCOH;
+                        core_q   <= 1'b1;
+                        lpid_q   <= AWID[7:0];
+                        excl_q   <= aw_excl;
+                        mpam_q   <= AWUSER[`AXI4_USER_MPAM_RANGE];
+                        excl_pass_q <= 1'b0;
+                        apply_q  <= 1'b1;
+                        wpoison_q <= 8'h00;
                         wbe_q    <= '0;
                         wbuf_q   <= '0;
                         wchunk_q <= AWADDR[5:4];
@@ -748,11 +990,14 @@ module rnf_ctl `RNF_PARAM
                         alloc_q     <= 1'b0;
                         ack_q       <= 1'b0;
                         kind_q      <= K_NOTE;
+                        core_q      <= 1'b0;
+                        excl_q      <= 1'b0;
+                        excl_pass_q <= 1'b0;
                         vic_addr_q  <= cm_line;
                         vic_way_q   <= cache_lu_way_i;
                         vic_state_q <= lu_state;
                         vic_data_q  <= cache_lu_data_i;
-                        vic_err_q   <= cache_lu_err_i;
+                        vic_meta_q  <= cache_lu_meta_i;
                         cb_then_req_q <= 1'b0;
                         cb_ls_q     <= (lu_state == `RNF_CS_SC);
                         case (CMOP)
@@ -763,7 +1008,7 @@ module rnf_ctl `RNF_PARAM
                                 // Table 4-16 (SS4.2.3 p.4-181): a Dirty line leaves by
                                 // WriteBack whatever the core asked.
                                 else if (is_dirty(lu_state)) begin
-                                    cb_op_q <= chie_pkg::REQ_WRITEBACKFULL;
+                                    cb_op_q <= back_op(lu_state);
                                     st_q    <= S_CB_REQ;
                                 end
                                 else if (CMOP == `RNF_CM_EVICT_SILENT) begin
@@ -789,7 +1034,13 @@ module rnf_ctl `RNF_PARAM
                                 end
                             end
                             `RNF_CM_CLEAN: begin
-                                if (is_dirty(lu_state)) begin
+                                // Table 4-16 (p.4-181): WriteCleanFull is issued from UD
+                                // or SD only, and a UDP line has no Clean form to keep.
+                                if (lu_state == `RNF_CS_UDP) begin
+                                    err_q <= 1'b1;
+                                    st_q  <= S_CMRSP;
+                                end
+                                else if (is_dirty(lu_state)) begin
                                     cb_op_q   <= chie_pkg::REQ_WRITECLEANFULL;
                                     cb_keep_q <= 1'b1;
                                     st_q      <= S_CB_REQ;
@@ -800,7 +1051,14 @@ module rnf_ctl `RNF_PARAM
                                 acq_op_q <= chie_pkg::REQ_CLEANSHARED;
                                 // Table 4-17 (SS4.2.4 p.4-182): a Dirty line folds its
                                 // CopyBack into the CMO, keeping a Clean copy or not.
-                                if (is_dirty(lu_state)) begin
+                                // Table 4-17 (SS4.2.4 p.4-182) combines no CMO with
+                                // WriteBackPtl, so a UDP line goes back first.
+                                if (lu_state == `RNF_CS_UDP) begin
+                                    cb_op_q       <= chie_pkg::REQ_WRITEBACKPTL;
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
+                                else if (is_dirty(lu_state)) begin
                                     cb_op_q   <= (CMOP == `RNF_CM_CLEAN_SHARED)
                                                  ? chie_pkg::REQ_WRITECLEANFULLCLEANSH
                                                  : chie_pkg::REQ_WRITEBACKFULLCLEANSH;
@@ -818,7 +1076,12 @@ module rnf_ctl `RNF_PARAM
                             end
                             `RNF_CM_CLEAN_INVALID: begin
                                 acq_op_q <= chie_pkg::REQ_CLEANINVALID;
-                                if (is_dirty(lu_state)) begin
+                                if (lu_state == `RNF_CS_UDP) begin
+                                    cb_op_q       <= chie_pkg::REQ_WRITEBACKPTL;
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
+                                else if (is_dirty(lu_state)) begin
                                     cb_op_q <= chie_pkg::REQ_WRITEBACKFULLCLEANINV;
                                     st_q    <= S_CB_REQ;
                                 end
@@ -858,19 +1121,33 @@ module rnf_ctl `RNF_PARAM
                             2'd2: begin wbuf_q[383:256] <= WDATA; wbe_q[47:32] <= WSTRB; end
                             default: begin wbuf_q[511:384] <= WDATA; wbe_q[63:48] <= WSTRB; end
                         endcase
-                        wchunk_q <= wchunk_q + 2'd1;
+                        wchunk_q  <= wchunk_q + 2'd1;
+                        wpoison_q <= wpoison_now;
                         if (WLAST) begin
-                            way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
-                            line_err_q <= cache_lu_err_i;
-                            alloc_q    <= 1'b1;
-                            ack_q      <= 1'b1;
-                            // A Unique line is already this node's to modify;
-                            // Table 4-32 (SS4.6 p.4-209) makes UC -> UD silent.
-                            if (cache_lu_hit_i && is_unique(lu_state)) begin
+                            way_q         <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+                            line_err_q    <= cache_lu_hit_i && cache_lu_meta_i[`RNF_META_DERR];
+                            line_poison_q <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
+                            line_vmask_q  <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                            alloc_q       <= 1'b1;
+                            ack_q         <= 1'b1;
+                            // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
+                            // is reset fails, and issues no transaction.
+                            if (excl_q && !(cache_lu_hit_i && !is_short(lu_state) &&
+                                            mon_set(lpid_q, addr_q))) begin
+                                hit_q   <= 1'b1;
+                                apply_q <= 1'b0;
+                                st_q    <= S_BRESP;
+                            end
+                            // A Unique line is already this node's to modify; Table
+                            // 4-32 (SS4.6 p.4-209) makes the store silent, UD once every
+                            // byte is valid and UDP until then. SS6.3.3 (p.6-290) passes
+                            // an Exclusive Store from it without a transaction.
+                            else if (cache_lu_hit_i && is_unique(lu_state)) begin
                                 line_q       <= cache_lu_data_i;
-                                fill_state_q <= `RNF_CS_UD;
+                                fill_state_q <= `RNF_CS_UC;
                                 hit_q        <= 1'b1;
                                 fill_v_q     <= 1'b1;
+                                excl_pass_q  <= excl_q;
                                 st_q         <= S_BRESP;
                             end
                             else begin
@@ -909,19 +1186,30 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else begin
                                     line_q     <= '0;
-                                    // Table 4-38 (p.4-218): MakeUnique needs no
-                                    // data fetched, so it is the whole-line
-                                    // store's request; a partial one has to read
-                                    // the bytes it does not write.
-                                    acq_op_q   <= wr_full ? chie_pkg::REQ_MAKEUNIQUE
-                                                          : chie_pkg::REQ_READUNIQUE;
-                                    kind_q     <= wr_full ? K_OWN : K_READ;
+                                    acq_cs_q   <= `RNF_CS_I;
+                                    // Table 4-38 (p.4-218): MakeUnique needs no data
+                                    // fetched, so it is the whole-line store's request.
+                                    // A partial one reads the bytes it does not write,
+                                    // or with PARTIAL takes a CleanUnique from I to UCE
+                                    // and keeps only its own bytes.
+                                    if (wr_full) begin
+                                        acq_op_q <= chie_pkg::REQ_MAKEUNIQUE;
+                                        kind_q   <= K_OWN;
+                                    end
+                                    else if (aw_coh_q == `RNF_AW_PARTIAL) begin
+                                        acq_op_q <= chie_pkg::REQ_CLEANUNIQUE;
+                                        kind_q   <= K_OWN;
+                                    end
+                                    else begin
+                                        acq_op_q <= chie_pkg::REQ_READUNIQUE;
+                                        kind_q   <= K_READ;
+                                    end
                                     vic_addr_q <= cache_vic_addr_i;
                                     vic_way_q  <= cache_vic_way_i;
                                     vic_state_q<= cache_vic_state_i;
                                     vic_data_q <= cache_vic_data_i;
-                                    vic_err_q  <= cache_vic_err_i;
-                                    cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                                    vic_meta_q <= cache_vic_meta_i;
+                                    cb_op_q       <= back_op(cache_vic_state_i);
                                     cb_then_req_q <= 1'b1;
                                     st_q       <= need_cb ? S_CB_REQ : S_REQ;
                                 end
@@ -991,6 +1279,7 @@ module rnf_ctl `RNF_PARAM
                     if (rx_err)      err_q      <= 1'b1;
                     if (rx_nderr)    nderr_q    <= 1'b1;
                     if (rx_derr_dat) data_err_q <= 1'b1;
+                    if (rx_exok)     exok_q     <= 1'b1;
 
                     if (rx_sep || rx_comp) begin
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
@@ -1009,15 +1298,22 @@ module rnf_ctl `RNF_PARAM
 
                     // SS2.10.4 (p.2-136): a 64-byte transfer at Data_Width 256 is
                     // two packets, DataID 0 then 2.
+                    // Table 4-33 fn c (p.4-212): returned bytes fill only those the
+                    // line does not already hold valid.
                     if (rx_dat_mine) begin
-                        if (prot_rxdatflit_i.dataid == 2'd0) begin
-                            if (take_data) line_q[255:0] <= prot_rxdatflit_i.data;
-                            got_lo_q <= 1'b1;
+                        automatic int base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
+                        if (take_data) begin
+                            for (int b = 0; b < 32; b++)
+                                if (!merge_vm[base*8 + b])
+                                    line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
+                            for (int c = 0; c < 4; c++)
+                                line_poison_q[base + c] <=
+                                    (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[base + c] :
+                                    (prot_rxdatflit_i.poison[c] |
+                                     (line_poison_q[base + c] & (|merge_vm[(base + c)*8 +: 8])));
                         end
-                        else begin
-                            if (take_data) line_q[511:256] <= prot_rxdatflit_i.data;
-                            got_hi_q <= 1'b1;
-                        end
+                        if (base == 0) got_lo_q <= 1'b1;
+                        else           got_hi_q <= 1'b1;
                     end
 
                     case (kind_q)
@@ -1027,13 +1323,29 @@ module rnf_ctl `RNF_PARAM
                             // snoop released by the deferral below must find the
                             // state already there.
                             if (data_done) begin
-                                fill_v_q <= alloc_q && !nderr_now;
-                                if (take_data) line_err_q <= data_err_now;
+                                fill_v_q <= alloc_q && !nderr_now && mru_fill;
+                                apply_q  <= !excl_q || mru_pass;
+                                if (take_data) begin
+                                    line_err_q   <= data_err_now;
+                                    line_vmask_q <= '1;
+                                end
+                                // Table 4-33 (p.4-212): ReadUnique ends a UDP line UD.
+                                if (base_udp_q && !acq_lost) fill_state_q <= `RNF_CS_UD;
                                 if (ack_q) st_q <= S_ACK;
                                 else begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
                                 end
+                                // SS6.3.1 (p.6-286): an Exclusive Load passes on EXOK, and
+                                // ReadPreferUnique, which may not carry it, on any grant.
+                                if (excl_q && !is_wr_q && alloc_q && !nderr_now &&
+                                    (kind_q == K_READ) &&
+                                    (exok_now || !excl_load_op(acq_op_q) ||
+                                     (acq_op_q == chie_pkg::REQ_READPREFERUNIQUE))) begin
+                                    excl_pass_q <= 1'b1;
+                                    set_now      = 1'b1;
+                                end
+                                if (excl_q && is_wr_q) excl_pass_q <= mru_pass;
                                 // A chained ReadUnique's line is UCE, owning no bytes.
                                 // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
                                 // permits the silent eviction to I, so the line can
@@ -1045,14 +1357,20 @@ module rnf_ctl `RNF_PARAM
                                 end
                             end
                             else if ((kind_q == K_MRU) && rx_comp && !got_lo_q && !got_hi_q) begin
-                                fill_v_q <= !nderr_now;
-                                st_q     <= S_ACK;
+                                fill_v_q    <= !nderr_now && (!excl_q || mru_pass);
+                                apply_q     <= !excl_q || mru_pass;
+                                excl_pass_q <= excl_q && mru_pass;
+                                st_q        <= S_ACK;
                             end
                         end
                         K_OWN: begin
                             if (rx_comp) begin
-                                fill_v_q <= !nderr_now;
-                                st_q     <= S_ACK;
+                                // SS6.3.3 (p.6-291, MUST): an Exclusive CleanUnique passes
+                                // on EXOK only while the LP monitor is still set.
+                                fill_v_q    <= !nderr_now && (!excl_q || own_pass);
+                                apply_q     <= !excl_q || own_pass;
+                                excl_pass_q <= excl_q && own_pass;
+                                st_q        <= S_ACK;
                             end
                         end
                         K_NOTE: begin
@@ -1083,13 +1401,16 @@ module rnf_ctl `RNF_PARAM
                     // CleanUnique, which therefore ends UCE. The bytes held in
                     // line_q are what the snoop took away, so none survive. A
                     // dataless MakeReadUnique completion to a lost line takes the
-                    // same path.
-                    if (rx_comp && acq_lost && !nderr_now && !got_lo_q && !got_hi_q &&
+                    // same path. A partial store then either keeps its own bytes
+                    // (PARTIAL) or follows with the ReadUnique that fills the rest.
+                    if (rx_comp && acq_lost && !nderr_now && !got_lo_q && !got_hi_q && !excl_q &&
                         ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
                          (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE))) begin
-                        line_q     <= '0;
-                        line_err_q <= 1'b0;
-                        if (!(&wbe_q)) begin
+                        line_q        <= '0;
+                        line_err_q    <= 1'b0;
+                        line_poison_q <= 8'h00;
+                        line_vmask_q  <= '0;
+                        if (!(&wbe_q) && (aw_coh_q != `RNF_AW_PARTIAL)) begin
                             fill_uce_q <= 1'b1;
                             chain_ru_q <= 1'b1;
                         end
@@ -1157,24 +1478,56 @@ module rnf_ctl `RNF_PARAM
 
                 default: st_q <= S_IDLE;
             endcase
+
+            // SS6.2.1 (p.6-283): a monitor is reset when its line leaves the cache
+            // -- an invalidating snoop, a write-back or drop, a fill displacing it --
+            // or is stored to.
+            for (int i = 0; i < MON; i++) begin
+                if (set_now && (i == set_slot(set_lp))) begin
+                    mon_v_q[i]    <= 1'b1;
+                    mon_lp_q[i]   <= set_lp;
+                    mon_addr_q[i] <= set_addr;
+                    mon_way_q[i]  <= set_way;
+                end
+                else if (mon_v_q[i] &&
+                         ((snp_upd_v_i && (snp_upd_state_i == `RNF_CS_I) &&
+                           same_line(snp_upd_addr_i, mon_addr_q[i])) ||
+                          (cache_upd_v_o && (cache_upd_state_o == `RNF_CS_I) &&
+                           same_line(cache_upd_addr_o, mon_addr_q[i])) ||
+                          (cache_fill_v_o && same_line(cache_fill_addr_o, mon_addr_q[i]) &&
+                           is_wr_q && apply_q) ||
+                          (cache_fill_v_o && (cache_fill_way_o == mon_way_q[i]) &&
+                           same_set(cache_fill_addr_o, mon_addr_q[i]) &&
+                           !same_line(cache_fill_addr_o, mon_addr_q[i]))))
+                    mon_v_q[i] <= 1'b0;
+            end
+            if (set_now && !mon_has_lp(set_lp) && mon_full())
+                mon_rr_q <= (mon_rr_q == ($clog2(MON+1))'(MON-1)) ? '0 : (mon_rr_q + 1'b1);
         end
     end
 
     // The store's final state. Table 4-38 (p.4-218) ends CleanUnique and
     // MakeUnique Unique, Table 4-36 (p.4-216) does the same for MakeReadUnique,
     // and the merge that follows makes the line Dirty.
-    wire [`RNF_CS_WIDTH-1:0] wr_fill_state =
-        (fill_state_q == `RNF_CS_I) ? `RNF_CS_I : `RNF_CS_UD;
+    // Table 4-32 (p.4-209): the store leaves the line UD once every byte is valid,
+    // and UDP until then.
+    wire                        store_fill = is_wr_q && apply_q;
+    wire [`RNF_LINE_BYTES-1:0]  fill_vmask = store_fill ? (line_vmask_q | wbe_q) : line_vmask_q;
+    wire [`RNF_CS_WIDTH-1:0]    wr_fill_state =
+        (fill_state_q == `RNF_CS_I) ? `RNF_CS_I :
+        (&fill_vmask)               ? `RNF_CS_UD : `RNF_CS_UDP;
 
     assign cache_fill_v_o     = fill_v_q;
     assign cache_fill_addr_o  = addr_q;
     assign cache_fill_way_o   = way_q;
     assign cache_fill_state_o = fill_uce_q ? `RNF_CS_UCE :
-                                is_wr_q    ? (hit_q ? `RNF_CS_UD : wr_fill_state)
-                                           : fill_state_q;
+                                store_fill ? wr_fill_state : fill_state_q;
     assign cache_fill_data_o  = fill_line;
     // A store covering the whole line replaces every corrupt byte.
-    assign cache_fill_err_o   = line_err_q && !(is_wr_q && (&wbe_q));
+    assign cache_fill_meta_o  = {line_err_q && !(store_fill && (&wbe_q)),
+                                 store_fill ? merge_poison(line_poison_q, wpoison_q, wbe_q)
+                                            : line_poison_q,
+                                 fill_uce_q ? {`RNF_LINE_BYTES{1'b0}} : fill_vmask};
 
     // Retiring the written-back way, which the fill behind it would otherwise
     // leave Dirty for the window between the two. WriteCleanFull keeps it Clean.
@@ -1197,13 +1550,19 @@ module rnf_ctl `RNF_PARAM
 
     // SS9.3 (p.9-336): a non-OK RespErr is the endpoint's, and the core is owed
     // it rather than a silent OKAY.
-    wire [1:0] axi_resp = err_q ? 2'b10 : 2'b00;
+    // AMBA AXI4 (IHI 0022) A7.2: EXOKAY for an exclusive access that passed.
+    wire [1:0] axi_resp = err_q ? 2'b10 : excl_pass_q ? 2'b01 : 2'b00;
 
     assign RVALID = (st_q == S_RESP);
     assign RDATA  = rdata_c;
     assign RID    = id_q;
     // A hit on a line whose bytes arrived with DERR returns them with it.
     assign RRESP  = line_err_q ? 2'b10 : axi_resp;
+    // SS9.5 (p.9-347, MUST): the Poison of the two 64-bit chunks returned.
+    always_comb begin
+        RUSER = '0;
+        RUSER[`AXI4_USER_POISON_RANGE] = line_poison_q[2*rchunk_q +: 2];
+    end
     assign RLAST  = 1'b1;
 
     assign BVALID = (st_q == S_BRESP);
@@ -1211,7 +1570,7 @@ module rnf_ctl `RNF_PARAM
     assign BRESP  = axi_resp;
 
     assign CMDONE = (st_q == S_CMRSP);
-    assign CMRESP = axi_resp;
+    assign CMRESP = err_q ? 2'b10 : 2'b00;
 
     // From the first Data packet until the fill it completes has been written.
     assign defer_v_o    = ((st_q == S_DATA) && (got_lo_q || got_hi_q || rx_dat_mine)) || fill_v_q;
