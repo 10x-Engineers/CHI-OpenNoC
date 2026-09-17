@@ -84,6 +84,7 @@ module hnf_data_buffer `HNF_PARAM
     // complete is a property of the accumulated BE, not of the opcode that
     // delivered it.
     output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_be_full_sx,
+    output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_tagmatch_pass_sx,
     // The same property combinationally, before the RXDAT flit now on the wire is
     // merged -- the MSHR's S0 decision cannot wait for dbf_mshr_be_full_sx.
     output wire                               dbf_mshr_be_full_s0,
@@ -118,6 +119,10 @@ module hnf_data_buffer `HNF_PARAM
     logic [`CACHE_TAGV_WIDTH-1:0]      dbf_tagv_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`CACHE_TAGV_WIDTH-1:0]      temp_li_tagv;
     logic [`CACHE_TAGV_WIDTH-1:0]      temp_pipe_tagv;
+    // The Physical Tags a TagOp=Match write carries, held apart from the Allocation
+    // Tags they are compared against (Sec 12.5.2 p.12-379).
+    logic [`CACHE_TAG_WIDTH-1:0]       dbf_match_tag_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_TAG_WIDTH-1:0]       temp_li_match_tag;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_li_poison;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_pipe_poison;
     // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
@@ -303,6 +308,16 @@ module hnf_data_buffer `HNF_PARAM
             assign temp_pipe_tagv[i*4 +: 4] = dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i]
                 ? dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][i*4 +: 4]
                 : pipe_dbf_wr_tagv_sx9_q[i*4 +: 4];
+            // Sec 12.5 (p.12-378, MUST): the WriteData's own TagOp decides.
+            wire match_covered;
+            assign match_covered = li_dbf_rxdat_valid_s0
+                                && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
+                                && (li_dbf_rxdat_tagop_s0 == 2'b11)
+                                && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::TU_WIDTH))
+                                 || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::TU_WIDTH)));
+            assign temp_li_match_tag[i*4 +: 4] = match_covered
+                ? li_dbf_rxdat_tag_s0[(i % chie_pkg::TU_WIDTH)*4 +: 4]
+                : dbf_match_tag_q[li_dbf_rxdat_txnid_s0][i*4 +: 4];
             assign temp_pipe_tagv[`CACHE_TAG_WIDTH + i] =
                 dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i] | pipe_dbf_wr_tagv_sx9_q[`CACHE_TAG_WIDTH + i];
         end
@@ -318,6 +333,7 @@ module hnf_data_buffer `HNF_PARAM
                     dbf_pe_q[i]     <= 'd0;
                     dbf_poison_q[i] <= 'd0;
                     dbf_tagv_q[i]   <= 'd0;
+                    dbf_match_tag_q[i] <= 'd0;
                 end
                 else begin
                     if (mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q) begin//entry retired
@@ -327,6 +343,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= 'd0;
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
+                        dbf_match_tag_q[i] <= 'd0;
                     end
                     else if (li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         //Atomic operand: kept out of the line, see dbf_atm_data_q
@@ -337,6 +354,7 @@ module hnf_data_buffer `HNF_PARAM
                             dbf_pe_q[i]     <= 2'b11;
                             dbf_poison_q[i] <= temp_pipe_poison;
                             dbf_tagv_q[i]   <= temp_pipe_tagv;
+                            dbf_match_tag_q[i] <= dbf_match_tag_q[i];
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
@@ -346,6 +364,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
                         dbf_tagv_q[i]   <= temp_li_tagv;
+                        dbf_match_tag_q[i] <= temp_li_match_tag;
                     end
                     else if(li_dbf_rxdat_valid_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         dbf_data_q[i]   <= temp_li_data;
@@ -354,6 +373,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
+                        dbf_match_tag_q[i] <= temp_li_match_tag;
                     end
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i]   <= temp_pipe_data;
@@ -362,6 +382,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_pipe_poison;
                         dbf_tagv_q[i]   <= temp_pipe_tagv;
+                        dbf_match_tag_q[i] <= dbf_match_tag_q[i];
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
                         // SS9.4.4 (p.9-342) / a Write Zero: the Home's own bytes, not a fill
@@ -372,6 +393,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= mshr_dbf_home_fill_pe_sx1_q;
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
+                        dbf_match_tag_q[i] <= 'd0;
                     end
                     else begin
                     end
@@ -540,5 +562,17 @@ module hnf_data_buffer `HNF_PARAM
                                                     : (dbf_pe_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_pe_sx1);
     assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_tagv_sx1   = dbf_tagv_q[mshr_dbf_rd_idx_sx1_q];
+
+    // Sec 12.11.1 (p.12-386, MUST): "Accurate, if the match is performed." Sec 12.5.2
+    // (p.12-379, MUST) scopes it to the tags with a byte enable asserted and forbids it
+    // when none is, which Sec 12.11.1 makes a Pass at a Completer that supports MTE.
+    // Combinational: the TagMatch is this entry's last response, so the buffer holds
+    // its final tags and byte enables by the time the MSHR reads this.
+    generate
+        for(i = 0;i<`MSHR_ENTRIES_NUM;i = i+1) begin:tagmatch_verdict
+            assign dbf_mshr_tagmatch_pass_sx[i] = chie_pkg::tag_match_pass(
+                dbf_match_tag_q[i], dbf_tagv_q[i][`CACHE_TAG_WIDTH-1:0], dbf_be_q[i]);
+        end
+    endgenerate
 
 endmodule

@@ -110,6 +110,7 @@ module hnf `HNF_PARAM
     wire [chie_pkg::NID_WIDTH-1:0]           mshr_txreq_bypass_returnnid_s1;
     wire [12-1:0]                            mshr_txreq_bypass_returntxnid_s1;
     chie_pkg::req_opcode_e                   mshr_txreq_bypass_opcode_s1;
+    wire [1:0]                               mshr_txreq_bypass_tagop_s1;
     chie_pkg::size_e                         mshr_txreq_bypass_size_s1;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      mshr_txreq_bypass_addr_s1;
     wire                                     mshr_txreq_bypass_ns_s1;
@@ -127,6 +128,7 @@ module hnf `HNF_PARAM
     wire [chie_pkg::NID_WIDTH-1:0]           mshr_txreq_returnnid_sx1;
     wire [12-1:0]                            mshr_txreq_returntxnid_sx1;
     chie_pkg::req_opcode_e                   mshr_txreq_opcode_sx1;
+    wire [1:0]              mshr_txreq_tagop_sx1;
     chie_pkg::size_e                         mshr_txreq_size_sx1;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      mshr_txreq_addr_sx1;
     wire                                     mshr_txreq_ns_sx1;
@@ -188,6 +190,7 @@ module hnf `HNF_PARAM
     wire [11:0]                              mshr_txdat_dbid_sx2;
     wire [1:0]                               mshr_txdat_ccid_sx2;
     wire                                     mshr_txdat_tracetag_sx2;
+    wire [1:0]                               mshr_dbf_rd_tagop_sx1;
     wire [chie_pkg::DATA_WIDTH*2-1:0]        dbf_txdat_data_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           dbf_txdat_idx_sx1;
     wire [chie_pkg::BE_WIDTH*2-1:0]          dbf_txdat_be_sx1;
@@ -258,6 +261,7 @@ module hnf `HNF_PARAM
     wire                                     txsnp_mshr_busy_sx1;
     wire                                     txdat_mshr_clr_dbf_busy_valid_sx3;
     wire [`MSHR_ENTRIES_NUM-1:0]             dbf_mshr_be_full_sx;
+    wire [`MSHR_ENTRIES_NUM-1:0]             dbf_mshr_tagmatch_pass_sx;
     wire                                     dbf_mshr_be_full_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_clr_dbf_busy_idx_sx3;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           txdat_mshr_rd_idx_sx2;
@@ -456,6 +460,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_bypass_returnnid_s1                   (mshr_txreq_bypass_returnnid_s1        ),
                  .mshr_txreq_bypass_returntxnid_s1                 (mshr_txreq_bypass_returntxnid_s1      ),
                  .mshr_txreq_bypass_opcode_s1                      (mshr_txreq_bypass_opcode_s1           ),
+                 .mshr_txreq_bypass_tagop_s1                      (mshr_txreq_bypass_tagop_s1           ),
                  .mshr_txreq_bypass_size_s1                        (mshr_txreq_bypass_size_s1             ),
                  .mshr_txreq_bypass_addr_s1                        (mshr_txreq_bypass_addr_s1             ),
                  .mshr_txreq_bypass_ns_s1                          (mshr_txreq_bypass_ns_s1               ),
@@ -473,6 +478,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_returnnid_sx1                     (mshr_txreq_returnnid_sx1          ),
                  .mshr_txreq_returntxnid_sx1                   (mshr_txreq_returntxnid_sx1        ),
                  .mshr_txreq_opcode_sx1                        (mshr_txreq_opcode_sx1             ),
+                 .mshr_txreq_tagop_sx1                        (mshr_txreq_tagop_sx1             ),
                  .mshr_txreq_size_sx1                          (mshr_txreq_size_sx1               ),
                  .mshr_txreq_addr_sx1                          (mshr_txreq_addr_sx1               ),
                  .mshr_txreq_ns_sx1                            (mshr_txreq_ns_sx1                 ),
@@ -537,6 +543,7 @@ module hnf `HNF_PARAM
                  .mshr_txdat_dbid_sx2                          (mshr_txdat_dbid_sx2               ),
                  .mshr_txdat_ccid_sx2                          (mshr_txdat_ccid_sx2               ),
                  .mshr_txdat_tracetag_sx2                      (mshr_txdat_tracetag_sx2           ),
+                 .mshr_dbf_rd_tagop_sx1                      (mshr_dbf_rd_tagop_sx1           ),
                  .dbf_txdat_data_sx1                           (dbf_txdat_data_sx1                ),
                  .dbf_txdat_idx_sx1                            (dbf_txdat_idx_sx1                 ),
                  .dbf_txdat_be_sx1                             (dbf_txdat_be_sx1                  ),
@@ -699,6 +706,7 @@ module hnf `HNF_PARAM
                  .txdat_mshr_rd_sent_sx2                       (txdat_mshr_rd_sent_sx2            ),
                  .txdat_mshr_clr_dbf_busy_valid_sx3            (txdat_mshr_clr_dbf_busy_valid_sx3 ),
                  .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
+                 .dbf_mshr_tagmatch_pass_sx                          (dbf_mshr_tagmatch_pass_sx               ),
                  .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               ),
                  .txdat_mshr_clr_dbf_busy_idx_sx3              (txdat_mshr_clr_dbf_busy_idx_sx3   ),
                  .l3_opcode_sx7_q                              (l3_opcode_sx7_q                   ),
@@ -729,6 +737,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_bypass_returnnid_s1                   (mshr_txreq_bypass_returnnid_s1        ),
                  .mshr_txreq_bypass_returntxnid_s1                 (mshr_txreq_bypass_returntxnid_s1      ),
                  .mshr_txreq_bypass_opcode_s1                      (mshr_txreq_bypass_opcode_s1           ),
+                 .mshr_txreq_bypass_tagop_s1                      (mshr_txreq_bypass_tagop_s1           ),
                  .mshr_txreq_bypass_size_s1                        (mshr_txreq_bypass_size_s1             ),
                  .mshr_txreq_bypass_addr_s1                        (mshr_txreq_bypass_addr_s1             ),
                  .mshr_txreq_bypass_ns_s1                          (mshr_txreq_bypass_ns_s1               ),
@@ -786,6 +795,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_returnnid_sx1                     (mshr_txreq_returnnid_sx1          ),
                  .mshr_txreq_returntxnid_sx1                   (mshr_txreq_returntxnid_sx1        ),
                  .mshr_txreq_opcode_sx1                        (mshr_txreq_opcode_sx1             ),
+                 .mshr_txreq_tagop_sx1                        (mshr_txreq_tagop_sx1             ),
                  .mshr_txreq_size_sx1                          (mshr_txreq_size_sx1               ),
                  .mshr_txreq_ns_sx1                            (mshr_txreq_ns_sx1                 ),
                  .mshr_txreq_allowretry_sx1                    (mshr_txreq_allowretry_sx1         ),
@@ -828,6 +838,7 @@ module hnf `HNF_PARAM
                  .mshr_txdat_dbid_sx2                          (mshr_txdat_dbid_sx2               ),
                  .mshr_txdat_ccid_sx2                          (mshr_txdat_ccid_sx2               ),
                  .mshr_txdat_tracetag_sx2                      (mshr_txdat_tracetag_sx2           ),
+                 .mshr_dbf_rd_tagop_sx1                      (mshr_dbf_rd_tagop_sx1           ),
                  .mshr_l3_fill_sx1_q                           (mshr_l3_fill_sx1_q                ),
                  .mshr_l3_rnf_sx1_q                            (mshr_l3_rnf_sx1_q                 ),
                  .mshr_l3_seq_retire_sx1_q                     (mshr_l3_seq_retire_sx1_q          ),
@@ -962,6 +973,7 @@ module hnf `HNF_PARAM
                         .dbf_txdat_tagv_sx1                         (dbf_txdat_tagv_sx1              ),
                         .dbf_txdat_data_sx1                           (dbf_txdat_data_sx1                ),
                         .dbf_mshr_be_full_sx                          (dbf_mshr_be_full_sx               ),
+                        .dbf_mshr_tagmatch_pass_sx                          (dbf_mshr_tagmatch_pass_sx               ),
                         .dbf_mshr_be_full_s0                          (dbf_mshr_be_full_s0               )
                     );
 

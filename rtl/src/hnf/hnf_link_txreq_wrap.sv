@@ -56,6 +56,8 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_returnnid_sx1,
     input  wire [12-1:0]                       mshr_txreq_returntxnid_sx1,
     input  chie_pkg::req_opcode_e              mshr_txreq_opcode_sx1,
+    input  wire [1:0]                          mshr_txreq_tagop_sx1,
+    input  wire [1:0]                          mshr_txreq_bypass_tagop_s1,
     input  chie_pkg::size_e                    mshr_txreq_size_sx1,
     input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_addr_sx1,
     input  wire                                mshr_txreq_ns_sx1,
@@ -156,7 +158,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_bypass_s1.lpid         = '0;
         txreqflit_bypass_s1.excl         = '0;
         txreqflit_bypass_s1.expcompack   = '0;
-        txreqflit_bypass_s1.tagop        = '0;
+        txreqflit_bypass_s1.tagop        = mshr_txreq_bypass_tagop_s1;
         txreqflit_bypass_s1.tracetag     =  mshr_txreq_bypass_tracetag_s1;
 `ifdef CHIE_MPAM_PRESENT
         // Sec 11.3.4 (p.11-366, MUST): the MPAM values in a request to the
@@ -191,7 +193,9 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1.lpid           = '0;
         txreqflit_sx1.excl           = '0;
         txreqflit_sx1.expcompack     = '0;
-        txreqflit_sx1.tagop          = '0;
+        // Sec 12.10 (p.12-385): a Read to the Subordinate may carry Transfer or Fetch
+        // to fetch the location's tags; Sec 12.10 permits Fetch only at 64 bytes.
+        txreqflit_sx1.tagop          = mshr_txreq_tagop_sx1;
         txreqflit_sx1.tracetag       = mshr_txreq_tracetag_sx1;
 `ifdef CHIE_MPAM_PRESENT
         txreqflit_sx1.mpam           = mshr_txreq_mpam_sx1;   // Sec 11.3.4, as above

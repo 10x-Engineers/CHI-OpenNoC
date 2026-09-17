@@ -51,6 +51,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input  wire [chie_pkg::BE_WIDTH*2-1:0]   dbf_txdat_be_sx1,
     input  wire [1:0]                        dbf_txdat_pe_sx1,
     input  wire [`CACHE_POISON_WIDTH-1:0]    dbf_txdat_poison_sx1,
+    input  wire [`CACHE_TAGV_WIDTH-1:0]      dbf_txdat_tagv_sx1,
+    input  wire [1:0]                        mshr_dbf_rd_tagop_sx1,
 
     //outputs to hnf_link
     output logic                             txdatflitv,
@@ -89,6 +91,15 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [chie_pkg::BE_WIDTH-1:0]      mshr_txdat_be_sx_ns;
     logic [chie_pkg::DATA_WIDTH-1:0]    mshr_txdat_data_sx_ns;
     logic [chie_pkg::POISON_WIDTH-1:0]  mshr_txdat_poison_sx_ns;
+    logic [`CACHE_TAGV_WIDTH-1:0]       dbf_txdat_tagv_entry1_sx;
+    logic [`CACHE_TAGV_WIDTH-1:0]       dbf_txdat_tagv_entry2_sx;
+    logic [`CACHE_TAGV_WIDTH-1:0]       mshr_txdat_tagv_sx_ns;
+    logic [chie_pkg::TAG_WIDTH-1:0]     mshr_txdat_tag_sx_ns;
+    logic [1:0]                         mshr_txdat_rsp_tagop_sx_ns;
+    logic [1:0]                         dbf_txdat_tagop_entry1_sx;
+    logic [1:0]                         dbf_txdat_tagop_entry2_sx;
+    logic [1:0]                         mshr_txdat_req_tagop_sx_ns;
+    logic [chie_pkg::TU_WIDTH-1:0]      mshr_txdat_tu_sx_ns;
 
     //internal wire signals
     wire                                dat_crd_cnt_not_zero_sx;
@@ -170,6 +181,48 @@ module hnf_link_txdat_wrap `HNF_PARAM
             ;
     end
 
+    // The Allocation Tags of the half the DataID names, selected exactly as the data is.
+    always_comb begin: txdat_tagv_sel_comb_logic
+        mshr_txdat_tagv_sx_ns      = '0;
+        mshr_txdat_req_tagop_sx_ns = 2'b00;
+        if(dbf_txdat_valid_entry2_sx_ns)begin
+            mshr_txdat_tagv_sx_ns      = dbf_txdat_tagv_entry2_sx;
+            mshr_txdat_req_tagop_sx_ns = dbf_txdat_tagop_entry2_sx;
+        end
+        else if(dbf_txdat_valid_entry1_sx)begin
+            mshr_txdat_tagv_sx_ns      = dbf_txdat_tagv_entry1_sx;
+            mshr_txdat_req_tagop_sx_ns = dbf_txdat_tagop_entry1_sx;
+        end
+    end
+
+    // Sec 12.4.1 (p.12-376, MUST): a request whose TagOp is Transfer or Fetch is owed
+    // its tags, and Sec 12.4.1 (p.12-376) makes memory's tags Clean -- so Transfer is
+    // the only row this Home can elect. Sec 13.10.38 (p.13-435) pairs Tag[4n-1:4(n-1)]
+    // with Data[128n-1:128(n-1)], so the packet carries the tags of the 16-byte
+    // granules its own DataID names. A request that asked for none is answered
+    // Invalid with the Tag field zero.
+    always_comb begin: txdat_tagop_sel_comb_logic
+        mshr_txdat_rsp_tagop_sx_ns = 2'b00;
+        mshr_txdat_tag_sx_ns       = '0;
+        mshr_txdat_tu_sx_ns        = '0;
+        // A write to the Subordinate carries the line's tags so memory is updated with
+        // them (Sec 12.10 p.12-385, MUST); Sec 12.5.2 (p.12-379, MUST) then requires
+        // every TU bit asserted on a whole-line write.
+        if(mshr_txdat_opcode_sx2 == chie_pkg::DAT_NONCOPYBACKWRDATA) begin
+            mshr_txdat_rsp_tagop_sx_ns = 2'b10;
+            mshr_txdat_tu_sx_ns        = '1;
+            mshr_txdat_tag_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
+                ? mshr_txdat_tagv_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
+                : mshr_txdat_tagv_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+        end
+        else if((mshr_txdat_req_tagop_sx_ns == 2'b01) || (mshr_txdat_req_tagop_sx_ns == 2'b11)) begin
+            mshr_txdat_rsp_tagop_sx_ns = 2'b01;
+            mshr_txdat_tag_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
+                ? mshr_txdat_tagv_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
+                : mshr_txdat_tagv_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+        end
+    end
+
     always_comb begin : combinational_logic1
         // RSVDC is the field this node never sources. Defaulting the whole flit to
         // zero covers it at any configured width; the assignments below override
@@ -189,9 +242,14 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0.dbid      = mshr_txdat_dbid_sx2;
         txdatflit_mshr_s0.ccid      = mshr_txdat_ccid_sx2;
         txdatflit_mshr_s0.dataid    = mshr_txdat_dataid_sx_ns;
-        txdatflit_mshr_s0.tagop     = '0;
-        txdatflit_mshr_s0.tag       = '0;
-        txdatflit_mshr_s0.tu        = '0;
+        // Sec 12.4.1 (p.12-376, MUST): a request asking for tags is answered Transfer
+        // carrying them; memory's tags are Clean, so Transfer is the only row this
+        // Home can elect. Table 13-32 (Sec 13.10.37 p.13-435) makes TU inapplicable
+        // and zero under Transfer, and Sec 12.4.1 (p.12-376, MUST) requires TU all
+        // zeros when the response TagOp is Invalid -- so it is zero either way.
+        txdatflit_mshr_s0.tagop     = mshr_txdat_rsp_tagop_sx_ns;
+        txdatflit_mshr_s0.tag       = mshr_txdat_tag_sx_ns;
+        txdatflit_mshr_s0.tu        = mshr_txdat_tu_sx_ns;
         txdatflit_mshr_s0.tracetag  = mshr_txdat_tracetag_sx2;
         txdatflit_mshr_s0.be        = mshr_txdat_be_sx_ns;
         txdatflit_mshr_s0.data      = mshr_txdat_data_sx_ns;
@@ -383,6 +441,28 @@ module hnf_link_txdat_wrap `HNF_PARAM
             dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_sx1;
         else
             dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_entry1_sx;
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_tagv_entry1_sx_logic_t
+        if(rst == 1'b1)begin
+            dbf_txdat_tagv_entry1_sx  <= {`CACHE_TAGV_WIDTH{1'b0}};
+            dbf_txdat_tagop_entry1_sx <= 2'b00;
+        end
+        else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)begin
+            dbf_txdat_tagv_entry1_sx  <= dbf_txdat_tagv_sx1;
+            dbf_txdat_tagop_entry1_sx <= mshr_dbf_rd_tagop_sx1;
+        end
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_tagv_entry2_sx_logic_t
+        if(rst == 1'b1)begin
+            dbf_txdat_tagv_entry2_sx  <= {`CACHE_TAGV_WIDTH{1'b0}};
+            dbf_txdat_tagop_entry2_sx <= 2'b00;
+        end
+        else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)begin
+            dbf_txdat_tagv_entry2_sx  <= dbf_txdat_tagv_sx1;
+            dbf_txdat_tagop_entry2_sx <= mshr_dbf_rd_tagop_sx1;
+        end
     end
 
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_poison_entry2_sx_logic_t

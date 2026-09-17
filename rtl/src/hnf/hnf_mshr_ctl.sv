@@ -144,6 +144,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                txdat_mshr_rd_sent_sx2,
     input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_be_full_sx,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_tagmatch_pass_sx,
     input  wire                                dbf_mshr_be_full_s0,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
 
@@ -185,6 +186,8 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
     output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
     output logic [1:0]                         mshr_dbf_rd_pe_sx1,
+    output logic [1:0]                         mshr_dbf_rd_tagop_sx1,
+    output logic [1:0]                         mshr_txreq_tagop_sx1,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
@@ -358,6 +361,10 @@ module hnf_mshr_ctl `HNF_PARAM
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_sent_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_win_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_match_s1_q;
+    logic [1:0]                          mshr_tagop_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_transfer_s1_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_asks_tags;
+
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_set_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_sent_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_rsp_busy_wr_sx;
@@ -1288,7 +1295,11 @@ module hnf_mshr_ctl `HNF_PARAM
 
     assign mshr_req_set_s0      = mshr_can_alloc_entry_s0;
     assign mshr_req_clr_sx1     = mshr_can_retire_entry_sx1;
-    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
+    // Sec 12.9.2 (p.12-383, MUST) and Sec 4.8.3 (p.4-230, MUST): "Forwarding snoops
+    // must not be used if the original request requests tags" -- the Snoopee would
+    // supply the data directly and the tags would never be fetched.
+    assign mshr_tagop_asks_tags = mshr_tagop_transfer_s1_q | mshr_tagop_match_s1_q;
+    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
     assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
     always_comb begin : mshr_rxreq_srcid_onehot_s0_comb_logic
@@ -1557,6 +1568,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_tagop_match_s1_q[entry] <= (li_mshr_rxreq_tagop_s0 == 2'b11);
                 else
                     ;
+            end
+
+            always_ff @(posedge clk)begin : mshr_tagop_s1_q_timing_logic
+                if(mshr_req_clr_sx1[entry] == 1'b1)begin
+                    mshr_tagop_s1_q[entry]        <= 2'b00;
+                    mshr_tagop_transfer_s1_q[entry] <= 1'b0;
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1)begin
+                    mshr_tagop_s1_q[entry]        <= li_mshr_rxreq_tagop_s0;
+                    mshr_tagop_transfer_s1_q[entry] <= (li_mshr_rxreq_tagop_s0 == 2'b01);
+                end
             end
 
             always_ff @(posedge clk or posedge rst)begin : mshr_evict_pending_sx_q_timing_logic
@@ -3879,10 +3901,12 @@ module hnf_mshr_ctl `HNF_PARAM
                                      mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_ERR_NON_DATA :
                                      mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
                                      (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
-    // Sec 12.11.3 (p.12-387, MUST): a Completer with no MTE support for the address
-    // still owes the TagMatch, and Table 13-35 (p.13-437) puts the verdict in Resp[0]
-    // -- zero for Fail, which is the only answer this Home can give.
-    assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH) ? chie_pkg::RESP_I :
+    // Sec 12.11.1 (p.12-386, MUST) fixes the TagMatch Resp three ways -- Fail when MTE
+    // is not supported, Pass when supported but the match was not performed, Accurate
+    // when it was. This Home holds Allocation Tags, so the Fail arm no longer describes
+    // it; Table 13-35 (p.13-437) reads Resp[0]=1 as Pass.
+    assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
+                                   ? (dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
                                      ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
@@ -4254,6 +4278,40 @@ module hnf_mshr_ctl `HNF_PARAM
     // pins every other read at Size=64, and a Stash Data Pull's completion is a
     // whole line whatever its entry's own Size says -- masking by Size cut one to a
     // single packet and hung the Requester (CHI-OpenNoC#248, reverted by #253).
+    // Sec 12.11.3 (p.12-387, MUST): "A Completer in response to a Read request to a
+    // Non-cacheable or Device memory location must set the TagOp value in the response
+    // to Invalid" -- stated over the memory type, not over whether the Completer
+    // supports MTE, so it holds here too. Presented on the buffer-read index, the one
+    // the outbound packets are actually built from.
+    // Sec 12.10 (p.12-385, MUST): the Home may ask its Subordinate for the tags with
+    // Transfer or Fetch, and "TagOp Fetch is permitted only with a data size of 64
+    // bytes". A write's tag operation is not forwarded: this Home holds the tags its
+    // own L3 stores and Table B-3 (p.B-495) gives the TagMatch no ICN(HN-F)->SN row it
+    // would need to relay one.
+    always_comb begin : mshr_txreq_tagop_comb
+        mshr_txreq_tagop_sx1 = 2'b00;
+        if (mshr_txreq_opcode_sx1 inside {chie_pkg::REQ_READNOSNP, chie_pkg::REQ_READNOSNPSEP}) begin
+            if (mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b01)
+                mshr_txreq_tagop_sx1 = 2'b01;
+            else if ((mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b11)
+                     && (mshr_txreq_size_sx1 == chie_pkg::SIZE_64B))
+                mshr_txreq_tagop_sx1 = 2'b11;
+        end
+        // Sec 12.10 (p.12-385, MUST): "When memory needs to be updated with tags,
+        // WriteNoSnp with TagOp Update must be used." The Home holds this line's tags --
+        // filled from memory on a miss, installed by a TagOp=Update write otherwise --
+        // so a write-back that carried Invalid would strand them in the L3.
+        else if (mshr_txreq_opcode_sx1 inside {chie_pkg::REQ_WRITENOSNPFULL,
+                                               chie_pkg::REQ_WRITENOSNPPTL})
+            mshr_txreq_tagop_sx1 = 2'b10;
+    end
+
+    always_comb begin : mshr_dbf_rd_tagop_comb
+        mshr_dbf_rd_tagop_sx1 = (mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].device
+                              || !mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].cacheable)
+                              ? 2'b00 : mshr_tagop_s1_q[mshr_dbf_rd_idx_sx1_q];
+    end
+
     always_comb begin : mshr_dbf_rd_pe_comb
         if ((mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNP) ||
             (mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNPSEP))

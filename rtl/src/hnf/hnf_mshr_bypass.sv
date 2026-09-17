@@ -36,6 +36,7 @@ module hnf_mshr_bypass `HNF_PARAM
     input  chie_pkg::order_e                   li_mshr_rxreq_order_s0,
     input  wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
     input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
+    input  wire [1:0]                          li_mshr_rxreq_tagop_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     // opennoc_hnf_pkg::hnf_write_zero() of the request as sent, alongside the
@@ -78,6 +79,7 @@ module hnf_mshr_bypass `HNF_PARAM
     output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_bypass_returnnid_s1,
     output wire [12-1:0]                       mshr_txreq_bypass_returntxnid_s1,
     output chie_pkg::req_opcode_e              mshr_txreq_bypass_opcode_s1,
+    output wire [1:0]                          mshr_txreq_bypass_tagop_s1,
     output chie_pkg::size_e                    mshr_txreq_bypass_size_s1,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_bypass_addr_s1,
     output wire                                mshr_txreq_bypass_ns_s1,
@@ -137,6 +139,7 @@ module hnf_mshr_bypass `HNF_PARAM
     wire                                 tx_wrnosnpptl_s1;
 
     wire                                 dwt_eligible_s0;
+    logic [1:0]                          li_mshr_rxreq_tagop_s1_q;
     wire                                 do_dwt_wuf_s0;
     wire                                 do_dwt_wrnosnpfull_s0;
     wire                                 do_dwt_wrnosnpptl_s0;
@@ -212,10 +215,14 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     always_ff @(posedge clk or posedge rst)begin :pass_size
-        if(rst)
-            li_mshr_rxreq_size_s1_q <= chie_pkg::SIZE_1B;
-        else
-            li_mshr_rxreq_size_s1_q <= li_mshr_rxreq_size_s0;
+        if(rst)begin
+            li_mshr_rxreq_size_s1_q  <= chie_pkg::SIZE_1B;
+            li_mshr_rxreq_tagop_s1_q <= 2'b00;
+        end
+        else begin
+            li_mshr_rxreq_size_s1_q  <= li_mshr_rxreq_size_s0;
+            li_mshr_rxreq_tagop_s1_q <= li_mshr_rxreq_tagop_s0;
+        end
     end
 
     always_ff @(posedge clk or posedge rst)begin :pass_addr
@@ -378,6 +385,13 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_txnid_s1       = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
     assign mshr_txreq_bypass_returntxnid_s1 = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_txnid_s1_q:{{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
+    // Sec 12.10 (p.12-385): a Write to the Subordinate may carry Transfer or Update.
+    // Match is never forwarded -- Sec 12.11.1 (p.12-386) lets the Home perform the Tag
+    // Match itself and Table B-3 (p.B-495) gives the TagMatch no ICN(HN-F) -> SN row to
+    // come back on. A DWT write's data comes straight from the Requester, so the tags
+    // it carries are the Requester's own.
+    assign mshr_txreq_bypass_tagop_s1       = (li_mshr_rxreq_tagop_s1_q inside {2'b01, 2'b10})
+                                            ? li_mshr_rxreq_tagop_s1_q : 2'b00;
     assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?chie_pkg::REQ_READNOSNP:(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
     assign mshr_txreq_bypass_size_s1        = li_mshr_rxreq_size_s1_q;
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;
