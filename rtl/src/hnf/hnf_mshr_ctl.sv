@@ -378,6 +378,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_tagfetch_sx7;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_tagwb_sx7;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_pend_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_issued_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_tagfetch_s1;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_go_sx;
     logic [1:0]                          mshr_dn_wr_tagop_q[0:`MSHR_ENTRIES_NUM-1];
     wire                                 mshr_txreq_passthru_sx1;
@@ -1335,8 +1337,10 @@ module hnf_mshr_ctl `HNF_PARAM
             // SS12.7 (p.12-381): an Atomic with TagOp Match executed here is matched against
             // the line's Allocation Tags, which the Home has to hold to give SS12.11.1's
             // (p.12-386, MUST) accurate verdict.
+            // The same holds for a WriteUniquePtl's Match the Home performs because its
+            // data was merged with a copy the Home holds (mshr_txreq_tagop_comb).
             assign mshr_needs_tags[entry]   = mshr_rd_owes_tags[entry] |
-                   (mshr_atomic_s1_q[entry] & mshr_tagop_match_s1_q[entry] &
+                   ((mshr_atomic_s1_q[entry] | mshr_wup_s1_q[entry]) & mshr_tagop_match_s1_q[entry] &
                     mshr_memattr_s1_q[entry].cacheable & ~mshr_memattr_s1_q[entry].device);
         end
     endgenerate
@@ -2137,7 +2141,7 @@ module hnf_mshr_ctl `HNF_PARAM
                 // to the Requester" -- so holding the whole line is a property of
                 // the accumulated byte enables, not of the second packet arriving.
                 else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0 & dbf_mshr_be_full_s0 &
-                        (dbf_mshr_tags_full_s0 | ~mshr_needs_tags[entry]))
+                        (dbf_mshr_tags_full_s0 | ~mshr_needs_tags[entry] | (mshr_wup_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry])))
                     mshr_dat_old_get_s1_q[entry] <= 1'b1;
                 else
                     ;
@@ -2761,13 +2765,22 @@ module hnf_mshr_ctl `HNF_PARAM
                    ~l3_rd_busy_s2_q[entry] & ~mshr_mem_rd_busy_sx_q[entry] & ~mshr_mem_wr_busy_sx_q[entry] &
                    ~mshr_mem_rd_rdy_sx_q[entry] & ~mshr_mem_wr_rdy_sx_q[entry] &
                    ~mshr_sn_data_busy_sx_q[entry] & ~(mshr_rn_data_busy_sx_q[entry] & ~mshr_atomicrd_s1_q[entry]) &
-                   ~mshr_txdat_rn_rdy_sx_q[entry];
+                   ~mshr_txdat_rn_rdy_sx_q[entry] &
+                   // Not in the cycle a snoop response or the cache pass lands, which is when
+                   // a write the entry owes is armed; its busy bits are registered.
+                   ~mshr_snprsp_entry_vec_s1_q[entry] & ~mshr_snpdat_entry_vec_s1_q[entry] & ~mshr_l3_entry_vec_sx7[entry];
             assign mshr_mem_rd_busy_set_sx[entry]    = (mshr_alloc_memrd_s1[entry]) || (mshr_l3_memrd_sx7[entry]) || (mshr_snp_memrd_s1[entry]) ||
                    (mshr_tagfetch_go_sx[entry]);
             assign mshr_mem_rd_busy_clr_sx[entry]    = (mshr_dat_to_rn_s1[entry]) ||
                    (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry]) ||
                    (mshr_get_rd_receipt_s1_q[entry]) ||
-                   (mshr_all_dat_alloc_s1[entry]);
+                   (mshr_all_dat_alloc_s1[entry]) ||
+                   (mshr_tagfetch_issued_sx_q[entry] & mshr_dat_old_get_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
+            // A merged WriteUniquePtl whose snoops returned data without the tags its Match
+            // is performed against.
+            assign mshr_snp_tagfetch_s1[entry]       = mshr_wup_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & ~mshr_atomic_s1_q[entry] &
+                   mshr_needs_tags[entry] & mshr_snp_getall_s1[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) &
+                   (|mshr_snp_getid_s1_q[entry]) & ~dbf_mshr_tags_full_sx[entry];
             assign mshr_mem_wr_busy_set_sx[entry]    = (mshr_alloc_memwr_s1[entry] & ~excl_fail_s1) ||
                    (mshr_cb_wr_mem_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
                    (mshr_l3_memwr_sx7[entry]) ||
@@ -3144,10 +3157,21 @@ module hnf_mshr_ctl `HNF_PARAM
             always_ff @(posedge clk or posedge rst)begin : mshr_tagfetch_pend_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_tagfetch_pend_sx_q[entry] <= 1'b0;
-                else if(mshr_can_retire_entry_sx1[entry] | mshr_tagfetch_go_sx[entry])
+                else if(mshr_can_retire_entry_sx1[entry] | mshr_tagfetch_go_sx[entry] | dbf_mshr_tags_full_sx[entry])
                     mshr_tagfetch_pend_sx_q[entry] <= 1'b0;
-                else if(mshr_l3_tagfetch_sx7[entry])
+                else if(mshr_l3_tagfetch_sx7[entry] | mshr_snp_tagfetch_s1[entry])
                     mshr_tagfetch_pend_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_tagfetch_issued_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_tagfetch_issued_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_tagfetch_issued_sx_q[entry] <= 1'b0;
+                else if(mshr_tagfetch_go_sx[entry])
+                    mshr_tagfetch_issued_sx_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -3324,6 +3348,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // "even if the WriteData is canceled or a Tag Match is not performed", so
             // the debt is taken at allocation and outlives the entry's own completion.
             assign mshr_tagmatch_rdy_set_sx[entry] = mshr_tagmatch_owed_sx_q[entry] & mshr_entry_valid_sx_q[entry] & ~sleep_sx_q[entry] &
+                   ~mshr_tagfetch_pend_sx_q[entry] &
                    ~(mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] |
                      mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry]);
             // The CompCMO owns the slot where an entry owes both, so the two sent
@@ -3343,7 +3368,8 @@ module hnf_mshr_ctl `HNF_PARAM
             // is folded in beside the flop because every other term here is registered:
             // the entry is idle by all of them in the cycle the Snoop response arrives,
             // and would retire out from under the pull before the flop caught it.
-            assign mshr_entry_busy_sx[entry]    = mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry] | mshr_stash_pull_busy_sx_q[entry] | mshr_stash_pull_set_s0[entry];
+            assign mshr_entry_busy_sx[entry]    = mshr_pipeline_busy_sx[entry] | mshr_mem_busy_sx[entry] | mshr_datbuf_busy_sx[entry] | mshr_rsp_busy_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry] | mshr_stash_pull_busy_sx_q[entry] | mshr_stash_pull_set_s0[entry] |
+                                                  mshr_tagfetch_pend_sx_q[entry];
 
             // Raised from s1, so it lands the same cycle the write's own busy bits do
             // and cannot read the entry as idle in the window before they are set.
@@ -3900,7 +3926,8 @@ module hnf_mshr_ctl `HNF_PARAM
     // a write-back whose only source was a partial Snoop response is Ptl.
     assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?chie_pkg::REQ_CLEANSHAREDPERSIST:(mshr_txreq_is_rd_sx1?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
     assign mshr_txreq_size_sx1        = mshr_txreq_is_cmo_sx1 ? chie_pkg::SIZE_64B :
-                                        (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1)? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
+                                        (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1 |
+                                          (mshr_txreq_is_rd_sx1 & mshr_tagfetch_issued_sx_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_snp_outstanding_sx    = |mshr_snp_pending_sx;
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
