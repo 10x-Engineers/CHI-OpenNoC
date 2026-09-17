@@ -407,9 +407,14 @@ package opennoc_hnf_pkg;
   // Table 7-1 (SS7.1.1 p.7-295): the snoop the Stash target receives. SS4.4.2
   // (p.4-196) expressly permits sending it "to the target RN ... if the target RN
   // does not have the cache line", which is what makes it a stash at all.
-  function automatic chie_pkg::snp_opcode_e hnf_stash_snp_of(chie_pkg::req_opcode_e op);
+  // SS12.9.3 (p.12-384) permits a SnpMakeInvalidStash response TagOp Invalid alone, so
+  // a Snoopee's Dirty tags cannot come back on one; SS4.4.2 (p.4-196, MUST) then keeps
+  // it for a WriteUniqueFullStash that Updates the tags, and SnpUniqueStash, which may
+  // answer Transfer or Update, serves the rest.
+  function automatic chie_pkg::snp_opcode_e hnf_stash_snp_of(chie_pkg::req_opcode_e op, logic [1:0] tagop);
     case (op)
-      chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return chie_pkg::SNP_SNPMAKEINVALIDSTASH;
+      chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return (tagop == 2'b10) ? chie_pkg::SNP_SNPMAKEINVALIDSTASH
+                                                                   : chie_pkg::SNP_SNPUNIQUESTASH;
       chie_pkg::REQ_WRITEUNIQUEPTLSTASH  : return chie_pkg::SNP_SNPUNIQUESTASH;
       chie_pkg::REQ_STASHONCEUNIQUE,
       chie_pkg::REQ_STASHONCESEPUNIQUE   : return chie_pkg::SNP_SNPSTASHUNIQUE;

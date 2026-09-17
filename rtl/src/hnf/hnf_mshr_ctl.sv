@@ -4485,7 +4485,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // Non-cacheable or Device memory location must set the TagOp value in the response
     // to Invalid"; SS12.7 (p.12-381) gives an Atomic's Match no read-side meaning.
     always_comb begin : mshr_dbf_rd_tagop_comb
-        mshr_dbf_rd_tagop_sx1    = mshr_rd_owes_tags[mshr_dbf_rd_idx_sx1_q] ? mshr_tagop_s1_q[mshr_dbf_rd_idx_sx1_q] : 2'b00;
+        // SS12.9.3 (p.12-384): a Data Pull is recommended to return the Clean tags the
+        // Home has, so its read is answered as one that asked for them.
+        mshr_dbf_rd_tagop_sx1    = mshr_rd_owes_tags[mshr_dbf_rd_idx_sx1_q] ? mshr_tagop_s1_q[mshr_dbf_rd_idx_sx1_q] :
+                                   (mshr_stash_pull_s1_q[mshr_dbf_rd_idx_sx1_q] & mshr_stash_pull_issued_sx_q[mshr_dbf_rd_idx_sx1_q] &
+                                    mshr_dbf_rd_to_rn_sx1_q & mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].cacheable &
+                                    ~mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].device) ? 2'b01 : 2'b00;
         // SS12.5.1 (p.12-378): a Match request's data is Invalid when the write was canceled.
         mshr_dbf_rd_dn_tagop_sx1 = ((mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q] == 2'b11) && mshr_cancel_s1_q[mshr_dbf_rd_idx_sx1_q])
                                  ? 2'b00 : mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q];

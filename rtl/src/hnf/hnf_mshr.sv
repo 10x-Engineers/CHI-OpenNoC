@@ -280,7 +280,7 @@ module hnf_mshr `HNF_PARAM
     // Table 7-1 (SS7.1.1 p.7-295) keys on the request as sent, not on the one
     // hnf_serviced_as() folds it to -- which is what every consumer below this
     // point sees.
-    assign req_stash_snpcode_s0   = opennoc_hnf_pkg::hnf_stash_snp_of(li_mshr_rxreq_opcode_s0);
+    assign req_stash_snpcode_s0   = opennoc_hnf_pkg::hnf_stash_snp_of(li_mshr_rxreq_opcode_s0, li_mshr_rxreq_tagop_s0);
     assign req_stash_s0           = opennoc_hnf_pkg::hnf_stash_req(li_mshr_rxreq_opcode_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
     assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
