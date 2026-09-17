@@ -274,25 +274,54 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
 
-    // A chunk takes the incoming Poison whenever the packet that carries it covers
-    // the chunk, and keeps what it already held: SS9.5 gives no way to clear a set
-    // Poison bit, so the accumulation is an OR and never a replacement.
+    // SS9.5 (p.9-347, MUST): "The Poison value, once set, must be propagated along with
+    // the data", so a chunk's Poison follows the bytes the merge keeps in it -- the Poison
+    // of every source that still supplies a byte, and none from a source whose bytes a
+    // write has replaced.
+    localparam POISON_CHUNK_BYTES = chie_pkg::DATA_WIDTH / (8*chie_pkg::POISON_WIDTH);
+    wire li_pipe_same = li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && (li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q);
     generate
         for(i = 0;i<`CACHE_POISON_WIDTH;i = i+1) begin:get_poison_temp
             wire covered;
+            wire li_write;
+            wire li_fill;
+            wire [POISON_CHUNK_BYTES-1:0] li_chunk_be;
+            wire [POISON_CHUNK_BYTES-1:0] li_takes;
+            wire [POISON_CHUNK_BYTES-1:0] pipe_held_own;
+            wire li_base_poison;
             assign covered = li_dbf_rxdat_valid_s0
                           && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
                           && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::POISON_WIDTH))
                            || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::POISON_WIDTH)));
-
-            assign temp_li_poison[i] = dbf_poison_q[li_dbf_rxdat_txnid_s0][i]
-                                     | (covered & li_dbf_rxdat_poison_s0[i % chie_pkg::POISON_WIDTH]);
+            assign li_write = (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA) ||
+                              (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA) ||
+                              (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK);
+            assign li_fill  = (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA);
+            assign li_chunk_be = li_fill ? {POISON_CHUNK_BYTES{1'b1}}
+                                         : li_dbf_rxdat_be_s0[(i % chie_pkg::POISON_WIDTH)*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES];
+            // Which bytes of the chunk this packet's data ends up supplying, by the byte
+            // merge's own precedence: a write replaces, a memory fill only fills, and a
+            // Snoop response supersedes a fill.
+            assign li_takes = li_chunk_be & (li_write ? {POISON_CHUNK_BYTES{1'b1}} :
+                                             li_fill  ? ~dbf_be_q[li_dbf_rxdat_txnid_s0][i*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES] :
+                                                        (~dbf_be_q[li_dbf_rxdat_txnid_s0][i*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES] |
+                                                          dbf_fill_q[li_dbf_rxdat_txnid_s0][i*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES]));
+            assign pipe_held_own = dbf_be_q[pipe_dbf_wr_idx_sx9_q][i*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES] &
+                                   ~dbf_fill_q[pipe_dbf_wr_idx_sx9_q][i*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES];
 
             // The eviction swap replaces the line outright, as the data does: the victim
-            // leaves with its own Poison, not the Poison of the line displacing it.
+            // leaves with its own Poison. Otherwise a fill supplies only the bytes the
+            // buffer does not hold of its own.
             assign temp_pipe_poison[i] = (pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)
                                        ? pipe_dbf_wr_poison_sx9_q[i]
-                                       : (dbf_poison_q[pipe_dbf_wr_idx_sx9_q][i] | pipe_dbf_wr_poison_sx9_q[i]);
+                                       : (((|pipe_held_own) & dbf_poison_q[pipe_dbf_wr_idx_sx9_q][i]) |
+                                          ((~&pipe_held_own) & pipe_dbf_wr_poison_sx9_q[i]));
+            // The base a packet lands on is the fill of this same cycle, where there is one.
+            assign li_base_poison = li_pipe_same ? temp_pipe_poison[i] : dbf_poison_q[li_dbf_rxdat_txnid_s0][i];
+            // A packet that supplies every byte of the chunk replaces its Poison.
+            assign temp_li_poison[i] = (covered & (&li_takes))
+                                     ? li_dbf_rxdat_poison_s0[i % chie_pkg::POISON_WIDTH]
+                                     : (li_base_poison | (covered & (|li_takes) & li_dbf_rxdat_poison_s0[i % chie_pkg::POISON_WIDTH]));
         end
     endgenerate
 
@@ -341,7 +370,6 @@ module hnf_data_buffer `HNF_PARAM
     // SS12.9.4 (p.12-384, MUST): a SnpRespDataPtl's tag fields are "ignored by the receiver".
     wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL) &&
                           (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_SNPRESPDATAPTL);
-    wire li_pipe_same   = li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && (li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q);
 
     // The swap an eviction makes -- this entry's line leaving for the L3 while the
     // victim arrives -- replaces the buffer outright, exactly as the data does.
@@ -419,7 +447,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_be_q[i]     <= temp_li_be;
                         dbf_fill_q[i]   <= temp_li_fill;
                         dbf_pe_q[i]     <= 2'b11;
-                        dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
+                        dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
                         dbf_match_be_q[i] <= temp_li_match_be;
