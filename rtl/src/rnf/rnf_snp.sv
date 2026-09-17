@@ -29,6 +29,9 @@
 //
 // The forwarding, Stash and DVM snoops are not decoded at all: this node
 // declares neither DCT nor Stash.
+//
+// Snoops are answered in every coherency state: Table 15-1 (p.15-468) requires it
+// in all but Coherency Disabled, and does not forbid it there.
 module rnf_snp `RNF_PARAM
     (
     input  wire                                 clk_i,
