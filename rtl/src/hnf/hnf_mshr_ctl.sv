@@ -1339,9 +1339,13 @@ module hnf_mshr_ctl `HNF_PARAM
             // (p.12-386, MUST) accurate verdict.
             // The same holds for a WriteUniquePtl's Match the Home performs because its
             // data was merged with a copy the Home holds (mshr_txreq_tagop_comb).
+            // And a WriteUniquePtl that Updates some of the tags of a line the Home keeps:
+            // the rest are owed too, since a whole line leaves the L3 as a WriteNoSnpFull,
+            // whose Update must assert every TU bit (SS12.5.2 p.12-379, MUST).
             assign mshr_needs_tags[entry]   = mshr_rd_owes_tags[entry] |
-                   ((mshr_atomic_s1_q[entry] | mshr_wup_s1_q[entry]) & mshr_tagop_match_s1_q[entry] &
-                    mshr_memattr_s1_q[entry].cacheable & ~mshr_memattr_s1_q[entry].device);
+                   (((mshr_atomic_s1_q[entry] | mshr_wup_s1_q[entry]) & mshr_tagop_match_s1_q[entry]) |
+                    (mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry] & mshr_tagop_update[entry])) &
+                   mshr_memattr_s1_q[entry].cacheable & ~mshr_memattr_s1_q[entry].device;
         end
     endgenerate
     assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
