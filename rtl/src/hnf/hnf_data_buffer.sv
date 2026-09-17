@@ -288,8 +288,11 @@ module hnf_data_buffer `HNF_PARAM
             assign temp_li_poison[i] = dbf_poison_q[li_dbf_rxdat_txnid_s0][i]
                                      | (covered & li_dbf_rxdat_poison_s0[i % chie_pkg::POISON_WIDTH]);
 
-            assign temp_pipe_poison[i] = dbf_poison_q[pipe_dbf_wr_idx_sx9_q][i]
-                                       | pipe_dbf_wr_poison_sx9_q[i];
+            // The eviction swap replaces the line outright, as the data does: the victim
+            // leaves with its own Poison, not the Poison of the line displacing it.
+            assign temp_pipe_poison[i] = (pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)
+                                       ? pipe_dbf_wr_poison_sx9_q[i]
+                                       : (dbf_poison_q[pipe_dbf_wr_idx_sx9_q][i] | pipe_dbf_wr_poison_sx9_q[i]);
         end
     endgenerate
 
