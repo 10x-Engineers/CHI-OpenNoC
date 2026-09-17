@@ -221,6 +221,7 @@ module rnf_ctl `RNF_PARAM
     logic                                       got_lo_q, got_hi_q, got_rsp_q;
     logic [CHIE_NID_WIDTH_PARAM-1:0]            ack_tgt_q;
     logic [11:0]                                ack_txnid_q;
+    logic                                       ack_tt_q;
     logic                                       fill_v_q;
     logic                                       hit_q;
     logic                                       err_q;
@@ -295,6 +296,7 @@ module rnf_ctl `RNF_PARAM
     // The WriteData in flight: its target, the DBID it answers, and which packet.
     logic [CHIE_NID_WIDTH_PARAM-1:0]            wr_tgt_q;
     logic [11:0]                                wr_txnid_q;
+    logic                                       wr_tt_q;
     logic                                       wr_hi_q;
     logic                                       wr_dbid_q;
     logic                                       wr_sent_q;
@@ -564,6 +566,8 @@ module rnf_ctl `RNF_PARAM
         prot_txrspflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txrspflit_o.txnid  = ack_txnid_q;
         prot_txrspflit_o.opcode = chie_pkg::RSP_COMPACK;
+        // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the completion it acknowledges.
+        prot_txrspflit_o.tracetag = ack_tt_q;
     end
 
     assign prot_txrspflitv_o = (st_q == S_ACK);
@@ -594,16 +598,22 @@ module rnf_ctl `RNF_PARAM
         prot_txdatflit_o.tgtid  = wr_tgt_q;
         prot_txdatflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txdatflit_o.txnid  = wr_txnid_q;
+        // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the DBID response that
+        // drew the data.
+        prot_txdatflit_o.tracetag = wr_tt_q;
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
         prot_txdatflit_o.dataid = wr_hi_q ? 2'd2 : 2'd0;
         if (st_q == S_WU_DAT) begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
+            // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the request.
+            prot_txdatflit_o.ccid   = addr_q[5:4];
             prot_txdatflit_o.be     = wr_hi_q ? wbe_q[63:32]    : wbe_q[31:0];
             prot_txdatflit_o.data   = wr_hi_q ? wu_line[511:256] : wu_line[255:0];
             prot_txdatflit_o.poison = wr_hi_q ? wu_poison[7:4]   : wu_poison[3:0];
         end
         else begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
+            prot_txdatflit_o.ccid   = vic_addr_q[5:4];
             prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
             prot_txdatflit_o.be     = wr_hi_q ? cb_be[63:32]     : cb_be[31:0];
             // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an
@@ -783,6 +793,7 @@ module rnf_ctl `RNF_PARAM
             got_rsp_q     <= 1'b0;
             ack_tgt_q     <= '0;
             ack_txnid_q   <= '0;
+            ack_tt_q      <= 1'b0;
             fill_v_q      <= 1'b0;
             hit_q         <= 1'b0;
             err_q         <= 1'b0;
@@ -841,6 +852,7 @@ module rnf_ctl `RNF_PARAM
             chain_ru_q    <= 1'b0;
             wr_tgt_q      <= '0;
             wr_txnid_q    <= '0;
+            wr_tt_q       <= 1'b0;
             wr_hi_q       <= 1'b0;
             wr_dbid_q     <= 1'b0;
             wr_sent_q     <= 1'b0;
@@ -1233,6 +1245,7 @@ module rnf_ctl `RNF_PARAM
                         retry_q    <= 1'b0;
                         wr_tgt_q   <= prot_rxrspflit_i.srcid;
                         wr_txnid_q <= prot_rxrspflit_i.dbid;
+                        wr_tt_q    <= prot_rxrspflit_i.tracetag;
                         wr_hi_q    <= 1'b0;
                         if (!cb_then_req_q && rx_err) err_q <= 1'b1;
                         st_q       <= S_CB_DAT;
@@ -1243,6 +1256,7 @@ module rnf_ctl `RNF_PARAM
                         retry_q     <= 1'b0;
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
                         ack_txnid_q <= prot_rxrspflit_i.dbid;
+                        ack_tt_q    <= prot_rxrspflit_i.tracetag;
                         cb_done_q   <= 1'b1;
                         if (rx_err) err_q <= 1'b1;
                         st_q        <= S_ACK;
@@ -1284,11 +1298,13 @@ module rnf_ctl `RNF_PARAM
                     if (rx_sep || rx_comp) begin
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
                         ack_txnid_q <= prot_rxrspflit_i.dbid;
+                        ack_tt_q    <= prot_rxrspflit_i.tracetag;
                     end
                     if (rx_sep) got_rsp_q <= 1'b1;
                     if (rx_dat_comb) begin
                         ack_tgt_q   <= prot_rxdatflit_i.homenid;
                         ack_txnid_q <= prot_rxdatflit_i.dbid;
+                        ack_tt_q    <= prot_rxdatflit_i.tracetag;
                     end
                     // Table 4-33 (SS4.7.1 p.4-211) puts a read's granted state on
                     // the DATA half of both shapes; Table 4-38 (p.4-218) puts a
@@ -1383,6 +1399,7 @@ module rnf_ctl `RNF_PARAM
                             if (rx_dbid || rx_compdbid) begin
                                 wr_tgt_q   <= prot_rxrspflit_i.srcid;
                                 wr_txnid_q <= prot_rxrspflit_i.dbid;
+                                wr_tt_q    <= prot_rxrspflit_i.tracetag;
                                 wr_dbid_q  <= 1'b1;
                             end
                             if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;

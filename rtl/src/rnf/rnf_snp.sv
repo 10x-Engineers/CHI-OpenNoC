@@ -213,6 +213,8 @@ module rnf_snp `RNF_PARAM
         snp_txrspflit_o.txnid  = snp_q.txnid;
         snp_txrspflit_o.opcode = chie_pkg::RSP_SNPRESP;
         snp_txrspflit_o.resp   = resp_of(final_q, pass_dirty_q);
+        // SS11.5.1 (p.11-368, MUST): the snoop's TraceTag is reflected.
+        snp_txrspflit_o.tracetag = snp_q.tracetag;
     end
 
     // SS2.10.3 (p.2-135, MUST): a deasserted byte enable zeroes its byte.
@@ -239,6 +241,10 @@ module rnf_snp `RNF_PARAM
         snp_txdatflit_o.resp    = resp_of(final_q, pass_dirty_q);
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
         snp_txdatflit_o.dataid  = dat_lo_sent_q ? 2'd2 : 2'd0;
+        snp_txdatflit_o.tracetag = snp_q.tracetag;
+        // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the snoop, whose Addr field
+        // starts at Addr[3] (SS13.10.19).
+        snp_txdatflit_o.ccid    = snp_q.addr[2:1];
         snp_txdatflit_o.data    = dat_lo_sent_q ? out_line[511:256] : out_line[255:0];
         // SS9.4.7 (p.9-345, MUST): snoop data known to be corrupt carries an error
         // indication; Table 9-14 makes DERR the one a SnpRespData may carry.
