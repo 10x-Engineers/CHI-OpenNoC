@@ -79,6 +79,8 @@ module rnf_link_ctl `RNF_PARAM
     output chie_pkg::snp_flit_s prot_rxsnpflit_o,
     // A snoop the protocol layer has taken off its queue.
     input  wire                 prot_snp_pop_i,
+    // Work that needs the link before any flit is presented for it.
+    input  wire                 link_hold_i,
 
     // both directions in RUN, so the protocol layer may present a flit
     output wire                 prot_link_run_o
@@ -132,7 +134,11 @@ module rnf_link_ctl `RNF_PARAM
     //*************************************************
     //                Link HandShake
     //*************************************************
-    assign txflit_avail = prot_txreqflitv_i | prot_txrspflitv_i | prot_txdatflitv_i;
+    // SS14.5 (p.14-452): the Transmitter moves STOP -> RUN when it has flits to send
+    // or a sideband says it should. The protocol layer presents nothing until RUN, so
+    // its pending work is that sideband -- a link waiting on a flit would never come up.
+    assign txflit_avail = prot_txreqflitv_i | prot_txrspflitv_i | prot_txdatflitv_i
+                          | link_hold_i;
 
     // Table 14-2 (p.14-450): the returns are expected in DEACTIVATE, so the ack
     // may only drop once every credit this Receiver granted has come back.

@@ -16,18 +16,13 @@
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
-from enum import *
-from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
 
-@dataclass
-class PortEnum(Enum):
-    NONE = "NONE"
-    RNF = "RNF"
-    RNI = "RNI"
-    HNF = "HNF"
-    HNI = "HNI"
-    SNF = "SNF"
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "noc_common"))
+from noc_common import PortEnum, make_env, node_ports, render, render_system
 
 @dataclass
 class CrossPoint:
@@ -47,6 +42,8 @@ def main():
     global ring_cfg
     parser = argparse.ArgumentParser(description="Generate OpenNoC Ring Wrapper")
     parser.add_argument('-f', '--file',  type=str, help="ring configure file")
+    parser.add_argument('-o', '--out-dir', type=str, default=".",
+                        help="directory the generated files are written to")
     args = parser.parse_args()
 
     if args.file is None:
@@ -60,7 +57,7 @@ def main():
             print("Found Error Configuration")
             exit(-1)
         print(ring_cfg)
-        generate(x_max, ring_cfg)
+        generate(x_max, ring_cfg, args.out_dir)
 
 def verify_cfg(cfg_data):
     global x_max
@@ -72,17 +69,17 @@ def verify_cfg(cfg_data):
         route_node = CrossPoint(key, xp)
         ring_cfg.append(route_node)
 
-def generate(x_max : int = 1, cfg : list = None):
+# NodeIDs are LSB-anchored {X, port}, the fields chi_ring_channel's route_x reads.
+def ring_nid(node, port):
+    return (node.X << 1) | port
+
+def generate(x_max : int = 1, cfg : list = None, out_dir : str = "."):
     module = "ring_wrapper_{0}".format(x_max + 1)
-
-    print('Generate Ring Wrapper {0}.sv'.format(module))
-
-    env = Environment(loader=FileSystemLoader('template'))
-    env.trim_blocks = True
-    env.lstrip_blocks = True
-    template = env.get_template('ring_wrapper.j2')
-    with open(module + ".sv", 'w', encoding='UTF-8') as f:
-        f.write(template.render(xmax = x_max, module = module, nodes = cfg))
+    env = make_env(HERE / "template")
+    render(env, "ring_wrapper.j2", Path(out_dir) / (module + ".sv"),
+           xmax = x_max, module = module, nodes = cfg)
+    render_system(env, module, "ring_system_{0}".format(x_max + 1),
+                  node_ports(cfg, ring_nid), out_dir)
 
 if __name__ == "__main__":
     main()

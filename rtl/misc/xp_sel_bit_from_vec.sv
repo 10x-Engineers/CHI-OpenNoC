@@ -16,7 +16,9 @@
 
 module xp_sel_bit_from_vec
     #(
-         parameter VEC_WIDTH
+         // 0 is refused below: a parameter with no default is legal IEEE 1800 that
+         // Xcelium 23.03 does not elaborate (SVVMAP), and no width is a safe guess.
+         parameter VEC_WIDTH = 0
      )
     (
     //input
@@ -27,6 +29,8 @@ module xp_sel_bit_from_vec
     output wire                 found
     );
     localparam VEC_LOG2_WIDTH = $clog2(VEC_WIDTH);
+
+    initial if (VEC_WIDTH == 0) $fatal(1, "xp_sel_bit_from_vec: VEC_WIDTH must be overridden");
 
     //internal signals
     wire [VEC_WIDTH-1:0]  upper_mask;

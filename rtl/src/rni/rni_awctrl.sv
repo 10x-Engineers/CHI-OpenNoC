@@ -85,7 +85,7 @@ module rni_awctrl `RNI_PARAM
     output logic [11:0]                        awctrl_txdat_dbid_d2_o,
     output logic                               awctrl_txdat_tracetag_d2_o,
     output logic [chie_pkg::NID_WIDTH-1:0]     awctrl_txdat_tgtid_d2_o,
-    output wire [1:0]                          awctrl_txdat_ccid_d2_o,
+    output logic [1:0]                         awctrl_txdat_ccid_d2_o,
     output wire [`RNI_DMASK_CT_WIDTH-1:0]      awctrl_txdat_ctmask_d2_o,
     input  wire                                awctrl_txdat_not_busy_d2_i,
 
@@ -1474,7 +1474,6 @@ module rni_awctrl `RNI_PARAM
     //When alloc the entry, if there are two dat packets,awctrl_entry_two_packets_flag_q is assert, and when the entry is dealloc, awctrl_entry_two_packets_flag_q is deassert
     assign awctrl_entry_two_packets_flag_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_two_packets_flag_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | (awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_two_packets_s2_w}})) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txdat_not_busy_d2_i}} & txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];//txdat_select_vec_d3_q prevents a second packet
-    assign awctrl_txdat_ccid_d2_o = '0;
     assign awctrl_txdat_compack_d2_o = 1'b0;
     assign awctrl_txdat_rdy_v_d2_o = txdat_rdy_v_d2_q;
     assign awctrl_txdat_rdy_entry_d2_o[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_rdy_entry_d2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
@@ -1589,6 +1588,15 @@ module rni_awctrl `RNI_PARAM
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
             if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i])
                 awctrl_txdat_dbid_d2_o[11:0] = rxrsp_dbidresp_dbid_q[i][11:0];
+        end
+    end
+
+    // SS2.10.6 (p.2-139, MUST): CCID matches Addr[5:4] of the request the data belongs to.
+    always_comb begin
+        awctrl_txdat_ccid_d2_o = '0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
+            if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i])
+                awctrl_txdat_ccid_d2_o = awctrl_entry_addr_q[i][5:4];
         end
     end
 

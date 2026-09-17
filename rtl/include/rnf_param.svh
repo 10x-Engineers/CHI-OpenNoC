@@ -16,6 +16,9 @@
 // SS4.6 (p.4-209) makes cache capacity, associativity and replacement policy
 // IMPLEMENTATION DEFINED, so the geometry below is a declaration rather than a
 // constant the spec fixes. Line size is not: SS2.10.1 (p.2-134) fixes it at 64B.
+// RNF_EXCL_LP_NUM_PARAM is how many Logical Processors hold an exclusive monitor
+// at once (SS6.2.1 p.6-283); a further LP's Load displaces the oldest, whose
+// Exclusive Store then fails rather than passing unmonitored.
 //
 // RNF_NID_PARAM defaults to 8, the first entry of hnf_param.svh's
 // RNF_NID_LIST_PARAM {48,16,40,8}, so a default-parameterised RN-F and HN-F pair
@@ -37,6 +40,7 @@
     parameter RNF_CACHE_SETS_PARAM       = 16,                          \
     parameter RNF_CACHE_WAYS_PARAM       = 2,                           \
     parameter RNF_MSHR_ENTRIES_PARAM     = 8,                           \
+    parameter RNF_EXCL_LP_NUM_PARAM      = 4,                           \
     parameter HNF_NID_PARAM              = 0,                           \
     parameter RNF_NID_PARAM              = 8    )
 
@@ -57,6 +61,7 @@
     .RNF_CACHE_SETS_PARAM           (RNF_CACHE_SETS_PARAM        ), \
     .RNF_CACHE_WAYS_PARAM           (RNF_CACHE_WAYS_PARAM        ), \
     .RNF_MSHR_ENTRIES_PARAM         (RNF_MSHR_ENTRIES_PARAM      ), \
+    .RNF_EXCL_LP_NUM_PARAM          (RNF_EXCL_LP_NUM_PARAM       ), \
     .HNF_NID_PARAM                  (HNF_NID_PARAM               ), \
     .RNF_NID_PARAM                  (RNF_NID_PARAM               ))
 

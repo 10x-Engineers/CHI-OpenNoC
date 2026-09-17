@@ -16,11 +16,9 @@
 // The RN-F's snoop port: section 4.8's response tables for the states this node
 // can hold.
 //
-// A line here is I, SC, UC, UD or SD: reads fill it, Table 4-33 (SS4.7.1
-// p.4-211) lets the Home answer even a ReadShared with a PassDirty grant, and
-// stores make it Dirty. It is UCE for as long as a CleanUnique whose line a
-// snoop took away waits on the ReadUnique behind it (see rnf_ctl). UDP is never
-// entered and is not decoded.
+// A line here is any of SS4.1's seven states. A UDP line holds only some of its
+// bytes, so the data it returns is SnpRespDataPtl with byte enables on exactly
+// those (SS2.10.3 p.2-135).
 //
 // Where a table offers the Snoopee a choice of final state this node takes the
 // one that is legal for every modifier: the Clean family leaves a Dirty line SC
@@ -55,7 +53,7 @@ module rnf_snp `RNF_PARAM
     input  wire [`RNF_CS_WIDTH-1:0]             cache_lu_state_i,
     input  wire [`RNF_WAY_W-1:0]                cache_lu_way_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_lu_data_i,
-    input  wire                                 cache_lu_err_i,
+    input  wire [`RNF_META_W-1:0]               cache_lu_meta_i,
     output wire                                 cache_upd_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_upd_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_upd_way_o,
@@ -80,7 +78,8 @@ module rnf_snp `RNF_PARAM
     chie_pkg::snp_flit_s                  snp_q;
     logic [`RNF_CS_WIDTH-1:0]             final_q;
     logic [`RNF_LINE_BITS-1:0]            data_q;
-    logic                                 derr_q;
+    logic [`RNF_META_W-1:0]               meta_q;
+    logic [`RNF_CS_WIDTH-1:0]             cur_state_q;
     logic                                 with_data_q;
     logic                                 pass_dirty_q;
     logic                                 dat_lo_sent_q;
@@ -99,7 +98,7 @@ module rnf_snp `RNF_PARAM
     endfunction
 
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
-        return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD);
+        return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD) || (cs == `RNF_CS_UDP);
     endfunction
 
     // Table 4-44 (p.4-225): SnpCleanShared strips the dirtiness and leaves the
@@ -109,9 +108,9 @@ module rnf_snp `RNF_PARAM
         if (is_invalidating(op))     return `RNF_CS_I;
         if (is_state_preserving(op)) return cur;
         if (cur == `RNF_CS_I)        return `RNF_CS_I;
-        // Tables 4-42 (p.4-223) and 4-44 (p.4-225): with no valid bytes there is
-        // nothing to keep shared, so every other snoop ends UCE Invalid.
-        if (cur == `RNF_CS_UCE)      return `RNF_CS_I;
+        // Tables 4-42 (p.4-223) and 4-44 (p.4-225): a line short of valid bytes
+        // cannot be kept shared, so every other snoop ends UCE and UDP Invalid.
+        if ((cur == `RNF_CS_UCE) || (cur == `RNF_CS_UDP)) return `RNF_CS_I;
         if (op == chie_pkg::SNP_SNPCLEANSHARED)
             return (cur == `RNF_CS_UD) ? `RNF_CS_UC :
                    (cur == `RNF_CS_SD) ? `RNF_CS_SC : cur;
@@ -130,6 +129,8 @@ module rnf_snp `RNF_PARAM
             // Table 4-41 (p.4-222) and Table 4-45 (p.4-226): a UCE line that the
             // snoop leaves in place is reported SnpResp_UC.
             `RNF_CS_UCE: return chie_pkg::RESP_UC_UD;
+            // Table 4-41 and Table 4-45: a UDP line left in place is SnpResp*_UD.
+            `RNF_CS_UDP: return chie_pkg::RESP_UC_UD;
             `RNF_CS_SD: return chie_pkg::RESP_SD;
             default:    return pass_dirty ? chie_pkg::RESP_I_PD  : chie_pkg::RESP_I;
         endcase
@@ -212,6 +213,23 @@ module rnf_snp `RNF_PARAM
         snp_txrspflit_o.txnid  = snp_q.txnid;
         snp_txrspflit_o.opcode = chie_pkg::RSP_SNPRESP;
         snp_txrspflit_o.resp   = resp_of(final_q, pass_dirty_q);
+        // SS11.5.1 (p.11-368, MUST): the snoop's TraceTag is reflected.
+        snp_txrspflit_o.tracetag = snp_q.tracetag;
+    end
+
+    // SS2.10.3 (p.2-135, MUST): a deasserted byte enable zeroes its byte.
+    wire                        ptl_q    = (cur_state_q == `RNF_CS_UDP);
+    wire [`RNF_LINE_BYTES-1:0]  be_q     = ptl_q ? meta_q[`RNF_META_VMASK] : '1;
+    wire [`RNF_LINE_BITS-1:0]   out_line;
+    for (genvar b = 0; b < `RNF_LINE_BYTES; b++) begin : g_out_byte
+        assign out_line[b*8 +: 8] = be_q[b] ? data_q[b*8 +: 8] : 8'h00;
+    end
+    // SS9.5 (p.9-347): Poison "must be accurate if there are any valid bytes in the
+    // 64-bit chunk", and may take any value where none are.
+    logic [7:0] poison_out;
+    always_comb begin
+        for (int c = 0; c < 8; c++)
+            poison_out[c] = meta_q[64 + c] && (|be_q[c*8 +: 8]);
     end
 
     always_comb begin
@@ -219,16 +237,25 @@ module rnf_snp `RNF_PARAM
         snp_txdatflit_o.tgtid   = snp_q.srcid;
         snp_txdatflit_o.srcid   = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         snp_txdatflit_o.txnid   = snp_q.txnid;
-        snp_txdatflit_o.opcode  = chie_pkg::DAT_SNPRESPDATA;
+        snp_txdatflit_o.opcode  = ptl_q ? chie_pkg::DAT_SNPRESPDATAPTL : chie_pkg::DAT_SNPRESPDATA;
         snp_txdatflit_o.resp    = resp_of(final_q, pass_dirty_q);
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
         snp_txdatflit_o.dataid  = dat_lo_sent_q ? 2'd2 : 2'd0;
-        snp_txdatflit_o.data    = dat_lo_sent_q ? data_q[511:256] : data_q[255:0];
+        snp_txdatflit_o.tracetag = snp_q.tracetag;
+        // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the snoop, whose Addr field
+        // starts at Addr[3] (SS13.10.19).
+        snp_txdatflit_o.ccid    = snp_q.addr[2:1];
+        snp_txdatflit_o.data    = dat_lo_sent_q ? out_line[511:256] : out_line[255:0];
         // SS9.4.7 (p.9-345, MUST): snoop data known to be corrupt carries an error
         // indication; Table 9-14 makes DERR the one a SnpRespData may carry.
-        snp_txdatflit_o.resperr = derr_q ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
-        // SS2.10.3 (p.2-135): a SnpRespData asserts every byte enable.
-        snp_txdatflit_o.be      = '1;
+        snp_txdatflit_o.resperr = meta_q[`RNF_META_DERR] ? chie_pkg::RESP_ERR_DATA
+                                                         : chie_pkg::RESP_ERR_NORM_OK;
+        // SS2.10.3 (p.2-135): SnpRespData asserts every byte enable, SnpRespDataPtl
+        // any combination.
+        snp_txdatflit_o.be      = dat_lo_sent_q ? be_q[63:32] : be_q[31:0];
+        snp_txdatflit_o.poison  = dat_lo_sent_q ? poison_out[7:4] : poison_out[3:0];
+        // SS9.6 (p.9-348): odd byte parity over the data sent.
+        snp_txdatflit_o.datacheck = chie_pkg::datacheck_of(snp_txdatflit_o.data);
     end
 
     assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q;
@@ -248,7 +275,8 @@ module rnf_snp `RNF_PARAM
             snp_q         <= '0;
             final_q       <= `RNF_CS_I;
             data_q        <= '0;
-            derr_q        <= 1'b0;
+            meta_q        <= `RNF_META_FULL;
+            cur_state_q   <= `RNF_CS_I;
             with_data_q   <= 1'b0;
             pass_dirty_q  <= 1'b0;
             dat_lo_sent_q <= 1'b0;
@@ -260,7 +288,8 @@ module rnf_snp `RNF_PARAM
                         snp_q         <= head;
                         final_q       <= nxt_state;
                         data_q        <= cache_lu_data_i;
-                        derr_q        <= cache_lu_err_i;
+                        meta_q        <= cache_lu_meta_i;
+                        cur_state_q   <= cur_state;
                         with_data_q   <= want_data;
                         pass_dirty_q  <= pass_dirty;
                         dat_lo_sent_q <= 1'b0;
