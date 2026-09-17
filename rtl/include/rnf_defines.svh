@@ -36,4 +36,37 @@
 
 `define RNF_MSHR_W ((RNF_MSHR_ENTRIES_PARAM == 1) ? 1 : $clog2(RNF_MSHR_ENTRIES_PARAM))
 
+// Core-side intent, IMPLEMENTATION DEFINED. ARCOH qualifies ARVALID: the read a
+// miss issues (Table 4-4 p.4-167). The ReadOnce family is non-allocating, so the
+// line is not cached. 3'd7 is reserved and reads as SHARED.
+`define RNF_AR_COH_W          3
+`define RNF_AR_SHARED         3'd0
+`define RNF_AR_CLEAN          3'd1
+`define RNF_AR_PREFER_UNIQUE  3'd2
+`define RNF_AR_UNIQUE         3'd3
+`define RNF_AR_ONCE           3'd4
+`define RNF_AR_ONCE_CLEAN_INV 3'd5
+`define RNF_AR_ONCE_MAKE_INV  3'd6
+
+// AWCOH qualifies AWVALID. READ_UNIQUE upgrades a Shared line with MakeReadUnique
+// instead of CleanUnique; IMMEDIATE writes an uncached line with WriteUnique
+// (Table 4-16 p.4-181), and IMMEDIATE_CLEANSH combines it with CleanShared.
+`define RNF_AW_COH_W          2
+`define RNF_AW_CACHED         2'd0
+`define RNF_AW_READ_UNIQUE    2'd1
+`define RNF_AW_IMMEDIATE      2'd2
+`define RNF_AW_IMMEDIATE_CLSH 2'd3
+
+// Cache maintenance port: one operation on one line, answered on CMDONE/CMRESP.
+`define RNF_CM_OP_W               4
+`define RNF_CM_EVICT_SILENT       4'd0
+`define RNF_CM_EVICT_NOTIFY       4'd1
+`define RNF_CM_EVICT_RETURN       4'd2
+`define RNF_CM_EVICT_OFFER        4'd3
+`define RNF_CM_CLEAN              4'd4
+`define RNF_CM_CLEAN_SHARED       4'd5
+`define RNF_CM_CLEAN_SHARED_EVICT 4'd6
+`define RNF_CM_CLEAN_INVALID      4'd7
+`define RNF_CM_MAKE_INVALID       4'd8
+
 `endif

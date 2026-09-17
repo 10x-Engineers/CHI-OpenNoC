@@ -73,11 +73,13 @@ module rnf `RNF_PARAM
     output wire                 RXSNPLCRDV,
 
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
-    // makes a line Dirty and a CopyBack owed with it.
+    // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
+    // core's intent for the access (rnf_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE,
+    input  wire [`RNF_AR_COH_W-1:0]      ARCOH,
     input  wire                          ARVALID,
     output wire                          ARREADY,
     output wire [`AXI4_RID_WIDTH-1:0]    RID,
@@ -90,6 +92,7 @@ module rnf `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]  AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE,
+    input  wire [`RNF_AW_COH_W-1:0]      AWCOH,
     input  wire                          AWVALID,
     output wire                          AWREADY,
     input  wire [`AXI4_WDATA_WIDTH-1:0]  WDATA,
@@ -100,7 +103,15 @@ module rnf `RNF_PARAM
     output wire [`AXI4_BID_WIDTH-1:0]    BID,
     output wire [`AXI4_BRESP_WIDTH-1:0]  BRESP,
     output wire                          BVALID,
-    input  wire                          BREADY
+    input  wire                          BREADY,
+
+    // Core-side cache maintenance: one operation on one line (rnf_defines.svh).
+    input  wire                                 CMVALID,
+    output wire                                 CMREADY,
+    input  wire [`RNF_CM_OP_W-1:0]              CMOP,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] CMADDR,
+    output wire                                 CMDONE,
+    output wire [1:0]                           CMRESP
     );
 
     chie_pkg::req_flit_s prot_txreqflit;
@@ -263,6 +274,7 @@ module rnf `RNF_PARAM
                      ,.ARADDR                ( ARADDR               )
                      ,.ARLEN                 ( ARLEN                )
                      ,.ARSIZE                ( ARSIZE               )
+                     ,.ARCOH                 ( ARCOH                )
                      ,.ARVALID               ( ARVALID              )
                      ,.ARREADY               ( ARREADY              )
                      ,.RID                   ( RID                  )
@@ -275,6 +287,7 @@ module rnf `RNF_PARAM
                      ,.AWADDR                ( AWADDR               )
                      ,.AWLEN                 ( AWLEN                )
                      ,.AWSIZE                ( AWSIZE               )
+                     ,.AWCOH                 ( AWCOH                )
                      ,.AWVALID               ( AWVALID              )
                      ,.AWREADY               ( AWREADY              )
                      ,.WDATA                 ( WDATA                )
@@ -286,6 +299,12 @@ module rnf `RNF_PARAM
                      ,.BRESP                 ( BRESP                )
                      ,.BVALID                ( BVALID               )
                      ,.BREADY                ( BREADY               )
+                     ,.CMVALID               ( CMVALID              )
+                     ,.CMREADY               ( CMREADY              )
+                     ,.CMOP                  ( CMOP                 )
+                     ,.CMADDR                ( CMADDR               )
+                     ,.CMDONE                ( CMDONE               )
+                     ,.CMRESP                ( CMRESP               )
                      ,.cache_lu_addr_o       ( cache_lu_addr        )
                      ,.cache_lu_hit_i        ( cache_lu_hit         )
                      ,.cache_lu_state_i      ( cache_lu_state       )

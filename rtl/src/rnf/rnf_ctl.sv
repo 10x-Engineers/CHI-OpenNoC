@@ -14,20 +14,25 @@
 `include "rnf_defines.svh"
 `include "axi4_defines.svh"
 
-// The RN-F's core-side engine: an AXI4 read or write, served from the cache or
-// by the coherent transaction that makes it servable.
+// The RN-F's core-side engine: an AXI4 read or write, or a cache maintenance
+// operation, served from the cache or by the coherent transaction that makes it
+// servable.
 //
-// Which transaction that is comes from Table 4-4 (SS4.2.1 p.4-167) and Table
-// 4-38 (SS4.7.2 p.4-218):
+// Which transaction that is comes from the line's state and the core's intent
+// (rnf_defines.svh): Table 4-4 (SS4.2.1 p.4-167), Table 4-10 (SS4.2.2 p.4-174)
+// and Table 4-16 (SS4.2.3 p.4-181) say what each state permits.
 //
-//   read miss                -> ReadShared,  filling SC or whatever Table 4-33
-//                               (SS4.7.1 p.4-211) grants
+//   read miss                -> ReadShared / ReadClean / ReadPreferUnique /
+//                               ReadUnique, or a non-allocating ReadOnce*
 //   write hit, Unique        -> nothing on the link; SS4.6's Table 4-32
 //                               (p.4-209) makes UC -> UD a silent transition
-//   write hit, Shared        -> CleanUnique, which Table 4-38 ends UC from SC
-//                               and UD from SD
-//   write miss, whole line   -> MakeUnique, which needs no data fetched
-//   write miss, part of one  -> ReadUnique, whose data the store merges into
+//   write hit, Shared        -> CleanUnique, or MakeReadUnique
+//   write miss, whole line   -> MakeUnique, or WriteUniqueFull/Zero(+CleanSh)
+//   write miss, part of one  -> ReadUnique, or WriteUniquePtl(+CleanSh)
+//   maintenance              -> WriteBackFull, WriteCleanFull, WriteEvictFull,
+//                               WriteEvictOrEvict, Evict, CleanShared,
+//                               CleanInvalid, MakeInvalid, and the Table 4-17
+//                               (SS4.2.4 p.4-182) combinations of them
 //
 // A line is I, SC, UC, UD or SD, and UCE for the length of one race. A snoop can
 // take a Shared line away while its CleanUnique is in flight, and Table 4-38
@@ -37,7 +42,7 @@
 // ReadUnique, which Table 4-33 (p.4-212) permits from UCE. UDP is never entered:
 // that store is merged into the ReadUnique's data, not into the empty line.
 //
-// Displacing a Dirty victim owes a WriteBackFull (Table 4-16 SS4.2.2 p.4-175);
+// Displacing a Dirty victim owes a WriteBackFull (Table 4-16 SS4.2.3 p.4-181);
 // a Clean one is dropped silently, which Table 4-32 permits.
 //
 // Every request goes out with AllowRetry set, which SS2.11 (p.2-145, MUST)
@@ -60,6 +65,7 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_ARADDR_WIDTH-1:0]        ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE,
+    input  wire [`RNF_AR_COH_W-1:0]             ARCOH,
     input  wire                                 ARVALID,
     output wire                                 ARREADY,
     output wire [`AXI4_RID_WIDTH-1:0]           RID,
@@ -74,6 +80,7 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0]        AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]         AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0]        AWSIZE,
+    input  wire [`RNF_AW_COH_W-1:0]             AWCOH,
     input  wire                                 AWVALID,
     output wire                                 AWREADY,
     input  wire [`AXI4_WDATA_WIDTH-1:0]         WDATA,
@@ -85,6 +92,14 @@ module rnf_ctl `RNF_PARAM
     output wire [`AXI4_BRESP_WIDTH-1:0]         BRESP,
     output wire                                 BVALID,
     input  wire                                 BREADY,
+
+    // Cache maintenance
+    input  wire                                 CMVALID,
+    output wire                                 CMREADY,
+    input  wire [`RNF_CM_OP_W-1:0]              CMOP,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] CMADDR,
+    output wire                                 CMDONE,
+    output wire [1:0]                           CMRESP,
 
     // Cache
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_lu_addr_o,
@@ -166,6 +181,21 @@ module rnf_ctl `RNF_PARAM
     localparam logic [3:0] S_BRESP   = 4'd9;
     localparam logic [3:0] S_PCRD    = 4'd10;
     localparam logic [3:0] S_PCRD_RET= 4'd11;
+    localparam logic [3:0] S_WU_DAT  = 4'd12;
+    localparam logic [3:0] S_CMRSP   = 4'd13;
+
+    // What the request in S_REQ is waiting for.
+    localparam logic [2:0] K_READ    = 3'd0;   // a Data response, the line filled from it
+    localparam logic [2:0] K_MRU     = 3'd1;   // Comp, or a Data response if the line was lost
+    localparam logic [2:0] K_OWN     = 3'd2;   // Comp granting ownership
+    localparam logic [2:0] K_NOTE    = 3'd3;   // Comp and nothing else: Evict and the CMOs
+    localparam logic [2:0] K_WU      = 3'd4;   // DBIDResp, WriteData, Comp
+
+    // Where the finished transaction is answered.
+    localparam logic [1:0] CH_NONE   = 2'd0;
+    localparam logic [1:0] CH_R      = 2'd1;
+    localparam logic [1:0] CH_B      = 2'd2;
+    localparam logic [1:0] CH_CM     = 2'd3;
 
     logic [3:0]                                 st_q;
     logic [`AXI4_ARID_WIDTH-1:0]                id_q;
@@ -182,6 +212,8 @@ module rnf_ctl `RNF_PARAM
     // SS9.3 (p.9-336, MUST): a Non-data Error leaves the cache as the request
     // found it.
     logic                                       nderr_q;
+    // A Data packet of this transaction carried DERR.
+    logic                                       data_err_q;
     // The bytes in line_q are known to be corrupt.
     logic                                       line_err_q;
 
@@ -191,18 +223,27 @@ module rnf_ctl `RNF_PARAM
     logic [1:0]                                 wchunk_q;
     // The 128-bit chunk a read returns. addr_q holds the line, not the access.
     logic [1:0]                                 rchunk_q;
+    logic [`RNF_AW_COH_W-1:0]                   aw_coh_q;
     logic [`RNF_WAY_W-1:0]                      way_q;
     chie_pkg::req_opcode_e                      acq_op_q;
-    logic                                       acq_data_q;   // the acquire returns data
+    logic [2:0]                                 kind_q;
+    logic                                       ack_q;     // ExpCompAck
+    logic                                       alloc_q;   // the completion installs the line
+    logic [1:0]                                 rsp_ch_q;
 
-    // The victim, latched when the transaction commits to displacing it. Its
-    // data cannot change under us -- the snoop port writes state only -- but its
-    // state can, which is what vic_state_q tracks.
+    // The line a CopyBack writes back or a drop retires: a displaced victim, the
+    // target of a maintenance operation, or a line the flush empties. Its data
+    // cannot change under us -- the snoop port writes state only -- but its state
+    // can, which is what vic_state_q tracks.
     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]       vic_addr_q;
     logic [`RNF_WAY_W-1:0]                      vic_way_q;
     logic [`RNF_CS_WIDTH-1:0]                   vic_state_q;
     logic [`RNF_LINE_BITS-1:0]                  vic_data_q;
     logic                                       vic_err_q;
+    chie_pkg::req_opcode_e                      cb_op_q;
+    logic                                       cb_then_req_q;  // a request follows the CopyBack
+    logic                                       cb_keep_q;      // WriteClean: the line stays, Clean
+    logic                                       cb_ls_q;        // WriteEvictOrEvict's LikelyShared
     // SS2.11 (p.2-145): the request that drew a RetryAck, and what it waits for.
     logic                                       retry_q;
     logic [3:0]                                 retry_type_q;
@@ -220,13 +261,13 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_CS_WIDTH-1:0]                   acq_cs_q;
     logic                                       fill_uce_q;
     logic                                       chain_ru_q;
-    logic [CHIE_NID_WIDTH_PARAM-1:0]            cb_tgt_q;
-    logic [11:0]                                cb_txnid_q;
-    logic                                       cb_hi_q;
+    // The WriteData in flight: its target, the DBID it answers, and which packet.
+    logic [CHIE_NID_WIDTH_PARAM-1:0]            wr_tgt_q;
+    logic [11:0]                                wr_txnid_q;
+    logic                                       wr_hi_q;
+    logic                                       wr_dbid_q;
+    logic                                       wr_sent_q;
     logic                                       cb_done_q;
-    // Emptying the cache before leaving coherency: a CopyBack that is not followed
-    // by a fill, and a Clean line dropped outright.
-    logic                                       flush_q;
     logic                                       drop_q;
 
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
@@ -236,6 +277,16 @@ module rnf_ctl `RNF_PARAM
     function automatic bit is_unique(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UC) || (cs == `RNF_CS_UD) ||
                (cs == `RNF_CS_UCE) || (cs == `RNF_CS_UDP);
+    endfunction
+
+    // Table 4-39 (SS4.7.3 p.4-219): WriteCleanFull leaves the line Clean at the
+    // sharing its WriteData named.
+    function automatic logic [`RNF_CS_WIDTH-1:0] clean_of(logic [`RNF_CS_WIDTH-1:0] cs);
+        case (cs)
+            `RNF_CS_UD, `RNF_CS_UC: return `RNF_CS_UC;
+            `RNF_CS_SD, `RNF_CS_SC: return `RNF_CS_SC;
+            default:                return `RNF_CS_I;
+        endcase
     endfunction
 
     // Table 4-33 (SS4.7.1 p.4-211) read grants, and Table 4-38's (p.4-218)
@@ -263,6 +314,24 @@ module rnf_ctl `RNF_PARAM
         endcase
     endfunction
 
+    function automatic chie_pkg::req_opcode_e read_op(logic [`RNF_AR_COH_W-1:0] coh);
+        case (coh)
+            `RNF_AR_CLEAN:          return chie_pkg::REQ_READCLEAN;
+            `RNF_AR_PREFER_UNIQUE:  return chie_pkg::REQ_READPREFERUNIQUE;
+            `RNF_AR_UNIQUE:         return chie_pkg::REQ_READUNIQUE;
+            `RNF_AR_ONCE:           return chie_pkg::REQ_READONCE;
+            `RNF_AR_ONCE_CLEAN_INV: return chie_pkg::REQ_READONCECLEANINVALID;
+            `RNF_AR_ONCE_MAKE_INV:  return chie_pkg::REQ_READONCEMAKEINVALID;
+            default:                return chie_pkg::REQ_READSHARED;
+        endcase
+    endfunction
+
+    function automatic bit is_read_once(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_READONCE) ||
+               (op == chie_pkg::REQ_READONCECLEANINVALID) ||
+               (op == chie_pkg::REQ_READONCEMAKEINVALID);
+    endfunction
+
     function automatic logic [`RNF_LINE_BITS-1:0]
         merge_line(logic [`RNF_LINE_BITS-1:0]  base,
                    logic [`RNF_LINE_BITS-1:0]  wdat,
@@ -275,46 +344,59 @@ module rnf_ctl `RNF_PARAM
         {ARADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] aw_line =
         {AWADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
+    wire chie_pkg::req_opcode_e ar_op = read_op(ARCOH);
+    // SS4.2.1 (p.4-163): the ReadOnce family is non-allocating, so its data is not
+    // cached and nothing is displaced for it.
+    wire ar_alloc = !is_read_once(ar_op);
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cm_line =
+        {CMADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
 
-    // A read is taken ahead of a write when both are offered, so the lookup this
-    // cycle is the one the accepted channel needs.
-    assign cache_lu_addr_o = (st_q != S_IDLE) ? addr_q :
-                             ARVALID          ? ar_line : aw_line;
+    // A read is taken ahead of a write, and a write ahead of maintenance, so the
+    // lookup this cycle is the one the accepted channel needs.
+    assign cache_lu_addr_o = (st_q != S_IDLE) ? addr_q  :
+                             ARVALID          ? ar_line :
+                             AWVALID          ? aw_line : cm_line;
 
     // SS15.2.1 (p.15-467, MUST) forbids issuing a caching transaction before
-    // SYSCOACK, so neither channel is accepted before Coherency Enabled.
+    // SYSCOACK, so no channel is accepted before Coherency Enabled.
     // A surplus P-Credit goes back before new work is taken: offering READY in
     // the same cycle the FSM leaves to return it would complete an AXI handshake
     // for a request nothing then serves.
     wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
+    assign CMREADY = accept_ok && !ARVALID && !AWVALID;
     assign WREADY  = (st_q == S_WDATA);
 
     wire [`RNF_CS_WIDTH-1:0] lu_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
 
-    // The byte mask including the beat being accepted this cycle: wbe_q does not
-    // carry it until the next edge, and the whole-line question is asked on
+    // The write including the beat being accepted this cycle: wbe_q and wbuf_q do
+    // not carry it until the next edge, and the whole-line question is asked on
     // WLAST, which is that same cycle.
     logic [`RNF_LINE_BYTES-1:0] wbe_now;
+    logic [`RNF_LINE_BITS-1:0]  wbuf_now;
     always_comb begin
-        wbe_now = wbe_q;
+        wbe_now  = wbe_q;
+        wbuf_now = wbuf_q;
         case (wchunk_q)
-            2'd0:    wbe_now[15:0]  = WSTRB;
-            2'd1:    wbe_now[31:16] = WSTRB;
-            2'd2:    wbe_now[47:32] = WSTRB;
-            default: wbe_now[63:48] = WSTRB;
+            2'd0:    begin wbe_now[15:0]  = WSTRB; wbuf_now[127:0]   = WDATA; end
+            2'd1:    begin wbe_now[31:16] = WSTRB; wbuf_now[255:128] = WDATA; end
+            2'd2:    begin wbe_now[47:32] = WSTRB; wbuf_now[383:256] = WDATA; end
+            default: begin wbe_now[63:48] = WSTRB; wbuf_now[511:384] = WDATA; end
         endcase
     end
     wire wr_full = &wbe_now;
+    wire wr_zero = wr_full && (wbuf_now == '0);
 
     // Whether the displaced way owes a write-back. Evaluated at the point the
     // transaction commits to filling, so cache_vic_* still describe the way the
     // fill will take.
     wire need_cb = is_dirty(cache_vic_state_i);
 
-    // Table 2-8 (SS2.8.3 p.2-117) makes CompAck required for every request this
-    // engine issues except the CopyBack, which it forbids outright.
+    // Table 2-8 (SS2.8.3 p.2-117) sets ExpCompAck per request: required for the
+    // allocating reads and the ownership requests, and WriteEvictOrEvict; not
+    // permitted for WriteBack, WriteClean, WriteEvictFull, Evict or a CMO; this
+    // node leaves the optional ReadOnce* and WriteUnique cases without.
     always_comb begin
         prot_txreqflit_o              = '0;
         prot_txreqflit_o.srcid        = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
@@ -323,11 +405,11 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.allowretry   = !retry_q;
         prot_txreqflit_o.pcrdtype     = retry_q ? retry_type_q : 4'd0;
         prot_txreqflit_o.order        = chie_pkg::ORDER_NONE;
-        prot_txreqflit_o.memattr.allocate     = 1'b1;
         prot_txreqflit_o.memattr.cacheable    = 1'b1;
         prot_txreqflit_o.memattr.device       = 1'b0;
         prot_txreqflit_o.memattr.early_wr_ack = 1'b1;
         prot_txreqflit_o.snpattr.snpattr      = 1'b1;
+        prot_txreqflit_o.txnid        = txnid_q;
         if (st_q == S_PCRD_RET) begin
             // SS2.6.6 (p.2-112): addressed to the credit's source, TxnID zero, and
             // the PCrdType it was granted under. Table A-2 (p.A-484) leaves every
@@ -339,16 +421,22 @@ module rnf_ctl `RNF_PARAM
             prot_txreqflit_o.pcrdtype = ret_type_q;
         end
         else if (st_q == S_CB_REQ) begin
-            prot_txreqflit_o.txnid      = txnid_q;
-            prot_txreqflit_o.opcode     = chie_pkg::REQ_WRITEBACKFULL;
-            prot_txreqflit_o.addr       = vic_addr_q;
-            prot_txreqflit_o.expcompack = 1'b0;
+            prot_txreqflit_o.opcode       = cb_op_q;
+            prot_txreqflit_o.addr         = vic_addr_q;
+            prot_txreqflit_o.memattr.allocate = 1'b1;
+            // SS2.8.3 (p.2-116, MUST): WriteEvictOrEvict sets ExpCompAck; SS4.2.3
+            // (p.4-177) encodes the line's initial state in LikelyShared.
+            prot_txreqflit_o.expcompack   = (cb_op_q == chie_pkg::REQ_WRITEEVICTOREVICT);
+            prot_txreqflit_o.likelyshared = (cb_op_q == chie_pkg::REQ_WRITEEVICTOREVICT) && cb_ls_q;
         end
         else begin
-            prot_txreqflit_o.txnid      = txnid_q;
-            prot_txreqflit_o.opcode     = acq_op_q;
-            prot_txreqflit_o.addr       = addr_q;
-            prot_txreqflit_o.expcompack = 1'b1;
+            prot_txreqflit_o.opcode       = acq_op_q;
+            prot_txreqflit_o.addr         = addr_q;
+            prot_txreqflit_o.expcompack   = ack_q;
+            // Table 4-1 (SS4.2.1 p.4-165) and Table 4-7 (SS4.2.2 p.4-172):
+            // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
+            prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
+                                                (acq_op_q != chie_pkg::REQ_READONCEMAKEINVALID);
         end
     end
 
@@ -368,50 +456,52 @@ module rnf_ctl `RNF_PARAM
 
     // SS2.10.3 (p.2-135, MUST): "A Requester must deassert all BE values in
     // CopyBackWrData_I", and a deasserted byte enable "must set the associated
-    // data byte value to zero". Every other CopyBackWrData of a WriteBackFull
-    // asserts all 64 (SS4.2.2 p.4-175).
+    // data byte value to zero". Every other CopyBackWrData of a Full CopyBack
+    // asserts all 64 (SS4.2.3 p.4-177).
     wire cb_invalid = (cb_resp_of(vic_state_q) == chie_pkg::RESP_I);
+    wire [`RNF_LINE_BITS-1:0] wu_line = merge_line('0, wbuf_q, wbe_q);
 
     always_comb begin
         prot_txdatflit_o        = '0;
-        prot_txdatflit_o.tgtid  = cb_tgt_q;
+        prot_txdatflit_o.tgtid  = wr_tgt_q;
         prot_txdatflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
-        prot_txdatflit_o.txnid  = cb_txnid_q;
-        prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
-        prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
+        prot_txdatflit_o.txnid  = wr_txnid_q;
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
-        prot_txdatflit_o.dataid = cb_hi_q ? 2'd2 : 2'd0;
-        prot_txdatflit_o.be     = cb_invalid ? '0 : '1;
-        // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an error
-        // indication, and Table 9-7 makes DERR the one WriteData may carry.
-        prot_txdatflit_o.resperr = (vic_err_q && !cb_invalid) ? chie_pkg::RESP_ERR_DATA
-                                                              : chie_pkg::RESP_ERR_NORM_OK;
-        prot_txdatflit_o.data   = cb_invalid ? '0 :
-                                  (cb_hi_q ? vic_data_q[511:256] : vic_data_q[255:0]);
+        prot_txdatflit_o.dataid = wr_hi_q ? 2'd2 : 2'd0;
+        if (st_q == S_WU_DAT) begin
+            prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
+            prot_txdatflit_o.be     = wr_hi_q ? wbe_q[63:32]    : wbe_q[31:0];
+            prot_txdatflit_o.data   = wr_hi_q ? wu_line[511:256] : wu_line[255:0];
+        end
+        else begin
+            prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
+            prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
+            prot_txdatflit_o.be     = cb_invalid ? '0 : '1;
+            // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an
+            // error indication, and Table 9-7 makes DERR the one WriteData may carry.
+            prot_txdatflit_o.resperr = (vic_err_q && !cb_invalid) ? chie_pkg::RESP_ERR_DATA
+                                                                  : chie_pkg::RESP_ERR_NORM_OK;
+            prot_txdatflit_o.data   = cb_invalid ? '0 :
+                                      (wr_hi_q ? vic_data_q[511:256] : vic_data_q[255:0]);
+        end
     end
 
-    assign prot_txdatflitv_o = (st_q == S_CB_DAT);
+    assign prot_txdatflitv_o = (st_q == S_CB_DAT) || (st_q == S_WU_DAT);
 
-    // The response half: RespSepData in the separate form, CompData in the
-    // combined one, Comp for a Dataless acquire. SS2.5.5 (p.2-89) makes the
-    // first's HomeNID and DBID the values "that can always be used".
-    wire rx_rsp_mine = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
-                       ((prot_rxrspflit_i.opcode == chie_pkg::RSP_RESPSEPDATA) ||
-                        (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMP));
-    wire rx_comp_dataless = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
-                            (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMP);
+    wire rx_rsp_txn  = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q);
+    wire rx_comp     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMP);
+    wire rx_sep      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_RESPSEPDATA);
+    wire rx_dbid     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESP);
+    // SS2.3.2 (p.2-51) / Table 4-39 (p.4-219): a CopyBack completes with the
+    // combined CompDBIDResp, never a separate DBIDResp and Comp.
+    wire rx_compdbid = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPDBIDRESP);
+    wire rx_retryack = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_RETRYACK);
     wire rx_dat_mine = prot_rxdatflitv_i && (prot_rxdatflit_i.txnid == txnid_q) &&
                        ((prot_rxdatflit_i.opcode == chie_pkg::DAT_COMPDATA) ||
                         (prot_rxdatflit_i.opcode == chie_pkg::DAT_DATASEPRESP));
     wire rx_dat_comb = rx_dat_mine &&
                        (prot_rxdatflit_i.opcode == chie_pkg::DAT_COMPDATA);
-    // SS2.3.2 (p.2-51) / Table 4-39 (p.4-219): a CopyBack completes with the
-    // combined CompDBIDResp, never a separate DBIDResp and Comp.
-    wire rx_cb_dbid = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
-                      (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPDBIDRESP);
 
-    wire rx_retryack  = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
-                        (prot_rxrspflit_i.opcode == chie_pkg::RSP_RETRYACK);
     // A PCrdGrant names no transaction, so it is taken whatever this node is doing.
     wire rx_pcrdgrant = prot_rxrspflitv_i &&
                         (prot_rxrspflit_i.opcode == chie_pkg::RSP_PCRDGRANT);
@@ -448,7 +538,6 @@ module rnf_ctl `RNF_PARAM
         return (e == chie_pkg::RESP_ERR_DATA) || (e == chie_pkg::RESP_ERR_NON_DATA);
     endfunction
 
-    wire rx_rsp_txn = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q);
     wire rx_err = (rx_rsp_txn && is_err(prot_rxrspflit_i.resperr)) ||
                   (rx_dat_mine && is_err(prot_rxdatflit_i.resperr));
     wire rx_nderr = (rx_rsp_txn && (prot_rxrspflit_i.resperr == chie_pkg::RESP_ERR_NON_DATA)) ||
@@ -458,6 +547,7 @@ module rnf_ctl `RNF_PARAM
     // Dataless Comp (Table 9-4 p.9-339) it names another component's data, so the
     // line this node holds is untouched.
     wire rx_derr_dat = rx_dat_mine && (prot_rxdatflit_i.resperr == chie_pkg::RESP_ERR_DATA);
+    wire data_err_now = data_err_q || rx_derr_dat;
 
     // The line the transaction installs: the store merged over whatever the
     // acquire brought back, or over the copy already resident.
@@ -472,62 +562,97 @@ module rnf_ctl `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0] acq_cs_now = acq_snp_now ? snp_upd_state_i : acq_cs_q;
     wire                     acq_lost   = (acq_cs_now == `RNF_CS_I);
 
+    wire vic_snp_now = snp_upd_v_i && (snp_upd_way_i == vic_way_q) &&
+        (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
+         vic_addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]);
+    wire [`RNF_CS_WIDTH-1:0] vic_state_now = vic_snp_now ? snp_upd_state_i : vic_state_q;
+
+    // Table 4-34 (SS4.7.1 p.4-213): MakeReadUnique's data is the Requester's to
+    // use only once it has lost its own copy; p.4-215 has one still held "use its
+    // own copy of the cache line, rather than the copy returned".
+    wire take_data = (kind_q != K_MRU) || acq_lost;
+
+    wire got_lo_now = got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0));
+    wire got_hi_now = got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0));
+    wire data_done  = got_lo_now && got_hi_now && (got_rsp_q || rx_sep || rx_dat_comb);
+
+    wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
+    wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
+
+    logic [3:0] fin_st;
+    always_comb begin
+        case (rsp_ch_q)
+            CH_R:    fin_st = S_RESP;
+            CH_B:    fin_st = S_BRESP;
+            CH_CM:   fin_st = S_CMRSP;
+            default: fin_st = S_IDLE;
+        endcase
+    end
+
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
-            st_q         <= S_IDLE;
-            id_q         <= '0;
-            addr_q       <= '0;
-            txnid_q      <= '0;
-            line_q       <= '0;
-            fill_state_q <= `RNF_CS_I;
-            got_lo_q     <= 1'b0;
-            got_hi_q     <= 1'b0;
-            got_rsp_q    <= 1'b0;
-            ack_tgt_q    <= '0;
-            ack_txnid_q  <= '0;
-            fill_v_q     <= 1'b0;
-            hit_q        <= 1'b0;
-            err_q        <= 1'b0;
-            nderr_q      <= 1'b0;
-            line_err_q   <= 1'b0;
-            is_wr_q      <= 1'b0;
-            wbuf_q       <= '0;
-            wbe_q        <= '0;
-            wchunk_q     <= 2'd0;
-            rchunk_q     <= 2'd0;
-            way_q        <= '0;
-            acq_op_q     <= chie_pkg::REQ_READSHARED;
-            acq_data_q   <= 1'b0;
-            vic_addr_q   <= '0;
-            vic_way_q    <= '0;
-            vic_state_q  <= `RNF_CS_I;
-            vic_data_q   <= '0;
-            vic_err_q    <= 1'b0;
-            acq_cs_q     <= `RNF_CS_I;
-            retry_q      <= 1'b0;
-            retry_type_q <= 4'd0;
-            retry_cb_q   <= 1'b0;
-            ret_type_q   <= 4'd0;
+            st_q          <= S_IDLE;
+            id_q          <= '0;
+            addr_q        <= '0;
+            txnid_q       <= '0;
+            line_q        <= '0;
+            fill_state_q  <= `RNF_CS_I;
+            got_lo_q      <= 1'b0;
+            got_hi_q      <= 1'b0;
+            got_rsp_q     <= 1'b0;
+            ack_tgt_q     <= '0;
+            ack_txnid_q   <= '0;
+            fill_v_q      <= 1'b0;
+            hit_q         <= 1'b0;
+            err_q         <= 1'b0;
+            nderr_q       <= 1'b0;
+            data_err_q    <= 1'b0;
+            line_err_q    <= 1'b0;
+            is_wr_q       <= 1'b0;
+            wbuf_q        <= '0;
+            wbe_q         <= '0;
+            wchunk_q      <= 2'd0;
+            rchunk_q      <= 2'd0;
+            aw_coh_q      <= `RNF_AW_CACHED;
+            way_q         <= '0;
+            acq_op_q      <= chie_pkg::REQ_READSHARED;
+            kind_q        <= K_READ;
+            ack_q         <= 1'b0;
+            alloc_q       <= 1'b0;
+            rsp_ch_q      <= CH_NONE;
+            vic_addr_q    <= '0;
+            vic_way_q     <= '0;
+            vic_state_q   <= `RNF_CS_I;
+            vic_data_q    <= '0;
+            vic_err_q     <= 1'b0;
+            cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+            cb_then_req_q <= 1'b0;
+            cb_keep_q     <= 1'b0;
+            cb_ls_q       <= 1'b0;
+            acq_cs_q      <= `RNF_CS_I;
+            retry_q       <= 1'b0;
+            retry_type_q  <= 4'd0;
+            retry_cb_q    <= 1'b0;
+            ret_type_q    <= 4'd0;
             for (int t = 0; t < 16; t++) begin
                 pcrd_cnt_q[t] <= 2'd0;
                 pcrd_src_q[t] <= '0;
             end
-            fill_uce_q   <= 1'b0;
-            chain_ru_q   <= 1'b0;
-            cb_tgt_q     <= '0;
-            cb_txnid_q   <= '0;
-            cb_hi_q      <= 1'b0;
-            cb_done_q    <= 1'b0;
-            flush_q      <= 1'b0;
-            drop_q       <= 1'b0;
+            fill_uce_q    <= 1'b0;
+            chain_ru_q    <= 1'b0;
+            wr_tgt_q      <= '0;
+            wr_txnid_q    <= '0;
+            wr_hi_q       <= 1'b0;
+            wr_dbid_q     <= 1'b0;
+            wr_sent_q     <= 1'b0;
+            cb_done_q     <= 1'b0;
+            drop_q        <= 1'b0;
         end
         else begin
             fill_v_q  <= 1'b0;
             cb_done_q <= 1'b0;
             drop_q    <= 1'b0;
 
-            // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
-            // its CopyBack is in flight, and the WriteData must say so.
             for (int t = 0; t < 16; t++) begin
                 automatic logic inc = rx_pcrdgrant && (prot_rxrspflit_i.pcrdtype == 4'(t));
                 automatic logic dec = (pcrd_use      && (retry_type_q == 4'(t))) ||
@@ -539,18 +664,23 @@ module rnf_ctl `RNF_PARAM
             if (acq_snp_now && (st_q != S_IDLE))
                 acq_cs_q <= snp_upd_state_i;
 
-            if (snp_upd_v_i && (snp_upd_way_i == vic_way_q) &&
-                (snp_upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W] ==
-                 vic_addr_q[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W]))
+            // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
+            // its CopyBack is in flight, and the WriteData must say so.
+            if (vic_snp_now)
                 vic_state_q <= snp_upd_state_i;
 
             case (st_q)
                 S_IDLE: begin
-                    got_lo_q  <= 1'b0;
-                    got_hi_q  <= 1'b0;
-                    got_rsp_q <= 1'b0;
-                    err_q     <= 1'b0;
-                    nderr_q   <= 1'b0;
+                    got_lo_q   <= 1'b0;
+                    got_hi_q   <= 1'b0;
+                    got_rsp_q  <= 1'b0;
+                    err_q      <= 1'b0;
+                    nderr_q    <= 1'b0;
+                    data_err_q <= 1'b0;
+                    wr_hi_q    <= 1'b0;
+                    wr_dbid_q  <= 1'b0;
+                    wr_sent_q  <= 1'b0;
+                    cb_keep_q  <= 1'b0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
@@ -561,11 +691,13 @@ module rnf_ctl `RNF_PARAM
                         vic_state_q <= cache_flush_state_i;
                         vic_data_q  <= cache_flush_data_i;
                         vic_err_q   <= cache_flush_err_i;
+                        rsp_ch_q    <= CH_NONE;
                         // SS4.1 (p.4-160): a Dirty line is the only copy, so it goes
                         // back; Table 4-32 (p.4-209) lets a Clean one go silently.
                         if (is_dirty(cache_flush_state_i)) begin
-                            flush_q <= 1'b1;
-                            st_q    <= S_CB_REQ;
+                            cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                            cb_then_req_q <= 1'b0;
+                            st_q          <= S_CB_REQ;
                         end
                         else drop_q <= 1'b1;
                     end
@@ -574,6 +706,7 @@ module rnf_ctl `RNF_PARAM
                         addr_q     <= ar_line;
                         rchunk_q   <= ARADDR[5:4];
                         is_wr_q    <= 1'b0;
+                        rsp_ch_q   <= CH_R;
                         way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
                         line_err_q <= cache_lu_err_i;
                         if (cache_lu_hit_i) begin
@@ -582,25 +715,138 @@ module rnf_ctl `RNF_PARAM
                             st_q   <= S_RESP;
                         end
                         else begin
-                            hit_q      <= 1'b0;
-                            acq_op_q   <= chie_pkg::REQ_READSHARED;
-                            acq_data_q <= 1'b1;
+                            hit_q    <= 1'b0;
+                            acq_op_q <= ar_op;
+                            kind_q   <= K_READ;
+                            alloc_q  <= ar_alloc;
+                            ack_q    <= ar_alloc;
                             vic_addr_q <= cache_vic_addr_i;
                             vic_way_q  <= cache_vic_way_i;
                             vic_state_q<= cache_vic_state_i;
                             vic_data_q <= cache_vic_data_i;
                             vic_err_q  <= cache_vic_err_i;
-                            st_q       <= need_cb ? S_CB_REQ : S_REQ;
+                            cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                            cb_then_req_q <= 1'b1;
+                            st_q <= (need_cb && ar_alloc) ? S_CB_REQ : S_REQ;
                         end
                     end
                     else if (AWVALID && AWREADY) begin
                         id_q     <= AWID;
                         addr_q   <= aw_line;
                         is_wr_q  <= 1'b1;
+                        rsp_ch_q <= CH_B;
+                        aw_coh_q <= AWCOH;
                         wbe_q    <= '0;
                         wbuf_q   <= '0;
                         wchunk_q <= AWADDR[5:4];
                         st_q     <= S_WDATA;
+                    end
+                    else if (CMVALID && CMREADY) begin
+                        addr_q      <= cm_line;
+                        is_wr_q     <= 1'b0;
+                        rsp_ch_q    <= CH_CM;
+                        alloc_q     <= 1'b0;
+                        ack_q       <= 1'b0;
+                        kind_q      <= K_NOTE;
+                        vic_addr_q  <= cm_line;
+                        vic_way_q   <= cache_lu_way_i;
+                        vic_state_q <= lu_state;
+                        vic_data_q  <= cache_lu_data_i;
+                        vic_err_q   <= cache_lu_err_i;
+                        cb_then_req_q <= 1'b0;
+                        cb_ls_q     <= (lu_state == `RNF_CS_SC);
+                        case (CMOP)
+                            `RNF_CM_EVICT_SILENT, `RNF_CM_EVICT_NOTIFY,
+                            `RNF_CM_EVICT_RETURN, `RNF_CM_EVICT_OFFER: begin
+                                acq_op_q <= chie_pkg::REQ_EVICT;
+                                if (!cache_lu_hit_i) st_q <= S_CMRSP;
+                                // Table 4-16 (SS4.2.3 p.4-181): a Dirty line leaves by
+                                // WriteBack whatever the core asked.
+                                else if (is_dirty(lu_state)) begin
+                                    cb_op_q <= chie_pkg::REQ_WRITEBACKFULL;
+                                    st_q    <= S_CB_REQ;
+                                end
+                                else if (CMOP == `RNF_CM_EVICT_SILENT) begin
+                                    drop_q <= 1'b1;
+                                    st_q   <= S_CMRSP;
+                                end
+                                else if ((CMOP == `RNF_CM_EVICT_RETURN) && (lu_state == `RNF_CS_UC)) begin
+                                    cb_op_q <= chie_pkg::REQ_WRITEEVICTFULL;
+                                    st_q    <= S_CB_REQ;
+                                end
+                                else if ((CMOP == `RNF_CM_EVICT_OFFER) &&
+                                         ((lu_state == `RNF_CS_UC) || (lu_state == `RNF_CS_SC))) begin
+                                    cb_op_q <= chie_pkg::REQ_WRITEEVICTOREVICT;
+                                    st_q    <= S_CB_REQ;
+                                end
+                                // Table 4-38 (SS4.7.2 p.4-218): the line goes to I
+                                // before the Evict is issued. SS4.6's Table 4-32
+                                // (p.4-209) makes that Evict the visible form of the
+                                // SC and UCE evictions, which WriteEvictFull is not.
+                                else begin
+                                    drop_q <= 1'b1;
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            `RNF_CM_CLEAN: begin
+                                if (is_dirty(lu_state)) begin
+                                    cb_op_q   <= chie_pkg::REQ_WRITECLEANFULL;
+                                    cb_keep_q <= 1'b1;
+                                    st_q      <= S_CB_REQ;
+                                end
+                                else st_q <= S_CMRSP;
+                            end
+                            `RNF_CM_CLEAN_SHARED, `RNF_CM_CLEAN_SHARED_EVICT: begin
+                                acq_op_q <= chie_pkg::REQ_CLEANSHARED;
+                                // Table 4-17 (SS4.2.4 p.4-182): a Dirty line folds its
+                                // CopyBack into the CMO, keeping a Clean copy or not.
+                                if (is_dirty(lu_state)) begin
+                                    cb_op_q   <= (CMOP == `RNF_CM_CLEAN_SHARED)
+                                                 ? chie_pkg::REQ_WRITECLEANFULLCLEANSH
+                                                 : chie_pkg::REQ_WRITEBACKFULLCLEANSH;
+                                    cb_keep_q <= (CMOP == `RNF_CM_CLEAN_SHARED);
+                                    st_q      <= S_CB_REQ;
+                                end
+                                // Table 4-10 (SS4.2.2 p.4-174): CleanShared from UC,
+                                // SC or I only.
+                                else begin
+                                    drop_q <= cache_lu_hit_i &&
+                                              ((CMOP == `RNF_CM_CLEAN_SHARED_EVICT) ||
+                                               (lu_state == `RNF_CS_UCE));
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            `RNF_CM_CLEAN_INVALID: begin
+                                acq_op_q <= chie_pkg::REQ_CLEANINVALID;
+                                if (is_dirty(lu_state)) begin
+                                    cb_op_q <= chie_pkg::REQ_WRITEBACKFULLCLEANINV;
+                                    st_q    <= S_CB_REQ;
+                                end
+                                // Table 4-38 (p.4-218): CleanInvalid is issued from I.
+                                else begin
+                                    drop_q <= cache_lu_hit_i;
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            `RNF_CM_MAKE_INVALID: begin
+                                acq_op_q <= chie_pkg::REQ_MAKEINVALID;
+                                // Table 4-32 (p.4-209) has no silent SD -> I, so a Shared
+                                // Dirty line is written back first.
+                                if (lu_state == `RNF_CS_SD) begin
+                                    cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
+                                else begin
+                                    drop_q <= cache_lu_hit_i;
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            default: begin
+                                err_q <= 1'b1;
+                                st_q  <= S_CMRSP;
+                            end
+                        endcase
                     end
                 end
 
@@ -614,10 +860,12 @@ module rnf_ctl `RNF_PARAM
                         endcase
                         wchunk_q <= wchunk_q + 2'd1;
                         if (WLAST) begin
-                            way_q <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+                            way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+                            line_err_q <= cache_lu_err_i;
+                            alloc_q    <= 1'b1;
+                            ack_q      <= 1'b1;
                             // A Unique line is already this node's to modify;
                             // Table 4-32 (SS4.6 p.4-209) makes UC -> UD silent.
-                            line_err_q <= cache_lu_err_i;
                             if (cache_lu_hit_i && is_unique(lu_state)) begin
                                 line_q       <= cache_lu_data_i;
                                 fill_state_q <= `RNF_CS_UD;
@@ -628,13 +876,36 @@ module rnf_ctl `RNF_PARAM
                             else begin
                                 hit_q <= 1'b0;
                                 if (cache_lu_hit_i) begin
-                                    // SC or SD: Table 4-38 (p.4-218) ends both
-                                    // Unique, and no data need move.
-                                    line_q     <= cache_lu_data_i;
-                                    acq_cs_q   <= lu_state;
-                                    acq_op_q   <= chie_pkg::REQ_CLEANUNIQUE;
-                                    acq_data_q <= 1'b0;
-                                    st_q       <= S_REQ;
+                                    // SC or SD: Table 4-38 (p.4-218) and Table 4-36
+                                    // (SS4.7.1 p.4-216) end both Unique, and the node
+                                    // keeps its own bytes.
+                                    line_q   <= cache_lu_data_i;
+                                    acq_cs_q <= lu_state;
+                                    if (aw_coh_q == `RNF_AW_READ_UNIQUE) begin
+                                        acq_op_q <= chie_pkg::REQ_MAKEREADUNIQUE;
+                                        kind_q   <= K_MRU;
+                                    end
+                                    else begin
+                                        acq_op_q <= chie_pkg::REQ_CLEANUNIQUE;
+                                        kind_q   <= K_OWN;
+                                    end
+                                    st_q <= S_REQ;
+                                end
+                                else if ((aw_coh_q == `RNF_AW_IMMEDIATE) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)) begin
+                                    // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
+                                    // line that is Invalid here, and leaves it so.
+                                    alloc_q <= 1'b0;
+                                    ack_q   <= 1'b0;
+                                    kind_q  <= K_WU;
+                                    if (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
+                                        acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH
+                                                            : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH;
+                                    else
+                                        acq_op_q <= wr_zero ? chie_pkg::REQ_WRITEUNIQUEZERO :
+                                                    wr_full ? chie_pkg::REQ_WRITEUNIQUEFULL
+                                                            : chie_pkg::REQ_WRITEUNIQUEPTL;
+                                    st_q <= S_REQ;
                                 end
                                 else begin
                                     line_q     <= '0;
@@ -644,12 +915,14 @@ module rnf_ctl `RNF_PARAM
                                     // the bytes it does not write.
                                     acq_op_q   <= wr_full ? chie_pkg::REQ_MAKEUNIQUE
                                                           : chie_pkg::REQ_READUNIQUE;
-                                    acq_data_q <= !wr_full;
+                                    kind_q     <= wr_full ? K_OWN : K_READ;
                                     vic_addr_q <= cache_vic_addr_i;
                                     vic_way_q  <= cache_vic_way_i;
                                     vic_state_q<= cache_vic_state_i;
                                     vic_data_q <= cache_vic_data_i;
                                     vic_err_q  <= cache_vic_err_i;
+                                    cb_op_q       <= chie_pkg::REQ_WRITEBACKFULL;
+                                    cb_then_req_q <= 1'b1;
                                     st_q       <= need_cb ? S_CB_REQ : S_REQ;
                                 end
                             end
@@ -668,26 +941,37 @@ module rnf_ctl `RNF_PARAM
                         retry_cb_q   <= 1'b1;
                         st_q         <= S_PCRD;
                     end
-                    else if (rx_cb_dbid) begin
+                    else if (rx_compdbid) begin
                         retry_q    <= 1'b0;
-                        cb_tgt_q   <= prot_rxrspflit_i.srcid;
-                        cb_txnid_q <= prot_rxrspflit_i.dbid;
-                        cb_hi_q    <= 1'b0;
+                        wr_tgt_q   <= prot_rxrspflit_i.srcid;
+                        wr_txnid_q <= prot_rxrspflit_i.dbid;
+                        wr_hi_q    <= 1'b0;
+                        if (!cb_then_req_q && rx_err) err_q <= 1'b1;
                         st_q       <= S_CB_DAT;
+                    end
+                    // Table 4-39 (p.4-220) fn c: a Home that wants no data answers
+                    // WriteEvictOrEvict with Comp, and the line still ends Invalid.
+                    else if (rx_comp && (cb_op_q == chie_pkg::REQ_WRITEEVICTOREVICT)) begin
+                        retry_q     <= 1'b0;
+                        ack_tgt_q   <= prot_rxrspflit_i.srcid;
+                        ack_txnid_q <= prot_rxrspflit_i.dbid;
+                        cb_done_q   <= 1'b1;
+                        if (rx_err) err_q <= 1'b1;
+                        st_q        <= S_ACK;
                     end
                 end
 
                 S_CB_DAT: begin
                     if (prot_txdatflit_sent_i) begin
-                        if (cb_hi_q) begin
+                        if (wr_hi_q) begin
                             // The way is free only now: until the data has gone,
                             // a snoop on this line is still answered from it.
                             cb_done_q <= 1'b1;
+                            wr_hi_q   <= 1'b0;
                             txnid_q   <= txnid_q + 12'd1;
-                            flush_q   <= 1'b0;
-                            st_q      <= flush_q ? S_IDLE : S_REQ;
+                            st_q      <= cb_then_req_q ? S_REQ : fin_st;
                         end
-                        else cb_hi_q <= 1'b1;
+                        else wr_hi_q <= 1'b1;
                     end
                 end
 
@@ -703,15 +987,16 @@ module rnf_ctl `RNF_PARAM
                         st_q         <= S_PCRD;
                     end
                     else begin
+                    retry_q <= 1'b0;
                     if (rx_err)      err_q      <= 1'b1;
                     if (rx_nderr)    nderr_q    <= 1'b1;
-                    if (rx_derr_dat) line_err_q <= 1'b1;
+                    if (rx_derr_dat) data_err_q <= 1'b1;
 
-                    if (rx_rsp_mine) begin
-                        got_rsp_q   <= 1'b1;
+                    if (rx_sep || rx_comp) begin
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
                         ack_txnid_q <= prot_rxrspflit_i.dbid;
                     end
+                    if (rx_sep) got_rsp_q <= 1'b1;
                     if (rx_dat_comb) begin
                         ack_tgt_q   <= prot_rxdatflit_i.homenid;
                         ack_txnid_q <= prot_rxdatflit_i.dbid;
@@ -719,57 +1004,112 @@ module rnf_ctl `RNF_PARAM
                     // Table 4-33 (SS4.7.1 p.4-211) puts a read's granted state on
                     // the DATA half of both shapes; Table 4-38 (p.4-218) puts a
                     // Dataless one on the Comp.
-                    if (rx_dat_mine)       fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
-                    if (rx_comp_dataless)  fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
+                    if (rx_dat_mine) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
+                    if (rx_comp)     fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
 
                     // SS2.10.4 (p.2-136): a 64-byte transfer at Data_Width 256 is
                     // two packets, DataID 0 then 2.
                     if (rx_dat_mine) begin
                         if (prot_rxdatflit_i.dataid == 2'd0) begin
-                            line_q[255:0] <= prot_rxdatflit_i.data;
-                            got_lo_q      <= 1'b1;
+                            if (take_data) line_q[255:0] <= prot_rxdatflit_i.data;
+                            got_lo_q <= 1'b1;
                         end
                         else begin
-                            line_q[511:256] <= prot_rxdatflit_i.data;
-                            got_hi_q        <= 1'b1;
+                            if (take_data) line_q[511:256] <= prot_rxdatflit_i.data;
+                            got_hi_q <= 1'b1;
                         end
                     end
 
-                    // The line takes its granted state on the completion, not on
-                    // this node's CompAck, so the fill lands now: a snoop released
-                    // by the deferral below must find the state already there.
-                    if (acq_data_q) begin
-                        if ((got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0))) &&
-                            (got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0))) &&
-                            (got_rsp_q || rx_rsp_mine || rx_dat_comb)) begin
-                            fill_v_q <= !nderr_now;
-                            st_q     <= S_ACK;
-                            // A chained ReadUnique's line is UCE, owning no bytes.
-                            // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
-                            // permits the silent eviction to I, so the line can
-                            // never be served or merged into with no data behind it.
-                            if (nderr_now && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
-                                vic_addr_q <= addr_q;
-                                vic_way_q  <= cache_lu_way_i;
-                                drop_q     <= 1'b1;
+                    case (kind_q)
+                        K_READ, K_MRU: begin
+                            // The line takes its granted state on the completion,
+                            // not on this node's CompAck, so the fill lands now: a
+                            // snoop released by the deferral below must find the
+                            // state already there.
+                            if (data_done) begin
+                                fill_v_q <= alloc_q && !nderr_now;
+                                if (take_data) line_err_q <= data_err_now;
+                                if (ack_q) st_q <= S_ACK;
+                                else begin
+                                    txnid_q <= txnid_q + 12'd1;
+                                    st_q    <= fin_st;
+                                end
+                                // A chained ReadUnique's line is UCE, owning no bytes.
+                                // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
+                                // permits the silent eviction to I, so the line can
+                                // never be served or merged into with no data behind it.
+                                if (nderr_now && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
+                                    vic_addr_q <= addr_q;
+                                    vic_way_q  <= cache_lu_way_i;
+                                    drop_q     <= 1'b1;
+                                end
+                            end
+                            else if ((kind_q == K_MRU) && rx_comp && !got_lo_q && !got_hi_q) begin
+                                fill_v_q <= !nderr_now;
+                                st_q     <= S_ACK;
                             end
                         end
-                    end
-                    else if (got_rsp_q || rx_comp_dataless) begin
-                        fill_v_q <= !nderr_now;
-                        st_q     <= S_ACK;
-                        // Table 4-38 (p.4-218): the line went Invalid under the
-                        // CleanUnique, which therefore ends UCE. The bytes held in
-                        // line_q are what the snoop took away, so none survive.
-                        if ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) && acq_lost && !nderr_now) begin
-                            line_q     <= '0;
-                            line_err_q <= 1'b0;
-                            if (!(&wbe_q)) begin
-                                fill_uce_q <= 1'b1;
-                                chain_ru_q <= 1'b1;
+                        K_OWN: begin
+                            if (rx_comp) begin
+                                fill_v_q <= !nderr_now;
+                                st_q     <= S_ACK;
                             end
                         end
+                        K_NOTE: begin
+                            if (rx_comp) begin
+                                txnid_q <= txnid_q + 12'd1;
+                                st_q    <= fin_st;
+                            end
+                        end
+                        default: begin
+                            if (rx_dbid || rx_compdbid) begin
+                                wr_tgt_q   <= prot_rxrspflit_i.srcid;
+                                wr_txnid_q <= prot_rxrspflit_i.dbid;
+                                wr_dbid_q  <= 1'b1;
+                            end
+                            if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;
+                            if (wu_dbid_now) begin
+                                if ((acq_op_q != chie_pkg::REQ_WRITEUNIQUEZERO) && !wr_sent_q)
+                                    st_q <= S_WU_DAT;
+                                else if (wu_comp_now) begin
+                                    txnid_q <= txnid_q + 12'd1;
+                                    st_q    <= fin_st;
+                                end
+                            end
+                        end
+                    endcase
+
+                    // Table 4-38 (p.4-218): the line went Invalid under the
+                    // CleanUnique, which therefore ends UCE. The bytes held in
+                    // line_q are what the snoop took away, so none survive. A
+                    // dataless MakeReadUnique completion to a lost line takes the
+                    // same path.
+                    if (rx_comp && acq_lost && !nderr_now && !got_lo_q && !got_hi_q &&
+                        ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
+                         (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE))) begin
+                        line_q     <= '0;
+                        line_err_q <= 1'b0;
+                        if (!(&wbe_q)) begin
+                            fill_uce_q <= 1'b1;
+                            chain_ru_q <= 1'b1;
+                        end
                     end
+                    end
+                end
+
+                S_WU_DAT: begin
+                    if (rx_err) err_q <= 1'b1;
+                    if (rx_comp) got_rsp_q <= 1'b1;
+                    if (prot_txdatflit_sent_i) begin
+                        if (wr_hi_q) begin
+                            wr_sent_q <= 1'b1;
+                            if (got_rsp_q || rx_comp) begin
+                                txnid_q <= txnid_q + 12'd1;
+                                st_q    <= fin_st;
+                            end
+                            else st_q <= S_DATA;
+                        end
+                        else wr_hi_q <= 1'b1;
                     end
                 end
 
@@ -787,6 +1127,7 @@ module rnf_ctl `RNF_PARAM
                 S_ACK: begin
                     retry_q <= 1'b0;
                     if (prot_txrspflit_sent_i) begin
+                        txnid_q <= txnid_q + 12'd1;
                         if (chain_ru_q) begin
                             // p.4-215: the other transaction the lost line costs.
                             chain_ru_q <= 1'b0;
@@ -794,29 +1135,25 @@ module rnf_ctl `RNF_PARAM
                             got_lo_q   <= 1'b0;
                             got_hi_q   <= 1'b0;
                             got_rsp_q  <= 1'b0;
+                            data_err_q <= 1'b0;
                             line_err_q <= 1'b0;
                             acq_op_q   <= chie_pkg::REQ_READUNIQUE;
-                            acq_data_q <= 1'b1;
-                            txnid_q    <= txnid_q + 12'd1;
+                            kind_q     <= K_READ;
                             st_q       <= S_REQ;
                         end
-                        else st_q <= is_wr_q ? S_BRESP : S_RESP;
+                        else st_q <= fin_st;
                     end
                 end
 
                 S_RESP: begin
-                    if (RREADY) begin
-                        st_q    <= S_IDLE;
-                        txnid_q <= txnid_q + 12'd1;
-                    end
+                    if (RREADY) st_q <= S_IDLE;
                 end
 
                 S_BRESP: begin
-                    if (BREADY) begin
-                        st_q    <= S_IDLE;
-                        txnid_q <= txnid_q + 12'd1;
-                    end
+                    if (BREADY) st_q <= S_IDLE;
                 end
+
+                S_CMRSP: st_q <= S_IDLE;
 
                 default: st_q <= S_IDLE;
             endcase
@@ -824,7 +1161,8 @@ module rnf_ctl `RNF_PARAM
     end
 
     // The store's final state. Table 4-38 (p.4-218) ends CleanUnique and
-    // MakeUnique Unique, and the merge that follows makes the line Dirty.
+    // MakeUnique Unique, Table 4-36 (p.4-216) does the same for MakeReadUnique,
+    // and the merge that follows makes the line Dirty.
     wire [`RNF_CS_WIDTH-1:0] wr_fill_state =
         (fill_state_q == `RNF_CS_I) ? `RNF_CS_I : `RNF_CS_UD;
 
@@ -839,11 +1177,11 @@ module rnf_ctl `RNF_PARAM
     assign cache_fill_err_o   = line_err_q && !(is_wr_q && (&wbe_q));
 
     // Retiring the written-back way, which the fill behind it would otherwise
-    // leave Dirty for the window between the two.
+    // leave Dirty for the window between the two. WriteCleanFull keeps it Clean.
     assign cache_upd_v_o     = cb_done_q || drop_q;
     assign cache_upd_addr_o  = vic_addr_q;
     assign cache_upd_way_o   = vic_way_q;
-    assign cache_upd_state_o = `RNF_CS_I;
+    assign cache_upd_state_o = (cb_done_q && cb_keep_q) ? clean_of(vic_state_now) : `RNF_CS_I;
 
     // The 128-bit chunk the access falls in. A fixed set of slices rather than a
     // variable base, so the select cannot read past the line.
@@ -871,6 +1209,9 @@ module rnf_ctl `RNF_PARAM
     assign BVALID = (st_q == S_BRESP);
     assign BID    = `AXI4_BID_WIDTH'(id_q);
     assign BRESP  = axi_resp;
+
+    assign CMDONE = (st_q == S_CMRSP);
+    assign CMRESP = axi_resp;
 
     // From the first Data packet until the fill it completes has been written.
     assign defer_v_o    = ((st_q == S_DATA) && (got_lo_q || got_hi_q || rx_dat_mine)) || fill_v_q;
