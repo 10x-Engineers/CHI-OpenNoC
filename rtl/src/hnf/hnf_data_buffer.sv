@@ -368,8 +368,9 @@ module hnf_data_buffer `HNF_PARAM
     endfunction
 
     // SS12.9.4 (p.12-384, MUST): a SnpRespDataPtl's tag fields are "ignored by the receiver".
-    wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL) &&
-                          (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_SNPRESPDATAPTL);
+    // SS12.5.2 (p.12-379): a Ptl Update may assert TU with no BE, so a beat with no BE still
+    // carries tags; a WriteDataCancel's MTE fields are zero, so its TagOp merges nothing.
+    wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_SNPRESPDATAPTL);
 
     // The swap an eviction makes -- this entry's line leaving for the L3 while the
     // victim arrives -- replaces the buffer outright, exactly as the data does.
