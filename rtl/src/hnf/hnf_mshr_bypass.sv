@@ -36,6 +36,8 @@ module hnf_mshr_bypass `HNF_PARAM
     input  chie_pkg::order_e                   li_mshr_rxreq_order_s0,
     input  wire [3:0]                          li_mshr_rxreq_pcrdtype_s0,
     input  chie_pkg::memattr_s                 li_mshr_rxreq_memattr_s0,
+    input  wire [1:0]                          li_mshr_rxreq_tagop_s0,
+    input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
     // opennoc_hnf_pkg::hnf_write_zero() of the request as sent, alongside the
@@ -78,6 +80,8 @@ module hnf_mshr_bypass `HNF_PARAM
     output wire [chie_pkg::NID_WIDTH-1:0]      mshr_txreq_bypass_returnnid_s1,
     output wire [12-1:0]                       mshr_txreq_bypass_returntxnid_s1,
     output chie_pkg::req_opcode_e              mshr_txreq_bypass_opcode_s1,
+    output wire [1:0]                          mshr_txreq_bypass_tagop_s1,
+    output wire [7:0]                          mshr_txreq_bypass_taggroupid_s1,
     output chie_pkg::size_e                    mshr_txreq_bypass_size_s1,
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0] mshr_txreq_bypass_addr_s1,
     output wire                                mshr_txreq_bypass_ns_s1,
@@ -119,6 +123,8 @@ module hnf_mshr_bypass `HNF_PARAM
     chie_pkg::memattr_s                  li_mshr_rxreq_memattr_s1_q;
     logic                                li_mshr_rxreq_excl_s1_q;
     logic                                li_mshr_rxreq_tracetag_s1_q;
+    logic [7:0]                          li_mshr_rxreq_lpid_s1_q;
+    logic [1:0]                          li_mshr_rxreq_tagop_s1_q;
     chie_pkg::mpam_s                     li_mshr_rxreq_mpam_s1_q;
     chie_pkg::req_rsvdc_t                li_mshr_rxreq_rsvdc_s1_q;
 
@@ -213,9 +219,16 @@ module hnf_mshr_bypass `HNF_PARAM
 
     always_ff @(posedge clk or posedge rst)begin :pass_size
         if(rst)
-            li_mshr_rxreq_size_s1_q <= chie_pkg::SIZE_1B;
+            li_mshr_rxreq_size_s1_q  <= chie_pkg::SIZE_1B;
         else
-            li_mshr_rxreq_size_s1_q <= li_mshr_rxreq_size_s0;
+            li_mshr_rxreq_size_s1_q  <= li_mshr_rxreq_size_s0;
+    end
+
+    always_ff @(posedge clk or posedge rst)begin :pass_tagop
+        if(rst)
+            li_mshr_rxreq_tagop_s1_q <= chie_pkg::TAGOP_INVALID;
+        else
+            li_mshr_rxreq_tagop_s1_q <= li_mshr_rxreq_tagop_s0;
     end
 
     always_ff @(posedge clk or posedge rst)begin :pass_addr
@@ -253,6 +266,13 @@ module hnf_mshr_bypass `HNF_PARAM
             li_mshr_rxreq_tracetag_s1_q <= li_mshr_rxreq_tracetag_s0;
     end
 
+    always_ff @(posedge clk or posedge rst)begin :pass_lpid
+        if (rst)
+            li_mshr_rxreq_lpid_s1_q <= 'd0;
+        else
+            li_mshr_rxreq_lpid_s1_q <= li_mshr_rxreq_lpid_s0;
+    end
+
     always_ff @(posedge clk or posedge rst)begin :pass_mpam
         if (rst)
             li_mshr_rxreq_mpam_s1_q <= '0;
@@ -279,7 +299,11 @@ module hnf_mshr_bypass `HNF_PARAM
     // Under DWT the Subordinate grants the buffer instead (Table 13-21 p.13-430).
     assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||req_wup_s0||(req_wuf_s0&&!do_dwt_wuf_s0))&&mshr_alloc_en_s0;
     assign tx_rdnosnp_s0        = req_rdnosnp_s0&&mshr_alloc_en_s0;
-    assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!li_mshr_rxreq_l3_alloc_s0&&mshr_alloc_en_s0;
+    // SS12.3 (p.12-374, MUST): a WriteUniqueFull that does not Update the tags of memory
+    // that holds them (SS12.1 p.12-372) owes memory any Dirty ones, so hnf_mshr_ctl issues it.
+    wire   wuf_no_tags_owed_s0  = (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_UPDATE) ||
+                                  !opennoc_hnf_pkg::hnf_mte_mem(li_mshr_rxreq_memattr_s0);
+    assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!li_mshr_rxreq_l3_alloc_s0&&wuf_no_tags_owed_s0&&mshr_alloc_en_s0;
 
     assign tx_wrnosnpful_s1 = tx_wrnosnpful_wuf_s1_q||((li_mshr_rxreq_opcode_s1_q == chie_pkg::REQ_WRITENOSNPFULL)&&(excl_pass_s1 == 1||li_mshr_rxreq_excl_s1_q == 0)&&mshr_alloc_en_s1_q);
     assign tx_wrnosnpptl_s1 = ((li_mshr_rxreq_opcode_s1_q == chie_pkg::REQ_WRITENOSNPPTL)&&(excl_pass_s1 == 1||li_mshr_rxreq_excl_s1_q == 0)&&mshr_alloc_en_s1_q);
@@ -333,7 +357,8 @@ module hnf_mshr_bypass `HNF_PARAM
     // Observation, whose data this Home takes itself.
     assign dwt_eligible_s0      = (!li_mshr_rxreq_wrzero_s0) &&
            (!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1));
-    assign do_dwt_wuf_s0        = dwt_eligible_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL) && (!li_mshr_rxreq_l3_alloc_s0);
+    assign do_dwt_wuf_s0        = dwt_eligible_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL) && (!li_mshr_rxreq_l3_alloc_s0) &&
+                                  wuf_no_tags_owed_s0;
     assign do_dwt_wrnosnpfull_s0 = do_dwt_wuf_s0 ||
            (dwt_eligible_s0 && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL));
 
@@ -376,8 +401,20 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!excl_fail_s1;
     assign mshr_txreq_bypass_qos_s1         = li_mshr_rxreq_qos_s1_q;
     assign mshr_txreq_bypass_txnid_s1       = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
-    assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
-    assign mshr_txreq_bypass_returntxnid_s1 = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q)?li_mshr_rxreq_txnid_s1_q:{{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
+    // SS2.5.3 (p.2-88): a WriteNoSnp with TagOp Match names the Requester as ReturnNID
+    // irrespective of DoDWT.
+    wire   bypass_wr_match_s1               = !tx_rdnosnp_s1_q && (mshr_txreq_bypass_tagop_s1 == chie_pkg::TAGOP_MATCH);
+    assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q||bypass_wr_match_s1)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
+    assign mshr_txreq_bypass_returntxnid_s1 = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q||bypass_wr_match_s1)?li_mshr_rxreq_txnid_s1_q:{{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
+    // SS12.10 (p.12-385, MUST): a Match's TagGroupID "must be returned in the TagMatch".
+    assign mshr_txreq_bypass_taggroupid_s1  = bypass_wr_match_s1 ? li_mshr_rxreq_lpid_s1_q : 8'd0;
+    // SS12.10 (p.12-385): the request issued for the Requester carries its TagOp.
+    assign mshr_txreq_bypass_tagop_s1       = !tx_rdnosnp_s1_q
+                                            ? opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1)
+                                            : (li_mshr_rxreq_tagop_s1_q inside {chie_pkg::TAGOP_TRANSFER, chie_pkg::TAGOP_MATCH})
+                                            ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, do_dmt_s1_q,
+                                                                               li_mshr_rxreq_size_s1_q, li_mshr_rxreq_memattr_s1_q)
+                                            : chie_pkg::TAGOP_INVALID;
     assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?chie_pkg::REQ_READNOSNP:(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
     assign mshr_txreq_bypass_size_s1        = li_mshr_rxreq_size_s1_q;
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;

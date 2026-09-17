@@ -379,6 +379,13 @@ package opennoc_hnf_pkg;
            op == chie_pkg::REQ_STASHONCESEPUNIQUE;
   endfunction
 
+  // A WriteUniqueFull with TagOp Match is not allocated in the L3: SS12.11.1 (p.12-386,
+  // MUST) owes it an accurate verdict, which the Subordinate gives (SS12.10 p.12-385).
+  function automatic logic hnf_l3_alloc_declined(chie_pkg::req_opcode_e serviced, logic stash,
+                                                 logic [1:0] tagop);
+    return ~stash & (serviced == chie_pkg::REQ_WRITEUNIQUEFULL) & (tagop == chie_pkg::TAGOP_MATCH);
+  endfunction
+
   // The Stash requests that carry no write data. SS7.3 (p.7-297) snoops only the
   // named target for these -- a stash hint invalidates nothing, so a peer holding
   // the line is left alone -- where SS4.4.1 (p.4-194, MUST) has a WriteUnique*Stash
@@ -407,9 +414,12 @@ package opennoc_hnf_pkg;
   // Table 7-1 (SS7.1.1 p.7-295): the snoop the Stash target receives. SS4.4.2
   // (p.4-196) expressly permits sending it "to the target RN ... if the target RN
   // does not have the cache line", which is what makes it a stash at all.
-  function automatic chie_pkg::snp_opcode_e hnf_stash_snp_of(chie_pkg::req_opcode_e op);
+  // SS12.9.3 (p.12-384): a SnpMakeInvalidStash returns no tags, so SS4.4.2 (p.4-196,
+  // MUST) keeps it for a WriteUniqueFullStash that Updates them.
+  function automatic chie_pkg::snp_opcode_e hnf_stash_snp_of(chie_pkg::req_opcode_e op, logic [1:0] tagop);
     case (op)
-      chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return chie_pkg::SNP_SNPMAKEINVALIDSTASH;
+      chie_pkg::REQ_WRITEUNIQUEFULLSTASH : return (tagop == chie_pkg::TAGOP_UPDATE) ? chie_pkg::SNP_SNPMAKEINVALIDSTASH
+                                                                                    : chie_pkg::SNP_SNPUNIQUESTASH;
       chie_pkg::REQ_WRITEUNIQUEPTLSTASH  : return chie_pkg::SNP_SNPUNIQUESTASH;
       chie_pkg::REQ_STASHONCEUNIQUE,
       chie_pkg::REQ_STASHONCESEPUNIQUE   : return chie_pkg::SNP_SNPSTASHUNIQUE;
@@ -417,6 +427,50 @@ package opennoc_hnf_pkg;
       chie_pkg::REQ_STASHONCESEPSHARED   : return chie_pkg::SNP_SNPSTASHSHARED;
       default                            : return chie_pkg::SNP_SNPLCRDRETURN;
     endcase
+  endfunction
+
+  // SS12.10 (p.12-385): a write issued for the Requester carries its TagOp, Match
+  // included; SS12.5.2 (p.12-379, MUST) gives Transfer to the Full write alone.
+  function automatic logic [1:0] hnf_dn_wr_tagop(logic [1:0] req_tagop, logic full);
+    case (req_tagop)
+      chie_pkg::TAGOP_UPDATE   : return chie_pkg::TAGOP_UPDATE;
+      chie_pkg::TAGOP_MATCH    : return chie_pkg::TAGOP_MATCH;
+      chie_pkg::TAGOP_TRANSFER : return full ? chie_pkg::TAGOP_TRANSFER : chie_pkg::TAGOP_INVALID;
+      default                  : return chie_pkg::TAGOP_INVALID;
+    endcase
+  endfunction
+
+  // SS12.1 (p.12-372): "Memory tagging is permitted only in requests to Normal
+  // WriteBack memory".
+  function automatic logic hnf_mte_mem(chie_pkg::memattr_s memattr);
+    return memattr.cacheable & ~memattr.device;
+  endfunction
+
+  // The TagOp of a Read to the Subordinate that is to fetch tags. SS12.10 (p.12-385):
+  // "Fetch is permitted only with a data size of 64 bytes" and need not return valid
+  // data, so only a DMT read, whose data is the Requester's, asks Fetch.
+  function automatic logic [1:0] hnf_dn_rd_tagop(logic [1:0] req_tagop, logic dmt,
+                                                 chie_pkg::size_e size, chie_pkg::memattr_s memattr);
+    if (!hnf_mte_mem(memattr))
+      return chie_pkg::TAGOP_INVALID;
+    return (dmt && (req_tagop == chie_pkg::TAGOP_MATCH) && (size == chie_pkg::SIZE_64B))
+           ? chie_pkg::TAGOP_MATCH : chie_pkg::TAGOP_TRANSFER;
+  endfunction
+
+  // SS12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes of the line, a
+  // valid bit per tag, and whether an Update left them Dirty (SS12.3 p.12-374).
+  typedef struct packed {
+    logic                              dirty;
+    logic [2*chie_pkg::TU_WIDTH-1:0]   valid;
+    logic [2*chie_pkg::TAG_WIDTH-1:0]  tag;
+  } hnf_tagv_s;
+
+  function automatic logic hnf_tagv_full(hnf_tagv_s t);
+    return &t.valid;
+  endfunction
+
+  function automatic logic hnf_tagv_any(hnf_tagv_s t);
+    return |t.valid;
   endfunction
 
 endpackage

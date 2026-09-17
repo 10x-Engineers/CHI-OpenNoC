@@ -50,6 +50,11 @@ package chie_pkg;
   parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
+  // Table 13-32 (SS13.10.37 p.13-435).
+  localparam logic [1:0] TAGOP_INVALID  = 2'b00;
+  localparam logic [1:0] TAGOP_TRANSFER = 2'b01;
+  localparam logic [1:0] TAGOP_UPDATE   = 2'b10;
+  localparam logic [1:0] TAGOP_MATCH    = 2'b11;
 `ifdef CHIE_REQ_RSVDC_WIDTH
   parameter int REQ_RSVDC_WIDTH = `CHIE_REQ_RSVDC_WIDTH;
 `else

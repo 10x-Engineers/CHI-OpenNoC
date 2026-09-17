@@ -51,6 +51,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input  wire [chie_pkg::BE_WIDTH*2-1:0]   dbf_txdat_be_sx1,
     input  wire [1:0]                        dbf_txdat_pe_sx1,
     input  wire [`CACHE_POISON_WIDTH-1:0]    dbf_txdat_poison_sx1,
+    input  wire [`CACHE_TAGV_WIDTH-1:0]      dbf_txdat_tagv_sx1,
+    input  wire [1:0]                        mshr_dbf_rd_tagop_sx1,
+    input  wire [1:0]                        mshr_dbf_rd_dn_tagop_sx1,
+    input  wire [`CACHE_TAG_WIDTH-1:0]       dbf_txdat_match_tag_sx1,
 
     //outputs to hnf_link
     output logic                             txdatflitv,
@@ -73,14 +77,12 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry1_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry1_sx;
     logic [1:0]                         dbf_txdat_pe_entry1_sx;
-    logic [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_entry1_sx;
     logic                               dbf_txdat_to_rn_entry1_sx;
     logic                               dbf_txdat_valid_entry2_sx;
     logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry2_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry2_sx;
     logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry2_sx;
     logic [1:0]                         dbf_txdat_pe_entry2_sx;
-    logic [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_entry2_sx;
     logic                               dbf_txdat_to_rn_entry2_sx;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] txdat_crd_cnt_q;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
@@ -89,6 +91,21 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [chie_pkg::BE_WIDTH-1:0]      mshr_txdat_be_sx_ns;
     logic [chie_pkg::DATA_WIDTH-1:0]    mshr_txdat_data_sx_ns;
     logic [chie_pkg::POISON_WIDTH-1:0]  mshr_txdat_poison_sx_ns;
+    logic [chie_pkg::TAG_WIDTH-1:0]     mshr_txdat_tag_sx_ns;
+    logic [1:0]                         mshr_txdat_rsp_tagop_sx_ns;
+    logic [chie_pkg::TU_WIDTH-1:0]      mshr_txdat_tu_sx_ns;
+    // What a buffer read carries beside its data and byte enables.
+    typedef struct packed {
+        logic [`CACHE_POISON_WIDTH-1:0] poison;
+        opennoc_hnf_pkg::hnf_tagv_s     tagv;
+        logic [1:0]                     rd_tagop;
+        logic [1:0]                     dn_tagop;
+        logic [`CACHE_TAG_WIDTH-1:0]    match_tag;
+    } txdat_sb_s;
+    txdat_sb_s                          dbf_txdat_sb_sx1;
+    txdat_sb_s                          dbf_txdat_sb_entry1_sx;
+    txdat_sb_s                          dbf_txdat_sb_entry2_sx;
+    txdat_sb_s                          mshr_txdat_sb_sx_ns;
 
     //internal wire signals
     wire                                dat_crd_cnt_not_zero_sx;
@@ -155,19 +172,53 @@ module hnf_link_txdat_wrap `HNF_PARAM
             ;
     end
 
-    // The Poison bits of the half the DataID names, selected exactly as the data is.
-    always_comb begin: txdat_poison_sel_comb_logic
-        mshr_txdat_poison_sx_ns = '0;
-        if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry2_sx[chie_pkg::POISON_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry2_sx[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
-        else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry1_sx[chie_pkg::POISON_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_poison_sx_ns = dbf_txdat_poison_entry1_sx[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
-        else
-            ;
+    assign dbf_txdat_sb_sx1 = '{poison: dbf_txdat_poison_sx1, tagv: dbf_txdat_tagv_sx1, rd_tagop: mshr_dbf_rd_tagop_sx1,
+                                dn_tagop: mshr_dbf_rd_dn_tagop_sx1, match_tag: dbf_txdat_match_tag_sx1};
+
+    always_comb begin: txdat_sb_sel_comb_logic
+        mshr_txdat_sb_sx_ns = '0;
+        if(dbf_txdat_valid_entry2_sx_ns)
+            mshr_txdat_sb_sx_ns = dbf_txdat_sb_entry2_sx;
+        else if(dbf_txdat_valid_entry1_sx)
+            mshr_txdat_sb_sx_ns = dbf_txdat_sb_entry1_sx;
+    end
+
+    assign mshr_txdat_poison_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
+                                   ? mshr_txdat_sb_sx_ns.poison[chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH]
+                                   : mshr_txdat_sb_sx_ns.poison[0 +: chie_pkg::POISON_WIDTH];
+
+    // SS13.10.38 (p.13-435): a packet carries the tags of the granules its DataID names.
+    always_comb begin: txdat_tagop_sel_comb_logic
+        logic                            upper;
+        logic [chie_pkg::TAG_WIDTH-1:0]  pkt_tag;
+        logic [chie_pkg::TU_WIDTH-1:0]   pkt_valid;
+        upper      = (mshr_txdat_dataid_sx_ns == 2'b10);
+        pkt_tag   = mshr_txdat_sb_sx_ns.tagv.tag[(upper ? chie_pkg::TAG_WIDTH : 0) +: chie_pkg::TAG_WIDTH];
+        pkt_valid = mshr_txdat_sb_sx_ns.tagv.valid[(upper ? chie_pkg::TU_WIDTH : 0) +: chie_pkg::TU_WIDTH];
+        mshr_txdat_rsp_tagop_sx_ns = chie_pkg::TAGOP_INVALID;
+        mshr_txdat_tag_sx_ns       = '0;
+        mshr_txdat_tu_sx_ns        = '0;
+        // SS12.13 (p.12-390, MUST): write data carries its request's TagOp.
+        if(mshr_txdat_opcode_sx2 == chie_pkg::DAT_NONCOPYBACKWRDATA) begin
+            mshr_txdat_rsp_tagop_sx_ns = mshr_txdat_sb_sx_ns.dn_tagop;
+            case (mshr_txdat_sb_sx_ns.dn_tagop)
+                chie_pkg::TAGOP_UPDATE: begin
+                    mshr_txdat_tag_sx_ns = pkt_tag;
+                    mshr_txdat_tu_sx_ns  = pkt_valid;
+                end
+                chie_pkg::TAGOP_TRANSFER: mshr_txdat_tag_sx_ns = pkt_tag;
+                chie_pkg::TAGOP_MATCH:    mshr_txdat_tag_sx_ns = mshr_txdat_sb_sx_ns.match_tag[(upper ? chie_pkg::TAG_WIDTH : 0) +: chie_pkg::TAG_WIDTH];
+                default: ;
+            endcase
+        end
+        // SS12.4.1 (p.12-376, MUST): answered Update exactly where the response passes Dirty,
+        // else Transfer; with no tags held, Invalid (SS12.11.3 p.12-387).
+        else if(((mshr_txdat_sb_sx_ns.rd_tagop == chie_pkg::TAGOP_TRANSFER) || (mshr_txdat_sb_sx_ns.rd_tagop == chie_pkg::TAGOP_MATCH)) &&
+                opennoc_hnf_pkg::hnf_tagv_full(mshr_txdat_sb_sx_ns.tagv)) begin
+            mshr_txdat_rsp_tagop_sx_ns = mshr_txdat_resp_sx2[2] ? chie_pkg::TAGOP_UPDATE : chie_pkg::TAGOP_TRANSFER;
+            mshr_txdat_tag_sx_ns       = pkt_tag;
+            mshr_txdat_tu_sx_ns        = mshr_txdat_resp_sx2[2] ? '1 : '0;
+        end
     end
 
     always_comb begin : combinational_logic1
@@ -189,9 +240,9 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0.dbid      = mshr_txdat_dbid_sx2;
         txdatflit_mshr_s0.ccid      = mshr_txdat_ccid_sx2;
         txdatflit_mshr_s0.dataid    = mshr_txdat_dataid_sx_ns;
-        txdatflit_mshr_s0.tagop     = '0;
-        txdatflit_mshr_s0.tag       = '0;
-        txdatflit_mshr_s0.tu        = '0;
+        txdatflit_mshr_s0.tagop     = mshr_txdat_rsp_tagop_sx_ns;
+        txdatflit_mshr_s0.tag       = mshr_txdat_tag_sx_ns;
+        txdatflit_mshr_s0.tu        = mshr_txdat_tu_sx_ns;
         txdatflit_mshr_s0.tracetag  = mshr_txdat_tracetag_sx2;
         txdatflit_mshr_s0.be        = mshr_txdat_be_sx_ns;
         txdatflit_mshr_s0.data      = mshr_txdat_data_sx_ns;
@@ -376,22 +427,18 @@ module hnf_link_txdat_wrap `HNF_PARAM
             dbf_txdat_be_entry2_sx <= dbf_txdat_be_entry2_sx;
     end
 
-    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_poison_entry1_sx_logic_t
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_sb_entry1_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_poison_entry1_sx <= {`CACHE_POISON_WIDTH{1'b0}};
+            dbf_txdat_sb_entry1_sx <= '0;
         else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
-            dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_sx1;
-        else
-            dbf_txdat_poison_entry1_sx <= dbf_txdat_poison_entry1_sx;
+            dbf_txdat_sb_entry1_sx <= dbf_txdat_sb_sx1;
     end
 
-    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_poison_entry2_sx_logic_t
+    always_ff @(posedge clk or posedge rst) begin: dbf_txdat_sb_entry2_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_poison_entry2_sx <= {`CACHE_POISON_WIDTH{1'b0}};
+            dbf_txdat_sb_entry2_sx <= '0;
         else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
-            dbf_txdat_poison_entry2_sx <= dbf_txdat_poison_sx1;
-        else
-            dbf_txdat_poison_entry2_sx <= dbf_txdat_poison_entry2_sx;
+            dbf_txdat_sb_entry2_sx <= dbf_txdat_sb_sx1;
     end
 
     //receive dbf_txdat_valid_sx1, pass pe
