@@ -35,147 +35,16 @@ module {{ module }}
   ,input reset
 
   {% for node in nodes %}
-  {% if node.P0.value in ['RNF', 'RNI' , 'HNF', 'HNI', 'SNF'] %}
+  {% for p in ['P0', 'P1'] %}
+  {% if node[p].value != 'NONE' %}
   //============================================================
-  //CHI {{ node.name }}_P0 {{ node.P0.value }} signal
+  //CHI {{ node.name }}_{{ p }} {{ node[p].value }} signal
   //============================================================
-  ,input    {{ node.name }}_P0_TXSACTIVE
-  ,output   {{ node.name }}_P0_RXSACTIVE
-
-  ,input    {{ node.name }}_P0_TXLINKACTIVEREQ
-  ,output   {{ node.name }}_P0_TXLINKACTIVEACK
-  ,output   {{ node.name }}_P0_RXLINKACTIVEREQ
-  ,input    {{ node.name }}_P0_RXLINKACTIVEACK
-
-  {% if node.P0.value in ['RNF', 'RNI', 'HNF'] %}
-  //TXREQ Channel
-  ,input    {{ node.name }}_P0_TXREQFLITPEND
-  ,input    {{ node.name }}_P0_TXREQFLITV
-  ,input    [REQ_FLIT_WIDTH-1:0] {{ node.name }}_P0_TXREQFLIT
-  ,output   {{ node.name }}_P0_TXREQLCRDV
+  {% for dir, width, sig in chi_signals(node[p].value) %}
+  ,{{ dir }} {{ width }} {{ node.name }}_{{ p }}_{{ sig }}
+  {% endfor %}
   {% endif %}
-
-  {% if node.P0.value in ['HNF', 'HNI', 'SNF'] %}
-  //RXREQ Channel
-  ,output   {{ node.name }}_P0_RXREQFLITPEND
-  ,output   {{ node.name }}_P0_RXREQFLITV
-  ,output   [REQ_FLIT_WIDTH-1:0] {{ node.name }}_P0_RXREQFLIT
-  ,input    {{ node.name }}_P0_RXREQLCRDV
-  {% endif %}
-
-  //TXRSP Channel
-  ,input    {{ node.name }}_P0_TXRSPFLITPEND
-  ,input    {{ node.name }}_P0_TXRSPFLITV
-  ,input    [RSP_FLIT_WIDTH-1:0] {{ node.name }}_P0_TXRSPFLIT
-  ,output   {{ node.name }}_P0_TXRSPLCRDV
-
-  {% if node.P0.value not in ['SNF', 'NONE'] %}
-  //RXRSP Channel
-  ,output   {{ node.name }}_P0_RXRSPFLITPEND
-  ,output   {{ node.name }}_P0_RXRSPFLITV
-  ,output   [RSP_FLIT_WIDTH-1:0] {{ node.name }}_P0_RXRSPFLIT
-  ,input    {{ node.name }}_P0_RXRSPLCRDV
-  {% endif %}
-
-  //TXDAT Channel
-  ,input    {{ node.name }}_P0_TXDATFLITPEND
-  ,input    {{ node.name }}_P0_TXDATFLITV
-  ,input    [DAT_FLIT_WIDTH-1:0] {{ node.name }}_P0_TXDATFLIT
-  ,output   {{ node.name }}_P0_TXDATLCRDV
-
-  //RXDAT Channel
-  ,output   {{ node.name }}_P0_RXDATFLITPEND
-  ,output   {{ node.name }}_P0_RXDATFLITV
-  ,output   [DAT_FLIT_WIDTH-1:0] {{ node.name }}_P0_RXDATFLIT
-  ,input    {{ node.name }}_P0_RXDATLCRDV
-
-  {% if node.P0.value in ['HNF'] %}
-  //TXSNP Channel
-  ,input    {{ node.name }}_P0_TXSNPFLITPEND
-  ,input    {{ node.name }}_P0_TXSNPFLITV
-  ,input    [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P0_TXSNPFLIT
-  ,output   {{ node.name }}_P0_TXSNPLCRDV
-  {% endif %}
-
-  {% if node.P0.value in ['RNF'] %}
-  //RXSNP Channel
-  ,output   {{ node.name }}_P0_RXSNPFLITPEND
-  ,output   {{ node.name }}_P0_RXSNPFLITV
-  ,output   [SNP_FLIT_WIDTH-1:0] {{ node.name }}_P0_RXSNPFLIT
-  ,input    {{ node.name }}_P0_RXSNPLCRDV
-  {% endif %}
-
-  {% endif %}
-  {% if node.P1.value in ['RNF', 'RNI' , 'HNF', 'HNI', 'SNF'] %}
-  //============================================================
-  //CHI {{ node.name }}_P1 {{ node.P1.value }} signal
-  //============================================================
-  ,input    {{ node.name }}_P1_TXSACTIVE
-  ,output   {{ node.name }}_P1_RXSACTIVE
-
-  ,input    {{ node.name }}_P1_TXLINKACTIVEREQ
-  ,output   {{ node.name }}_P1_TXLINKACTIVEACK
-  ,output   {{ node.name }}_P1_RXLINKACTIVEREQ
-  ,input    {{ node.name }}_P1_RXLINKACTIVEACK
-
-  {% if node.P1.value in ['RNF', 'RNI', 'HNF'] %}
-  //TXREQ Channel
-  ,input    {{ node.name }}_P1_TXREQFLITPEND
-  ,input    {{ node.name }}_P1_TXREQFLITV
-  ,input    [REQ_FLIT_WIDTH-1:0] {{ node.name }}_P1_TXREQFLIT
-  ,output   {{ node.name }}_P1_TXREQLCRDV
-  {% endif %}
-
-  {% if node.P1.value in ['HNF', 'HNI', 'SNF'] %}
-  //RXREQ Channel
-  ,output   {{ node.name }}_P1_RXREQFLITPEND
-  ,output   {{ node.name }}_P1_RXREQFLITV
-  ,output   [REQ_FLIT_WIDTH-1:0] {{ node.name }}_P1_RXREQFLIT
-  ,input    {{ node.name }}_P1_RXREQLCRDV
-  {% endif %}
-
-  //TXRSP Channel
-  ,input    {{ node.name }}_P1_TXRSPFLITPEND
-  ,input    {{ node.name }}_P1_TXRSPFLITV
-  ,input    [RSP_FLIT_WIDTH-1:0] {{ node.name }}_P1_TXRSPFLIT
-  ,output   {{ node.name }}_P1_TXRSPLCRDV
-
-  {% if node.P1.value not in ['SNF', 'NONE'] %}
-  //RXRSP Channel
-  ,output   {{ node.name }}_P1_RXRSPFLITPEND
-  ,output   {{ node.name }}_P1_RXRSPFLITV
-  ,output   [RSP_FLIT_WIDTH-1:0] {{ node.name }}_P1_RXRSPFLIT
-  ,input    {{ node.name }}_P1_RXRSPLCRDV
-  {% endif %}
-
-  //TXDAT Channel
-  ,input    {{ node.name }}_P1_TXDATFLITPEND
-  ,input    {{ node.name }}_P1_TXDATFLITV
-  ,input    [DAT_FLIT_WIDTH-1:0] {{ node.name }}_P1_TXDATFLIT
-  ,output   {{ node.name }}_P1_TXDATLCRDV
-
-  //RXDAT Channel
-  ,output   {{ node.name }}_P1_RXDATFLITPEND
-  ,output   {{ node.name }}_P1_RXDATFLITV
-  ,output   [DAT_FLIT_WIDTH-1:0] {{ node.name }}_P1_RXDATFLIT
-  ,input    {{ node.name }}_P1_RXDATLCRDV
-
-  {% if node.P1.value in ['HNF'] %}
-  //TXSNP Channel
-  ,input    {{ node.name }}_P1_TXSNPFLITPEND
-  ,input    {{ node.name }}_P1_TXSNPFLITV
-  ,input    [SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0] {{ node.name }}_P1_TXSNPFLIT
-  ,output   {{ node.name }}_P1_TXSNPLCRDV
-  {% endif %}
-
-  {% if node.P1.value in ['RNF'] %}
-  //RXSNP Channel
-  ,output   {{ node.name }}_P1_RXSNPFLITPEND
-  ,output   {{ node.name }}_P1_RXSNPFLITV
-  ,output   [SNP_FLIT_WIDTH-1:0] {{ node.name }}_P1_RXSNPFLIT
-  ,input    {{ node.name }}_P1_RXSNPLCRDV
-  {% endif %}
-  {% endif %}
+  {% endfor %}
   {% endfor %}
 );
 

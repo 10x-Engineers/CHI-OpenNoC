@@ -16,18 +16,13 @@
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
-from enum import *
-from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
 
-@dataclass
-class PortEnum(Enum):
-    NONE = "NONE"
-    RNF = "RNF"
-    RNI = "RNI"
-    HNF = "HNF"
-    HNI = "HNI"
-    SNF = "SNF"
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "noc_common"))
+from noc_common import PortEnum, make_env, node_ports, render, render_system
 
 @dataclass
 class CrossPoint:
@@ -50,6 +45,8 @@ def main():
     global mesh_cfg
     parser = argparse.ArgumentParser(description="Generate OpenNoC Mesh Wrapper")
     parser.add_argument('-f', '--file',  type=str, help="mesh configure file")
+    parser.add_argument('-o', '--out-dir', type=str, default=".",
+                        help="directory the generated files are written to")
     args = parser.parse_args()
 
     if args.file is None:
@@ -63,7 +60,7 @@ def main():
             print("Found Error Configuration")
             exit(-1)
         print(mesh_cfg)
-        generate(x_max, y_max, mesh_cfg)
+        generate(x_max, y_max, mesh_cfg, args.out_dir)
 
 def verify_cfg(cfg_data):
     global x_max
@@ -78,17 +75,17 @@ def verify_cfg(cfg_data):
         route_node = CrossPoint(key, xp)
         mesh_cfg.append(route_node)
 
-def generate(x_max : int = 1, y_max : int = 1, cfg : list = None):
-    module = "mesh_wrapper_{0}x{1}".format(x_max + 1, y_max + 1)
+# NodeIDs are LSB-anchored {X, Y, port}, the fields chi_xp_channel's route_xy reads.
+def mesh_nid(node, port):
+    return (node.X << 4) | (node.Y << 1) | port
 
-    print('Generate Mesh Wrapper {0}.sv'.format(module))
-
-    env = Environment(loader=FileSystemLoader('template'))
-    env.trim_blocks = True
-    env.lstrip_blocks = True
-    template = env.get_template('mesh_wrapper.j2')
-    with open(module + ".sv", 'w', encoding='UTF-8') as f:
-        f.write(template.render(xmax = x_max, ymax = y_max, module = module, nodes = cfg))
+def generate(x_max : int = 1, y_max : int = 1, cfg : list = None, out_dir : str = "."):
+    size = "{0}x{1}".format(x_max + 1, y_max + 1)
+    module = "mesh_wrapper_" + size
+    env = make_env(HERE / "template")
+    render(env, "mesh_wrapper.j2", Path(out_dir) / (module + ".sv"),
+           xmax = x_max, ymax = y_max, module = module, nodes = cfg)
+    render_system(env, module, "mesh_system_" + size, node_ports(cfg, mesh_nid), out_dir)
 
 if __name__ == "__main__":
     main()

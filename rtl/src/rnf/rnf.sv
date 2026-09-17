@@ -73,16 +73,22 @@ module rnf `RNF_PARAM
     output wire                 RXSNPLCRDV,
 
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
-    // makes a line Dirty and a CopyBack owed with it.
+    // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
+    // core's intent for the access (rnf_defines.svh); AxLOCK makes it exclusive,
+    // AxUSER carries its MPAM label and W/RUSER its Poison (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE,
+    input  wire [`RNF_AR_COH_W-1:0]      ARCOH,
+    input  wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK,
+    input  wire [`AXI4_ARUSER_WIDTH-1:0] ARUSER,
     input  wire                          ARVALID,
     output wire                          ARREADY,
     output wire [`AXI4_RID_WIDTH-1:0]    RID,
     output wire [`AXI4_RDATA_WIDTH-1:0]  RDATA,
     output wire [`AXI4_RRESP_WIDTH-1:0]  RRESP,
+    output wire [`AXI4_RUSER_WIDTH-1:0]  RUSER,
     output wire                          RLAST,
     output wire                          RVALID,
     input  wire                          RREADY,
@@ -90,17 +96,29 @@ module rnf `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]  AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE,
+    input  wire [`RNF_AW_COH_W-1:0]      AWCOH,
+    input  wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK,
+    input  wire [`AXI4_AWUSER_WIDTH-1:0] AWUSER,
     input  wire                          AWVALID,
     output wire                          AWREADY,
     input  wire [`AXI4_WDATA_WIDTH-1:0]  WDATA,
     input  wire [`AXI4_WSTRB_WIDTH-1:0]  WSTRB,
+    input  wire [`AXI4_WUSER_WIDTH-1:0]  WUSER,
     input  wire                          WLAST,
     input  wire                          WVALID,
     output wire                          WREADY,
     output wire [`AXI4_BID_WIDTH-1:0]    BID,
     output wire [`AXI4_BRESP_WIDTH-1:0]  BRESP,
     output wire                          BVALID,
-    input  wire                          BREADY
+    input  wire                          BREADY,
+
+    // Core-side cache maintenance: one operation on one line (rnf_defines.svh).
+    input  wire                                 CMVALID,
+    output wire                                 CMREADY,
+    input  wire [`RNF_CM_OP_W-1:0]              CMOP,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] CMADDR,
+    output wire                                 CMDONE,
+    output wire [1:0]                           CMRESP
     );
 
     chie_pkg::req_flit_s prot_txreqflit;
@@ -125,7 +143,7 @@ module rnf `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0]             snp_lu_state;
     wire [`RNF_WAY_W-1:0]                snp_lu_way;
     wire [`RNF_LINE_BITS-1:0]            snp_lu_data;
-    wire                                 snp_lu_err;
+    wire [`RNF_META_W-1:0]               snp_lu_meta;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_lu_addr;
     wire                                 snp_upd_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_upd_addr;
@@ -159,18 +177,18 @@ module rnf `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0]             cache_lu_state;
     wire [`RNF_WAY_W-1:0]                cache_lu_way;
     wire [`RNF_LINE_BITS-1:0]            cache_lu_data;
-    wire                                 cache_lu_err;
+    wire [`RNF_META_W-1:0]               cache_lu_meta;
     wire [`RNF_WAY_W-1:0]                cache_vic_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_vic_state;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr;
     wire [`RNF_LINE_BITS-1:0]            cache_vic_data;
-    wire                                 cache_vic_err;
+    wire [`RNF_META_W-1:0]               cache_vic_meta;
     wire                                 cache_any_valid;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_flush_addr;
     wire [`RNF_WAY_W-1:0]                cache_flush_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_flush_state;
     wire [`RNF_LINE_BITS-1:0]            cache_flush_data;
-    wire                                 cache_flush_err;
+    wire [`RNF_META_W-1:0]               cache_flush_meta;
     wire                                 ctl_upd_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_upd_addr;
     wire [`RNF_WAY_W-1:0]                ctl_upd_way;
@@ -180,7 +198,7 @@ module rnf `RNF_PARAM
     wire [`RNF_WAY_W-1:0]                cache_fill_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_fill_state;
     wire [`RNF_LINE_BITS-1:0]            cache_fill_data;
-    wire                                 cache_fill_err;
+    wire [`RNF_META_W-1:0]               cache_fill_meta;
 
     rnf_cache `RNF_PARAM_INST u_rnf_cache(
                       .clk_i        ( CLK              )
@@ -190,30 +208,30 @@ module rnf `RNF_PARAM
                      ,.lu_state_o   ( cache_lu_state   )
                      ,.lu_way_o     ( cache_lu_way     )
                      ,.lu_data_o    ( cache_lu_data    )
-                     ,.lu_err_o     ( cache_lu_err     )
+                     ,.lu_meta_o    ( cache_lu_meta     )
                      ,.vic_way_o    ( cache_vic_way    )
                      ,.vic_state_o  ( cache_vic_state  )
                      ,.vic_addr_o   ( cache_vic_addr   )
                      ,.vic_data_o   ( cache_vic_data   )
-                     ,.vic_err_o    ( cache_vic_err    )
+                     ,.vic_meta_o   ( cache_vic_meta    )
                      ,.any_valid_o  ( cache_any_valid  )
                      ,.flush_addr_o ( cache_flush_addr )
                      ,.flush_way_o  ( cache_flush_way  )
                      ,.flush_state_o( cache_flush_state)
                      ,.flush_data_o ( cache_flush_data )
-                     ,.flush_err_o  ( cache_flush_err  )
+                     ,.flush_meta_o ( cache_flush_meta  )
                      ,.fill_v_i     ( cache_fill_v     )
                      ,.fill_addr_i  ( cache_fill_addr  )
                      ,.fill_way_i   ( cache_fill_way   )
                      ,.fill_state_i ( cache_fill_state )
                      ,.fill_data_i  ( cache_fill_data  )
-                     ,.fill_err_i   ( cache_fill_err   )
+                     ,.fill_meta_i  ( cache_fill_meta   )
                      ,.snp_addr_i   ( snp_lu_addr      )
                      ,.snp_hit_o    ( snp_lu_hit       )
                      ,.snp_state_o  ( snp_lu_state     )
                      ,.snp_way_o    ( snp_lu_way       )
                      ,.snp_data_o   ( snp_lu_data      )
-                     ,.snp_err_o    ( snp_lu_err       )
+                     ,.snp_meta_o   ( snp_lu_meta       )
                      ,.upd_v_i      ( snp_upd_v        )
                      ,.upd_addr_i   ( snp_upd_addr     )
                      ,.upd_way_i    ( snp_upd_way      )
@@ -237,7 +255,7 @@ module rnf `RNF_PARAM
                      ,.cache_lu_state_i      ( snp_lu_state     )
                      ,.cache_lu_way_i        ( snp_lu_way       )
                      ,.cache_lu_data_i       ( snp_lu_data      )
-                     ,.cache_lu_err_i        ( snp_lu_err       )
+                     ,.cache_lu_meta_i        ( snp_lu_meta       )
                      ,.cache_upd_v_o         ( snp_upd_v        )
                      ,.cache_upd_addr_o      ( snp_upd_addr     )
                      ,.cache_upd_way_o       ( snp_upd_way      )
@@ -263,11 +281,15 @@ module rnf `RNF_PARAM
                      ,.ARADDR                ( ARADDR               )
                      ,.ARLEN                 ( ARLEN                )
                      ,.ARSIZE                ( ARSIZE               )
+                     ,.ARCOH                 ( ARCOH                )
+                     ,.ARLOCK                ( ARLOCK               )
+                     ,.ARUSER                ( ARUSER               )
                      ,.ARVALID               ( ARVALID              )
                      ,.ARREADY               ( ARREADY              )
                      ,.RID                   ( RID                  )
                      ,.RDATA                 ( RDATA                )
                      ,.RRESP                 ( RRESP                )
+                     ,.RUSER                 ( RUSER                )
                      ,.RLAST                 ( RLAST                )
                      ,.RVALID                ( RVALID               )
                      ,.RREADY                ( RREADY               )
@@ -275,10 +297,14 @@ module rnf `RNF_PARAM
                      ,.AWADDR                ( AWADDR               )
                      ,.AWLEN                 ( AWLEN                )
                      ,.AWSIZE                ( AWSIZE               )
+                     ,.AWCOH                 ( AWCOH                )
+                     ,.AWLOCK                ( AWLOCK               )
+                     ,.AWUSER                ( AWUSER               )
                      ,.AWVALID               ( AWVALID              )
                      ,.AWREADY               ( AWREADY              )
                      ,.WDATA                 ( WDATA                )
                      ,.WSTRB                 ( WSTRB                )
+                     ,.WUSER                 ( WUSER                )
                      ,.WLAST                 ( WLAST                )
                      ,.WVALID                ( WVALID               )
                      ,.WREADY                ( WREADY               )
@@ -286,23 +312,29 @@ module rnf `RNF_PARAM
                      ,.BRESP                 ( BRESP                )
                      ,.BVALID                ( BVALID               )
                      ,.BREADY                ( BREADY               )
+                     ,.CMVALID               ( CMVALID              )
+                     ,.CMREADY               ( CMREADY              )
+                     ,.CMOP                  ( CMOP                 )
+                     ,.CMADDR                ( CMADDR               )
+                     ,.CMDONE                ( CMDONE               )
+                     ,.CMRESP                ( CMRESP               )
                      ,.cache_lu_addr_o       ( cache_lu_addr        )
                      ,.cache_lu_hit_i        ( cache_lu_hit         )
                      ,.cache_lu_state_i      ( cache_lu_state       )
                      ,.cache_lu_way_i        ( cache_lu_way         )
                      ,.cache_lu_data_i       ( cache_lu_data        )
-                     ,.cache_lu_err_i        ( cache_lu_err         )
+                     ,.cache_lu_meta_i        ( cache_lu_meta         )
                      ,.cache_vic_way_i       ( cache_vic_way        )
                      ,.cache_vic_state_i     ( cache_vic_state      )
                      ,.cache_vic_addr_i      ( cache_vic_addr       )
                      ,.cache_vic_data_i      ( cache_vic_data       )
-                     ,.cache_vic_err_i       ( cache_vic_err        )
+                     ,.cache_vic_meta_i       ( cache_vic_meta        )
                      ,.cache_fill_v_o        ( cache_fill_v         )
                      ,.cache_fill_addr_o     ( cache_fill_addr      )
                      ,.cache_fill_way_o      ( cache_fill_way       )
                      ,.cache_fill_state_o    ( cache_fill_state     )
                      ,.cache_fill_data_o     ( cache_fill_data      )
-                     ,.cache_fill_err_o      ( cache_fill_err       )
+                     ,.cache_fill_meta_o      ( cache_fill_meta       )
                      ,.cache_upd_v_o         ( ctl_upd_v            )
                      ,.cache_upd_addr_o      ( ctl_upd_addr         )
                      ,.cache_upd_way_o       ( ctl_upd_way          )
@@ -331,7 +363,7 @@ module rnf `RNF_PARAM
                      ,.cache_flush_way_i     ( cache_flush_way      )
                      ,.cache_flush_state_i   ( cache_flush_state    )
                      ,.cache_flush_data_i    ( cache_flush_data     )
-                     ,.cache_flush_err_i     ( cache_flush_err      )
+                     ,.cache_flush_meta_i     ( cache_flush_meta      )
                      ,.link_run_i            ( prot_link_run        )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
@@ -385,6 +417,7 @@ module rnf `RNF_PARAM
                      ,.prot_rxsnpflitv_o     ( prot_rxsnpflitv     )
                      ,.prot_rxsnpflit_o      ( prot_rxsnpflit      )
                      ,.prot_snp_pop_i        ( snp_pop             )
+                     ,.link_hold_i           ( COHERENCY_EN | snoop_service_req )
                      ,.prot_link_run_o       ( prot_link_run       )
                  );
 

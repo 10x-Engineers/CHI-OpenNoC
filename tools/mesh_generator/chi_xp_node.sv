@@ -18,11 +18,11 @@ module chi_xp_node #(
     parameter CHIE_NID_WIDTH_PARAM = 7,
     parameter XP_XID_WIDTH = 3,
     parameter XP_YID_WIDTH = 3,
-    parameter REQ_FLIT_WIDTH,
-    parameter RSP_FLIT_WIDTH,
-    parameter DAT_FLIT_WIDTH,
-    parameter SNP_FLIT_WIDTH,
-    parameter SNP_TGTID_OFFSET,
+    parameter REQ_FLIT_WIDTH = 0,
+    parameter RSP_FLIT_WIDTH = 0,
+    parameter DAT_FLIT_WIDTH = 0,
+    parameter SNP_FLIT_WIDTH = 0,
+    parameter SNP_TGTID_OFFSET = 0,
     parameter REQ_CH_EN = {6{1'b1}},
     parameter RSP_CH_EN = {6{1'b1}},
     parameter DAT_CH_EN = {6{1'b1}},
@@ -258,6 +258,11 @@ module chi_xp_node #(
   // silently invalidate -- a wrong offset decodes some other field as the opcode
   // and either drops protocol flits or routes link flits. Checked rather than
   // trusted: set only the opcode and confirm those are exactly the bits that move.
+  // Every width defaults to 0 and is refused here: none is a safe guess, and
+  // omitting the default is legal IEEE 1800 that Xcelium 23.03 does not elaborate.
+  initial if ((REQ_FLIT_WIDTH == 0) || (RSP_FLIT_WIDTH == 0) || (DAT_FLIT_WIDTH == 0) || (SNP_FLIT_WIDTH == 0) || (SNP_TGTID_OFFSET == 0))
+    $fatal(1, "chi_xp_node: the flit widths, SNP_TGTID_OFFSET must be overridden");
+
   initial begin : opcode_offset_check
     chie_pkg::req_flit_s rq; chie_pkg::rsp_flit_s rs;
     chie_pkg::dat_flit_s dt; chie_pkg::snp_flit_s sn;
@@ -286,6 +291,10 @@ module chi_xp_node #(
   wire dat_rx_lcrd_out_P0, dat_rx_lcrd_out_P1, snp_rx_lcrd_out_P0, snp_rx_lcrd_out_P1;
   wire req_tx_lcrd_held_P0, req_tx_lcrd_held_P1, rsp_tx_lcrd_held_P0, rsp_tx_lcrd_held_P1;
   wire dat_tx_lcrd_held_P0, dat_tx_lcrd_held_P1, snp_tx_lcrd_held_P0, snp_tx_lcrd_held_P1;
+  wire req_tx_pend_P0, req_tx_pend_P1, rsp_tx_pend_P0, rsp_tx_pend_P1;
+  wire dat_tx_pend_P0, dat_tx_pend_P1, snp_tx_pend_P0, snp_tx_pend_P1;
+  wire tx_pend_P0 = req_tx_pend_P0 | rsp_tx_pend_P0 | dat_tx_pend_P0 | snp_tx_pend_P0;
+  wire tx_pend_P1 = req_tx_pend_P1 | rsp_tx_pend_P1 | dat_tx_pend_P1 | snp_tx_pend_P1;
 
   chi_xp_channel #(
       .CHIE_NID_WIDTH_PARAM(CHIE_NID_WIDTH_PARAM),
@@ -339,6 +348,8 @@ module chi_xp_node #(
       .tx_deact_P1(tx_deact_P1),
       .tx_lcrd_held_P0(req_tx_lcrd_held_P0),
       .tx_lcrd_held_P1(req_tx_lcrd_held_P1),
+      .tx_pend_P0(req_tx_pend_P0),
+      .tx_pend_P1(req_tx_pend_P1),
       .TXFLITPEND_P0(TXREQFLITPEND_P0),
       .TXFLITPEND_P1(TXREQFLITPEND_P1),
       .TXFLITV_P0(TXREQFLITV_P0),
@@ -410,6 +421,8 @@ module chi_xp_node #(
       .tx_deact_P1(tx_deact_P1),
       .tx_lcrd_held_P0(rsp_tx_lcrd_held_P0),
       .tx_lcrd_held_P1(rsp_tx_lcrd_held_P1),
+      .tx_pend_P0(rsp_tx_pend_P0),
+      .tx_pend_P1(rsp_tx_pend_P1),
       .TXFLITPEND_P0(TXRSPFLITPEND_P0),
       .TXFLITPEND_P1(TXRSPFLITPEND_P1),
       .TXFLITV_P0(TXRSPFLITV_P0),
@@ -481,6 +494,8 @@ module chi_xp_node #(
       .tx_deact_P1(tx_deact_P1),
       .tx_lcrd_held_P0(dat_tx_lcrd_held_P0),
       .tx_lcrd_held_P1(dat_tx_lcrd_held_P1),
+      .tx_pend_P0(dat_tx_pend_P0),
+      .tx_pend_P1(dat_tx_pend_P1),
       .TXFLITPEND_P0(TXDATFLITPEND_P0),
       .TXFLITPEND_P1(TXDATFLITPEND_P1),
       .TXFLITV_P0(TXDATFLITV_P0),
@@ -553,6 +568,8 @@ module chi_xp_node #(
       .tx_deact_P1(tx_deact_P1),
       .tx_lcrd_held_P0(snp_tx_lcrd_held_P0),
       .tx_lcrd_held_P1(snp_tx_lcrd_held_P1),
+      .tx_pend_P0(snp_tx_pend_P0),
+      .tx_pend_P1(snp_tx_pend_P1),
       .TXFLITPEND_P0(TXSNPFLITPEND_P0),
       .TXFLITPEND_P1(TXSNPFLITPEND_P1),
       .TXFLITV_P0(TXSNPFLITV_P0),
@@ -643,18 +660,25 @@ module chi_xp_node #(
       else if (rx_drained_P1)           rxack_P1_q <= 1'b0;
   end
 
-  // The TXLINK follows: up once out of reset, down as soon as the RXLINK is being
-  // taken down by the peer. Table 14-1 (p.14-449) makes a REQ that is low with ACK
-  // still high the DEACTIVATE state, which is what tx_deact_* below names.
+  // The TXLINK follows the RXLINK up and down, and also comes up on its own for a
+  // flit waiting to leave: SS14.5 (p.14-452) has a Transmitter with flits to send move
+  // STOP -> RUN, and a fabric that only followed would never reach a node that is
+  // itself waiting to be addressed. It rises from STOP only -- not while the RXLINK
+  // is still going down, and not before the TXLINK's own ACK has fallen -- and once
+  // raised holds until ACK, since Table 14-1 (p.14-449) leaves ACTIVATE only for RUN.
   always @(posedge clk or posedge rst) begin
       if (rst)                          txreq_P0_q <= 1'b0;
       else if (!reset_done)             txreq_P0_q <= 1'b0;
-      else                              txreq_P0_q <= RXLINKACTIVEREQ_P0;
+      else                              txreq_P0_q <= RXLINKACTIVEREQ_P0 |
+                                                    (tx_pend_P0 & ~rxack_P0_q & ~TXLINKACTIVEACK_P0) |
+                                                    (txreq_P0_q & ~TXLINKACTIVEACK_P0);
   end
   always @(posedge clk or posedge rst) begin
       if (rst)                          txreq_P1_q <= 1'b0;
       else if (!reset_done)             txreq_P1_q <= 1'b0;
-      else                              txreq_P1_q <= RXLINKACTIVEREQ_P1;
+      else                              txreq_P1_q <= RXLINKACTIVEREQ_P1 |
+                                                    (tx_pend_P1 & ~rxack_P1_q & ~TXLINKACTIVEACK_P1) |
+                                                    (txreq_P1_q & ~TXLINKACTIVEACK_P1);
   end
 
   assign TXLINKACTIVEREQ_P0 = txreq_P0_q;

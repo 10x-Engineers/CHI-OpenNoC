@@ -7,3 +7,6 @@ obj_dir/
 # mesh_gen.py/ring_gen.py write them into the generator directory by design.
 tools/mesh_generator/mesh_wrapper_*.sv
 tools/ring_generator/ring_wrapper_*.sv
+tools/mesh_generator/mesh_system_*.sv
+tools/ring_generator/ring_system_*.sv
+__pycache__/

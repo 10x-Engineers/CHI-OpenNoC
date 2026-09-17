@@ -8,7 +8,7 @@ An open-source **AMBA CHI (Issue E.b)** interconnect, in synthesisable SystemVer
 
 CHI is the coherent fabric protocol behind essentially every modern Arm-class SoC,
 and until now there has been no open implementation of it to build on, read, or
-test against. This repository is one: four CHI nodes and a crosspoint, with no
+test against. This repository is one: five CHI nodes and a crosspoint, with no
 vendor macros, no encrypted blocks and no licence server between you and the
 source.
 
@@ -24,7 +24,7 @@ source.
 | :-- | :-- |
 | **Protocol** | AMBA CHI Issue E.b (Arm IHI 0050E.b) |
 | **Language** | SystemVerilog throughout — packed structs, enums, ANSI ports |
-| **Nodes** | HN-F (coherent Home + L3 + snoop filter), HN-I (I/O Home), RN-I (AXI4→CHI bridge), RN-F (coherent Requester, in progress), SN-F (CHI→AXI4 memory Subordinate), mesh/ring crosspoints |
+| **Nodes** | HN-F (coherent Home + L3 + snoop filter), HN-I (I/O Home), RN-I (AXI4→CHI bridge), RN-F (coherent Requester with a set-associative cache), SN-F (CHI→AXI4 memory Subordinate), mesh/ring crosspoints |
 | **Dependencies** | none — all memories are inferred arrays; no technology cells, no third-party IP |
 | **Licence** | Mulan PSL v2 |
 
@@ -57,7 +57,7 @@ anything around it.
 
 | | |
 | :-- | :-- |
-| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all four nodes with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
+| ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all five nodes, and the generated mesh and ring systems, with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way, each one an issue here naming the clause it violated. A design can lint clean and pass its own directed benches while still violating the protocol in ways only an independent oracle notices. |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. Fields the spec overlays on one another are `union packed`, so one set of bits carries several names rather than several fields. |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
@@ -85,7 +85,7 @@ limitations" paragraph that nobody updates.
 ### Lint every node
 
 ```bash
-./tools/lint.sh              # all four nodes
+./tools/lint.sh              # all five nodes, and the generated fabrics
 ./tools/lint.sh hnf snf      # just the ones you name
 ```
 
@@ -157,6 +157,24 @@ directory. To use one, take the wrapper plus `chi_xp_node.sv` (or
 The JSON schema is documented in `tools/mesh_generator/README.md`; `mesh_2x2.json`
 and `ring_8.json` are worked examples.
 
+A config with any `RNF` port also produces a **populated system**,
+`mesh_system_{X}x{Y}.sv` / `ring_system_{N}.sv`: the fabric with an `rnf` on every
+RNF port, each RN-F's NodeID derived from the routing fields in a generated package
+(which also carries `RNF_NID_LIST` in the layout `RNF_NID_LIST_PARAM` expects), and
+every other port brought out for the HN-F, SN-F, HN-I or RN-I you connect. Each
+RN-F's `SYSCOREQ`/`SYSCOACK`/`COHERENCY_EN`, AXI4 core port and request-policy
+ports leave the system rather than crossing the fabric: section 15.1 (p.15-466)
+makes the Chapter 15 pair a direct one between Requester and interconnect.
+`tools/mesh_generator/README.md` has the details.
+
+> **One RN-F per HN-F today.** The HN-F takes a single `SYSCOREQ`/`SYSCOACK` pair
+> for every Requester it serves
+> ([#286](https://github.com/10x-Engineers/CHI-OpenNoC/issues/286)), and it elects
+> Forwarding snoops toward RN-Fs that declare no `Direct_Cache_Transfer`
+> ([#283](https://github.com/10x-Engineers/CHI-OpenNoC/issues/283)). Both are
+> simulated end to end with one active RN-F; two coherent RN-Fs on one Home wait on
+> those issues.
+
 ---
 
 ---
@@ -178,7 +196,7 @@ passes them down a hierarchy.
 | Parameter | Default | Notes |
 | :-- | --: | :-- |
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | CHI request address width. Carried symbolically, so 44..52 build; section 16.1's range is now refused at elaboration outside it, but only 44 is exercised. |
-| `CHIE_NID_WIDTH_PARAM` | `chie_pkg::NID_WIDTH` (7) | NodeID width. Carried symbolically, so 7..11 build; section 16.1's range is refused at elaboration outside it, but only 7 is exercised. The mesh/ring generators still pin 7 — [#220](https://github.com/10x-Engineers/CHI-OpenNoC/issues/220). |
+| `CHIE_NID_WIDTH_PARAM` | `chie_pkg::NID_WIDTH` (7) | NodeID width. Carried symbolically, so 7..11 build; section 16.1's range is refused at elaboration outside it, but only 7 is exercised. The generated mesh/ring systems are linted at both 7 and 11. |
 | `CHIE_DATA_WIDTH_PARAM` | 256 | CHI data width. **256 only, and now enforced**: the beat-count and DataID logic assumes a 64-byte line is exactly two packets, which holds only at 256, so `chie_flit_opt_check` refuses any other value rather than mis-serving data. Section 16.1 (p.16-471) makes 128 and 512 legal for a component that implements them. |
 | `CHIE_BE_WIDTH_PARAM` | `chie_pkg::BE_WIDTH` (32) | Derived as `DATA_WIDTH/8`; no longer settable independently. |
 | `CHIE_POISON_WIDTH_PARAM` | `chie_pkg::POISON_WIDTH` (4) | Derived as `DATA_WIDTH/64`; no longer settable independently. |
@@ -190,9 +208,37 @@ passes them down a hierarchy.
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | Snoop filter geometry. |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | RN-F cache geometry. Section 4.6 (p.4-209) makes capacity, associativity and replacement IMPLEMENTATION DEFINED, so these are a declaration rather than a spec constant; the 64-byte line is not, section 2.10.1 (p.2-133) fixes it. |
 | `RNF_LCRD_NUM_PARAM` | 15 | L-Credits the RN-F grants per RX channel. Section 14.2.1 caps outstanding credits at 15. |
+| `RNF_NID_PARAM` / `HNF_NID_PARAM` | 8 / 0 | The RN-F's own NodeID and its Home's. 8 is the first entry of the HN-F's default `RNF_NID_LIST_PARAM`, so a default-parameterised pair agrees. |
+| `RNF_EXCL_LP_NUM_PARAM` | 4 | Exclusive monitors the RN-F holds, one per Logical Processor (section 6.2.1 p.6-283). |
 | `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Outstanding transactions per node. |
 | `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` | undefined | Optional flit fields, and `` `define ``s rather than parameters: section 13.10.56 makes RSVDC optional with an implementation-defined width, section 11.3 gives MPAM 0 or 11 bits, and a packed struct cannot hold a zero-width member — so *defining* one is what puts it in the layout. `chie_flit_opt_check` holds every node's parameter to the package, and `tools/lint.sh` lints each node a second time with all of them declared. |
 | `XP_LCRD_NUM_PARAM` | 15 | Maximum outstanding L-Credits per channel. Section 14.2.1 caps this at 15; the counters are 4 bits wide, so a larger value will not fit. |
+
+### RN-F interface declarations (section 16.1)
+
+Section 16.1 (p.16-470): *"If a property is not declared, it is considered False."*
+The RN-F declares:
+
+| Property | Value | Why |
+| :-- | :-- | :-- |
+| `Atomic_Transactions` | False | issues no Atomic |
+| `Cache_Stash_Transactions` | False | issues no Stash request and decodes no Stash snoop |
+| `Direct_Cache_Transfer` | False | decodes no Forwarding snoop |
+| `Direct_Memory_Transfer` | — | defined at each HN for each SN, not at a Requester |
+| `Data_Poison` | True | parsed on inbound data, carried per chunk with the cached line, sourced on every data packet and on `RUSER` |
+| `Data_Check` / `Check_Type` | `Odd_Parity` / `Odd_Parity_Byte_Data` | `chie_pkg::datacheck_of()` on both DAT builders |
+| `CleanSharedPersistSep_Request` | False | issues no `CleanSharedPersistSep` |
+| `MPAM_Support` | `MPAM_9_1` when `CHIE_MPAM_PRESENT`, else False | the label comes from `AxUSER`; the node's own requests carry Table 11-5's (p.11-366) defaults |
+| `CCF_Wrap_Order` | False | issues no wrapped read |
+| `Req_Addr_Width` / `NodeID_Width` / `Data_Width` | 44 / 7 / 256 | as the table above |
+| `Enhanced_Features` | False | no Forwarding-snoop receive, `ReadNotSharedDirty` or `CleanSharedPersist`. The node does return data from SC on `RetToSrc`, one of the five features, which exceeds the declaration without contradicting it |
+| `DVM_Support` (section 16.1.1 p.16-473) | False | issues no `DVMOp` and decodes no `SnpDVMOp` |
+
+It has none of section 16.2's broadcast pins. Deasserted `BROADCASTINNER`/`OUTER`
+would turn every request Non-snoopable, which a coherent Requester has no path for;
+`BROADCASTCACHEMAINTENANCE` acts only beside them; the node issues no persistent CMO,
+Atomic, DVM or MTE request for `BROADCASTPERSIST`, `ATOMIC`, `ICINVAL` or `MTE` to
+govern.
 
 ## The nodes
 
@@ -204,16 +250,13 @@ one AXI4 port. There is no top-level SoC wrapper — you instantiate what you ne
 | **HN-F** | `rtl/src/hnf/hnf.sv` | RX REQ/RSP/DAT, TX REQ/RSP/SNP/DAT | — | Coherent Home. Point of Coherency **and** Point of Serialisation: L3 cache, snoop filter, snoop generation, exclusive monitor, and a downstream REQ port to an SN-F. |
 | **HN-I** | `rtl/src/hni/hni.sv` | RX REQ/RSP/DAT, TX RSP/DAT | AXI4 **manager** | I/O Home. Non-coherent: no snoop port, no cache. Terminates Non-snoopable traffic onto AXI4, with a 16-region address decode. |
 | **RN-I** | `rtl/src/rni/rni.sv` | TX REQ/RSP/DAT, RX RSP/DAT | AXI4 **subordinate** | Requester bridge. Turns AXI4 bursts into CHI requests, segmented at 64-byte and 4 KB boundaries. No snoop port — it is an I/O Requester, not an RN-F. |
-| **RN-F** | `rtl/src/rnf/rnf.sv` | TX REQ/RSP/DAT, RX RSP/DAT/**SNP** | AXI4 **subordinate** (planned) | Coherent Requester, **in progress** — see [#241](https://github.com/10x-Engineers/CHI-OpenNoC/issues/241). Its Chapter 14 link layer and Chapter 15 coherency interface are complete and VIP-verified; the cache, request generation and the section 4.8 snoop responses are not yet built, so it issues no request and answers no snoop. |
+| **RN-F** | `rtl/src/rnf/rnf.sv` | TX REQ/RSP/DAT, RX RSP/DAT/**SNP** | AXI4 **subordinate**, plus request-policy and cache-maintenance ports | Coherent Requester. A set-associative cache of 64-byte lines in all seven section 4.1 states, fed by the coherent requests below; a snoop port answering Tables 4-41..4-45; SYSCOREQ/SYSCOACK per Chapter 15. See [What the RN-F generates](#what-the-rn-f-generates). |
 | **SN-F** | `rtl/src/snf/snf.sv` | RX REQ/DAT, TX RSP/DAT | AXI4 **manager** | Memory Subordinate. Terminates the Home's downstream reads and writes onto AXI4. |
 | **Crosspoint** | `rtl/misc/chi_xp_channel.sv`, `chi_ring_channel.sv` | one channel each | — | Routing element, **one CHI channel per instance**. Four are assembled into a node by `tools/*/chi_*_node.sv`; a whole mesh or ring is assembled by the generators. |
 
-**The RN-F is not finished.** The HN-F is built to serve coherent Request Nodes
-with caches — that is the whole point of its snoop filter and snoop generation —
-and `rtl/src/rnf/` is now where that Requester is being built. Until the
-protocol layer lands it links up and nothing more, so a coherent Requester is
-still yours to bring. `HNF_MSHR_RNF_NUM_PARAM` and `RNF_NID_LIST_PARAM` are how
-you tell the Home about them.
+The HN-F is built to serve coherent Request Nodes with caches, and the RN-F is
+that Requester. `HNF_MSHR_RNF_NUM_PARAM` and `RNF_NID_LIST_PARAM` tell the Home
+about each one, and a generated mesh or ring derives both for you.
 
 ---
 
@@ -249,7 +292,7 @@ at both Homes — [#68](https://github.com/10x-Engineers/CHI-OpenNoC/issues/68).
 | **HN-I** | 24 | ⚪ NDERR catch-all, shaped per request class — `hni_mshr.sv`'s `rxreq_err_s0` |
 | **HN-F** | 69, plus 9 snoops and their 5 forwarding forms | ⚪ NDERR catch-all — `hnf_mshr_ctl.sv`'s `op_err*` classes |
 | **RN-I** | generates 7 | it is a Requester — see [What the RN-I generates](#what-the-rn-i-generates) |
-| **RN-F** | generates 0 so far | link layer and coherency interface only; the protocol layer lands per area of [#241](https://github.com/10x-Engineers/CHI-OpenNoC/issues/241) |
+| **RN-F** | generates 27 | it is a Requester — see [What the RN-F generates](#what-the-rn-f-generates) |
 
 All three Completers now answer everything they do not implement. The HN-F count
 is the 20 opcodes `hnf_mshr_ctl.sv` decodes in its own right — plus the thirty
@@ -320,33 +363,33 @@ permitted not to send and does not, 🔴 one whose absence is a gap.
 
 ### Features
 
-| Feature | SN-F | HN-I | RN-I | HN-F | Where |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| Chapter 14 link activation | 🟢 | 🟢 | 🟢 | 🟢 | the shared `chi_link_handshake` on the HN-F, HN-I and RN-I; the SN-F drives its own FSM, which waits out section 14.6.3's input race and gates every Protocol flit on its own TXLINK state |
-| `TXSACTIVE` per section 14.7.4 | 🟢 | 🟢 | —¹ | 🟢 | tracks outstanding Protocol-layer work on all three nodes that have the port; at the HN-F a retried request holds it only while its P-Credit is outstanding (section 14.7.1) |
-| Retry (`RetryAck` / `PCrdGrant`) | 🟢 | 🟢 | 🟢 | 🟢 | each node's `*_qos.sv`; the RN-I holds granted credits as a count per `PCrdType` (section 2.11 p.2-146: "There is no fixed relationship between credits and particular transactions"), re-sends with `AllowRetry=0`, and returns a credit no outstanding request can still claim with `PCrdReturn` (section 2.11.1 p.2-147, MUST) |
-| QoS | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes at the SN-F/HN-I (`snf_qos.sv` / `hni_qos.sv`'s `qpc_high_s0` / `qpc_low_s0`), 4 at the HN-F (`hnf_mshr_qos.sv`'s `qos_class_pool_s0`); the RN-I passes `AxQOS` through |
-| DMT | 🟢 | — | — | 🟢 | `snf_mshr.sv`'s `rxreq_dodmt_s0` (`ReturnNID != SrcID`), `hnf_mshr_ctl.sv`'s `mshr_l3_dmt_sx7` |
-| DWT | 🟢 | — | — | 🟢 | `hnf_mshr_bypass.sv`'s `do_dwt_*_s0`, `hnf_mshr_ctl.sv`'s `mshr_txreq_dodwt_sx1`. Always elected, not a parameter |
-| DCT (forwarding snoops) | — | — | — | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8` |
-| Snoop filter | — | — | — | 🟢 | `hnf_sf_sram.sv` |
-| L3 / system cache | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
-| Exclusives | —² | 🟢³ | 🟢⁴ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean`/`ReadShared`/`ReadPreferUnique` load, `WriteNoSnp*`/`CleanUnique`/`MakeReadUnique` store — the last three read from the opcode as **sent**, since `hnf_serviced_as()` folds them into another row; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
-| CMOs | 🟢 | 🟢 | — | 🟢 | all five at every node; at the HN-F the two persistent ones are serviced as `CleanShared` with section 16.1's (p.16-471) substituted `CleanSharedPersist` downstream |
-| Combined Writes | 🟡 | 🟡 | — | 🟢 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the HN-F serves all fifteen of Table 4-17 (p.4-182) |
-| Write Zero | 🟡 | 🟢 | — | 🟢 | both are serviced at the HN-F; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
-| Atomics | ⚪ | ⚪ | — | 🟢 | `opennoc_hnf_pkg.sv`'s `hnf_atomic_alu()` / `hnf_atomic_compare_eq()`, the read-modify-write in `hnf_data_buffer.sv`. At the SN-F and HN-I section 16.1 leaves `Atomic_Transactions` False when undeclared and section 16.3.3 makes the error response correct; the HN-F declares them, which section 16.3.2 then makes all-or-nothing over its whole Snoopable range |
-| Stash | ⚪ | ⚪ | — | 🟢 | the HN-F snoops the named Stash target (Table 7-1 p.7-295) and serves the Read that section 7.1.1's (p.7-295) Data Pull implies, addressed per section 2.6 step 6 (p.2-110). A request naming no target completes without stashing, which is section 7.4.2 (p.7-299) |
-| System coherency interface (Chapter 15) | — | — | —¹ | 🔴 | no node has a `SYSCOREQ`/`SYSCOACK` port. Section 15.2.2 (p.15-468) puts three MUSTs on the interconnect side and Table 15-1 (p.15-468) bars it from snooping a Requester that has left coherency; the HN-F snoops every `RNF_NID_LIST_PARAM` entry from reset — [#174](https://github.com/10x-Engineers/CHI-OpenNoC/issues/174) |
-| MTE / `TagOp` | 🟡 | 🟡 | 🔴 | 🟡 | the RN-I sources `TagOp`, `TagGroupID`, `Tag` and `TU` from the AXI sideband and reports the `TagMatch` verdict on `BUSER` (see [below](#what-the-rn-i-generates)); the HN-I answers every read `TagOp = Invalid`, which section 12.11.3 (p.12-387, MUST) fixes for a Completer holding no Allocation Tag. the SN-F **stores** Allocation Tags over the AXI `W/RUSER` sideband — a `TagOp=Update` write installs the tags its TU bits name (section 12.5.2 p.12-379, MUST) and a `Transfer` or `Fetch` read is answered `TagOp=Transfer` carrying them (section 12.4.1 p.12-376, MUST) — and sources the `TagMatch` a `TagOp=Match` write owes, with its TgtID from **ReturnNID** (Table 3-1 p.3-153), and performs the match, reporting section 12.11.1's (p.12-386) accurate verdict. The HN-F **stores** Allocation Tags and their Dirty state per L3 line (`hnf_data_sram.sv`, `hnf_data_buffer.sv`); answers `Transfer`/`Fetch` reads `Transfer`, or `Update` where the response passes Dirty (section 12.4.1 p.12-376), fetching tags it lacks (sections 12.1, 12.9.1); writes Dirty tags back (section 12.3 p.12-374); forwards `TagOp` and `TagGroupID` to its Subordinate, which performs a forwarded Match (section 12.10, `hnf_mshr_ctl.sv`'s `mshr_txreq_tagop_comb`, `hnf_mshr_bypass.sv`); and performs the match itself for an executed Atomic or a merged `WriteUniquePtl` (section 12.11.1). `BROADCASTMTE` is asserted (section 16.2.6 p.16-476) |
-| MPAM | 🟢 | 🟢 | 🟢 | 🟢 | in the REQ and SNP layout when `CHIE_MPAM_PRESENT` is defined, so `MPAM_Support = MPAM_9_1` (section 16.1 p.16-471); section 11.3 (p.11-365) makes the width 0 or 11 and Figure 11-3 the subdivision, both in `chie_pkg::mpam_s`. The RN-I sources the label from `ARUSER`/`AWUSER` verbatim, MPAMNS included, so a manager that does not use MPAM must itself drive Table 11-5's defaults there — the bridge cannot tell that case from a label whose subfields happen to be zero. The HN-I, SN-F and HN-F latch it per tracker entry. Section 11.3.4's (p.11-366, MUST) propagation lands on the HN-F's `TXREQ` and, the HN-I and SN-F having no downstream CHI port, on their AXI `AWUSER`/`ARUSER`. Section 11.3 (p.11-365) makes MPAM applicable only in Stash snoops, so `hnf_link_txsnp_wrap.sv` builds every snoop with Table 11-5's (p.11-366) defaults and its Stash-target override carries the generating request's own label (section 11.3.3 p.11-366) |
-| RSVDC | 🟡 | 🟡 | 🟡 | 🟢 | in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_opt_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Propagated on REQ, dropped on DAT.** The same section makes propagation implementation defined, so a Home declares which it does; this one preserves it, since the field is Reserved for Customer Use and an interconnect that drops it makes it useless end to end. The HN-F latches the REQ field per MSHR entry, clears it on retire so a reused entry cannot leak a previous Requester's value, and drives it at both TXREQ builders. A request the interconnect generated for itself — a snoop-filter evict, a System-cache eviction and its write-back — answers to no request to the Home, so it carries zero: the same gate section 2.9.3 (p.2-129) already puts on those requests' MemAttr. DAT is dropped because the Home re-beats write data out of its data buffer after merging with the L3, so an upstream flit's value maps onto no particular downstream beat. The HN-I, RN-I and SN-F are CHI terminations with an AXI back end, so section 13.10.56 has no CHI-to-CHI propagation for them to do |
-| DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | `chie_pkg::datacheck_of()` at each node's DAT builder, so `Data_Check = Odd_Parity` and `Check_Type = Odd_Parity_Byte_Data` (section 16.1 p.16-470/16-471). Sourced, not checked: section 9.6 (p.9-348) puts the parity obligation on the Transmitter, and section 9.8's (p.9-352) conversion MUST applies only where support differs across the interface, which it does not here. **Bit i covers byte lane i** — section 13.10.52 (p.13-436) never fixes the mapping, so a peer must adopt the same convention |
-| Poison | 🟢 | 🟢 | 🟢 | 🟢 | section 9.5 (p.9-347, MUST): "the Poison value, once set, must be propagated along with the data". Each node holds the tag beside the bytes it tags — per MSHR entry in `snf_data_buffer.sv` / `hni_data_buffer.sv`, per chunk in `hnf_data_buffer.sv` plus a mask SRAM on the L3's own index and way strobes, per bank in `rni_wr_buffer.sv` / `rni_rd_buffer.sv` — and sources it on every response it builds off that line. Across AXI it rides the `WUSER`/`RUSER` sideband `axi4_defines.svh` declares, AXI4 having no poison bit of its own. So `Data_Poison = True` (section 16.1 p.16-470) at all four nodes |
-| Error propagation (`RespErr`) | 🟢 | 🟢 | 🟢 | 🟢 | the SN-F and HN-I latch `RRESP`/`BRESP` per entry and report them, all-or-none across the packets of one read message (section 9.4.1); the HN-F parses inbound `RespErr` on both RX channels and passes it back, keeping `DERR` and `NDERR` distinct (section 9.1, section 9.2) |
-| `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🟢 | all four nodes drive both from the request they answer |
-| Snoop/completion serialisation | — | — | — | 🟢 | a coherent read's `CompData` is held until its snoops have responded (section 4.11.2) |
-| `RetToSrc` fan-out (section 4.9) | — | — | — | 🟢 | the snoop flit is built once per fan-out; every re-drive clears `RetToSrc`, so only the first snoopee carries it |
+| Feature | SN-F | HN-I | RN-I | RN-F | HN-F | Where |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| Chapter 14 link activation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | the shared `chi_link_handshake` on the HN-F, HN-I, RN-I and RN-F; the SN-F drives its own FSM, which waits out section 14.6.3's input race and gates every Protocol flit on its own TXLINK state |
+| `TXSACTIVE` per section 14.7.4 | 🟢 | 🟢 | —¹ | 🟢 | 🟢 | tracks outstanding Protocol-layer work on all four nodes that have the port, and at the RN-F also each Chapter 15 transition (section 15.2.1 p.15-467); at the HN-F a retried request holds it only while its P-Credit is outstanding (section 14.7.1) |
+| Retry (`RetryAck` / `PCrdGrant`) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | each node's `*_qos.sv`; the RN-I holds granted credits as a count per `PCrdType` (section 2.11 p.2-146: "There is no fixed relationship between credits and particular transactions"), re-sends with `AllowRetry=0`, and returns a credit no outstanding request can still claim with `PCrdReturn` (section 2.11.1 p.2-147, MUST) |
+| QoS | 🟢 | 🟢 | 🟢 | —⁵ | 🟢 | 2 classes at the SN-F/HN-I (`snf_qos.sv` / `hni_qos.sv`'s `qpc_high_s0` / `qpc_low_s0`), 4 at the HN-F (`hnf_mshr_qos.sv`'s `qos_class_pool_s0`); the RN-I passes `AxQOS` through |
+| DMT | 🟢 | — | — | — | 🟢 | `snf_mshr.sv`'s `rxreq_dodmt_s0` (`ReturnNID != SrcID`), `hnf_mshr_ctl.sv`'s `mshr_l3_dmt_sx7` |
+| DWT | 🟢 | — | — | — | 🟢 | `hnf_mshr_bypass.sv`'s `do_dwt_*_s0`, `hnf_mshr_ctl.sv`'s `mshr_txreq_dodwt_sx1`. Always elected, not a parameter |
+| DCT (forwarding snoops) | — | — | — | — | 🟢 | `hnf_mshr_ctl.sv`'s `mshr_dct_set_sx8` |
+| Snoop filter | — | — | — | — | 🟢 | `hnf_sf_sram.sv` |
+| L3 / system cache | — | — | — | — | 🟢 | `hnf_data_sram.sv`, `hnf_tag_sram.sv`, `hnf_lru_sram.sv` |
+| Exclusives | —² | 🟢³ | 🟢⁴ | 🟢⁶ | 🟢 | `hnf_mshr_global_monitor.sv`: Excl `ReadNoSnp`/`ReadNotSharedDirty`/`ReadClean`/`ReadShared`/`ReadPreferUnique` load, `WriteNoSnp*`/`CleanUnique`/`MakeReadUnique` store — the last three read from the opcode as **sent**, since `hnf_serviced_as()` folds them into another row; `hni_global_monitor.sv`: Excl `ReadNoSnp` load, `WriteNoSnp*` store; `rni_segburst.sv`: `AxLOCK` carried as `Excl` |
+| CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | all five at every Completer, and the RN-F issues `CleanShared`, `CleanInvalid` and `MakeInvalid` (the persistent two sit behind `Enhanced_Features` and `CleanSharedPersistSep_Request`, both False); at the HN-F the two persistent ones are serviced as `CleanShared` with section 16.1's (p.16-471) substituted `CleanSharedPersist` downstream |
+| Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | the six `WriteNoSnp` forms are serviced at the SN-F and HN-I; the RN-F issues the five Snoopable forms whose CMO is `CleanShared` or `CleanInvalid`; the HN-F serves all fifteen of Table 4-17 (p.4-182) |
+| Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | both are serviced at the HN-F and the RN-F issues `WriteUniqueZero`; `WriteNoSnpZero` at the SN-F and HN-I, `WriteUniqueZero` still error-completed there |
+| Atomics | ⚪ | ⚪ | — | — | 🟢 | `opennoc_hnf_pkg.sv`'s `hnf_atomic_alu()` / `hnf_atomic_compare_eq()`, the read-modify-write in `hnf_data_buffer.sv`. At the SN-F and HN-I section 16.1 leaves `Atomic_Transactions` False when undeclared and section 16.3.3 makes the error response correct; the HN-F declares them, which section 16.3.2 then makes all-or-nothing over its whole Snoopable range |
+| Stash | ⚪ | ⚪ | — | — | 🟢 | the HN-F snoops the named Stash target (Table 7-1 p.7-295) and serves the Read that section 7.1.1's (p.7-295) Data Pull implies, addressed per section 2.6 step 6 (p.2-110). A request naming no target completes without stashing, which is section 7.4.2 (p.7-299) |
+| System coherency interface (Chapter 15) | — | — | —¹ | 🟢 | 🟡 | the RN-F's `rnf_sysco.sv` drives `SYSCOREQ` per section 15.2.1 (p.15-467), empties its cache before it leaves (Table 15-1 p.15-468) and holds `TXSACTIVE` across each transition; the HN-F answers with `SYSCOACK` and gates its snoops on it (section 15.2.2 p.15-468), but on one pair for every Requester it serves — [#286](https://github.com/10x-Engineers/CHI-OpenNoC/issues/286) |
+| MTE / `TagOp` | 🟡 | 🟡 | 🔴 | 🔴 | 🟡 | the RN-I sources `TagOp`, `TagGroupID`, `Tag` and `TU` from the AXI sideband and reports the `TagMatch` verdict on `BUSER` (see [below](#what-the-rn-i-generates)); the HN-I answers every read `TagOp = Invalid`, which section 12.11.3 (p.12-387, MUST) fixes for a Completer holding no Allocation Tag. the SN-F **stores** Allocation Tags over the AXI `W/RUSER` sideband — a `TagOp=Update` write installs the tags its TU bits name (section 12.5.2 p.12-379, MUST) and a `Transfer` or `Fetch` read is answered `TagOp=Transfer` carrying them (section 12.4.1 p.12-376, MUST) — and sources the `TagMatch` a `TagOp=Match` write owes, with its TgtID from **ReturnNID** (Table 3-1 p.3-153), and performs the match, reporting section 12.11.1's (p.12-386) accurate verdict. The HN-F **stores** Allocation Tags and their Dirty state per L3 line (`hnf_data_sram.sv`, `hnf_data_buffer.sv`); answers `Transfer`/`Fetch` reads `Transfer`, or `Update` where the response passes Dirty (section 12.4.1 p.12-376), fetching tags it lacks (sections 12.1, 12.9.1); writes Dirty tags back (section 12.3 p.12-374); forwards `TagOp` and `TagGroupID` to its Subordinate, which performs a forwarded Match (section 12.10, `hnf_mshr_ctl.sv`'s `mshr_txreq_tagop_comb`, `hnf_mshr_bypass.sv`); and performs the match itself for an executed Atomic or a merged `WriteUniquePtl` (section 12.11.1). `BROADCASTMTE` is asserted (section 16.2.6 p.16-476); the RN-F ties every MTE field to zero and has no `BROADCASTMTE` |
+| MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | in the REQ and SNP layout when `CHIE_MPAM_PRESENT` is defined, so `MPAM_Support = MPAM_9_1` (section 16.1 p.16-471); section 11.3 (p.11-365) makes the width 0 or 11 and Figure 11-3 the subdivision, both in `chie_pkg::mpam_s`. The RN-I sources the label from `ARUSER`/`AWUSER` verbatim, MPAMNS included, so a manager that does not use MPAM must itself drive Table 11-5's defaults there — the bridge cannot tell that case from a label whose subfields happen to be zero. The HN-I, SN-F and HN-F latch it per tracker entry. Section 11.3.4's (p.11-366, MUST) propagation lands on the HN-F's `TXREQ` and, the HN-I and SN-F having no downstream CHI port, on their AXI `AWUSER`/`ARUSER`. Section 11.3 (p.11-365) makes MPAM applicable only in Stash snoops, so `hnf_link_txsnp_wrap.sv` builds every snoop with Table 11-5's (p.11-366) defaults and its Stash-target override carries the generating request's own label (section 11.3.3 p.11-366) |
+| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | the RN-F sources zero; in the REQ and DAT layout when `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` is defined — section 13.10.56 (p.13-441) makes the field optional and a packed struct cannot hold a zero-width member, so the define's presence is the field's. `chie_flit_opt_check` holds each node's parameter to the layout and to the section's 4/8/12/16/24/32 set. **Propagated on REQ, dropped on DAT.** The same section makes propagation implementation defined, so a Home declares which it does; this one preserves it, since the field is Reserved for Customer Use and an interconnect that drops it makes it useless end to end. The HN-F latches the REQ field per MSHR entry, clears it on retire so a reused entry cannot leak a previous Requester's value, and drives it at both TXREQ builders. A request the interconnect generated for itself — a snoop-filter evict, a System-cache eviction and its write-back — answers to no request to the Home, so it carries zero: the same gate section 2.9.3 (p.2-129) already puts on those requests' MemAttr. DAT is dropped because the Home re-beats write data out of its data buffer after merging with the L3, so an upstream flit's value maps onto no particular downstream beat. The HN-I, RN-I and SN-F are CHI terminations with an AXI back end, so section 13.10.56 has no CHI-to-CHI propagation for them to do |
+| DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | `chie_pkg::datacheck_of()` at each node's DAT builder, so `Data_Check = Odd_Parity` and `Check_Type = Odd_Parity_Byte_Data` (section 16.1 p.16-470/16-471). Sourced, not checked: section 9.6 (p.9-348) puts the parity obligation on the Transmitter, and section 9.8's (p.9-352) conversion MUST applies only where support differs across the interface, which it does not here. **Bit i covers byte lane i** — section 13.10.52 (p.13-436) never fixes the mapping, so a peer must adopt the same convention |
+| Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | section 9.5 (p.9-347, MUST): "the Poison value, once set, must be propagated along with the data". Each node holds the tag beside the bytes it tags — per MSHR entry in `snf_data_buffer.sv` / `hni_data_buffer.sv`, per chunk in `hnf_data_buffer.sv` plus a mask SRAM on the L3's own index and way strobes, per bank in `rni_wr_buffer.sv` / `rni_rd_buffer.sv` — and sources it on every response it builds off that line. Across AXI it rides the `WUSER`/`RUSER` sideband `axi4_defines.svh` declares, AXI4 having no poison bit of its own. The RN-F keeps it per chunk beside each cached line (the `RNF_META_POISON` bits of `rnf_cache.sv`'s per-line metadata) and sources it on `SnpRespData*`, `CopyBackWrData`, `NonCopyBackWrData` and `RUSER`. So `Data_Poison = True` (section 16.1 p.16-470) at all five nodes |
+| Error propagation (`RespErr`) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | the SN-F and HN-I latch `RRESP`/`BRESP` per entry and report them, all-or-none across the packets of one read message (section 9.4.1); the HN-F parses inbound `RespErr` on both RX channels and passes it back, keeping `DERR` and `NDERR` distinct (section 9.1, section 9.2); the RN-F allocates nothing on `NDERR` and leaves the cache as it was (section 9.3 p.9-336), carries `DERR` with the line so a later hit is `SLVERR` and its snoop and CopyBack data carry `DERR` (section 9.4.7 p.9-345) |
+| `CCID` / `TraceTag` on data responses | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | all five nodes drive both from the request they answer |
+| Snoop/completion serialisation | — | — | — | — | 🟢 | a coherent read's `CompData` is held until its snoops have responded (section 4.11.2) |
+| `RetToSrc` fan-out (section 4.9) | — | — | — | — | 🟢 | the snoop flit is built once per fan-out; every re-drive clears `RetToSrc`, so only the first snoopee carries it |
 
 ¹ The RN-I has no `SACTIVE` ports at all, and Figure 15-1 (p.15-466) gives the
 Chapter 15 pair to an RN-F or RN-D — an I/O Requester is neither.
@@ -368,6 +411,12 @@ target without exclusive support. The bridge presents one Logical Processor
 (`LPID=0`), so its AXI manager must hold one exclusive sequence in flight at a
 time -- section 6.3.3 (p.6-291) forbids two from one LP -- which is AXI4 A7.2's own
 read-then-write flow on a single ID.
+⁵ The RN-F issues every request at QoS 0.
+⁶ The RN-F's `rnf_ctl.sv` sets `Excl` for an `AxLOCK` access with `AxID` below 256
+(`LPID` = `AxID[7:0]`) on `ReadShared`/`ReadClean`/`ReadPreferUnique` Loads and
+`CleanUnique`/`MakeReadUnique` Stores, keeps one monitor per LP (`mon_lp_q`, section
+6.2.1 p.6-283), answers a Store whose monitor was reset with no transaction and
+AXI `OKAY`, and maps `EXOK` to `EXOKAY`.
 
 ### What the RN-I generates
 
@@ -458,6 +507,28 @@ two Non-cacheable rows, under the shape limits of footnote ⁴ above; a read is
 otherwise always a 64-byte request, and only an exclusive one carries the burst's
 own `Size`.
 
+### What the RN-F generates
+
+The RN-F's core picks *which* coherent request an access becomes; the line's state
+decides whether it is legal (Table 4-4 p.4-167, Table 4-10 p.4-174, Table 4-16
+p.4-181). The selectors are IMPLEMENTATION DEFINED and encoded in
+`rnf_defines.svh`; zero on all of them is a plain cache.
+
+| Selector | Values | Requests |
+| :--- | :--- | :--- |
+| `ARCOH`, with `ARVALID` | `SHARED`, `CLEAN`, `PREFER_UNIQUE`, `UNIQUE`, `ONCE`, `ONCE_CLEAN_INV`, `ONCE_MAKE_INV` | `ReadShared`, `ReadClean`, `ReadPreferUnique`, `ReadUnique` fill the line on a miss; `ReadOnce`, `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` are non-allocating and leave it uncached |
+| `AWCOH`, with `AWVALID` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL` | a Shared line upgrades with `CleanUnique` or `MakeReadUnique`; a miss takes `MakeUnique` / `ReadUnique`, or writes through with `WriteUniqueFull` / `WriteUniquePtl` / `WriteUniqueZero` (and their `CleanSh` combinations); `PARTIAL` keeps a partial store of an uncached line as UDP |
+| `CMVALID`/`CMOP`/`CMADDR` → `CMDONE`/`CMRESP` | `EVICT_SILENT`, `EVICT_NOTIFY`, `EVICT_RETURN`, `EVICT_OFFER`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | by the line's state: `Evict`, `WriteBackFull`, `WriteBackPtl` (from UDP), `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, and Table 4-17's (p.4-182) `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
+
+A Dirty line displaced by a fill is written back with `WriteBackFull` (or
+`WriteBackPtl` from UDP) with no CompAck (Table 2-8 p.2-117), and leaving coherency
+writes back every Dirty line first (Table 15-1 p.15-468). Every first attempt sets
+`AllowRetry`, and a surplus P-Credit goes back as `PCrdReturn` (section 2.11.1
+p.2-147). Not issued: `ReadNotSharedDirty` and `CleanSharedPersist*` (behind the
+False declarations above), Stash, Atomic and `DVMOp` (likewise), and the
+Non-snoopable `ReadNoSnp`/`WriteNoSnp*` family, since every address this node
+caches is Snoopable.
+
 ---
 
 ---
@@ -478,7 +549,7 @@ own `Size`.
 │   │   ├── opennoc_hnf_pkg.sv     HN-F's snoop routing envelope
 │   │   ├── opennoc_rni_pkg.sv     RN-I's AXI4 channel structs + PCrdGrant/B-resp
 │   │   ├── axi4_defines.svh       AXI4 field widths for HN-I and SN-F
-│   │   └── {hnf,hni,rni,snf}_{param,defines}.svh
+│   │   └── {hnf,hni,rni,rnf,snf}_{param,defines}.svh
 │   ├── misc/                  Shared modules: chi_link_handshake (Chapter 14 FSM),
 │   │                          crosspoint channels, FIFO, arbiters, BIQ,
 │   │                          assert_checker, chie_flit_opt_check
@@ -486,6 +557,7 @@ own `Size`.
 │   │   ├── hnf/               HN-F  (24 files) — link, MSHR, cache pipeline, SRAMs
 │   │   ├── hni/               HN-I  (10 files)
 │   │   ├── rni/               RN-I  (14 files)
+│   │   ├── rnf/               RN-F  (6 files) — link, cache, snoop port, coherency, control
 │   │   └── snf/               SN-F  (8 files)
 │   ├── tb/                    Behavioural benches
 │   ├── case/                  136 recorded HN-F stimulus/response cases
@@ -495,6 +567,7 @@ own `Size`.
     ├── lint.sh                Verilator structural lint + select bounds (CI gate)
     ├── check_select_bounds.py Out-of-range part-selects after loop unrolling
     ├── link_check.sh          Chapter 14 link-activation bench
+    ├── noc_common/            Port tables and the populated-system template both generators share
     ├── mesh_generator/        Mesh fabric generator (Python + Jinja2)
     └── ring_generator/        Ring fabric generator
 ```
