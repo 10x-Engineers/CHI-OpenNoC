@@ -2867,7 +2867,7 @@ module hnf_mshr_ctl `HNF_PARAM
                     ~mshr_tagfetch_pend_sx_q[entry] &
                     (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry])) ||
                    (mshr_errrd_s1_q[entry] & mshr_dbf_home_fill_entry_sx1[entry]);
-            assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
+            assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_to_rn_sx1_q & mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
             // What the entry owes the Subordinate, as a condition on its own state.
             // Each conjunct comes true at its own time -- the Requester's data, the
             // Subordinate's DBID, the snoop fan-out, the cache pass -- so qualifying
@@ -2885,7 +2885,7 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_txdat_sn_sent_sx[entry]      = mshr_txdat_sn_sent_sx_q[entry] | mshr_txdat_sn_rdy_clr_sx[entry];
             assign mshr_txdat_sn_rdy_set_sx[entry]   = mshr_txdat_sn_owed_sx[entry] & mshr_sn_data_busy_sx_q[entry] &
                    ~mshr_txdat_sn_sent_sx[entry] & ~mshr_txdat_sn_rdy_sx_q[entry];
-            assign mshr_txdat_sn_rdy_clr_sx[entry]   = (~mshr_txdat_rn_rdy_sx_q[entry] & mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
+            assign mshr_txdat_sn_rdy_clr_sx[entry]   = (~mshr_dbf_rd_to_rn_sx1_q & mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
             // The err class is invisible to hnf_mshr_bypass, so txrsp_mshr_bypass_lost_s1
             // is never asserted for it; its arms hang off the allocation instead.
             assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]) ||
@@ -4539,8 +4539,8 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
-    // The RN-bound read is taken first where an entry owes both, which is the
-    // order mshr_txdat_sn_rdy_clr_sx already retires the two ready bits in.
+    // The RN-bound read is taken first where an entry owes both, and the read retires
+    // the ready bit of the destination latched here, not of whichever is set by then.
     always_ff @(posedge clk or posedge rst)begin : mshr_dbf_rd_timing_logic
         if(rst == 1'b1) begin
             mshr_dbf_rd_valid_sx1_q <= 1'b0;
