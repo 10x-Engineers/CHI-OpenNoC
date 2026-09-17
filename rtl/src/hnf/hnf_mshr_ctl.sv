@@ -1328,8 +1328,9 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_tagop_transfer_s1_q[entry] = (mshr_tagop_s1_q[entry] == chie_pkg::TAGOP_TRANSFER);
             assign mshr_tagop_update[entry]        = (mshr_tagop_s1_q[entry] == chie_pkg::TAGOP_UPDATE);
             assign mshr_mte_mem[entry]             = opennoc_hnf_pkg::hnf_mte_mem(mshr_memattr_s1_q[entry]);
-            // SS12.3 (p.12-374, MUST): a WriteUniqueFull that Updates the tags owes memory no Dirty ones.
-            assign mshr_wuf_tags_free[entry] = mshr_tagop_update[entry];
+            // SS12.3 (p.12-374, MUST): a WriteUniqueFull that neither Updates the tags nor
+            // targets memory holding them (SS12.1 p.12-372) owes memory no Dirty tags.
+            assign mshr_wuf_tags_free[entry] = mshr_tagop_update[entry] | ~mshr_mte_mem[entry];
             assign mshr_wuf_seq[entry]       = mshr_wuf_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & ~mshr_wuf_tags_free[entry];
             // SS12.4.1 (p.12-376, MUST): a Transfer or Fetch read is owed its tags.
             assign mshr_rd_owes_tags[entry] = mshr_tagop_asks_tags[entry] & ~mshr_atomic_s1_q[entry] &

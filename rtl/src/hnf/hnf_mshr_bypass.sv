@@ -299,9 +299,10 @@ module hnf_mshr_bypass `HNF_PARAM
     // Under DWT the Subordinate grants the buffer instead (Table 13-21 p.13-430).
     assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||req_wup_s0||(req_wuf_s0&&!do_dwt_wuf_s0))&&mshr_alloc_en_s0;
     assign tx_rdnosnp_s0        = req_rdnosnp_s0&&mshr_alloc_en_s0;
-    // SS12.3 (p.12-374, MUST): a WriteUniqueFull that does not Update the tags owes memory
-    // any Dirty ones, so hnf_mshr_ctl issues it.
-    wire   wuf_no_tags_owed_s0  = (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_UPDATE);
+    // SS12.3 (p.12-374, MUST): a WriteUniqueFull that does not Update the tags of memory
+    // that holds them (SS12.1 p.12-372) owes memory any Dirty ones, so hnf_mshr_ctl issues it.
+    wire   wuf_no_tags_owed_s0  = (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_UPDATE) ||
+                                  !opennoc_hnf_pkg::hnf_mte_mem(li_mshr_rxreq_memattr_s0);
     assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!li_mshr_rxreq_l3_alloc_s0&&wuf_no_tags_owed_s0&&mshr_alloc_en_s0;
 
     assign tx_wrnosnpful_s1 = tx_wrnosnpful_wuf_s1_q||((li_mshr_rxreq_opcode_s1_q == chie_pkg::REQ_WRITENOSNPFULL)&&(excl_pass_s1 == 1||li_mshr_rxreq_excl_s1_q == 0)&&mshr_alloc_en_s1_q);
@@ -411,7 +412,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_tagop_s1       = !tx_rdnosnp_s1_q
                                             ? opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1)
                                             : (li_mshr_rxreq_tagop_s1_q inside {chie_pkg::TAGOP_TRANSFER, chie_pkg::TAGOP_MATCH})
-                                            ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, 1'b1,
+                                            ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, do_dmt_s1_q,
                                                                                li_mshr_rxreq_size_s1_q, li_mshr_rxreq_memattr_s1_q)
                                             : chie_pkg::TAGOP_INVALID;
     assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?chie_pkg::REQ_READNOSNP:(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
