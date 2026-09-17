@@ -124,6 +124,7 @@ module hnf_mshr_bypass `HNF_PARAM
     logic                                li_mshr_rxreq_excl_s1_q;
     logic                                li_mshr_rxreq_tracetag_s1_q;
     logic [7:0]                          li_mshr_rxreq_lpid_s1_q;
+    logic [1:0]                          li_mshr_rxreq_tagop_s1_q;
     chie_pkg::mpam_s                     li_mshr_rxreq_mpam_s1_q;
     chie_pkg::req_rsvdc_t                li_mshr_rxreq_rsvdc_s1_q;
 
@@ -142,7 +143,6 @@ module hnf_mshr_bypass `HNF_PARAM
     wire                                 tx_wrnosnpptl_s1;
 
     wire                                 dwt_eligible_s0;
-    logic [1:0]                          li_mshr_rxreq_tagop_s1_q;
     wire                                 do_dwt_wuf_s0;
     wire                                 do_dwt_wrnosnpfull_s0;
     wire                                 do_dwt_wrnosnpptl_s0;
@@ -218,14 +218,17 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     always_ff @(posedge clk or posedge rst)begin :pass_size
-        if(rst)begin
+        if(rst)
             li_mshr_rxreq_size_s1_q  <= chie_pkg::SIZE_1B;
-            li_mshr_rxreq_tagop_s1_q <= 2'b00;
-        end
-        else begin
+        else
             li_mshr_rxreq_size_s1_q  <= li_mshr_rxreq_size_s0;
+    end
+
+    always_ff @(posedge clk or posedge rst)begin :pass_tagop
+        if(rst)
+            li_mshr_rxreq_tagop_s1_q <= chie_pkg::TAGOP_INVALID;
+        else
             li_mshr_rxreq_tagop_s1_q <= li_mshr_rxreq_tagop_s0;
-        end
     end
 
     always_ff @(posedge clk or posedge rst)begin :pass_addr
@@ -296,11 +299,10 @@ module hnf_mshr_bypass `HNF_PARAM
     // Under DWT the Subordinate grants the buffer instead (Table 13-21 p.13-430).
     assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||req_wup_s0||(req_wuf_s0&&!do_dwt_wuf_s0))&&mshr_alloc_en_s0;
     assign tx_rdnosnp_s0        = req_rdnosnp_s0&&mshr_alloc_en_s0;
-    // SS12.9.1 (p.12-383, MUST) and SS12.3 (p.12-374, MUST): a WriteUniqueFull that does
-    // not Update the tags leaves any Dirty ones a Snoopee or the L3 holds owed to memory,
-    // and the Home learns them only once its snoops and cache pass are done -- so its
-    // write to the Subordinate is issued from hnf_mshr_ctl then, not here.
-    assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!li_mshr_rxreq_l3_alloc_s0&&(li_mshr_rxreq_tagop_s0 == 2'b10)&&mshr_alloc_en_s0;
+    // SS12.3 (p.12-374, MUST): a WriteUniqueFull that does not Update the tags owes memory
+    // any Dirty ones, so hnf_mshr_ctl issues it.
+    wire   wuf_no_tags_owed_s0  = (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_UPDATE);
+    assign tx_wrnosnpful_wuf_s0 = req_wuf_s0&&!li_mshr_rxreq_l3_alloc_s0&&wuf_no_tags_owed_s0&&mshr_alloc_en_s0;
 
     assign tx_wrnosnpful_s1 = tx_wrnosnpful_wuf_s1_q||((li_mshr_rxreq_opcode_s1_q == chie_pkg::REQ_WRITENOSNPFULL)&&(excl_pass_s1 == 1||li_mshr_rxreq_excl_s1_q == 0)&&mshr_alloc_en_s1_q);
     assign tx_wrnosnpptl_s1 = ((li_mshr_rxreq_opcode_s1_q == chie_pkg::REQ_WRITENOSNPPTL)&&(excl_pass_s1 == 1||li_mshr_rxreq_excl_s1_q == 0)&&mshr_alloc_en_s1_q);
@@ -355,7 +357,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign dwt_eligible_s0      = (!li_mshr_rxreq_wrzero_s0) &&
            (!(li_mshr_rxreq_order_s0 == 2'b10 && li_mshr_rxreq_expcompack_s0==1));
     assign do_dwt_wuf_s0        = dwt_eligible_s0 && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL) && (!li_mshr_rxreq_l3_alloc_s0) &&
-                                  (li_mshr_rxreq_tagop_s0 == 2'b10);
+                                  wuf_no_tags_owed_s0;
     assign do_dwt_wrnosnpfull_s0 = do_dwt_wuf_s0 ||
            (dwt_eligible_s0 && (!li_mshr_rxreq_excl_s0) && (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL));
 
@@ -398,25 +400,20 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!excl_fail_s1;
     assign mshr_txreq_bypass_qos_s1         = li_mshr_rxreq_qos_s1_q;
     assign mshr_txreq_bypass_txnid_s1       = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
-    // SS2.5.3 (p.2-88): "In WriteNoSnp with TagOp Match: Irrespective of the value of
-    // DoDWT, the ReturnNID value is expected to be the original Requester Node ID", the
-    // TgtID of the Subordinate's TagMatch (SS12.11.1 p.12-386).
-    wire   bypass_wr_match_s1               = !tx_rdnosnp_s1_q && (mshr_txreq_bypass_tagop_s1 == 2'b11);
+    // SS2.5.3 (p.2-88): a WriteNoSnp with TagOp Match names the Requester as ReturnNID
+    // irrespective of DoDWT.
+    wire   bypass_wr_match_s1               = !tx_rdnosnp_s1_q && (mshr_txreq_bypass_tagop_s1 == chie_pkg::TAGOP_MATCH);
     assign mshr_txreq_bypass_returnnid_s1   = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q||bypass_wr_match_s1)?li_mshr_rxreq_srcid_s1_q:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0];
     assign mshr_txreq_bypass_returntxnid_s1 = (mshr_txreq_bypass_dodwt_s1||do_dmt_s1_q||bypass_wr_match_s1)?li_mshr_rxreq_txnid_s1_q:{{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
-    // SS12.10 (p.12-385, MUST): "When TagOp is Match, the TagGroupID in WriteNoSnp ... to
-    // the Subordinate are applicable, and these values must be returned in the TagMatch".
+    // SS12.10 (p.12-385, MUST): a Match's TagGroupID "must be returned in the TagMatch".
     assign mshr_txreq_bypass_taggroupid_s1  = bypass_wr_match_s1 ? li_mshr_rxreq_lpid_s1_q : 8'd0;
-    // Sec 12.10 (p.12-385): the Requester's TagOp rides the request the Home issues
-    // on its behalf. A DMT read's data goes to the Requester, so it asks for the tags
-    // the Requester did -- Fetch only at 64 bytes -- and Sec 12.11.3 (p.12-387, MUST)
-    // leaves Non-cacheable and Device memory Invalid.
-    assign mshr_txreq_bypass_tagop_s1       = tx_rdnosnp_s1_q
-                                            ? ((li_mshr_rxreq_memattr_s1_q.cacheable && !li_mshr_rxreq_memattr_s1_q.device &&
-                                                (li_mshr_rxreq_tagop_s1_q inside {2'b01, 2'b11}))
-                                               ? (((li_mshr_rxreq_tagop_s1_q == 2'b11) && (li_mshr_rxreq_size_s1_q == chie_pkg::SIZE_64B)) ? 2'b11 : 2'b01)
-                                               : 2'b00)
-                                            : opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1);
+    // SS12.10 (p.12-385): the request issued for the Requester carries its TagOp.
+    assign mshr_txreq_bypass_tagop_s1       = !tx_rdnosnp_s1_q
+                                            ? opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1)
+                                            : (li_mshr_rxreq_tagop_s1_q inside {chie_pkg::TAGOP_TRANSFER, chie_pkg::TAGOP_MATCH})
+                                            ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, 1'b1,
+                                                                               li_mshr_rxreq_size_s1_q, li_mshr_rxreq_memattr_s1_q)
+                                            : chie_pkg::TAGOP_INVALID;
     assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?chie_pkg::REQ_READNOSNP:(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
     assign mshr_txreq_bypass_size_s1        = li_mshr_rxreq_size_s1_q;
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;

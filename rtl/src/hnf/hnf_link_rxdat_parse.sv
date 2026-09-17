@@ -53,9 +53,9 @@ module hnf_link_rxdat_parse `HNF_PARAM
     output wire [chie_pkg::BE_WIDTH-1:0]   li_dbf_rxdat_be_s0,
     output wire [chie_pkg::DATA_WIDTH-1:0] li_dbf_rxdat_data_s0,
     output wire [chie_pkg::POISON_WIDTH-1:0] li_dbf_rxdat_poison_s0,
-    output wire [1:0]                        li_dbf_rxdat_tagop_s0,
-    output wire [chie_pkg::TAG_WIDTH-1:0]    li_dbf_rxdat_tag_s0,
-    output wire [chie_pkg::TU_WIDTH-1:0]     li_dbf_rxdat_tu_s0
+    output wire [1:0]                      li_dbf_rxdat_tagop_s0,
+    output wire [chie_pkg::TAG_WIDTH-1:0]  li_dbf_rxdat_tag_s0,
+    output wire [chie_pkg::TU_WIDTH-1:0]   li_dbf_rxdat_tu_s0
     );
 
     //internal reg signals
@@ -106,9 +106,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_dbf_rxdat_be_s0        = li_mshr_rxdat_valid_s0? rxdatflit.be       : '0;
     assign li_dbf_rxdat_data_s0      = li_mshr_rxdat_valid_s0? rxdatflit.data     : '0;
     assign li_dbf_rxdat_poison_s0    = li_mshr_rxdat_valid_s0? rxdatflit.poison   : '0;
-    // Sec 12.5 (p.12-378, MUST): "whether or not to perform a Tag Match must be
-    // decided based on the TagOp value in the WriteData request" -- so the beat's
-    // own TagOp is parsed beside the tags it carries.
+    // SS12.5 (p.12-378, MUST): the match is decided on the WriteData's own TagOp.
     assign li_dbf_rxdat_tagop_s0     = li_mshr_rxdat_valid_s0? rxdatflit.tagop    : '0;
     assign li_dbf_rxdat_tag_s0       = li_mshr_rxdat_valid_s0? rxdatflit.tag      : '0;
     assign li_dbf_rxdat_tu_s0        = li_mshr_rxdat_valid_s0? rxdatflit.tu       : '0;

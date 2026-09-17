@@ -195,8 +195,6 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1.lpid           = mshr_txreq_taggroupid_sx1;
         txreqflit_sx1.excl           = '0;
         txreqflit_sx1.expcompack     = '0;
-        // Sec 12.10 (p.12-385): a Read to the Subordinate may carry Transfer or Fetch
-        // to fetch the location's tags; Sec 12.10 permits Fetch only at 64 bytes.
         txreqflit_sx1.tagop          = mshr_txreq_tagop_sx1;
         txreqflit_sx1.tracetag       = mshr_txreq_tracetag_sx1;
 `ifdef CHIE_MPAM_PRESENT

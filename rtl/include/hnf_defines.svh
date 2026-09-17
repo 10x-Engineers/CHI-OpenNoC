@@ -76,14 +76,9 @@
 `define CACHE_BE_WIDTH                     CHIE_BE_WIDTH_PARAM*2
 // CHI E.b SS9.5 (p.9-347): one Poison bit per 64-bit chunk of the line.
 `define CACHE_POISON_WIDTH                 CHIE_POISON_WIDTH_PARAM*2
-// Sec 12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes, one TU bit
-// per tag. TAGV packs the line's tags, a valid bit per tag and one Dirty bit on top
-// -- Sec 12.3 (p.12-374, MUST) "Tags can be Valid only when data is Valid", so they
-// live on the line's own index and way strobes and are evicted with it.
+// SS12.2 (p.12-373): the widths of opennoc_hnf_pkg::hnf_tagv_s.
 `define CACHE_TAG_WIDTH                    (chie_pkg::TAG_WIDTH*2)
-`define CACHE_TV_WIDTH                     (chie_pkg::TU_WIDTH*2)
-`define CACHE_TAGD_BIT                     (`CACHE_TAG_WIDTH + `CACHE_TV_WIDTH)
-`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + `CACHE_TV_WIDTH + 1)
+`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + chie_pkg::TU_WIDTH*2 + 1)
 `define CACHE_BLOCK_OFFSET                 6
 `define RNF_NUM                            HNF_MSHR_RNF_NUM_PARAM
 `define RNI_NUM                            HNF_MSHR_RNI_NUM_PARAM
