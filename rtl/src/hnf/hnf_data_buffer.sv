@@ -335,7 +335,9 @@ module hnf_data_buffer `HNF_PARAM
         return r;
     endfunction
 
-    wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL);
+    // SS12.9.4 (p.12-384, MUST): a SnpRespDataPtl's tag fields are "ignored by the receiver".
+    wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL) &&
+                          (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_SNPRESPDATAPTL);
     wire li_pipe_same   = li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && (li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q);
 
     // The swap an eviction makes -- this entry's line leaving for the L3 while the
