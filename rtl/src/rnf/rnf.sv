@@ -385,6 +385,7 @@ module rnf `RNF_PARAM
                      ,.prot_rxsnpflitv_o     ( prot_rxsnpflitv     )
                      ,.prot_rxsnpflit_o      ( prot_rxsnpflit      )
                      ,.prot_snp_pop_i        ( snp_pop             )
+                     ,.link_hold_i           ( COHERENCY_EN | snoop_service_req )
                      ,.prot_link_run_o       ( prot_link_run       )
                  );
 

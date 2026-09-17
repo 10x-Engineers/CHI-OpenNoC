@@ -189,6 +189,8 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
     logic [`RNF_LINE_BYTES-1:0]                 wbe_q;
     logic [1:0]                                 wchunk_q;
+    // The 128-bit chunk a read returns. addr_q holds the line, not the access.
+    logic [1:0]                                 rchunk_q;
     logic [`RNF_WAY_W-1:0]                      way_q;
     chie_pkg::req_opcode_e                      acq_op_q;
     logic                                       acq_data_q;   // the acquire returns data
@@ -492,6 +494,7 @@ module rnf_ctl `RNF_PARAM
             wbuf_q       <= '0;
             wbe_q        <= '0;
             wchunk_q     <= 2'd0;
+            rchunk_q     <= 2'd0;
             way_q        <= '0;
             acq_op_q     <= chie_pkg::REQ_READSHARED;
             acq_data_q   <= 1'b0;
@@ -569,6 +572,7 @@ module rnf_ctl `RNF_PARAM
                     else if (ARVALID && ARREADY) begin
                         id_q       <= ARID;
                         addr_q     <= ar_line;
+                        rchunk_q   <= ARADDR[5:4];
                         is_wr_q    <= 1'b0;
                         way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
                         line_err_q <= cache_lu_err_i;
@@ -845,7 +849,7 @@ module rnf_ctl `RNF_PARAM
     // variable base, so the select cannot read past the line.
     logic [`AXI4_RDATA_WIDTH-1:0] rdata_c;
     always_comb begin
-        case (addr_q[5:4])
+        case (rchunk_q)
             2'd0:    rdata_c = line_q[127:0];
             2'd1:    rdata_c = line_q[255:128];
             2'd2:    rdata_c = line_q[383:256];

@@ -1,0 +1,136 @@
+/*
+* Copyright (c) 2026 10xEngineers
+* OpenNoC is licensed under Mulan PSL v2.
+* You can use this software according to the terms and conditions of the Mulan PSL v2.
+* You may obtain a copy of Mulan PSL v2 at:
+*          http://license.coscl.org.cn/MulanPSL2
+* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+* EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+* MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+* See the Mulan PSL v2 for more details.
+*/
+
+`ifndef {{ module.upper() }}_H
+`define {{ module.upper() }}_H
+
+`include "axi4_defines.svh"
+
+// The NodeID the fabric routes to each connected port. SS3.2 (p.3-151) gives a
+// node ID to exactly one Port, so these are what every node on the fabric has to
+// be parameterised with -- the HN-F's RNF_NID_LIST_PARAM included.
+package {{ module }}_pkg;
+  localparam int NID_W = chie_pkg::NID_WIDTH;
+{% for p in ports %}
+  localparam logic [NID_W-1:0] {{ p.name }}_NID = NID_W'({{ p.nid }});
+{% endfor %}
+  localparam int RNF_NUM = {{ rnfs|length }};
+  localparam logic [RNF_NUM*NID_W-1:0] RNF_NID_LIST = {
+{% for p in rnfs|reverse %}
+      {{ p.name }}_NID{{ ',' if not loop.last }}
+{% endfor %}
+  };
+endpackage
+
+module {{ module }}
+#(
+{% for p in rnfs %}
+  // The Home this RN-F addresses. Derived from the config's one HNF port.
+  parameter int {{ p.name }}_HNF_NID = int'({{ module }}_pkg::{{ home.name }}_NID),
+{% endfor %}
+  localparam REQ_FLIT_WIDTH          = $bits(chie_pkg::req_flit_s),
+  localparam RSP_FLIT_WIDTH          = $bits(chie_pkg::rsp_flit_s),
+  localparam DAT_FLIT_WIDTH          = $bits(chie_pkg::dat_flit_s),
+  localparam SNP_FLIT_WIDTH          = $bits(chie_pkg::snp_flit_s),
+  localparam CHIE_NID_WIDTH_PARAM    = chie_pkg::NID_WIDTH,
+  localparam AXI4_PA_WIDTH_PARAM     = chie_pkg::REQ_ADDR_WIDTH,
+  localparam AXI4_AXDATA_WIDTH_PARAM = 128
+)
+(
+  input clk
+  ,input reset
+{% for p in ports %}
+{% if p.kind == 'RNF' %}
+
+  // {{ p.name }}: rnf. Chapter 15's pair is point-to-point between the Requester
+  // and the interconnect (SS15.1 p.15-466), so it leaves here rather than crossing
+  // the fabric, with the Requester's own decision to enter coherency beside it.
+  ,output {{ p.name }}_SYSCOREQ
+  ,input  {{ p.name }}_SYSCOACK
+  ,input  {{ p.name }}_COHERENCY_EN
+  ,input  [`AXI4_ARID_WIDTH-1:0]   {{ p.name }}_ARID
+  ,input  [`AXI4_ARADDR_WIDTH-1:0] {{ p.name }}_ARADDR
+  ,input  [`AXI4_ARLEN_WIDTH-1:0]  {{ p.name }}_ARLEN
+  ,input  [`AXI4_ARSIZE_WIDTH-1:0] {{ p.name }}_ARSIZE
+  ,input  {{ p.name }}_ARVALID
+  ,output {{ p.name }}_ARREADY
+  ,output [`AXI4_RID_WIDTH-1:0]    {{ p.name }}_RID
+  ,output [`AXI4_RDATA_WIDTH-1:0]  {{ p.name }}_RDATA
+  ,output [`AXI4_RRESP_WIDTH-1:0]  {{ p.name }}_RRESP
+  ,output {{ p.name }}_RLAST
+  ,output {{ p.name }}_RVALID
+  ,input  {{ p.name }}_RREADY
+  ,input  [`AXI4_AWID_WIDTH-1:0]   {{ p.name }}_AWID
+  ,input  [`AXI4_AWADDR_WIDTH-1:0] {{ p.name }}_AWADDR
+  ,input  [`AXI4_AWLEN_WIDTH-1:0]  {{ p.name }}_AWLEN
+  ,input  [`AXI4_AWSIZE_WIDTH-1:0] {{ p.name }}_AWSIZE
+  ,input  {{ p.name }}_AWVALID
+  ,output {{ p.name }}_AWREADY
+  ,input  [`AXI4_WDATA_WIDTH-1:0]  {{ p.name }}_WDATA
+  ,input  [`AXI4_WSTRB_WIDTH-1:0]  {{ p.name }}_WSTRB
+  ,input  {{ p.name }}_WLAST
+  ,input  {{ p.name }}_WVALID
+  ,output {{ p.name }}_WREADY
+  ,output [`AXI4_BID_WIDTH-1:0]    {{ p.name }}_BID
+  ,output [`AXI4_BRESP_WIDTH-1:0]  {{ p.name }}_BRESP
+  ,output {{ p.name }}_BVALID
+  ,input  {{ p.name }}_BREADY
+{% else %}
+
+  // {{ p.name }}: {{ p.kind }}, brought out as the fabric presents it.
+{% for dir, width, sig in chi_signals(p.kind) %}
+  ,{{ dir }} {{ width }} {{ p.name }}_{{ sig }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+);
+
+{% for p in rnfs %}
+{% for dir, width, sig in chi_signals('RNF') %}
+  wire {{ width }} {{ p.name }}_{{ sig }};
+{% endfor %}
+
+  rnf #(
+    .HNF_NID_PARAM ({{ p.name }}_HNF_NID),
+    .RNF_NID_PARAM (int'({{ module }}_pkg::{{ p.name }}_NID))
+  ) u_{{ p.name | lower }}_rnf (
+    .CLK          (clk)
+    ,.RST          (reset)
+    ,.SYSCOREQ     ({{ p.name }}_SYSCOREQ)
+    ,.SYSCOACK     ({{ p.name }}_SYSCOACK)
+    ,.COHERENCY_EN ({{ p.name }}_COHERENCY_EN)
+{% for dir, width, sig in chi_signals('RNF') %}
+    ,.{{ sig }} ({{ p.name }}_{{ sig }})
+{% endfor %}
+{% for sig in ['ARID', 'ARADDR', 'ARLEN', 'ARSIZE', 'ARVALID', 'ARREADY',
+               'RID', 'RDATA', 'RRESP', 'RLAST', 'RVALID', 'RREADY',
+               'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWVALID', 'AWREADY',
+               'WDATA', 'WSTRB', 'WLAST', 'WVALID', 'WREADY',
+               'BID', 'BRESP', 'BVALID', 'BREADY'] %}
+    ,.{{ sig }} ({{ p.name }}_{{ sig }})
+{% endfor %}
+  );
+
+{% endfor %}
+  {{ wrapper }} u_noc (
+    .clk   (clk)
+    ,.reset (reset)
+{% for p in ports %}
+{% for dir, width, sig in chi_signals(p.kind) %}
+    ,.{{ p.name }}_{{ sig }} ({{ p.name }}_{{ sig }})
+{% endfor %}
+{% endfor %}
+  );
+
+endmodule
+
+`endif /* {{ module.upper() }}_H */

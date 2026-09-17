@@ -16,10 +16,11 @@
 */
 
 module chi_xp_channel #(
-        // No default: 131 is $bits(chie_pkg::req_flit_s) only at the default widths,
-        // and a flit wider than that would be silently truncated by the buffers and
-        // muxes below rather than reported.
-        parameter int FLIT_WIDTH,
+        // 0, which is refused below, rather than a width: 131 is
+        // $bits(chie_pkg::req_flit_s) only at the default widths, and a flit wider
+        // than that would be silently truncated by the buffers and muxes below.
+        // Not omitted, which Xcelium 23.03 does not elaborate (SVVMAP).
+        parameter int FLIT_WIDTH = 0,
         // The crosspoint reads two fields out of the flit by position: QoS at [3:1]
         // and TgtID at [FLIT_TGT_OFFSET +: CHIE_NID_WIDTH_PARAM]. That holds because
         // qos is the LSB field of every flit struct and tgtid is next, so a field
@@ -65,6 +66,9 @@ module chi_xp_channel #(
     input  wire                    tx_deact_P1,
     output wire                    tx_lcrd_held_P0,
     output wire                    tx_lcrd_held_P1,
+    // A flit is waiting to leave on the port, whether or not its link is up.
+    output wire                    tx_pend_P0,
+    output wire                    tx_pend_P1,
 
     input  wire                    RXFLITV_E,
     input  wire                    RXFLITV_W,
@@ -126,6 +130,8 @@ module chi_xp_channel #(
     // fit inside it.
     // CHI E.b Sec 16.1: NodeID_Width is 7-11, and the three routing fields have to
     initial begin
+        if (FLIT_WIDTH == 0)
+            $fatal(1, "chi_xp_channel: FLIT_WIDTH must be overridden");
         if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
             $fatal(1, "chi_xp_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
                    CHIE_NID_WIDTH_PARAM);
@@ -135,6 +141,10 @@ module chi_xp_channel #(
     end
 
     wire [XP_INTF_MAX-1:0]                                     rxactive_run;
+    // Declared ahead of the credit counters that read them: a use before
+    // the declaration is an error in IEEE 1800 (6.18), whatever Verilator allows.
+    wire                                                       lcrd_ret_P0;
+    wire                                                       lcrd_ret_P1;
     logic [XP_INTF_MAX-1:0]                                    rxactive_run_q;
 
     wire [XP_INTF_MAX-1:0]                                     rxflitv_r1;
@@ -732,10 +742,16 @@ module chi_xp_channel #(
     // fields are not used" -- an all-zero flit satisfies all three. One per cycle
     // while credits are held, and only while this TXLINK is in DEACTIVATE, so it
     // never races a protocol flit.
-    wire lcrd_ret_P0 = tx_deact_P0 & (|txlcrd_cnt_q[XP_INTF_P0]) & ~txflitv_q[XP_INTF_P0];
-    wire lcrd_ret_P1 = tx_deact_P1 & (|txlcrd_cnt_q[XP_INTF_P1]) & ~txflitv_q[XP_INTF_P1];
+    assign lcrd_ret_P0 = tx_deact_P0 & (|txlcrd_cnt_q[XP_INTF_P0]) & ~txflitv_q[XP_INTF_P0];
+    assign lcrd_ret_P1 = tx_deact_P1 & (|txlcrd_cnt_q[XP_INTF_P1]) & ~txflitv_q[XP_INTF_P1];
     assign tx_lcrd_held_P0 = |txlcrd_cnt_q[XP_INTF_P0];
     assign tx_lcrd_held_P1 = |txlcrd_cnt_q[XP_INTF_P1];
+    assign tx_pend_P0 = XP_PORT_EN[XP_INTF_P0] &
+                        (txflit_arb_hh_found_d1[XP_INTF_P0] | txflit_arb_h_found_d1[XP_INTF_P0] |
+                         txflit_arb_m_found_d1[XP_INTF_P0]  | txflit_arb_l_found_d1[XP_INTF_P0]);
+    assign tx_pend_P1 = XP_PORT_EN[XP_INTF_P1] &
+                        (txflit_arb_hh_found_d1[XP_INTF_P1] | txflit_arb_h_found_d1[XP_INTF_P1] |
+                         txflit_arb_m_found_d1[XP_INTF_P1]  | txflit_arb_l_found_d1[XP_INTF_P1]);
 
     assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0] | lcrd_ret_P0;
     assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1] | lcrd_ret_P1;

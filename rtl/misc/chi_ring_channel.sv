@@ -15,9 +15,9 @@
 */
 
 module chi_ring_channel #(
-        // No default, and the field-position assumption behind FLIT_TGT_OFFSET:
-        // see chi_xp_channel.sv, which carries the same two parameters.
-        parameter int FLIT_WIDTH,
+        // 0, refused below, and the field-position assumption behind
+        // FLIT_TGT_OFFSET: see chi_xp_channel.sv, which carries the same two.
+        parameter int FLIT_WIDTH = 0,
         parameter FLIT_TGT_OFFSET = 4,
         // CHI E.b SS13.11 (p.13-442): "A link flit is identified by a zero value in
         // the Opcode field", and it "terminates at the link Receiver on the other
@@ -28,7 +28,7 @@ module chi_ring_channel #(
         parameter LCRD_NUM_WIDTH = 4,
         parameter XP_PORT_EN = {4{1'b1}},
         parameter CHIE_NID_WIDTH_PARAM = 7,
-        parameter ROUTER_NODE_NUM,
+        parameter ROUTER_NODE_NUM = 0,
         localparam CHIE_NID_WIDTH = CHIE_NID_WIDTH_PARAM
     )
     (
@@ -53,6 +53,9 @@ module chi_ring_channel #(
     input  wire                      tx_deact_P1,
     output wire                      tx_lcrd_held_P0,
     output wire                      tx_lcrd_held_P1,
+    // A flit is waiting to leave on the port, whether or not its link is up.
+    output wire                      tx_pend_P0,
+    output wire                      tx_pend_P1,
 
     input  wire                      RXFLITV_E,
     input  wire                      RXFLITV_W,
@@ -98,12 +101,18 @@ module chi_ring_channel #(
 	localparam XP_VALID_NID_WIDTH = $clog2(ROUTER_NODE_NUM);
     // CHI E.b Sec 16.1: NodeID_Width is 7-11.
     initial begin
+        if ((FLIT_WIDTH == 0) || (ROUTER_NODE_NUM == 0))
+            $fatal(1, "chi_ring_channel: FLIT_WIDTH and ROUTER_NODE_NUM must be overridden");
         if ((CHIE_NID_WIDTH_PARAM < 7) || (CHIE_NID_WIDTH_PARAM > 11))
             $fatal(1, "chi_ring_channel: CHIE_NID_WIDTH_PARAM=%0d is outside CHI E.b's 7..11",
                    CHIE_NID_WIDTH_PARAM);
     end
 
     wire [XP_INTF_MAX-1:0]                                     rxactive_run;
+    // Declared ahead of the credit counters that read them: a use before
+    // the declaration is an error in IEEE 1800 (6.18), whatever Verilator allows.
+    wire                                                       lcrd_ret_P0;
+    wire                                                       lcrd_ret_P1;
     logic [XP_INTF_MAX-1:0]                                    rxactive_run_q;
 
     wire [XP_INTF_MAX-1:0]                                     rxflitv_r1;
@@ -679,10 +688,16 @@ module chi_ring_channel #(
     // fields are not used" -- an all-zero flit satisfies all three. One per cycle
     // while credits are held, and only while this TXLINK is in DEACTIVATE, so it
     // never races a protocol flit.
-    wire lcrd_ret_P0 = tx_deact_P0 & (|txlcrd_cnt_q[XP_INTF_P0]) & ~txflitv_q[XP_INTF_P0];
-    wire lcrd_ret_P1 = tx_deact_P1 & (|txlcrd_cnt_q[XP_INTF_P1]) & ~txflitv_q[XP_INTF_P1];
+    assign lcrd_ret_P0 = tx_deact_P0 & (|txlcrd_cnt_q[XP_INTF_P0]) & ~txflitv_q[XP_INTF_P0];
+    assign lcrd_ret_P1 = tx_deact_P1 & (|txlcrd_cnt_q[XP_INTF_P1]) & ~txflitv_q[XP_INTF_P1];
     assign tx_lcrd_held_P0 = |txlcrd_cnt_q[XP_INTF_P0];
     assign tx_lcrd_held_P1 = |txlcrd_cnt_q[XP_INTF_P1];
+    assign tx_pend_P0 = XP_PORT_EN[XP_INTF_P0] &
+                        (txflit_arb_hh_found_d1[XP_INTF_P0] | txflit_arb_h_found_d1[XP_INTF_P0] |
+                         txflit_arb_m_found_d1[XP_INTF_P0]  | txflit_arb_l_found_d1[XP_INTF_P0]);
+    assign tx_pend_P1 = XP_PORT_EN[XP_INTF_P1] &
+                        (txflit_arb_hh_found_d1[XP_INTF_P1] | txflit_arb_h_found_d1[XP_INTF_P1] |
+                         txflit_arb_m_found_d1[XP_INTF_P1]  | txflit_arb_l_found_d1[XP_INTF_P1]);
 
     assign TXFLITV_P0                            = txflitv_q[XP_INTF_P0] | lcrd_ret_P0;
     assign TXFLITV_P1                            = txflitv_q[XP_INTF_P1] | lcrd_ret_P1;

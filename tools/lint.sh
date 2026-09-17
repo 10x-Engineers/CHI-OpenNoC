@@ -147,31 +147,36 @@ done
 # rtl/, so -Imisc never resolved it and nothing here ever opened the file. Generated
 # from the checked-in configs and held to the same zero-warning rule as the nodes,
 # at both ends of SS16.1's (p.16-472) legal NodeID_Width range.
-lint_noc() {   # $1 generator dir, $2 gen script, $3 config, $4 top, $5 channel, $6 node
-  local dir="$1" gen="$2" cfg="$3" top="$4" ch="$5" nd="$6" w out
+lint_noc() {   # $1 generator dir, $2 gen script, $3 config, $4 wrapper, $5 system, $6 channel, $7 node
+  local dir="$1" gen="$2" cfg="$3" wrapper="$4" system="$5" ch="$6" nd="$7" w top out
   for w in 7 11; do
-    echo "-------------------- $top (NodeID_Width=$w) --------------------"
     ( cd "$TOOLS/$dir" && "$PYTHON" "$gen" -f "$cfg" >/dev/null ) || {
       echo "  FAIL: $gen did not generate"; return 1; }
-    out=$(cd "$TOOLS/$dir" && verilator --lint-only -Wno-fatal --top-module "$top" \
-            -DASSERT_CHECKER_ON -DDISPLAY_FATAL -DCHIE_NID_WIDTH=$w \
-            -I../../rtl/include -I../../rtl/misc -I. \
-            ../../rtl/include/chie_pkg.sv "../../rtl/misc/$ch" "$nd" "$top.sv" 2>&1)
-    echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
-    if echo "$out" | grep -qE "^%(Error|Warning)"; then
-      echo "  FAIL: $top has lint errors or warnings (NodeID_Width=$w)"
-      echo "$out" | grep -A4 -E "^%(Error|Warning)" | head -60
-      return 1
-    fi
+    # The populated system is the fabric with an rnf on every RNF port, so it is
+    # linted over the RN-F's own sources as well as the fabric's.
+    for top in "$wrapper" "$system"; do
+      echo "-------------------- $top (NodeID_Width=$w) --------------------"
+      out=$(cd "$TOOLS/$dir" && verilator --lint-only -Wno-fatal --top-module "$top" \
+              -DASSERT_CHECKER_ON -DDISPLAY_FATAL -DCHIE_NID_WIDTH=$w \
+              -I../../rtl/include -I../../rtl/misc -I../../rtl/src/rnf -I. -y ../../rtl/misc \
+              ../../rtl/include/chie_pkg.sv "../../rtl/misc/$ch" "$nd" "$wrapper.sv" \
+              $([ "$top" = "$system" ] && echo ../../rtl/src/rnf/*.sv "$system.sv") 2>&1)
+      echo "$out" | grep -oE "^%(Error|Warning)-[A-Z0-9]+" | sort | uniq -c | sort -rn | sed 's/^/  /'
+      if echo "$out" | grep -qE "^%(Error|Warning)"; then
+        echo "  FAIL: $top has lint errors or warnings (NodeID_Width=$w)"
+        echo "$out" | grep -A4 -E "^%(Error|Warning)" | head -60
+        return 1
+      fi
+    done
   done
   return 0
 }
 
 if "$PYTHON" -c "import jinja2" >/dev/null 2>&1; then
   echo "==================== generated NoC ===================="
-  lint_noc mesh_generator ./mesh_gen.py mesh_2x2.json mesh_wrapper_2x2 \
+  lint_noc mesh_generator ./mesh_gen.py mesh_2x2.json mesh_wrapper_2x2 mesh_system_2x2 \
            chi_xp_channel.sv chi_xp_node.sv || rc=1
-  lint_noc ring_generator ./ring_gen.py ring_8.json ring_wrapper_8 \
+  lint_noc ring_generator ./ring_gen.py ring_8.json ring_wrapper_8 ring_system_8 \
            chi_ring_channel.sv chi_ring_node.sv || rc=1
 else
   echo "==================== generated NoC ===================="
