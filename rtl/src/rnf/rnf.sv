@@ -125,6 +125,7 @@ module rnf `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0]             snp_lu_state;
     wire [`RNF_WAY_W-1:0]                snp_lu_way;
     wire [`RNF_LINE_BITS-1:0]            snp_lu_data;
+    wire                                 snp_lu_err;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_lu_addr;
     wire                                 snp_upd_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_upd_addr;
@@ -158,15 +159,18 @@ module rnf `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0]             cache_lu_state;
     wire [`RNF_WAY_W-1:0]                cache_lu_way;
     wire [`RNF_LINE_BITS-1:0]            cache_lu_data;
+    wire                                 cache_lu_err;
     wire [`RNF_WAY_W-1:0]                cache_vic_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_vic_state;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr;
     wire [`RNF_LINE_BITS-1:0]            cache_vic_data;
+    wire                                 cache_vic_err;
     wire                                 cache_any_valid;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_flush_addr;
     wire [`RNF_WAY_W-1:0]                cache_flush_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_flush_state;
     wire [`RNF_LINE_BITS-1:0]            cache_flush_data;
+    wire                                 cache_flush_err;
     wire                                 ctl_upd_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_upd_addr;
     wire [`RNF_WAY_W-1:0]                ctl_upd_way;
@@ -176,6 +180,7 @@ module rnf `RNF_PARAM
     wire [`RNF_WAY_W-1:0]                cache_fill_way;
     wire [`RNF_CS_WIDTH-1:0]             cache_fill_state;
     wire [`RNF_LINE_BITS-1:0]            cache_fill_data;
+    wire                                 cache_fill_err;
 
     rnf_cache `RNF_PARAM_INST u_rnf_cache(
                       .clk_i        ( CLK              )
@@ -185,25 +190,30 @@ module rnf `RNF_PARAM
                      ,.lu_state_o   ( cache_lu_state   )
                      ,.lu_way_o     ( cache_lu_way     )
                      ,.lu_data_o    ( cache_lu_data    )
+                     ,.lu_err_o     ( cache_lu_err     )
                      ,.vic_way_o    ( cache_vic_way    )
                      ,.vic_state_o  ( cache_vic_state  )
                      ,.vic_addr_o   ( cache_vic_addr   )
                      ,.vic_data_o   ( cache_vic_data   )
+                     ,.vic_err_o    ( cache_vic_err    )
                      ,.any_valid_o  ( cache_any_valid  )
                      ,.flush_addr_o ( cache_flush_addr )
                      ,.flush_way_o  ( cache_flush_way  )
                      ,.flush_state_o( cache_flush_state)
                      ,.flush_data_o ( cache_flush_data )
+                     ,.flush_err_o  ( cache_flush_err  )
                      ,.fill_v_i     ( cache_fill_v     )
                      ,.fill_addr_i  ( cache_fill_addr  )
                      ,.fill_way_i   ( cache_fill_way   )
                      ,.fill_state_i ( cache_fill_state )
                      ,.fill_data_i  ( cache_fill_data  )
+                     ,.fill_err_i   ( cache_fill_err   )
                      ,.snp_addr_i   ( snp_lu_addr      )
                      ,.snp_hit_o    ( snp_lu_hit       )
                      ,.snp_state_o  ( snp_lu_state     )
                      ,.snp_way_o    ( snp_lu_way       )
                      ,.snp_data_o   ( snp_lu_data      )
+                     ,.snp_err_o    ( snp_lu_err       )
                      ,.upd_v_i      ( snp_upd_v        )
                      ,.upd_addr_i   ( snp_upd_addr     )
                      ,.upd_way_i    ( snp_upd_way      )
@@ -227,6 +237,7 @@ module rnf `RNF_PARAM
                      ,.cache_lu_state_i      ( snp_lu_state     )
                      ,.cache_lu_way_i        ( snp_lu_way       )
                      ,.cache_lu_data_i       ( snp_lu_data      )
+                     ,.cache_lu_err_i        ( snp_lu_err       )
                      ,.cache_upd_v_o         ( snp_upd_v        )
                      ,.cache_upd_addr_o      ( snp_upd_addr     )
                      ,.cache_upd_way_o       ( snp_upd_way      )
@@ -280,15 +291,18 @@ module rnf `RNF_PARAM
                      ,.cache_lu_state_i      ( cache_lu_state       )
                      ,.cache_lu_way_i        ( cache_lu_way         )
                      ,.cache_lu_data_i       ( cache_lu_data        )
+                     ,.cache_lu_err_i        ( cache_lu_err         )
                      ,.cache_vic_way_i       ( cache_vic_way        )
                      ,.cache_vic_state_i     ( cache_vic_state      )
                      ,.cache_vic_addr_i      ( cache_vic_addr       )
                      ,.cache_vic_data_i      ( cache_vic_data       )
+                     ,.cache_vic_err_i       ( cache_vic_err        )
                      ,.cache_fill_v_o        ( cache_fill_v         )
                      ,.cache_fill_addr_o     ( cache_fill_addr      )
                      ,.cache_fill_way_o      ( cache_fill_way       )
                      ,.cache_fill_state_o    ( cache_fill_state     )
                      ,.cache_fill_data_o     ( cache_fill_data      )
+                     ,.cache_fill_err_o      ( cache_fill_err       )
                      ,.cache_upd_v_o         ( ctl_upd_v            )
                      ,.cache_upd_addr_o      ( ctl_upd_addr         )
                      ,.cache_upd_way_o       ( ctl_upd_way          )
@@ -317,6 +331,7 @@ module rnf `RNF_PARAM
                      ,.cache_flush_way_i     ( cache_flush_way      )
                      ,.cache_flush_state_i   ( cache_flush_state    )
                      ,.cache_flush_data_i    ( cache_flush_data     )
+                     ,.cache_flush_err_i     ( cache_flush_err      )
                      ,.link_run_i            ( prot_link_run        )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )

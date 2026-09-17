@@ -92,15 +92,18 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_CS_WIDTH-1:0]             cache_lu_state_i,
     input  wire [`RNF_WAY_W-1:0]                cache_lu_way_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_lu_data_i,
+    input  wire                                 cache_lu_err_i,
     input  wire [`RNF_WAY_W-1:0]                cache_vic_way_i,
     input  wire [`RNF_CS_WIDTH-1:0]             cache_vic_state_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_vic_addr_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_vic_data_i,
+    input  wire                                 cache_vic_err_i,
     output wire                                 cache_fill_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_fill_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_fill_way_o,
     output wire [`RNF_CS_WIDTH-1:0]             cache_fill_state_o,
     output wire [`RNF_LINE_BITS-1:0]            cache_fill_data_o,
+    output wire                                 cache_fill_err_o,
     output wire                                 cache_upd_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_upd_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_upd_way_o,
@@ -139,6 +142,7 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_WAY_W-1:0]                cache_flush_way_i,
     input  wire [`RNF_CS_WIDTH-1:0]             cache_flush_state_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_flush_data_i,
+    input  wire                                 cache_flush_err_i,
     input  wire                                 link_run_i,
 
     // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
@@ -175,6 +179,11 @@ module rnf_ctl `RNF_PARAM
     logic                                       fill_v_q;
     logic                                       hit_q;
     logic                                       err_q;
+    // SS9.3 (p.9-336, MUST): a Non-data Error leaves the cache as the request
+    // found it.
+    logic                                       nderr_q;
+    // The bytes in line_q are known to be corrupt.
+    logic                                       line_err_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -191,6 +200,7 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_WAY_W-1:0]                      vic_way_q;
     logic [`RNF_CS_WIDTH-1:0]                   vic_state_q;
     logic [`RNF_LINE_BITS-1:0]                  vic_data_q;
+    logic                                       vic_err_q;
     // SS2.11 (p.2-145): the request that drew a RetryAck, and what it waits for.
     logic                                       retry_q;
     logic [3:0]                                 retry_type_q;
@@ -370,6 +380,10 @@ module rnf_ctl `RNF_PARAM
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
         prot_txdatflit_o.dataid = cb_hi_q ? 2'd2 : 2'd0;
         prot_txdatflit_o.be     = cb_invalid ? '0 : '1;
+        // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an error
+        // indication, and Table 9-7 makes DERR the one WriteData may carry.
+        prot_txdatflit_o.resperr = (vic_err_q && !cb_invalid) ? chie_pkg::RESP_ERR_DATA
+                                                              : chie_pkg::RESP_ERR_NORM_OK;
         prot_txdatflit_o.data   = cb_invalid ? '0 :
                                   (cb_hi_q ? vic_data_q[511:256] : vic_data_q[255:0]);
     end
@@ -432,9 +446,16 @@ module rnf_ctl `RNF_PARAM
         return (e == chie_pkg::RESP_ERR_DATA) || (e == chie_pkg::RESP_ERR_NON_DATA);
     endfunction
 
-    wire rx_err = (prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q) &&
-                   is_err(prot_rxrspflit_i.resperr)) ||
+    wire rx_rsp_txn = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q);
+    wire rx_err = (rx_rsp_txn && is_err(prot_rxrspflit_i.resperr)) ||
                   (rx_dat_mine && is_err(prot_rxdatflit_i.resperr));
+    wire rx_nderr = (rx_rsp_txn && (prot_rxrspflit_i.resperr == chie_pkg::RESP_ERR_NON_DATA)) ||
+                    (rx_dat_mine && (prot_rxdatflit_i.resperr == chie_pkg::RESP_ERR_NON_DATA));
+    wire nderr_now = nderr_q || rx_nderr;
+    // SS9.4.1 (p.9-337): a Data Error on read data marks those bytes corrupt. On a
+    // Dataless Comp (Table 9-4 p.9-339) it names another component's data, so the
+    // line this node holds is untouched.
+    wire rx_derr_dat = rx_dat_mine && (prot_rxdatflit_i.resperr == chie_pkg::RESP_ERR_DATA);
 
     // The line the transaction installs: the store merged over whatever the
     // acquire brought back, or over the copy already resident.
@@ -465,6 +486,8 @@ module rnf_ctl `RNF_PARAM
             fill_v_q     <= 1'b0;
             hit_q        <= 1'b0;
             err_q        <= 1'b0;
+            nderr_q      <= 1'b0;
+            line_err_q   <= 1'b0;
             is_wr_q      <= 1'b0;
             wbuf_q       <= '0;
             wbe_q        <= '0;
@@ -476,6 +499,7 @@ module rnf_ctl `RNF_PARAM
             vic_way_q    <= '0;
             vic_state_q  <= `RNF_CS_I;
             vic_data_q   <= '0;
+            vic_err_q    <= 1'b0;
             acq_cs_q     <= `RNF_CS_I;
             retry_q      <= 1'b0;
             retry_type_q <= 4'd0;
@@ -523,6 +547,7 @@ module rnf_ctl `RNF_PARAM
                     got_hi_q  <= 1'b0;
                     got_rsp_q <= 1'b0;
                     err_q     <= 1'b0;
+                    nderr_q   <= 1'b0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
@@ -532,6 +557,7 @@ module rnf_ctl `RNF_PARAM
                         vic_way_q   <= cache_flush_way_i;
                         vic_state_q <= cache_flush_state_i;
                         vic_data_q  <= cache_flush_data_i;
+                        vic_err_q   <= cache_flush_err_i;
                         // SS4.1 (p.4-160): a Dirty line is the only copy, so it goes
                         // back; Table 4-32 (p.4-209) lets a Clean one go silently.
                         if (is_dirty(cache_flush_state_i)) begin
@@ -545,6 +571,7 @@ module rnf_ctl `RNF_PARAM
                         addr_q     <= ar_line;
                         is_wr_q    <= 1'b0;
                         way_q      <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+                        line_err_q <= cache_lu_err_i;
                         if (cache_lu_hit_i) begin
                             line_q <= cache_lu_data_i;
                             hit_q  <= 1'b1;
@@ -558,6 +585,7 @@ module rnf_ctl `RNF_PARAM
                             vic_way_q  <= cache_vic_way_i;
                             vic_state_q<= cache_vic_state_i;
                             vic_data_q <= cache_vic_data_i;
+                            vic_err_q  <= cache_vic_err_i;
                             st_q       <= need_cb ? S_CB_REQ : S_REQ;
                         end
                     end
@@ -585,6 +613,7 @@ module rnf_ctl `RNF_PARAM
                             way_q <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
                             // A Unique line is already this node's to modify;
                             // Table 4-32 (SS4.6 p.4-209) makes UC -> UD silent.
+                            line_err_q <= cache_lu_err_i;
                             if (cache_lu_hit_i && is_unique(lu_state)) begin
                                 line_q       <= cache_lu_data_i;
                                 fill_state_q <= `RNF_CS_UD;
@@ -616,6 +645,7 @@ module rnf_ctl `RNF_PARAM
                                     vic_way_q  <= cache_vic_way_i;
                                     vic_state_q<= cache_vic_state_i;
                                     vic_data_q <= cache_vic_data_i;
+                                    vic_err_q  <= cache_vic_err_i;
                                     st_q       <= need_cb ? S_CB_REQ : S_REQ;
                                 end
                             end
@@ -669,7 +699,9 @@ module rnf_ctl `RNF_PARAM
                         st_q         <= S_PCRD;
                     end
                     else begin
-                    if (rx_err) err_q <= 1'b1;
+                    if (rx_err)      err_q      <= 1'b1;
+                    if (rx_nderr)    nderr_q    <= 1'b1;
+                    if (rx_derr_dat) line_err_q <= 1'b1;
 
                     if (rx_rsp_mine) begin
                         got_rsp_q   <= 1'b1;
@@ -706,18 +738,28 @@ module rnf_ctl `RNF_PARAM
                         if ((got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0))) &&
                             (got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0))) &&
                             (got_rsp_q || rx_rsp_mine || rx_dat_comb)) begin
-                            fill_v_q <= 1'b1;
+                            fill_v_q <= !nderr_now;
                             st_q     <= S_ACK;
+                            // A chained ReadUnique's line is UCE, owning no bytes.
+                            // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
+                            // permits the silent eviction to I, so the line can
+                            // never be served or merged into with no data behind it.
+                            if (nderr_now && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
+                                vic_addr_q <= addr_q;
+                                vic_way_q  <= cache_lu_way_i;
+                                drop_q     <= 1'b1;
+                            end
                         end
                     end
                     else if (got_rsp_q || rx_comp_dataless) begin
-                        fill_v_q <= 1'b1;
+                        fill_v_q <= !nderr_now;
                         st_q     <= S_ACK;
                         // Table 4-38 (p.4-218): the line went Invalid under the
                         // CleanUnique, which therefore ends UCE. The bytes held in
                         // line_q are what the snoop took away, so none survive.
-                        if ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) && acq_lost) begin
-                            line_q <= '0;
+                        if ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) && acq_lost && !nderr_now) begin
+                            line_q     <= '0;
+                            line_err_q <= 1'b0;
                             if (!(&wbe_q)) begin
                                 fill_uce_q <= 1'b1;
                                 chain_ru_q <= 1'b1;
@@ -748,6 +790,7 @@ module rnf_ctl `RNF_PARAM
                             got_lo_q   <= 1'b0;
                             got_hi_q   <= 1'b0;
                             got_rsp_q  <= 1'b0;
+                            line_err_q <= 1'b0;
                             acq_op_q   <= chie_pkg::REQ_READUNIQUE;
                             acq_data_q <= 1'b1;
                             txnid_q    <= txnid_q + 12'd1;
@@ -788,6 +831,8 @@ module rnf_ctl `RNF_PARAM
                                 is_wr_q    ? (hit_q ? `RNF_CS_UD : wr_fill_state)
                                            : fill_state_q;
     assign cache_fill_data_o  = fill_line;
+    // A store covering the whole line replaces every corrupt byte.
+    assign cache_fill_err_o   = line_err_q && !(is_wr_q && (&wbe_q));
 
     // Retiring the written-back way, which the fill behind it would otherwise
     // leave Dirty for the window between the two.
@@ -815,7 +860,8 @@ module rnf_ctl `RNF_PARAM
     assign RVALID = (st_q == S_RESP);
     assign RDATA  = rdata_c;
     assign RID    = id_q;
-    assign RRESP  = axi_resp;
+    // A hit on a line whose bytes arrived with DERR returns them with it.
+    assign RRESP  = line_err_q ? 2'b10 : axi_resp;
     assign RLAST  = 1'b1;
 
     assign BVALID = (st_q == S_BRESP);

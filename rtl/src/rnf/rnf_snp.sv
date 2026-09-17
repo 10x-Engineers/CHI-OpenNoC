@@ -52,6 +52,7 @@ module rnf_snp `RNF_PARAM
     input  wire [`RNF_CS_WIDTH-1:0]             cache_lu_state_i,
     input  wire [`RNF_WAY_W-1:0]                cache_lu_way_i,
     input  wire [`RNF_LINE_BITS-1:0]            cache_lu_data_i,
+    input  wire                                 cache_lu_err_i,
     output wire                                 cache_upd_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_upd_addr_o,
     output wire [`RNF_WAY_W-1:0]                cache_upd_way_o,
@@ -76,6 +77,7 @@ module rnf_snp `RNF_PARAM
     chie_pkg::snp_flit_s                  snp_q;
     logic [`RNF_CS_WIDTH-1:0]             final_q;
     logic [`RNF_LINE_BITS-1:0]            data_q;
+    logic                                 derr_q;
     logic                                 with_data_q;
     logic                                 pass_dirty_q;
     logic                                 dat_lo_sent_q;
@@ -219,6 +221,9 @@ module rnf_snp `RNF_PARAM
         // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
         snp_txdatflit_o.dataid  = dat_lo_sent_q ? 2'd2 : 2'd0;
         snp_txdatflit_o.data    = dat_lo_sent_q ? data_q[511:256] : data_q[255:0];
+        // SS9.4.7 (p.9-345, MUST): snoop data known to be corrupt carries an error
+        // indication; Table 9-14 makes DERR the one a SnpRespData may carry.
+        snp_txdatflit_o.resperr = derr_q ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
         // SS2.10.3 (p.2-135): a SnpRespData asserts every byte enable.
         snp_txdatflit_o.be      = '1;
     end
@@ -240,6 +245,7 @@ module rnf_snp `RNF_PARAM
             snp_q         <= '0;
             final_q       <= `RNF_CS_I;
             data_q        <= '0;
+            derr_q        <= 1'b0;
             with_data_q   <= 1'b0;
             pass_dirty_q  <= 1'b0;
             dat_lo_sent_q <= 1'b0;
@@ -251,6 +257,7 @@ module rnf_snp `RNF_PARAM
                         snp_q         <= head;
                         final_q       <= nxt_state;
                         data_q        <= cache_lu_data_i;
+                        derr_q        <= cache_lu_err_i;
                         with_data_q   <= want_data;
                         pass_dirty_q  <= pass_dirty;
                         dat_lo_sent_q <= 1'b0;
