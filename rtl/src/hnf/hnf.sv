@@ -1061,6 +1061,15 @@ module hnf `HNF_PARAM
                       .l3_rd_tagv_q                               (l3_rd_tagv_q                    )
                   );
 
+    // SS16.2.6 (p.16-476): BROADCASTMTE asserted lets requests with MTE go beyond the
+    // interface. This Home stores Allocation Tags and forwards TagOp to its Subordinate,
+    // so the tie-off it is built for is the asserted one.
+    generate
+        if (HNF_BROADCASTMTE_PARAM != 1'b1) begin : g_broadcastmte
+            $error("hnf: HNF_BROADCASTMTE_PARAM must be 1 -- this HN-F carries MTE to its Subordinate (SS16.2.6 p.16-476)");
+        end
+    endgenerate
+
     assign l3_tags_full_sx7_q  = &l3_rd_tagv_q[`CACHE_TAG_WIDTH +: `CACHE_TV_WIDTH];
     assign l3_tags_dirty_sx7_q = l3_rd_tagv_q[`CACHE_TAGD_BIT];
 

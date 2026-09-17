@@ -41,7 +41,8 @@
      parameter HNF_MSHR_ENTRIES_NUM_PARAM   = 32,    \
      parameter HNF_MSHR_ENTRIES_WIDTH_PARAM = 5,     \
      parameter HNF_L3_CACHE_SIZE_PARAM      = 4096,  \
-     parameter HNF_L3_WAY_NUM_PARAM         = 16     )
+     parameter HNF_L3_WAY_NUM_PARAM         = 16,    \
+     parameter HNF_BROADCASTMTE_PARAM       = 1'b1   )
 
 `define HNF_PARAM_INST #( \
     .CHIE_REQ_ADDR_WIDTH_PARAM          (CHIE_REQ_ADDR_WIDTH_PARAM         ), \
@@ -68,6 +69,7 @@
     .HNF_MSHR_ENTRIES_NUM_PARAM         (HNF_MSHR_ENTRIES_NUM_PARAM        ), \
     .HNF_MSHR_ENTRIES_WIDTH_PARAM       (HNF_MSHR_ENTRIES_WIDTH_PARAM      ), \
     .HNF_L3_CACHE_SIZE_PARAM            (HNF_L3_CACHE_SIZE_PARAM           ), \
-    .HNF_L3_WAY_NUM_PARAM               (HNF_L3_WAY_NUM_PARAM              ))
+    .HNF_L3_WAY_NUM_PARAM               (HNF_L3_WAY_NUM_PARAM              ), \
+    .HNF_BROADCASTMTE_PARAM             (HNF_BROADCASTMTE_PARAM            ))
 
 `endif /* HNF_PARAM_H */
