@@ -88,6 +88,13 @@ module hnf_data_buffer `HNF_PARAM
     // The same property combinationally, before the RXDAT flit now on the wire is
     // merged -- the MSHR's S0 decision cannot wait for dbf_mshr_be_full_sx.
     output wire                               dbf_mshr_be_full_s0,
+    // Sec 12.4.1 (p.12-376): which Allocation Tags this entry holds, and whether an
+    // Update put them there -- what a read still owes and what a write-back carries.
+    output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_tags_full_sx,
+    output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_tags_any_sx,
+    output wire [`MSHR_ENTRIES_NUM-1:0]       dbf_mshr_tags_dirty_sx,
+    output wire                               dbf_mshr_tags_full_s0,
+    output wire [`CACHE_TAG_WIDTH-1:0]        dbf_txdat_match_tag_sx1,
 
     output wire                               dbf_txdat_valid_sx1,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
@@ -113,9 +120,8 @@ module hnf_data_buffer `HNF_PARAM
     // with the data." Chunk-granular, so it accumulates per 64-bit chunk rather
     // than following the byte-wise merge below.
     logic [`CACHE_POISON_WIDTH-1:0]    dbf_poison_q[0:`MSHR_ENTRIES_NUM-1];
-    // Sec 12.2 (p.12-373): the line's four Allocation Tags, with a valid bit each.
-    // Sec 12.4.1 (p.12-376) makes memory's tags Clean, and this Home writes them back
-    // with the line, so Clean is the only state it holds or returns.
+    // Sec 12.2 (p.12-373): the line's four Allocation Tags, a valid bit each, and
+    // whether an Update installed them since they left memory (Sec 12.3 p.12-374).
     logic [`CACHE_TAGV_WIDTH-1:0]      dbf_tagv_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`CACHE_TAGV_WIDTH-1:0]      temp_li_tagv;
     logic [`CACHE_TAGV_WIDTH-1:0]      temp_pipe_tagv;
@@ -123,6 +129,8 @@ module hnf_data_buffer `HNF_PARAM
     // Tags they are compared against (Sec 12.5.2 p.12-379).
     logic [`CACHE_TAG_WIDTH-1:0]       dbf_match_tag_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`CACHE_TAG_WIDTH-1:0]       temp_li_match_tag;
+    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_match_be_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_match_be;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_li_poison;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_pipe_poison;
     // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
@@ -286,40 +294,80 @@ module hnf_data_buffer `HNF_PARAM
     endgenerate
 
     // Sec 12.5.2 (p.12-379, MUST): a TagOp=Update write installs "only the Tags that
-    // have TU asserted" -- so unlike Poison, which Sec 9.5 can only accumulate, a tag
-    // is REPLACED where TU says and left alone everywhere else.
+    // have TU asserted", so a tag is replaced where TU says and marked Dirty. Transfer
+    // carries Clean tags (Sec 12.13 p.12-390), which fill only where none is held.
+    function automatic logic [`CACHE_TAGV_WIDTH-1:0] tagv_merge_li(
+        logic [`CACHE_TAGV_WIDTH-1:0] base,
+        logic                         covered,
+        logic [1:0]                   dataid,
+        logic [1:0]                   tagop,
+        logic [chie_pkg::TAG_WIDTH-1:0] tag,
+        logic [chie_pkg::TU_WIDTH-1:0]  tu);
+        logic [`CACHE_TAGV_WIDTH-1:0] r;
+        logic                         upd, cln, in_pkt;
+        r = base;
+        for (int t = 0; t < `CACHE_TV_WIDTH; t++) begin
+            in_pkt = covered && ((dataid == 2'b00) ? (t < chie_pkg::TU_WIDTH) : (t >= chie_pkg::TU_WIDTH));
+            upd    = in_pkt && (tagop == 2'b10) && tu[t % chie_pkg::TU_WIDTH];
+            cln    = in_pkt && (tagop == 2'b01) && !base[`CACHE_TAG_WIDTH + t];
+            if (upd || cln) begin
+                r[t*4 +: 4]              = tag[(t % chie_pkg::TU_WIDTH)*4 +: 4];
+                r[`CACHE_TAG_WIDTH + t]  = 1'b1;
+            end
+            if (upd) r[`CACHE_TAGD_BIT] = 1'b1;
+        end
+        return r;
+    endfunction
+
+    // A fill -- the L3's image of the line -- supplies a tag only where the buffer
+    // holds none of its own, the same precedence dbf_fill_q gives its bytes.
+    function automatic logic [`CACHE_TAGV_WIDTH-1:0] tagv_fill(
+        logic [`CACHE_TAGV_WIDTH-1:0] held,
+        logic [`CACHE_TAGV_WIDTH-1:0] fill);
+        logic [`CACHE_TAGV_WIDTH-1:0] r;
+        r = held;
+        for (int t = 0; t < `CACHE_TV_WIDTH; t++)
+            if (!held[`CACHE_TAG_WIDTH + t]) begin
+                r[t*4 +: 4]             = fill[t*4 +: 4];
+                r[`CACHE_TAG_WIDTH + t] = fill[`CACHE_TAG_WIDTH + t];
+            end
+        r[`CACHE_TAGD_BIT] = held[`CACHE_TAGD_BIT] | fill[`CACHE_TAGD_BIT];
+        return r;
+    endfunction
+
+    wire li_tag_covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL);
+    wire li_pipe_same   = li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && (li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q);
+
+    // The swap an eviction makes -- this entry's line leaving for the L3 while the
+    // victim arrives -- replaces the buffer outright, exactly as the data does.
+    assign temp_pipe_tagv = (pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)
+                          ? pipe_dbf_wr_tagv_sx9_q
+                          : tagv_fill(dbf_tagv_q[pipe_dbf_wr_idx_sx9_q], pipe_dbf_wr_tagv_sx9_q);
+    assign temp_li_tagv   = tagv_merge_li(li_pipe_same ? tagv_fill(dbf_tagv_q[li_dbf_rxdat_txnid_s0], pipe_dbf_wr_tagv_sx9_q)
+                                                       : dbf_tagv_q[li_dbf_rxdat_txnid_s0],
+                                          li_tag_covered, li_dbf_rxdat_dataid_s0, li_dbf_rxdat_tagop_s0,
+                                          li_dbf_rxdat_tag_s0, li_dbf_rxdat_tu_s0);
+
+    // Sec 12.5 (p.12-378, MUST): the WriteData's own TagOp decides whether a Tag Match
+    // is performed, and Sec 12.5.2 (p.12-379, MUST) scopes it to the granules the
+    // write's own byte enables reach -- not the bytes a fill merged around them.
+    wire li_match = li_tag_covered && (li_dbf_rxdat_tagop_s0 == 2'b11) &&
+                    ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA) ||
+                     (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK));
     generate
-        for(i = 0;i<`CACHE_TV_WIDTH;i = i+1) begin:get_tagv_temp
-            wire tag_covered;
-            assign tag_covered = li_dbf_rxdat_valid_s0
-                              && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
-                              && (li_dbf_rxdat_tagop_s0 == 2'b10)
-                              && li_dbf_rxdat_tu_s0[i % chie_pkg::TU_WIDTH]
-                              && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::TU_WIDTH))
+        for(i = 0;i<`CACHE_TV_WIDTH;i = i+1) begin:get_match_temp
+            wire match_covered = li_match &&
+                                 (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::TU_WIDTH))
                                || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::TU_WIDTH)));
-
-            assign temp_li_tagv[i*4 +: 4] = tag_covered
-                ? li_dbf_rxdat_tag_s0[(i % chie_pkg::TU_WIDTH)*4 +: 4]
-                : dbf_tagv_q[li_dbf_rxdat_txnid_s0][i*4 +: 4];
-            assign temp_li_tagv[`CACHE_TAG_WIDTH + i] =
-                dbf_tagv_q[li_dbf_rxdat_txnid_s0][`CACHE_TAG_WIDTH + i] | tag_covered;
-
-            // A fill supplies a tag only where the buffer holds none of its own.
-            assign temp_pipe_tagv[i*4 +: 4] = dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i]
-                ? dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][i*4 +: 4]
-                : pipe_dbf_wr_tagv_sx9_q[i*4 +: 4];
-            // Sec 12.5 (p.12-378, MUST): the WriteData's own TagOp decides.
-            wire match_covered;
-            assign match_covered = li_dbf_rxdat_valid_s0
-                                && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL)
-                                && (li_dbf_rxdat_tagop_s0 == 2'b11)
-                                && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::TU_WIDTH))
-                                 || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::TU_WIDTH)));
             assign temp_li_match_tag[i*4 +: 4] = match_covered
                 ? li_dbf_rxdat_tag_s0[(i % chie_pkg::TU_WIDTH)*4 +: 4]
                 : dbf_match_tag_q[li_dbf_rxdat_txnid_s0][i*4 +: 4];
-            assign temp_pipe_tagv[`CACHE_TAG_WIDTH + i] =
-                dbf_tagv_q[pipe_dbf_wr_idx_sx9_q][`CACHE_TAG_WIDTH + i] | pipe_dbf_wr_tagv_sx9_q[`CACHE_TAG_WIDTH + i];
+        end
+        for(i = 0;i<(chie_pkg::BE_WIDTH*2);i = i+1) begin:get_match_be_temp
+            assign temp_li_match_be[i] = dbf_match_be_q[li_dbf_rxdat_txnid_s0][i] |
+                   (li_match && (((li_dbf_rxdat_dataid_s0 == 2'b00) && (i < chie_pkg::BE_WIDTH))
+                              || ((li_dbf_rxdat_dataid_s0 == 2'b10) && (i >= chie_pkg::BE_WIDTH)))
+                             && li_dbf_rxdat_be_s0[i % chie_pkg::BE_WIDTH]);
         end
     endgenerate
 
@@ -334,6 +382,7 @@ module hnf_data_buffer `HNF_PARAM
                     dbf_poison_q[i] <= 'd0;
                     dbf_tagv_q[i]   <= 'd0;
                     dbf_match_tag_q[i] <= 'd0;
+                    dbf_match_be_q[i] <= 'd0;
                 end
                 else begin
                     if (mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q) begin//entry retired
@@ -344,9 +393,13 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
                         dbf_match_tag_q[i] <= 'd0;
+                        dbf_match_be_q[i] <= 'd0;
                     end
                     else if (li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         //Atomic operand: kept out of the line, see dbf_atm_data_q
+                        // SS12.7 (p.12-381): its Physical Tags are the ones matched.
+                        dbf_match_tag_q[i] <= temp_li_match_tag;
+                        dbf_match_be_q[i]  <= temp_li_match_be;
                         if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q) begin
                             dbf_data_q[i]   <= temp_pipe_data;
                             dbf_be_q[i]     <= temp_pipe_be;
@@ -354,7 +407,6 @@ module hnf_data_buffer `HNF_PARAM
                             dbf_pe_q[i]     <= 2'b11;
                             dbf_poison_q[i] <= temp_pipe_poison;
                             dbf_tagv_q[i]   <= temp_pipe_tagv;
-                            dbf_match_tag_q[i] <= dbf_match_tag_q[i];
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
@@ -365,6 +417,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_poison_q[i] <= temp_li_poison | pipe_dbf_wr_poison_sx9_q;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
+                        dbf_match_be_q[i] <= temp_li_match_be;
                     end
                     else if(li_dbf_rxdat_valid_s0 && i == li_dbf_rxdat_txnid_s0)begin
                         dbf_data_q[i]   <= temp_li_data;
@@ -374,6 +427,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
+                        dbf_match_be_q[i] <= temp_li_match_be;
                     end
                     else if (pipe_dbf_wr_valid_sx9_q && i == pipe_dbf_wr_idx_sx9_q)begin
                         dbf_data_q[i]   <= temp_pipe_data;
@@ -382,7 +436,6 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= 2'b11;
                         dbf_poison_q[i] <= temp_pipe_poison;
                         dbf_tagv_q[i]   <= temp_pipe_tagv;
-                        dbf_match_tag_q[i] <= dbf_match_tag_q[i];
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
                         // SS9.4.4 (p.9-342) / a Write Zero: the Home's own bytes, not a fill
@@ -394,6 +447,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
                         dbf_match_tag_q[i] <= 'd0;
+                        dbf_match_be_q[i] <= 'd0;
                     end
                     else begin
                     end
@@ -562,17 +616,29 @@ module hnf_data_buffer `HNF_PARAM
                                                     : (dbf_pe_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_pe_sx1);
     assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_tagv_sx1   = dbf_tagv_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_match_tag_sx1 = dbf_match_tag_q[mshr_dbf_rd_idx_sx1_q];
 
-    // Sec 12.11.1 (p.12-386, MUST): "Accurate, if the match is performed." Sec 12.5.2
-    // (p.12-379, MUST) scopes it to the tags with a byte enable asserted and forbids it
-    // when none is, which Sec 12.11.1 makes a Pass at a Completer that supports MTE.
-    // Combinational: the TagMatch is this entry's last response, so the buffer holds
-    // its final tags and byte enables by the time the MSHR reads this.
+    // Sec 12.11.1 (p.12-386, MUST): "Accurate, if the match is performed", and a Pass
+    // where it is not. A performed granule whose Allocation Tag the Home could not
+    // obtain is memory that does not support MTE, which Sec 12.11.3 (p.12-387, MUST)
+    // answers Fail.
     generate
         for(i = 0;i<`MSHR_ENTRIES_NUM;i = i+1) begin:tagmatch_verdict
-            assign dbf_mshr_tagmatch_pass_sx[i] = chie_pkg::tag_match_pass(
-                dbf_match_tag_q[i], dbf_tagv_q[i][`CACHE_TAG_WIDTH-1:0], dbf_be_q[i]);
+            logic pass;
+            always_comb begin
+                pass = chie_pkg::tag_match_pass(dbf_match_tag_q[i], dbf_tagv_q[i][`CACHE_TAG_WIDTH-1:0],
+                                                dbf_match_be_q[i]);
+                for (int t = 0; t < `CACHE_TV_WIDTH; t++)
+                    if ((|dbf_match_be_q[i][t*chie_pkg::LINE_BE_PER_TAG +: chie_pkg::LINE_BE_PER_TAG]) &&
+                        !dbf_tagv_q[i][`CACHE_TAG_WIDTH + t])
+                        pass = 1'b0;
+            end
+            assign dbf_mshr_tagmatch_pass_sx[i] = pass;
+            assign dbf_mshr_tags_full_sx[i]     = &dbf_tagv_q[i][`CACHE_TAG_WIDTH +: `CACHE_TV_WIDTH];
+            assign dbf_mshr_tags_any_sx[i]      = |dbf_tagv_q[i][`CACHE_TAG_WIDTH +: `CACHE_TV_WIDTH];
+            assign dbf_mshr_tags_dirty_sx[i]    = dbf_tagv_q[i][`CACHE_TAGD_BIT];
         end
     endgenerate
+    assign dbf_mshr_tags_full_s0 = &temp_li_tagv[`CACHE_TAG_WIDTH +: `CACHE_TV_WIDTH];
 
 endmodule

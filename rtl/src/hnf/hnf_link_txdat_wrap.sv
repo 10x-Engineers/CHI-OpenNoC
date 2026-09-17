@@ -53,6 +53,8 @@ module hnf_link_txdat_wrap `HNF_PARAM
     input  wire [`CACHE_POISON_WIDTH-1:0]    dbf_txdat_poison_sx1,
     input  wire [`CACHE_TAGV_WIDTH-1:0]      dbf_txdat_tagv_sx1,
     input  wire [1:0]                        mshr_dbf_rd_tagop_sx1,
+    input  wire [1:0]                        mshr_dbf_rd_dn_tagop_sx1,
+    input  wire [`CACHE_TAG_WIDTH-1:0]       dbf_txdat_match_tag_sx1,
 
     //outputs to hnf_link
     output logic                             txdatflitv,
@@ -99,6 +101,12 @@ module hnf_link_txdat_wrap `HNF_PARAM
     logic [1:0]                         dbf_txdat_tagop_entry1_sx;
     logic [1:0]                         dbf_txdat_tagop_entry2_sx;
     logic [1:0]                         mshr_txdat_req_tagop_sx_ns;
+    logic [1:0]                         dbf_txdat_dn_tagop_entry1_sx;
+    logic [1:0]                         dbf_txdat_dn_tagop_entry2_sx;
+    logic [1:0]                         mshr_txdat_dn_tagop_sx_ns;
+    logic [`CACHE_TAG_WIDTH-1:0]        dbf_txdat_match_tag_entry1_sx;
+    logic [`CACHE_TAG_WIDTH-1:0]        dbf_txdat_match_tag_entry2_sx;
+    logic [`CACHE_TAG_WIDTH-1:0]        mshr_txdat_match_tag_sx_ns;
     logic [chie_pkg::TU_WIDTH-1:0]      mshr_txdat_tu_sx_ns;
 
     //internal wire signals
@@ -185,41 +193,63 @@ module hnf_link_txdat_wrap `HNF_PARAM
     always_comb begin: txdat_tagv_sel_comb_logic
         mshr_txdat_tagv_sx_ns      = '0;
         mshr_txdat_req_tagop_sx_ns = 2'b00;
+        mshr_txdat_dn_tagop_sx_ns  = 2'b00;
+        mshr_txdat_match_tag_sx_ns = '0;
         if(dbf_txdat_valid_entry2_sx_ns)begin
             mshr_txdat_tagv_sx_ns      = dbf_txdat_tagv_entry2_sx;
             mshr_txdat_req_tagop_sx_ns = dbf_txdat_tagop_entry2_sx;
+            mshr_txdat_dn_tagop_sx_ns  = dbf_txdat_dn_tagop_entry2_sx;
+            mshr_txdat_match_tag_sx_ns = dbf_txdat_match_tag_entry2_sx;
         end
         else if(dbf_txdat_valid_entry1_sx)begin
             mshr_txdat_tagv_sx_ns      = dbf_txdat_tagv_entry1_sx;
             mshr_txdat_req_tagop_sx_ns = dbf_txdat_tagop_entry1_sx;
+            mshr_txdat_dn_tagop_sx_ns  = dbf_txdat_dn_tagop_entry1_sx;
+            mshr_txdat_match_tag_sx_ns = dbf_txdat_match_tag_entry1_sx;
         end
     end
 
-    // Sec 12.4.1 (p.12-376, MUST): a request whose TagOp is Transfer or Fetch is owed
-    // its tags, and Sec 12.4.1 (p.12-376) makes memory's tags Clean -- so Transfer is
-    // the only row this Home can elect. Sec 13.10.38 (p.13-435) pairs Tag[4n-1:4(n-1)]
-    // with Data[128n-1:128(n-1)], so the packet carries the tags of the 16-byte
-    // granules its own DataID names. A request that asked for none is answered
-    // Invalid with the Tag field zero.
+    // Sec 13.10.38 (p.13-435) pairs Tag[4n-1:4(n-1)] with Data[128n-1:128(n-1)], so a
+    // packet carries the tags of the granules its own DataID names.
     always_comb begin: txdat_tagop_sel_comb_logic
+        logic                            upper;
+        logic [chie_pkg::TAG_WIDTH-1:0]  pkt_tag;
+        logic [chie_pkg::TU_WIDTH-1:0]   pkt_valid;
+        logic                            line_valid;
+        upper      = (mshr_txdat_dataid_sx_ns == 2'b10);
+        pkt_tag    = upper ? mshr_txdat_tagv_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
+                           : mshr_txdat_tagv_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+        pkt_valid  = upper ? mshr_txdat_tagv_sx_ns[`CACHE_TAG_WIDTH + chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH]
+                           : mshr_txdat_tagv_sx_ns[`CACHE_TAG_WIDTH +: chie_pkg::TU_WIDTH];
+        line_valid = &mshr_txdat_tagv_sx_ns[`CACHE_TAG_WIDTH +: `CACHE_TV_WIDTH];
         mshr_txdat_rsp_tagop_sx_ns = 2'b00;
         mshr_txdat_tag_sx_ns       = '0;
         mshr_txdat_tu_sx_ns        = '0;
-        // A write to the Subordinate carries the line's tags so memory is updated with
-        // them (Sec 12.10 p.12-385, MUST); Sec 12.5.2 (p.12-379, MUST) then requires
-        // every TU bit asserted on a whole-line write.
         if(mshr_txdat_opcode_sx2 == chie_pkg::DAT_NONCOPYBACKWRDATA) begin
-            mshr_txdat_rsp_tagop_sx_ns = 2'b10;
-            mshr_txdat_tu_sx_ns        = '1;
-            mshr_txdat_tag_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
-                ? mshr_txdat_tagv_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
-                : mshr_txdat_tagv_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+            // Sec 12.13 (p.12-390, MUST): the data carries its request's TagOp. Update
+            // names the tags it installs in TU (Sec 12.5.2 p.12-379); Transfer and Match
+            // assert none.
+            mshr_txdat_rsp_tagop_sx_ns = mshr_txdat_dn_tagop_sx_ns;
+            case (mshr_txdat_dn_tagop_sx_ns)
+                2'b10: begin
+                    mshr_txdat_tag_sx_ns = pkt_tag;
+                    mshr_txdat_tu_sx_ns  = pkt_valid;
+                end
+                2'b01: mshr_txdat_tag_sx_ns = pkt_tag;
+                2'b11: mshr_txdat_tag_sx_ns = upper ? mshr_txdat_match_tag_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
+                                                    : mshr_txdat_match_tag_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+                default: ;
+            endcase
         end
-        else if((mshr_txdat_req_tagop_sx_ns == 2'b01) || (mshr_txdat_req_tagop_sx_ns == 2'b11)) begin
-            mshr_txdat_rsp_tagop_sx_ns = 2'b01;
-            mshr_txdat_tag_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
-                ? mshr_txdat_tagv_sx_ns[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]
-                : mshr_txdat_tagv_sx_ns[0 +: chie_pkg::TAG_WIDTH];
+        // Sec 12.4.1 (p.12-376, MUST): a Transfer or Fetch read is answered Transfer
+        // (Clean) or Update (Dirty, "Data response must pass Dirty") -- so Update rides
+        // exactly the response that passes Dirty, with every TU bit asserted. With no
+        // tags obtainable the memory does not support MTE, which Sec 12.11.3 (p.12-387)
+        // answers Invalid with the tags zero.
+        else if(((mshr_txdat_req_tagop_sx_ns == 2'b01) || (mshr_txdat_req_tagop_sx_ns == 2'b11)) && line_valid) begin
+            mshr_txdat_rsp_tagop_sx_ns = mshr_txdat_resp_sx2[2] ? 2'b10 : 2'b01;
+            mshr_txdat_tag_sx_ns       = pkt_tag;
+            mshr_txdat_tu_sx_ns        = mshr_txdat_resp_sx2[2] ? '1 : '0;
         end
     end
 
@@ -242,11 +272,6 @@ module hnf_link_txdat_wrap `HNF_PARAM
         txdatflit_mshr_s0.dbid      = mshr_txdat_dbid_sx2;
         txdatflit_mshr_s0.ccid      = mshr_txdat_ccid_sx2;
         txdatflit_mshr_s0.dataid    = mshr_txdat_dataid_sx_ns;
-        // Sec 12.4.1 (p.12-376, MUST): a request asking for tags is answered Transfer
-        // carrying them; memory's tags are Clean, so Transfer is the only row this
-        // Home can elect. Table 13-32 (Sec 13.10.37 p.13-435) makes TU inapplicable
-        // and zero under Transfer, and Sec 12.4.1 (p.12-376, MUST) requires TU all
-        // zeros when the response TagOp is Invalid -- so it is zero either way.
         txdatflit_mshr_s0.tagop     = mshr_txdat_rsp_tagop_sx_ns;
         txdatflit_mshr_s0.tag       = mshr_txdat_tag_sx_ns;
         txdatflit_mshr_s0.tu        = mshr_txdat_tu_sx_ns;
@@ -445,23 +470,31 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_tagv_entry1_sx_logic_t
         if(rst == 1'b1)begin
-            dbf_txdat_tagv_entry1_sx  <= {`CACHE_TAGV_WIDTH{1'b0}};
-            dbf_txdat_tagop_entry1_sx <= 2'b00;
+            dbf_txdat_tagv_entry1_sx      <= {`CACHE_TAGV_WIDTH{1'b0}};
+            dbf_txdat_tagop_entry1_sx     <= 2'b00;
+            dbf_txdat_dn_tagop_entry1_sx  <= 2'b00;
+            dbf_txdat_match_tag_entry1_sx <= '0;
         end
         else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)begin
-            dbf_txdat_tagv_entry1_sx  <= dbf_txdat_tagv_sx1;
-            dbf_txdat_tagop_entry1_sx <= mshr_dbf_rd_tagop_sx1;
+            dbf_txdat_tagv_entry1_sx      <= dbf_txdat_tagv_sx1;
+            dbf_txdat_tagop_entry1_sx     <= mshr_dbf_rd_tagop_sx1;
+            dbf_txdat_dn_tagop_entry1_sx  <= mshr_dbf_rd_dn_tagop_sx1;
+            dbf_txdat_match_tag_entry1_sx <= dbf_txdat_match_tag_sx1;
         end
     end
 
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_tagv_entry2_sx_logic_t
         if(rst == 1'b1)begin
-            dbf_txdat_tagv_entry2_sx  <= {`CACHE_TAGV_WIDTH{1'b0}};
-            dbf_txdat_tagop_entry2_sx <= 2'b00;
+            dbf_txdat_tagv_entry2_sx      <= {`CACHE_TAGV_WIDTH{1'b0}};
+            dbf_txdat_tagop_entry2_sx     <= 2'b00;
+            dbf_txdat_dn_tagop_entry2_sx  <= 2'b00;
+            dbf_txdat_match_tag_entry2_sx <= '0;
         end
         else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)begin
-            dbf_txdat_tagv_entry2_sx  <= dbf_txdat_tagv_sx1;
-            dbf_txdat_tagop_entry2_sx <= mshr_dbf_rd_tagop_sx1;
+            dbf_txdat_tagv_entry2_sx      <= dbf_txdat_tagv_sx1;
+            dbf_txdat_tagop_entry2_sx     <= mshr_dbf_rd_tagop_sx1;
+            dbf_txdat_dn_tagop_entry2_sx  <= mshr_dbf_rd_dn_tagop_sx1;
+            dbf_txdat_match_tag_entry2_sx <= dbf_txdat_match_tag_sx1;
         end
     end
 

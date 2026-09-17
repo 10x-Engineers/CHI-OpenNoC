@@ -145,6 +145,10 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                txdat_mshr_clr_dbf_busy_valid_sx3,
     input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_be_full_sx,
     input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_tagmatch_pass_sx,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_tags_full_sx,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_tags_any_sx,
+    input  wire [`MSHR_ENTRIES_NUM-1:0]        dbf_mshr_tags_dirty_sx,
+    input  wire                                dbf_mshr_tags_full_s0,
     input  wire                                dbf_mshr_be_full_s0,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      txdat_mshr_clr_dbf_busy_idx_sx3,
 
@@ -163,6 +167,9 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                l3_replay_sx7_q,
     input  wire                                l3_hit_d_sx7_q,
     input  wire                                l3_evict_sx7_q,
+    // Every Allocation Tag of the line the L3 read back this pass is Valid.
+    input  wire                                l3_tags_full_sx7_q,
+    input  wire                                l3_tags_dirty_sx7_q,
 
     //outputs to hnf_data_buffer
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
@@ -187,7 +194,9 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
     output logic [1:0]                         mshr_dbf_rd_pe_sx1,
     output logic [1:0]                         mshr_dbf_rd_tagop_sx1,
+    output logic [1:0]                         mshr_dbf_rd_dn_tagop_sx1,
     output logic [1:0]                         mshr_txreq_tagop_sx1,
+    output wire [7:0]                          mshr_txreq_taggroupid_sx1,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
@@ -364,6 +373,17 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [1:0]                          mshr_tagop_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_transfer_s1_q;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_asks_tags;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_rd_owes_tags;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_tagfetch_sx7;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_tagwb_sx7;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_pend_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_go_sx;
+    logic [1:0]                          mshr_dn_wr_tagop_q[0:`MSHR_ENTRIES_NUM-1];
+    wire                                 mshr_txreq_passthru_sx1;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_update;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_seq;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_memwr_s1;
+    wire                                 mshr_txreq_wr_match_sx1;
 
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_set_sx;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_sent_sx;
@@ -1299,6 +1319,20 @@ module hnf_mshr_ctl `HNF_PARAM
     // must not be used if the original request requests tags" -- the Snoopee would
     // supply the data directly and the tags would never be fetched.
     assign mshr_tagop_asks_tags = mshr_tagop_transfer_s1_q | mshr_tagop_match_s1_q;
+    // Sec 12.4.1 (p.12-376, MUST): a Transfer or Fetch read is owed its tags, and
+    // Sec 12.11.3 (p.12-387, MUST) answers Non-cacheable and Device memory Invalid.
+    generate
+        for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_rd_owes_tags_comb_logic
+            assign mshr_tagop_update[entry] = (mshr_tagop_s1_q[entry] == 2'b10);
+            // A WriteUniqueFull the Home writes to memory itself, once its snoops and cache
+            // pass have told it which Dirty tags the write leaves owed (hnf_mshr_bypass).
+            assign mshr_wuf_seq[entry]      = mshr_wuf_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & ~mshr_tagop_update[entry];
+            assign mshr_rd_owes_tags[entry] = mshr_tagop_asks_tags[entry] & ~mshr_atomic_s1_q[entry] &
+                   (mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
+                    mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosnp_s1_q[entry]) &
+                   mshr_memattr_s1_q[entry].cacheable & ~mshr_memattr_s1_q[entry].device;
+        end
+    endgenerate
     assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
     assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
@@ -1716,8 +1750,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_l3fill_s1     = (mshr_can_alloc_entry_s1_q) & (((mshr_wu_s1_q | mshr_wb_s1_q) & mshr_memattr_allocate_s1) | (mshr_we_s1_q));
     assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_s1_q);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
-    assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1));
-    assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q)));
+    assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
+    assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
     // Sec 4.2.2 (p.4-171, MUST) has a persistent CMO's completion reach the Point of
     // Persistence first, so it answers on the deferred slot instead of here.
     assign mshr_cs_comp_s1          = mshr_cs_s1_q & ~mshr_persist_s1_q;
@@ -1730,7 +1764,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
     // the buffer entry until it has, the way an Exclusive or OWO write does.
-    assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1)) & ~mshr_wrzero_s1_q & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
+    assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & mshr_tagop_update)) & ~mshr_wrzero_s1_q & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
 
     //************************************************************************//
 
@@ -1821,14 +1855,23 @@ module hnf_mshr_ctl `HNF_PARAM
             // line is whole; the accumulated byte enables do. Where it is not,
             // Sec 5.1.5 (p.5-251) has the Home read memory and merge rather than
             // treat the Snoop response as the whole line.
+            // Sec 12.9.1 (p.12-383, MUST): "If the Snoop response returns data to Home but
+            // not tags, the Home is responsible for obtaining tags before returning the Data
+            // response" -- so for a read owed tags the line is whole only with them.
             assign mshr_snp_full_line_s1[entry]    = (mshr_snp_get_64B_s1[entry] &
-                                                      (~mshr_snp_ptl_s1_q[entry] | dbf_mshr_be_full_sx[entry]));
+                                                      (~mshr_snp_ptl_s1_q[entry] | dbf_mshr_be_full_sx[entry]) &
+                                                      (dbf_mshr_tags_full_sx[entry] | ~mshr_rd_owes_tags[entry]));
             // Sec 2.5.2 (p.2-87, MUST) bounds TxnID reuse by what is outstanding, and
             // one MSHR entry is one downstream TxnID -- so the post-snoop fetch does
             // not arm while this entry's own downstream read is still in flight.
             assign mshr_snp_memrd_s1[entry]        = (mshr_snp_getall_s1[entry] & ~mshr_mem_rd_busy_sx_q[entry] & ~mshr_l3hit_sx8_q[entry] & ~mshr_dct_s1_q[entry] & ~mshr_snp_full_line_s1[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry]) & (mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] |
                     mshr_ru_s1_q[entry] | mshr_rdnosd_s1_q[entry] | mshr_rc_s1_q[entry] | (mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry])));
-            assign mshr_snp_memwr_s1[entry]        = (mshr_snp_get_64B_s1[entry] & mshr_snp_d_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_s1_q[entry] | mshr_ci_s1_q[entry] | mshr_seq_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry]));
+            // SS12.3 (p.12-374, MUST): Dirty tags a Snoopee passed are written back unless
+            // the ReadUnique they serve passes them on, which it does only when owed tags.
+            assign mshr_snp_memwr_s1[entry]        = (mshr_snp_get_64B_s1[entry] & mshr_snp_d_s1_q[entry] & (mshr_cu_s1_q[entry] | mshr_cs_s1_q[entry] | mshr_ci_s1_q[entry] | mshr_seq_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] |
+                                                      (mshr_mu_s1_q[entry] & ~mshr_tagop_update[entry]) |
+                                                      (mshr_ru_s1_q[entry] & ~mshr_rd_owes_tags[entry] & dbf_mshr_tags_dirty_sx[entry])));
+            assign mshr_wuf_memwr_s1[entry]        = (mshr_wuf_seq[entry] & mshr_snp_getall_s1[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]));
             assign mshr_wup_memwr_s1[entry]        = (mshr_wup_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry] & (mshr_snp_getall_s1[entry] & (mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry])));
             assign mshr_snp_rd_l3fill_s1[entry]    = (mshr_snp_full_line_s1[entry] & mshr_snpdat_entry_vec_s1_q[entry] & (mshr_rdnosd_s1_q[entry] | mshr_rc_s1_q[entry]));
             assign mshr_retry_rdy_vec_s0[entry]    = ((mshr_pcrdtype_s1_q[entry] == mshr_pcrd_type_get_s0) & mshr_pcrd_alloc_s0 & mshr_get_retry_s1_q[entry]);
@@ -2019,7 +2062,12 @@ module hnf_mshr_ctl `HNF_PARAM
                                                      (mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry])));
             assign mshr_new_dat_l3fill_s1[entry] = (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry]) & (((mshr_wb_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]) |
                                                     mshr_we_s1_q[entry])) |
-                   (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry]) & (!l3_rd_busy_s2_q[entry]) & ((mshr_wu_s1_q[entry] & ~mshr_wup_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]));
+                   // SS12.3 (p.12-374, MUST): a line whose write does not Update the tags is
+                   // filled with the Dirty ones its snoops returned, so it waits for them.
+                   (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry] |
+                                                    ((mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & ~mshr_tagop_update[entry])) &
+                    (!l3_rd_busy_s2_q[entry]) & ((mshr_wu_s1_q[entry] & ~mshr_wup_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]) &
+                    (mshr_tagop_update[entry] | mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]));
             assign mshr_old_dat_l3fill_s1[entry] = mshr_dat_old_get_s1_q[entry] & (mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry]) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]);
         end
     endgenerate
@@ -2080,7 +2128,8 @@ module hnf_mshr_ctl `HNF_PARAM
                 // the partial Snoop response data ... and sends the resultant data
                 // to the Requester" -- so holding the whole line is a property of
                 // the accumulated byte enables, not of the second packet arriving.
-                else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0 & dbf_mshr_be_full_s0)
+                else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0 & dbf_mshr_be_full_s0 &
+                        (dbf_mshr_tags_full_s0 | ~mshr_rd_owes_tags[entry]))
                     mshr_dat_old_get_s1_q[entry] <= 1'b1;
                 else
                     ;
@@ -2448,6 +2497,9 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dmt_sx8_q[entry] <= (mshr_l3_dmt_sx7 | mshr_dmt_sx8_q[entry]);
                 else if(mshr_snp_dmt_s1[entry])
                     mshr_dmt_sx8_q[entry] <= 1'b1;
+                // The tags a Home-held line lacks are fetched for the Home, not the Requester.
+                else if(mshr_tagfetch_go_sx[entry])
+                    mshr_dmt_sx8_q[entry] <= 1'b0;
                 // Sec 5.1.5 (p.5-251): "HN-F waits for the data response from memory,
                 // merges the partial Snoop response data with the data response from
                 // memory, and sends the resultant data to the Requester" -- so a read
@@ -2564,8 +2616,12 @@ module hnf_mshr_ctl `HNF_PARAM
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEAN;
             chie_pkg::REQ_WRITEUNIQUEPTL     :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPUNIQUE;
+            // SS4.4.2 (p.4-196, MUST): SnpMakeInvalid only for TagOp Update or a Snoopee
+            // known to hold no Dirty tags, which this Home cannot know; SnpCleanInvalid is
+            // the invalidating substitute SS4.4.2 permits, and returns Dirty data and tags.
             chie_pkg::REQ_WRITEUNIQUEFULL    :
-                mshr_snpcode_sx7 = chie_pkg::SNP_SNPMAKEINVALID;
+                mshr_snpcode_sx7 = mshr_tagop_update[l3_mshr_entry_sx7_q] ? chie_pkg::SNP_SNPMAKEINVALID
+                                                                          : chie_pkg::SNP_SNPCLEANINVALID;
             chie_pkg::REQ_CLEANSHARED        :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEANSHARED;
             chie_pkg::REQ_CLEANUNIQUE        :
@@ -2573,7 +2629,8 @@ module hnf_mshr_ctl `HNF_PARAM
             chie_pkg::REQ_CLEANINVALID       :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEANINVALID;
             chie_pkg::REQ_MAKEUNIQUE         :
-                mshr_snpcode_sx7 = chie_pkg::SNP_SNPMAKEINVALID;
+                mshr_snpcode_sx7 = mshr_tagop_update[l3_mshr_entry_sx7_q] ? chie_pkg::SNP_SNPMAKEINVALID
+                                                                          : chie_pkg::SNP_SNPCLEANINVALID;
             default mshr_snpcode_sx7 = chie_pkg::SNP_SNPLCRDRETURN;
         endcase
     end
@@ -2621,9 +2678,24 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_l3_memrd_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_memrd_sx7_q & (l3_opcode_sx7_q != chie_pkg::REQ_WRITEUNIQUEPTL)) | (l3_memrd_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & mshr_l3_alloc_s1_q[entry] & (~l3_hit_sx7_q) & (~l3_sfhit_sx7_q)));
             assign mshr_l3_evict_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_evict_sx7_q;
             assign mshr_l3_memwr_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_hit_d_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_CLEANSHARED | l3_opcode_sx7_q == chie_pkg::REQ_CLEANINVALID | l3_opcode_sx7_q == chie_pkg::REQ_CLEANUNIQUE | (!l3_sfhit_sx7_q & l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN))) |
-                    ((l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & ~mshr_l3_alloc_s1_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]));
+                    ((l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & ~mshr_l3_alloc_s1_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]) |
+                    ((l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEFULL) & mshr_wuf_seq[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]) |
+                    mshr_l3_tagwb_sx7[entry]);
             assign mshr_l3dat_rn_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READONCECLEANINVALID | l3_opcode_sx7_q == chie_pkg::REQ_READONCEMAKEINVALID | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY | l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE);
-            assign mshr_l3dat_sn_sx7[entry]     = (mshr_l3_entry_vec_sx7[entry] & l3_hit_d_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_CLEANUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_CLEANSHARED | l3_opcode_sx7_q == chie_pkg::REQ_CLEANINVALID | (l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN & !l3_sfhit_sx7_q))) | (l3_evict_sx7_q & mshr_l3_entry_vec_sx7[entry]);
+            // Sec 12.1 (p.12-372, MUST): "In the case where a cache holds the data value, but
+            // does not hold the Allocation Tag value, then a Read transaction that returns
+            // both data and tag must be performed."
+            assign mshr_l3_tagfetch_sx7[entry]  = mshr_l3dat_rn_sx7[entry] & mshr_rd_owes_tags[entry] &
+                                                  l3_rd_busy_s2_q[entry] & ~l3_tags_full_sx7_q;
+            // SS12.3 (p.12-374, MUST): Dirty tags leaving the L3 are "either written back
+            // to memory or passed Dirty". A read passes them only where it asked for tags,
+            // and a MakeUnique only where it will Update them (SS12.6 p.12-380).
+            assign mshr_l3_tagwb_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & l3_hit_sx7_q & l3_hit_d_sx7_q & l3_tags_dirty_sx7_q & l3_rd_busy_s2_q[entry] &
+                   ((((l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE) |
+                      ((l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) & ~l3_sfhit_sx7_q)) & ~mshr_rd_owes_tags[entry]) |
+                    ((l3_opcode_sx7_q == chie_pkg::REQ_MAKEUNIQUE) & ~mshr_tagop_update[entry]));
+            assign mshr_l3dat_sn_sx7[entry]     = (mshr_l3_entry_vec_sx7[entry] & l3_hit_d_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_CLEANUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_CLEANSHARED | l3_opcode_sx7_q == chie_pkg::REQ_CLEANINVALID | (l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN & !l3_sfhit_sx7_q))) | (l3_evict_sx7_q & mshr_l3_entry_vec_sx7[entry]) |
+                   mshr_l3_tagwb_sx7[entry];
         end
     endgenerate
 
@@ -2672,7 +2744,16 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_snp_busy_set_sx[entry]       = (mshr_alloc_snp_s1[entry] & ~excl_fail_s1);
             assign mshr_snp_busy_clr_sx[entry]       = (mshr_neednosnp_sx7[entry]) ||
                    (mshr_snp_getall_s1[entry]);
-            assign mshr_mem_rd_busy_set_sx[entry]    = (mshr_alloc_memrd_s1[entry]) || (mshr_l3_memrd_sx7[entry]) || (mshr_snp_memrd_s1[entry]);
+            // The read the tags are fetched with waits for the line's own snoop round
+            // and for any write-back of it, since one MSHR entry is one downstream TxnID
+            // (Sec 2.5.2 p.2-87).
+            assign mshr_tagfetch_go_sx[entry]        = mshr_tagfetch_pend_sx_q[entry] & ~dbf_mshr_tags_full_sx[entry] &
+                   (mshr_neednosnp_sx8_q[entry] | mshr_snp_getall_s1[entry]) &
+                   ~mshr_pipeline_busy_sx[entry] & ~mshr_mem_rd_busy_sx_q[entry] & ~mshr_mem_wr_busy_sx_q[entry] &
+                   ~mshr_mem_rd_rdy_sx_q[entry] & ~mshr_mem_wr_rdy_sx_q[entry] &
+                   ~mshr_sn_data_busy_sx_q[entry] & ~mshr_rn_data_busy_sx_q[entry] & ~mshr_txdat_rn_rdy_sx_q[entry];
+            assign mshr_mem_rd_busy_set_sx[entry]    = (mshr_alloc_memrd_s1[entry]) || (mshr_l3_memrd_sx7[entry]) || (mshr_snp_memrd_s1[entry]) ||
+                   (mshr_tagfetch_go_sx[entry]);
             assign mshr_mem_rd_busy_clr_sx[entry]    = (mshr_dat_to_rn_s1[entry]) ||
                    (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry]) ||
                    (mshr_get_rd_receipt_s1_q[entry]) ||
@@ -2681,7 +2762,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_cb_wr_mem_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
                    (mshr_l3_memwr_sx7[entry]) ||
                    (mshr_snp_memwr_s1[entry] & mshr_snpdat_entry_vec_s1_q[entry]) ||
-                   (mshr_wup_memwr_s1[entry]) ||
+                   (mshr_wup_memwr_s1[entry]) || (mshr_wuf_memwr_s1[entry]) ||
                    (mshr_l3_evict_sx7[entry]);
             // Sec 4.5.1 (p.4-199) lets a Subordinate combine Comp with the DBID grant,
             // so a Comp can arrive before the Home has sent a byte. Sec 2.5.2 (p.2-87,
@@ -2690,13 +2771,14 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_mem_rd_rdy_set_sx[entry]     = (mshr_alloc_memrd_s1[entry] && txreq_mshr_bypass_lost_s1) ||
                    (mshr_l3_memrd_sx7[entry]) ||
                    (mshr_snp_memrd_s1[entry]) ||
+                   (mshr_tagfetch_go_sx[entry]) ||
                    (mshr_mem_rd_busy_sx_q[entry] & mshr_resent_s1_q[entry]);
             assign mshr_mem_rd_rdy_clr_sx[entry]     = (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry]);
             assign mshr_mem_wr_rdy_set_sx[entry]     = (mshr_alloc_memwr_s1[entry] & txreq_mshr_bypass_lost_s1 & ~excl_fail_s1) ||
                    (mshr_cb_wr_mem_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
                    (mshr_l3_memwr_sx7[entry]) ||
                    (mshr_snp_memwr_s1[entry] & mshr_snpdat_entry_vec_s1_q[entry]) ||
-                   (mshr_wup_memwr_s1[entry]) ||
+                   (mshr_wup_memwr_s1[entry]) || (mshr_wuf_memwr_s1[entry]) ||
                    (mshr_l3_evict_sx7[entry]) ||
                    (mshr_mem_wr_busy_sx_q[entry] & mshr_resent_s1_q[entry]);
             assign mshr_mem_wr_rdy_clr_sx[entry]     = (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry]);
@@ -2722,7 +2804,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // armed and retire it under its own data response.
             assign mshr_rn_data_busy_set_sx[entry]   = (mshr_atomicrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
                    (mshr_atm_dat_owed_sx[entry]) ||
-                   (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry]) ||
+                   (mshr_dat_to_rn_s1[entry]) || (mshr_l3dat_rn_sx7[entry] & ~mshr_l3_tagfetch_sx7[entry]) ||
                    (mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_rn_data_busy_clr_sx[entry]   = (txdat_mshr_clr_dbf_busy_entry_vec_sx3[entry]);
             assign mshr_sn_data_busy_set_sx[entry]   = (mshr_alloc_datbuf_sn_s1[entry]) ||
@@ -2753,8 +2835,9 @@ module hnf_mshr_ctl `HNF_PARAM
                    ~mshr_atm_dat_sent_sx_q[entry] & ~mshr_txdat_rn_rdy_sx_q[entry];
             assign mshr_txdat_rn_rdy_set_sx[entry]   = (mshr_atm_dat_owed_sx[entry]) ||
                    (mshr_dat_to_rn_s1[entry]) ||
-                   (mshr_l3dat_rn_sx7[entry] & mshr_neednosnp_sx7[entry]) ||
+                   (mshr_l3dat_rn_sx7[entry] & mshr_neednosnp_sx7[entry] & ~mshr_l3_tagfetch_sx7[entry]) ||
                    (mshr_l3hit_sx8_q[entry] & (mshr_ru_s1_q[entry] | mshr_roinv_s1_q[entry]) & mshr_snp_getall_s1[entry] &
+                    ~mshr_tagfetch_pend_sx_q[entry] &
                     (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry])) ||
                    (mshr_errrd_s1_q[entry] & mshr_dbf_home_fill_entry_sx1[entry]);
             assign mshr_txdat_rn_rdy_clr_sx[entry]   = (mshr_dbf_rd_entry_sx1[entry] & ~txdat_mshr_busy_sx);
@@ -3048,6 +3131,32 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            always_ff @(posedge clk or posedge rst)begin : mshr_tagfetch_pend_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_tagfetch_pend_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry] | mshr_tagfetch_go_sx[entry])
+                    mshr_tagfetch_pend_sx_q[entry] <= 1'b0;
+                else if(mshr_l3_tagfetch_sx7[entry])
+                    mshr_tagfetch_pend_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            // Sec 12.13 (p.12-390, MUST): write data carries its request's TagOp, so the
+            // one this entry's downstream write was issued with is what its data carries.
+            // Taken at allocation for a request hnf_mshr_bypass issues, and again for any
+            // this module issues.
+            always_ff @(posedge clk or posedge rst)begin : mshr_dn_wr_tagop_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_dn_wr_tagop_q[entry] <= 2'b00;
+                else if(mshr_txreq_entry_vec_sx1[entry] & txreq_mshr_won_sx1 & ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1)
+                    mshr_dn_wr_tagop_q[entry] <= mshr_txreq_tagop_sx1;
+                else if(mshr_can_alloc_entry_s1_q[entry])
+                    mshr_dn_wr_tagop_q[entry] <= opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[entry], ~mshr_wrnosnpp_s1_q[entry]);
+                else
+                    ;
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_issued_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_stash_pull_issued_sx_q[entry] <= 1'b0;
@@ -3255,9 +3364,14 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
                 else if(mshr_tagmatch_sent_sx[entry])
                     mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
+                // The Subordinate answers a Match the Home forwards (SS12.11.1 p.12-386), so
+                // the debt is the Home's only where it performs the write itself -- or where
+                // a failed Exclusive left the write, and the match, unperformed.
+                else if(mshr_txreq_entry_vec_sx1[entry] & txreq_mshr_won_sx1 & mshr_txreq_wr_match_sx1)
+                    mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
                 else if(mshr_can_alloc_entry_s1_q[entry])
                     mshr_tagmatch_owed_sx_q[entry] <= mshr_tagop_match_s1_q[entry] &
-                        (mshr_wu_s1_q[entry] | mshr_wrnosnp_s1_q[entry] | mshr_wrnosnpp_s1_q[entry]);
+                        (mshr_wu_s1_q[entry] | ((mshr_wrnosnp_s1_q[entry] | mshr_wrnosnpp_s1_q[entry]) & excl_fail_s1));
                 else
                     ;
             end
@@ -3758,8 +3872,14 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_is_cmo_sx1      = mshr_mem_cmo_rdy_sx_q[mshr_txreq_entry_idx_sx1];
     // Sec 13.10.24 (p.13-430): ReturnNID/ReturnTxnID belong to DMT on the read and
     // to DWT on the write, so each is read on the flit it applies to.
+    // SS2.5.3 (p.2-88): a WriteNoSnp with TagOp Match names the Requester as ReturnNID
+    // "irrespective of the value of DoDWT", since that is where its TagMatch goes.
     assign mshr_txreq_fwd_sx1         = mshr_txreq_is_rd_sx1 ? mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1]
-                                                             : mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1];
+                                                             : (mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1] | mshr_txreq_wr_match_sx1);
+    assign mshr_txreq_wr_match_sx1    = ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1 & (mshr_txreq_tagop_sx1 == 2'b11);
+    // SS12.10 (p.12-385, MUST): the TagGroupID of a Match to the Subordinate "must be
+    // returned in the TagMatch response"; SS13.10.40 (p.13-435) puts it in the LPID bits.
+    assign mshr_txreq_taggroupid_sx1  = mshr_txreq_wr_match_sx1 ? mshr_pgroupid_s1_q[mshr_txreq_entry_idx_sx1] : 8'd0;
     // Sec 16.1's (p.16-471) substitute carries no Persist of its own -- the Home owes
     // that one -- so its ReturnNID and ReturnTxnID are inapplicable.
     assign mshr_txreq_returnnid_sx1   = mshr_txreq_is_cmo_sx1 ? '0
@@ -3906,7 +4026,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // when it was. This Home holds Allocation Tags, so the Fail arm no longer describes
     // it; Table 13-35 (p.13-437) reads Resp[0]=1 as Pass.
     assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
-                                   ? (dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
+                                   ? ((dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] | mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]) ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
                                      ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
@@ -4278,38 +4398,53 @@ module hnf_mshr_ctl `HNF_PARAM
     // pins every other read at Size=64, and a Stash Data Pull's completion is a
     // whole line whatever its entry's own Size says -- masking by Size cut one to a
     // single packet and hung the Requester (CHI-OpenNoC#248, reverted by #253).
-    // Sec 12.11.3 (p.12-387, MUST): "A Completer in response to a Read request to a
-    // Non-cacheable or Device memory location must set the TagOp value in the response
-    // to Invalid" -- stated over the memory type, not over whether the Completer
-    // supports MTE, so it holds here too. Presented on the buffer-read index, the one
-    // the outbound packets are actually built from.
-    // Sec 12.10 (p.12-385, MUST): the Home may ask its Subordinate for the tags with
-    // Transfer or Fetch, and "TagOp Fetch is permitted only with a data size of 64
-    // bytes". A write's tag operation is not forwarded: this Home holds the tags its
-    // own L3 stores and Table B-3 (p.B-495) gives the TagMatch no ICN(HN-F)->SN row it
-    // would need to relay one.
+    // Sec 12.10 (p.12-385): a Read to the Subordinate permits Invalid, Transfer and
+    // Fetch -- "Fetch is permitted only with a data size of 64 bytes" -- and a Write
+    // Invalid, Transfer, Update and Match. A read the Requester is answered directly
+    // (DMT) carries its own TagOp; one the Home keeps asks for the tags only where the
+    // read is owed them, and asks Transfer, since the Home keeps the data too.
+    // A write that carries the Requester's data carries the Requester's TagOp. One the
+    // Home sources carries Update where it holds Dirty tags -- Sec 12.10 (p.12-385,
+    // MUST) "When memory needs to be updated with tags, WriteNoSnp with TagOp Update
+    // must be used" -- which a WriteNoSnpFull may use only with every TU bit asserted
+    // (Sec 12.5.2 p.12-379, MUST). Clean tags are already memory's.
+    assign mshr_txreq_passthru_sx1 = ~mshr_txreq_evict_wr_sx1 & ~mshr_txreq_icn_wr_sx1 &
+                                     (mshr_wrnosnp_s1_q[mshr_txreq_entry_idx_sx1] | mshr_dwt_s2_q[mshr_txreq_entry_idx_sx1] |
+                                      (mshr_wu_s1_q[mshr_txreq_entry_idx_sx1] & ~mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] &
+                                       ~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & ~mshr_wuf_seq[mshr_txreq_entry_idx_sx1]));
     always_comb begin : mshr_txreq_tagop_comb
+        logic ptl;
+        ptl = (mshr_txreq_opcode_sx1 == chie_pkg::REQ_WRITENOSNPPTL);
         mshr_txreq_tagop_sx1 = 2'b00;
-        if (mshr_txreq_opcode_sx1 inside {chie_pkg::REQ_READNOSNP, chie_pkg::REQ_READNOSNPSEP}) begin
-            if (mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b01)
-                mshr_txreq_tagop_sx1 = 2'b01;
-            else if ((mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b11)
-                     && (mshr_txreq_size_sx1 == chie_pkg::SIZE_64B))
-                mshr_txreq_tagop_sx1 = 2'b11;
+        if (mshr_txreq_is_cmo_sx1)
+            mshr_txreq_tagop_sx1 = 2'b00;
+        else if (mshr_txreq_is_rd_sx1) begin
+            if (mshr_rd_owes_tags[mshr_txreq_entry_idx_sx1])
+                mshr_txreq_tagop_sx1 = (mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1] &&
+                                        (mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b11) &&
+                                        (mshr_txreq_size_sx1 == chie_pkg::SIZE_64B)) ? 2'b11 : 2'b01;
         end
-        // Sec 12.10 (p.12-385, MUST): "When memory needs to be updated with tags,
-        // WriteNoSnp with TagOp Update must be used." The Home holds this line's tags --
-        // filled from memory on a miss, installed by a TagOp=Update write otherwise --
-        // so a write-back that carried Invalid would strand them in the L3.
-        else if (mshr_txreq_opcode_sx1 inside {chie_pkg::REQ_WRITENOSNPFULL,
-                                               chie_pkg::REQ_WRITENOSNPPTL})
+        else if (mshr_txreq_passthru_sx1)
+            mshr_txreq_tagop_sx1 = opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1], ~ptl);
+        else if ((dbf_mshr_tags_dirty_sx[mshr_txreq_entry_idx_sx1] &&
+                  (ptl ? dbf_mshr_tags_any_sx[mshr_txreq_entry_idx_sx1] : dbf_mshr_tags_full_sx[mshr_txreq_entry_idx_sx1])) ||
+                 (~mshr_txreq_evict_wr_sx1 && ~mshr_txreq_icn_wr_sx1 &&
+                  (mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b10) &&
+                  (mshr_wu_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wb_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wc_s1_q[mshr_txreq_entry_idx_sx1])))
             mshr_txreq_tagop_sx1 = 2'b10;
+        // A WriteUniqueFull with TagOp Match that owes memory no Dirty tags forwards the
+        // match, which the Subordinate performs against tags memory already holds.
+        else if (~mshr_txreq_evict_wr_sx1 && ~mshr_txreq_icn_wr_sx1 &&
+                 mshr_wuf_seq[mshr_txreq_entry_idx_sx1] && (mshr_tagop_s1_q[mshr_txreq_entry_idx_sx1] == 2'b11))
+            mshr_txreq_tagop_sx1 = 2'b11;
     end
 
+    // Sec 12.11.3 (p.12-387, MUST): "A Completer in response to a Read request to a
+    // Non-cacheable or Device memory location must set the TagOp value in the response
+    // to Invalid"; SS12.7 (p.12-381) gives an Atomic's Match no read-side meaning.
     always_comb begin : mshr_dbf_rd_tagop_comb
-        mshr_dbf_rd_tagop_sx1 = (mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].device
-                              || !mshr_memattr_s1_q[mshr_dbf_rd_idx_sx1_q].cacheable)
-                              ? 2'b00 : mshr_tagop_s1_q[mshr_dbf_rd_idx_sx1_q];
+        mshr_dbf_rd_tagop_sx1    = mshr_rd_owes_tags[mshr_dbf_rd_idx_sx1_q] ? mshr_tagop_s1_q[mshr_dbf_rd_idx_sx1_q] : 2'b00;
+        mshr_dbf_rd_dn_tagop_sx1 = mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q];
     end
 
     always_comb begin : mshr_dbf_rd_pe_comb

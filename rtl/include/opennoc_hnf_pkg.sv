@@ -419,6 +419,18 @@ package opennoc_hnf_pkg;
     endcase
   endfunction
 
+  // SS12.10 (p.12-385): the TagOp a write the Home issues on the Requester's behalf
+  // carries downstream -- Match included, which the Subordinate then performs.
+  // SS12.5.2 (p.12-379, MUST) gives Transfer to the Full write alone.
+  function automatic logic [1:0] hnf_dn_wr_tagop(logic [1:0] req_tagop, logic full);
+    case (req_tagop)
+      2'b10   : return 2'b10;
+      2'b11   : return 2'b11;
+      2'b01   : return full ? 2'b01 : 2'b00;
+      default : return 2'b00;
+    endcase
+  endfunction
+
 endpackage
 
 `endif

@@ -1605,13 +1605,16 @@ module hnf_cache_pipeline `HNF_PARAM
     //////////////////////////////////////////////////////////////////////////////
     // Tag hits and needs to read l3 data
     //////////////////////////////////////////////////////////////////////////////
+    // SS12.3 (p.12-374, MUST): the WriteUniqueFull and MakeUnique that invalidate the
+    // line take its image too, since a write that does not Update the tags leaves the
+    // Dirty ones it held owed to memory.
     assign pipe_read_l3_nofill_sx4 = pipe_tag_match_sx4_q & (
                // ReadOnce/ReadNoShareDirty/ReadClean/ReadUnique will get l3 data if SLC hit
                op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q |
                // WriteUniqePtl read l3 data for further merge data
-               op_wuptl_sx4_q |
+               op_wuptl_sx4_q | op_wufull_sx4_q |
                // Dirty Read l3 data
-               (pipe_tag_match_dirty_sx4_q & (op_dl_cu_sx4_q | op_cmo_cs_sx4_q | op_cmo_ci_sx4_q))
+               (pipe_tag_match_dirty_sx4_q & (op_dl_cu_sx4_q | op_cmo_cs_sx4_q | op_cmo_ci_sx4_q | op_dl_mu_sx4_q))
            );
     assign pipe_read_l3_fill_sx4 = pipe_tag_evict_sx4_q && pipe_tag_evict_dirty_sx4_q;
     assign pipe_read_l3_sx4 = (~pipe_fill_sx4 & pipe_read_l3_nofill_sx4)|(pipe_fill_sx4 & pipe_read_l3_fill_sx4);
