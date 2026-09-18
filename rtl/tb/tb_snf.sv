@@ -258,21 +258,6 @@ module tb_snf `HNF_PARAM
 
     assign wr_en = dbg_sn_wr_en? 1'b1:wr_en_q? 1'b1:1'b0;
 
-    generate
-        if(CHIE_DATACHECK_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_tmp0.datacheck = '0;
-                txdatflit_tmp1.datacheck = '0;
-            end
-        end
-        if(CHIE_POISON_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_tmp0.poison = '0;
-                txdatflit_tmp1.poison = '0;
-            end
-        end
-    endgenerate
-
     always@*begin
         txdatflit_tmp0.qos      = '0;
         txdatflit_tmp0.tgtid    = txdat_tgtid;
@@ -293,6 +278,8 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp0.tracetag = '0;
         txdatflit_tmp0.be       = {chie_pkg::BE_WIDTH{1'b1}};
         txdatflit_tmp0.data     = rd_data[255:0];
+        txdatflit_tmp0.datacheck = chie_pkg::datacheck_of(txdatflit_tmp0.data);
+        txdatflit_tmp0.poison   = '0;
     end
 
     always@*begin
@@ -315,6 +302,8 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp1.tracetag = '0;
         txdatflit_tmp1.be       = {chie_pkg::BE_WIDTH{1'b1}};
         txdatflit_tmp1.data     = rd_data[511:256];
+        txdatflit_tmp1.datacheck = chie_pkg::datacheck_of(txdatflit_tmp1.data);
+        txdatflit_tmp1.poison   = '0;
     end
 
     always@(posedge CLK or posedge RST)begin

@@ -126,8 +126,15 @@ module tb_hnf;
   reg TXRSPLCRDV;
   reg TXSNPLCRDV;
   reg TXDATLCRDV;
+  reg RXLINKACTIVEREQ;
+  reg TXLINKACTIVEACK;
+  reg [HNF_MSHR_RNF_NUM_PARAM-1:0] SYSCOREQ;
 
   // hnf Outputs
+  wire TXLINKACTIVEREQ;
+  wire RXLINKACTIVEACK;
+  wire link_run = RXLINKACTIVEREQ & RXLINKACTIVEACK & TXLINKACTIVEREQ & TXLINKACTIVEACK;
+  wire [HNF_MSHR_RNF_NUM_PARAM-1:0] SYSCOACK;
   wire RXREQLCRDV;
   wire RXRSPLCRDV;
   wire RXDATLCRDV;
@@ -146,6 +153,18 @@ module tb_hnf;
 
   reg [6:0] typ[31:0];
   reg [511:0] flit[31:0];
+  // A case is a handful of flits plus the bench's own fixed waits -- at most 172
+  // cycles across all 136 -- so a case still open after this many has hung.
+  localparam int unsigned CASE_TIMEOUT_CYCLES = 10000;
+  int unsigned waited;
+  bit tests_running = 1'b0;
+
+  // Sec 9.6 (p.9-348): DataCheck is Odd Byte parity over the data. The recorded cases
+  // predate it, so it is derived here for every DAT flit the bench sends or expects.
+  function automatic chie_pkg::dat_flit_s rec_dat(logic [511:0] line);
+    rec_dat           = chie_pkg::dat_flit_s'(line[chie_pkg::DAT_FLIT_WIDTH-1:0]);
+    rec_dat.datacheck = chie_pkg::datacheck_of(rec_dat.data);
+  endfunction
   reg dbg_sn_wr_en;
   reg dbg_sn_rd_en;
   reg [chie_pkg::REQ_ADDR_WIDTH-1:0] dbg_sn_addr;
@@ -268,12 +287,12 @@ module tb_hnf;
     /*049*/ "./case/WriteUniquePtl/I_UD_I_NonExcl_Order10_CompAck_Allocate_WriteUniquePtl_I_I_D.txt",
     /*050*/ "./case/WriteBackFull/UD_I_I_NonExcl_Order00_NonCompAck_Allocate_WriteBackFull_I_I_D.txt",
     /*051*/ "./case/WriteBackFull/UC_I_I_NonExcl_Order00_NonCompAck_Allocate_WriteBackFull_I_I_C.txt",
-    /*052*/ "./case/WriteBackFull/UD_I_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_U_I_I.txt",
+    /*052*/ "./case/WriteBackFull/UD_I_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_I_I_I.txt",
     /*053*/ "./case/WriteBackFull/I_SC_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_I_SC_I.txt",
-    /*054*/ "./case/WriteBackFull/SC_SC_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_SC_SC_I.txt",
-    /*055*/ "./case/WriteBackFull/SC_I_I_NonExcl_Order00_NonCompAck_Allocate_WriteBackFull_SC_I_I.txt",
+    /*054*/ "./case/WriteBackFull/SC_SC_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_I_SC_I.txt",
+    /*055*/ "./case/WriteBackFull/SC_I_I_NonExcl_Order00_NonCompAck_Allocate_WriteBackFull_I_I_I.txt",
     /*056*/ "./case/WriteBackFull/I_U_I_NonExcl_Order00_NonCompAck_Allocate_WriteBackFull_I_U_I.txt",
-    /*057*/ "./case/WriteBackFull/UC_I_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_U_I_I.txt",
+    /*057*/ "./case/WriteBackFull/UC_I_I_NonExcl_Order00_NonCompAck_NonAllocate_WriteBackFull_I_I_I.txt",
     /*058*/ "./case/ReadNoSnp/I_I_I_Excl_Order00_CompAck_ReadNoSnp_I_I_I.txt",
     /*059*/ "./case/ReadNoSnp/I_I_I_Excl_Order00_NonCompAck_ReadNoSnp_I_I_I.txt",
     /*060*/ "./case/ReadNoSnp/I_I_I_Excl_Order10_CompAck_ReadNoSnp_I_I_I.txt",
@@ -389,9 +408,17 @@ module tb_hnf;
         end
       end
       $fclose(fd);
+      while (!tests_running) @(posedge CLK);
+      waited = 0;
       while (!p) begin
         @(posedge CLK);
+        if (++waited == CASE_TIMEOUT_CYCLES)
+          $fatal(1, "Test case %0d hung at script line %0d (type %b) after %0d cycles: %s",
+                 k + 1, j + 1, typ[j], waited, test_case_files_list[k]);
       end
+`ifdef TB_INFO
+      $display("Case %0d done in %0d cycles", k + 1, waited);
+`endif
     end
     $display("Done!");
     $display("\n********* Report Stage *********\n");
@@ -409,9 +436,10 @@ module tb_hnf;
     dbg_l3_valid_q  <= 1'b0;
     @(negedge RST);
     $display("Initializing SRAMs, Please wait...");
-    while (notify_reg != 7) @(posedge CLK);
+    while (notify_reg != 7 || !link_run || SYSCOACK[1:0] != 2'b11) @(posedge CLK);
     $display("Done!\n");
     $display("Running Tests...");
+    tests_running = 1'b1;
     forever begin
       if (typ[j] == `WR_SF_STATUS) begin
 `ifdef TB_INFO
@@ -621,39 +649,41 @@ module tb_hnf;
     end
   end
 
+  // CHI E.b Table 14-2 (p.14-450): the bench is the HN-F's link peer. It requests
+  // the HN-F's RX link, acknowledges its TX link, and grants no credit before RUN.
+  // Sec 15.2.1 (p.15-467, MUST): an RN caches nothing coherent before SYSCOACK, and
+  // Table 15-1 (p.15-468) forbids snooping it before SYSCOREQ -- so the two RN-Fs
+  // the bench plays, RN0 and RN1, connect before the first case.
+  initial begin
+    RXLINKACTIVEREQ = 1'b0;
+    TXLINKACTIVEACK = 1'b0;
+    SYSCOREQ        = '0;
+    @(negedge RST);
+    RXLINKACTIVEREQ <= 1'b1;
+    SYSCOREQ        <= 2'b11;
+    forever begin
+      @(posedge CLK);
+      TXLINKACTIVEACK <= TXLINKACTIVEREQ;
+    end
+  end
+
   //lcrdv
   initial begin
     @(negedge RST);
+    while (!link_run) @(posedge CLK);
     TXREQLCRDV <= 1'b1;
     TXRSPLCRDV <= 1'b1;
     TXSNPLCRDV <= 1'b1;
     TXDATLCRDV <= 1'b1;
     repeat (6) @(posedge CLK);
-    TXREQLCRDV <= 1'b0;
-    TXRSPLCRDV <= 1'b0;
-    TXSNPLCRDV <= 1'b0;
-    TXDATLCRDV <= 1'b0;
+    // One write per signal per edge in every stimulus loop: Verilator's --timing keeps
+    // the first of two non-blocking writes to a variable in one time step, not the last.
     forever begin
-      if (TXREQFLITV == 1'b1) begin
-        TXREQLCRDV <= 1'b1;
-      end
-
-      if (TXRSPFLITV == 1'b1) begin
-        TXRSPLCRDV <= 1'b1;
-      end
-
-      if (TXSNPFLITV == 1'b1) begin
-        TXSNPLCRDV <= 1'b1;
-      end
-
-      if (TXDATFLITV == 1'b1) begin
-        TXDATLCRDV <= 1'b1;
-      end
+      TXREQLCRDV <= TXREQFLITV;
+      TXRSPLCRDV <= TXRSPFLITV;
+      TXSNPLCRDV <= TXSNPFLITV;
+      TXDATLCRDV <= TXDATFLITV;
       @(posedge CLK);
-      TXREQLCRDV <= 1'b0;
-      TXRSPLCRDV <= 1'b0;
-      TXSNPLCRDV <= 1'b0;
-      TXDATLCRDV <= 1'b0;
     end
   end
 
@@ -700,6 +730,14 @@ module tb_hnf;
       //inputs
       .CLK          (CLK),
       .RST          (RST),
+      .TXLINKACTIVEREQ(TXLINKACTIVEREQ),
+      .TXLINKACTIVEACK(TXLINKACTIVEACK),
+      .RXLINKACTIVEREQ(RXLINKACTIVEREQ),
+      .RXLINKACTIVEACK(RXLINKACTIVEACK),
+      .SYSCOREQ       (SYSCOREQ),
+      .SYSCOACK       (SYSCOACK),
+      .RXSACTIVE      (RXLINKACTIVEREQ),
+      .TXSACTIVE      (),
       .RXREQFLITV   (RXREQFLITV),
       .RXREQFLIT    (RXREQFLIT),
       .RXREQFLITPEND(RXREQFLITPEND),
@@ -823,8 +861,7 @@ module tb_hnf;
         $display("RN0 request sent");
 `endif
       end
-
-      if ((typ[j] == `RXREQ_RN1)) begin
+      else if ((typ[j] == `RXREQ_RN1)) begin
         rxreqflit                             = chie_pkg::req_flit_s'(flit[j][chie_pkg::REQ_FLIT_WIDTH-1:0]);
         rxreqflit.srcid = `RN1_ID;
         rxreqflit.tgtid = `HNF0_ID;
@@ -836,8 +873,10 @@ module tb_hnf;
         $display("RN1 request sent");
 `endif
       end
+      else begin
+        RXREQFLITV <= 1'b0;
+      end
       @(posedge CLK);
-      RXREQFLITV <= 1'b0;
     end
   end
 
@@ -861,7 +900,7 @@ module tb_hnf;
         $display("RN0 response sent");
 `endif
       end
-      if ((typ[j] == `RXRSP_RN1)) begin
+      else if ((typ[j] == `RXRSP_RN1)) begin
         rxrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
         rxrspflit.srcid = `RN1_ID;
         rxrspflit.tgtid = `HNF0_ID;
@@ -872,14 +911,11 @@ module tb_hnf;
         $display("RN1 response sent");
 `endif
       end
-      @(posedge CLK);
-
       //resolve sn and rn sending rsp conflit, let rn rsp send 2 cycles
-      if (sn_rxrspflitv & (sn_rxrspflit.tgtid == `HNF0_ID)) begin
-      end
-      else begin
+      else if (!(sn_rxrspflitv & (sn_rxrspflit.tgtid == `HNF0_ID))) begin
         rn_rxrspflitv <= 1'b0;
       end
+      @(posedge CLK);
     end
   end
 
@@ -893,7 +929,7 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if (typ[j] == `RXDAT1_RN0) begin
-        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit                             = rec_dat(flit[j]);
         rxdatflit.srcid = `RN0_ID;
         rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
@@ -903,9 +939,8 @@ module tb_hnf;
         $display("RN0 sent data0");
 `endif
       end
-
-      if (typ[j] == `RXDAT1_RN1) begin
-        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+      else if (typ[j] == `RXDAT1_RN1) begin
+        rxdatflit                             = rec_dat(flit[j]);
         rxdatflit.srcid = `RN1_ID;
         rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
@@ -915,11 +950,14 @@ module tb_hnf;
         $display("RN1 sent data0");
 `endif
       end
+      else begin
+        rn_rxdatflitv <= 1'b0;
+      end
 
       @(posedge CLK);
 
       if (typ[j] == `RXDAT2_RN0) begin
-        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit                             = rec_dat(flit[j]);
         rxdatflit.srcid = `RN0_ID;
         rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
@@ -931,7 +969,7 @@ module tb_hnf;
       end
 
       if (typ[j] == `RXDAT2_RN1) begin
-        rxdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        rxdatflit                             = rec_dat(flit[j]);
         rxdatflit.srcid = `RN1_ID;
         rxdatflit.tgtid = `HNF0_ID;
         rn_rxdatflitv <= 1'b1;
@@ -943,7 +981,6 @@ module tb_hnf;
       end
 
       @(posedge CLK);
-      rn_rxdatflitv <= 1'b0;
     end
   end
 
@@ -954,7 +991,7 @@ module tb_hnf;
       if ((typ[j] == `TXDAT1_RN0)) begin
         while (!TXDATFLITV) @(posedge CLK);
         if (TXDATFLIT.tgtid == `RN0_ID) begin
-          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit                               = rec_dat(flit[j]);
           txdatflit.tgtid   = `RN0_ID;
           txdatflit.srcid   = `HNF0_ID;
           txdatflit.homenid = `HNF0_ID;
@@ -974,7 +1011,7 @@ module tb_hnf;
 
           @(posedge CLK);
           while (!TXDATFLITV) @(posedge CLK);
-          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit                               = rec_dat(flit[j]);
           txdatflit.tgtid   = `RN0_ID;
           txdatflit.srcid   = `HNF0_ID;
           txdatflit.homenid = `HNF0_ID;
@@ -997,7 +1034,7 @@ module tb_hnf;
       if ((typ[j] == `TXDAT1_RN1)) begin
         while (!TXDATFLITV) @(posedge CLK);
         if (TXDATFLIT.tgtid == `RN1_ID) begin
-          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit                               = rec_dat(flit[j]);
           txdatflit.tgtid   = `RN1_ID;
           txdatflit.srcid   = `HNF0_ID;
           txdatflit.homenid = `HNF0_ID;
@@ -1017,7 +1054,7 @@ module tb_hnf;
 
           @(posedge CLK);
           while (!TXDATFLITV) @(posedge CLK);
-          txdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          txdatflit                               = rec_dat(flit[j]);
           txdatflit.tgtid   = `RN1_ID;
           txdatflit.srcid   = `HNF0_ID;
           txdatflit.homenid = `HNF0_ID;
@@ -1172,7 +1209,7 @@ module tb_hnf;
     @(negedge RST);
     forever begin
       if (typ[j] == `RN0_DAT1_SNI) begin
-        g_txdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        g_txdatflit                             = rec_dat(flit[j]);
         g_txdatflit.srcid = `RN0_ID;
         g_txdatflit.tgtid = `SN_ID;
         sn_txdatflitv_tmp <= 1'b1;
@@ -1183,7 +1220,7 @@ module tb_hnf;
 `endif
 
         @(posedge CLK);
-        g_txdatflit                             = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+        g_txdatflit                             = rec_dat(flit[j]);
         g_txdatflit.srcid = `RN0_ID;
         g_txdatflit.tgtid = `SN_ID;
         sn_txdatflitv_tmp <= 1'b1;
@@ -1193,8 +1230,10 @@ module tb_hnf;
         $display("RN0 sent data1 to SN");
 `endif
       end
+      else begin
+        sn_txdatflitv_tmp <= 1'b0;
+      end
       @(posedge CLK);
-      sn_txdatflitv_tmp <= 1'b0;
     end
   end
 
@@ -1205,7 +1244,7 @@ module tb_hnf;
       if (typ[j] == `SNI_DAT1_RN0) begin
         while (!sn_rxdatflitv) @(posedge CLK);
         if (sn_rxdatflit.tgtid == `RN0_ID) begin
-          g_rxdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          g_rxdatflit                               = rec_dat(flit[j]);
           g_rxdatflit.tgtid   = `RN0_ID;
           g_rxdatflit.srcid   = `SN_ID;
           g_rxdatflit.homenid = `HNF0_ID;
@@ -1229,7 +1268,7 @@ module tb_hnf;
         while (!sn_rxdatflitv) @(posedge CLK);
 
         if (sn_rxdatflit.tgtid == `RN0_ID) begin
-          g_rxdatflit                               = chie_pkg::dat_flit_s'(flit[j][chie_pkg::DAT_FLIT_WIDTH-1:0]);
+          g_rxdatflit                               = rec_dat(flit[j]);
           g_rxdatflit.tgtid   = `RN0_ID;
           g_rxdatflit.srcid   = `SN_ID;
           g_rxdatflit.homenid = `HNF0_ID;
