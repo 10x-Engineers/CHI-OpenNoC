@@ -28,10 +28,11 @@ module hnf `HNF_PARAM
     input  wire                                     TXLINKACTIVEACK,
     input  wire                                     RXLINKACTIVEREQ,
     output wire                                     RXLINKACTIVEACK,
-    // Chapter 15 (p.15-466): the system coherency interface. Sec 16.2 (p.16-474) gives
-    // an interface one set of these, as it does SACTIVE and LINKACTIVE.
-    input  wire                                     SYSCOREQ,
-    output wire                                     SYSCOACK,
+    // Chapter 15 (p.15-466): the system coherency interface. Sec 15.1 (p.15-466)
+    // Figure 15-1 runs the pair between EACH Requester and the interconnect, so a
+    // Home serving RNF_NID_LIST_PARAM takes one bit per entry, in that bit order.
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCOREQ,
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCOACK,
     output wire                                     TXSACTIVE,
     input  wire                                     RXSACTIVE,
     input  wire                                     RXREQFLITV,
@@ -385,8 +386,10 @@ module hnf `HNF_PARAM
     wire                                     hnf_txflit_avail;
     wire                                     hnf_txlink_run;
     wire                                     hnf_qos_active_sx;
-    wire                                     hnf_mshr_snp_outstanding_sx;
-    wire                                     hnf_sysco_snp_en;
+    wire [`RNF_NUM-1:0]                      hnf_mshr_snp_outstanding_sx;
+    wire [`RNF_NUM-1:0]                      hnf_sysco_snp_en;
+    wire [`RNF_NUM-1:0]                      hnf_sysco_snp_gen_en;
+    wire [`RNF_NUM-1:0]                      hnf_pipe_snp_chosen_vec_sx;
 
     chi_link_handshake u_chi_link_handshake(
         .clk                (CLK                ),
@@ -418,26 +421,35 @@ module hnf `HNF_PARAM
     // "set SYSCOACK HIGH without waiting for responses to any Snoop requests that it
     // has sent after SYSCOREQ goes HIGH" -- so the rise is unconditional. On SYSCOREQ
     // LOW it must "complete all snoop accesses to the interface before it sets
-    // SYSCOACK LOW", which is what mshr_snp_outstanding_sx reports.
-    logic syscoreq_q, syscoack_q;
+    // SYSCOACK LOW", and "the interface" is one Requester's, which is the scope
+    // mshr_snp_outstanding_sx reports per bit.
+    logic [`RNF_NUM-1:0] syscoreq_q, syscoack_q;
     always_ff @(posedge CLK or posedge RST) begin
-        if (RST) syscoreq_q <= 1'b0;
+        if (RST) syscoreq_q <= {`RNF_NUM{1'b0}};
         else     syscoreq_q <= SYSCOREQ;
     end
 
     always_ff @(posedge CLK or posedge RST) begin
-        if (RST)                                        syscoack_q <= 1'b0;
-        else if (syscoreq_q)                            syscoack_q <= 1'b1;
-        else if (!hnf_mshr_snp_outstanding_sx)          syscoack_q <= 1'b0;
+        if (RST)
+            syscoack_q <= {`RNF_NUM{1'b0}};
+        else
+            for (int i = 0; i < `RNF_NUM; i = i + 1) begin
+                if (syscoreq_q[i])                          syscoack_q[i] <= 1'b1;
+                else if (!hnf_mshr_snp_outstanding_sx[i] &&
+                         !hnf_pipe_snp_chosen_vec_sx[i])   syscoack_q[i] <= 1'b0;
+            end
     end
 
     assign SYSCOACK = syscoack_q;
 
-    // Table 15-1 (p.15-468): the interconnect "must not send Snoop requests" in
-    // Coherency Disabled and "must not generate new Snoop requests" in Coherency
-    // Disconnect -- both of which are SYSCOREQ LOW. Held rather than dropped: the
-    // fan-out Sec 4.4.1 (p.4-194, MUST) owes is still owed once coherency returns.
-    assign hnf_sysco_snp_en = syscoreq_q;
+    // Table 15-1 (p.15-468, MUST): only Coherency Disabled -- SYSCOREQ and SYSCOACK
+    // both LOW -- forbids sending a Snoop request outright. Coherency Disconnect
+    // keeps SYSCOACK HIGH and requires the interconnect to "complete outstanding
+    // Snoop requests", which is what an in-flight fan-out to that interface is.
+    assign hnf_sysco_snp_en     = syscoreq_q | syscoack_q;
+    // The same table's other half, which is about deciding to snoop rather than
+    // about sending: no new Snoop request is generated in Disconnect or Disabled.
+    assign hnf_sysco_snp_gen_en = syscoreq_q;
 
     hnf_link `HNF_PARAM_INST
              u_hnf_link(
@@ -657,6 +669,7 @@ module hnf `HNF_PARAM
                  //inputs
                  .clk                                          (CLK                               ),
                  .rst                                          (RST                               ),
+                 .sysco_snp_gen_en                             (hnf_sysco_snp_gen_en              ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
                  .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
                  .li_mshr_rxreq_qos_s0                         (li_mshr_rxreq_qos_s0              ),
@@ -880,6 +893,8 @@ module hnf `HNF_PARAM
                            //inputs
                            .clk                                          (CLK                               ),
                            .rst                                          (RST                               ),
+                           .sysco_snp_gen_en                             (hnf_sysco_snp_gen_en              ),
+                           .pipe_snp_chosen_vec_sx                       (hnf_pipe_snp_chosen_vec_sx        ),
                            .mshr_l3_req_en_sx1_q                         (mshr_l3_req_en_sx1_q & (&notify_reg)),
                            .mshr_l3_dn_err_sx1_q                         (mshr_l3_dn_err_sx1_q              ),
                            .mshr_l3_addr_sx1                             (mshr_l3_addr_sx1                  ),

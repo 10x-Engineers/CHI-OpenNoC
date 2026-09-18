@@ -24,6 +24,7 @@ module hnf_mshr `HNF_PARAM
     //inputs
     input  wire                                clk,
     input  wire                                rst,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_gen_en,
     input  wire                                li_mshr_rxreq_valid_s0,
     input  wire                                li_mshr_rxreq_seq_s0,
     input  wire [3:0]                          li_mshr_rxreq_qos_s0,
@@ -190,7 +191,7 @@ module hnf_mshr `HNF_PARAM
     output wire                                mshr_txreq_allowretry_sx1,
     output chie_pkg::order_e                   mshr_txreq_order_sx1,
     output wire [3:0]                          mshr_txreq_pcrdtype_sx1,
-    output wire                                mshr_snp_outstanding_sx,
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   mshr_snp_outstanding_sx,
     output chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     output wire                                mshr_txreq_dodwt_sx1,
     output wire                                mshr_txreq_tracetag_sx1,
@@ -480,6 +481,7 @@ module hnf_mshr `HNF_PARAM
                  u_hnf_mshr_ctl(
                      .clk                                             (clk                               ),
                      .rst                                             (rst                               ),
+                     .sysco_snp_gen_en                                (sysco_snp_gen_en                  ),
                      .li_mshr_rxreq_valid_s0                          (li_mshr_rxreq_valid_s0            ),
                      .li_mshr_rxreq_seq_s0                            (li_mshr_rxreq_seq_s0              ),
                      .li_mshr_rxreq_qos_s0                            (li_mshr_rxreq_qos_s0              ),
