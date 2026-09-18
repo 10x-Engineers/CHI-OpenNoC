@@ -357,6 +357,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdshared_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_prefunq_s1_q;
     wire                                 mshr_snp_will_fwd_sx7;
+    wire                                 l3_snp_dct_ok_sx7;
     logic [7:0]                          mshr_pgroupid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_rdy_sx_q;
@@ -1343,7 +1344,11 @@ module hnf_mshr_ctl `HNF_PARAM
                     (mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry] & mshr_tagop_update[entry])) & mshr_mte_mem[entry];
         end
     endgenerate
-    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
+    // SS16.1 (p.16-470): "When not specified, or set to False, Direct Cache Transfer
+    // transactions are not supported", and it is the Home's responsibility to pick the
+    // snoop type -- so a Snoopee that declares none is sent the Non-forwarding one.
+    assign l3_snp_dct_ok_sx7    = (|l3_snp_bit_sx7_q) & ~(|(l3_snp_bit_sx7_q & ~RNF_DCT_LIST_PARAM[`RNF_NUM-1:0]));
+    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q & l3_snp_dct_ok_sx7)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
     assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
     always_comb begin : mshr_rxreq_srcid_onehot_s0_comb_logic
@@ -2574,7 +2579,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
     // The same election mshr_dct_set_sx8 makes one stage later, needed here because
     // which snoop is legal depends on whether it will be a forwarding one.
-    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
+    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & l3_snp_dct_ok_sx7 & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
 
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)

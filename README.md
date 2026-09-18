@@ -204,6 +204,7 @@ passes them down a hierarchy.
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | AXI data width on HN-I / RN-I / SN-F. |
 | `AXI4_PA_WIDTH_PARAM` | `opennoc_rni_pkg::PA_WIDTH` (44) on RN-I, **32** on HN-I and SN-F | AXI address width. Deliberately different: RN-I is a manager port, the others face memory. |
 | `HNF_MSHR_RNF_NUM_PARAM` + `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | How many coherent Requesters the Home serves, and their NodeIDs. |
+| `RNF_DCT_LIST_PARAM` | every bit True | Those Requesters' section 16.1 (p.16-470) `Direct_Cache_Transfer` declaration, one bit per `RNF_NID_LIST_PARAM` entry in the same order. The Home elects a Forwarding snoop only toward a Requester whose bit is set, and serves the data itself otherwise. A generated mesh or ring sets every bit False in its `RNF_DCT_LIST`, because OpenNoC's own RN-F decodes no Forwarding snoop. |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | L3 geometry. Line size is fixed at 64 B. |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | Snoop filter geometry. |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | RN-F cache geometry. Section 4.6 (p.4-209) makes capacity, associativity and replacement IMPLEMENTATION DEFINED, so these are a declaration rather than a spec constant; the 64-byte line is not, section 2.10.1 (p.2-133) fixes it. |

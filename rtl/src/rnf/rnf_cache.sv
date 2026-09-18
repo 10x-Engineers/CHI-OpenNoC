@@ -196,6 +196,17 @@ module rnf_cache `RNF_PARAM
     wire [`RNF_TAG_W-1:0] fill_tag = fill_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
     wire [`RNF_SET_W-1:0] upd_set  = upd_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
     wire [`RNF_SET_W-1:0] upd2_set = upd2_addr_i[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
+    wire [`RNF_TAG_W-1:0] upd_tag  = upd_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
+    wire [`RNF_TAG_W-1:0] upd2_tag = upd2_addr_i[CHIE_REQ_ADDR_WIDTH_PARAM-1 -: `RNF_TAG_W];
+
+    // A fill taking the way an update names, for a different line: the update
+    // belongs to the line the fill displaced, and landing it on the new one
+    // discards a freshly installed copy -- with a Dirty one, SS4.6's (p.4-209)
+    // silent transitions do not admit that, the data is the only copy.
+    wire upd_displaced  = fill_v_i && (upd_set  == fill_set) &&
+                          (upd_way_i  == fill_way_i) && (upd_tag  != fill_tag);
+    wire upd2_displaced = fill_v_i && (upd2_set == fill_set) &&
+                          (upd2_way_i == fill_way_i) && (upd2_tag != fill_tag);
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
@@ -218,13 +229,13 @@ module rnf_cache `RNF_PARAM
                 rr_q[fill_set] <= (rr_q[fill_set] == `RNF_WAY_W'(WAYS-1)) ? '0
                                                                           : (rr_q[fill_set] + 1'b1);
             end
-            if (upd_v_i == 1'b1)
+            if (upd_v_i == 1'b1 && !upd_displaced)
                 state_q[upd_set][upd_way_i] <= upd_state_i;
             // Last, so that a CopyBack retiring the line it has just written back
             // wins over a snoop landing on it in the same cycle. The snoop's own
             // answer still stands: SS4.6's Table 4-32 (p.4-209) makes the drop to
             // Invalid behind it a permitted silent transition.
-            if (upd2_v_i == 1'b1)
+            if (upd2_v_i == 1'b1 && !upd2_displaced)
                 state_q[upd2_set][upd2_way_i] <= upd2_state_i;
         end
     end
