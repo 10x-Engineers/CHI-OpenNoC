@@ -280,7 +280,8 @@ module hnf_mshr_ctl `HNF_PARAM
 
 
 
-    output wire [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_busy_sx                   //outputs to hnf_mshr_addr_buffer
+    output wire [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_busy_sx,                  //outputs to hnf_mshr_addr_buffer
+    output wire                                mshr_dn_line_hold_s1               //outputs to hnf_mshr_bypass
     );
     //internal signals
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_entry_valid_sx_q;
@@ -474,6 +475,8 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_rd_rdy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_rdy_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_sent_sx;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_line_hold_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rn_data_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_data_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_rn_rdy_sx_q;
@@ -3320,6 +3323,15 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_pipeline_busy_sx[entry]
                    = l3_rd_busy_s2_q[entry] | l3_fill_busy_sx_q[entry];
             assign mshr_mem_busy_sx[entry]      = mshr_mem_rd_busy_sx_q[entry] | mshr_mem_wr_busy_sx_q[entry] | mshr_mem_cmo_busy_sx_q[entry];
+            // busy & ~rdy is "already on the wire": rdy clears when TXREQ wins, so only an
+            // entry that has issued can hold another, and two entries cannot hold each other.
+            assign mshr_dn_sent_sx[entry]       = (mshr_mem_rd_busy_sx_q[entry] & ~mshr_mem_rd_rdy_sx_q[entry])
+                   | (mshr_mem_wr_busy_sx_q[entry] & ~mshr_mem_wr_rdy_sx_q[entry]) | mshr_mem_cmo_busy_sx_q[entry];
+            // Sec 4.11 (p.4-242, MUST): the interconnect defines the order of transactions to
+            // one cache line. Table 2-9 (p.2-119) Reserves Order 0b10/0b11 HN-F to SN-F and
+            // Table 4-14 (p.4-179) pins every write there to 0b00, so an overlapping access
+            // cannot express the order on the link and waits for the first to complete instead.
+            assign mshr_dn_line_hold_sx[entry]  = |(mshr_same_line_sx[entry] & mshr_dn_sent_sx & mshr_entry_valid_sx_q);
             assign mshr_datbuf_busy_sx[entry]   = mshr_rn_data_busy_sx_q[entry] | mshr_sn_data_busy_sx_q[entry];
             assign mshr_rsp_busy_wr_sx[entry]   = mshr_comp_busy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry];
             assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry] |
@@ -3752,6 +3764,8 @@ module hnf_mshr_ctl `HNF_PARAM
 
     // The address is mshr_addr_s1_q, not the address buffer's copy: that one is
     // rewritten to the victim's on an SLC eviction pass.
+    assign mshr_dn_line_hold_s1 = mshr_dn_line_hold_sx[mshr_entry_idx_alloc_s1_q];
+
     always_comb begin : mshr_same_line_comb_logic
         for(int e = 0; e < `MSHR_ENTRIES_NUM; e = e+1)
             mshr_same_line_sx[e] = {`MSHR_ENTRIES_NUM{1'b0}};
@@ -3803,10 +3817,10 @@ module hnf_mshr_ctl `HNF_PARAM
                 entry<`MSHR_ENTRIES_NUM;
                 entry=entry+1) begin : mshr_determine_entry_comb_logic
             assign txreq_wrap_ageq_vec[entry]
-                   = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] &
+                   = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & (~mshr_dn_line_hold_sx[entry]) & mshr_entry_valid_sx_q[entry] &
                    (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) & (((~mshr_txreq_valid_sx1_q)) | (mshr_txreq_txnid_sx1_q!=entry));
 
-            assign txreq_wrap_other_vec[entry] = mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) &
+            assign txreq_wrap_other_vec[entry] = mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & (~mshr_dn_line_hold_sx[entry]) & mshr_entry_valid_sx_q[entry] & (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) &
                    (((~mshr_txreq_valid_sx1_q)) | (mshr_txreq_txnid_sx1_q!=entry));
 
             assign txrsp_wrap_ageq_vec[entry] = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txrsp_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] &
