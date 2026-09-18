@@ -185,9 +185,11 @@ else
 fi
 
 # rtl/tb/tb_xp_link.sv -- the crosspoint's Chapter 14 link-activation bench. It
-# runs under Verilator, so unlike tb_hnf_link.sv (which needs a licensed simulator)
-# it can be a gate rather than a manual step. --binary needs a compiler with
-# coroutine support for the bench's own timing controls.
+# runs under Verilator, so it can be a gate here rather than a manual step.
+# tb_hnf_link.sv is its HN-F counterpart and now runs under Verilator too
+# (SIM=verilator tools/link_check.sh), but stays out of CI because it builds the
+# whole HN-F. --binary needs a compiler with coroutine support for the bench's
+# own timing controls.
 run_xp_link() {
   echo "==================== crosspoint link activation ===================="
   local out d

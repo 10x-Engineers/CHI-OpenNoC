@@ -23,6 +23,19 @@ cd "$(dirname "$0")/../rtl" || exit 2
 SIM=${SIM:-xrun}
 command -v "$SIM" >/dev/null || { echo "$SIM not on PATH"; exit 2; }
 
+# Verilator compiles the model to C++ and needs coroutines for --timing. The
+# system compiler on an older distribution (GCC 8 on RHEL 8) fails deep in the
+# generated makefile with "unrecognized command line option -fcoroutines", which
+# does not name its own cause -- so check it here instead.
+if [ "$SIM" = verilator ]; then
+  CXX=${CXX:-g++}
+  echo 'int main(){}' | "$CXX" -std=c++20 -fcoroutines -x c++ - -o /dev/null 2>/dev/null || {
+    echo "$CXX does not support -fcoroutines -- Verilator's --timing needs GCC >= 10 or Clang >= 14."
+    echo "Set CXX, or put a newer toolchain first on PATH (e.g. scl enable gcc-toolset-13)."
+    exit 2
+  }
+fi
+
 # chi_ring_channel.sv and xp_sel_bit_from_vec.sv declare parameters with no default,
 # which xrun rejects, and the HN-F needs neither -- so name the misc modules it
 # does need rather than globbing.
@@ -35,11 +48,20 @@ case "$SIM" in
   vcs)  CMD=(vcs  -sverilog +incdir+include -top tb_hnf_link -R -Mdir="$OUT/csrc" -o "$OUT/simv") ;;
   # -incdir resolves a missing *module* by filename but not a package, so the two
   # the bench's flit types come from are named rather than left to the path.
+  # -Wno-fatal: tools/lint.sh is the warning gate, and it runs over src/ only --
+  # the bench's own width warnings must not block a behavioural check.
+  verilator) CMD=(verilator --binary --timing -j 0 -Wno-fatal -Iinclude
+                  --top-module tb_hnf_link --Mdir "$OUT/obj_dir" -o sim) ;;
   *)    echo "unsupported SIM=$SIM"; exit 2 ;;
 esac
 
 # shellcheck disable=SC2086
 "${CMD[@]}" include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_link.sv src/hnf/*.sv $MISC > "$OUT/sim.log" 2>&1
+
+# xrun and vcs -R elaborate and run in one command; Verilator emits a binary to run.
+if [ "$SIM" = verilator ] && [ -x "$OUT/obj_dir/sim" ]; then
+  "$OUT/obj_dir/sim" >> "$OUT/sim.log" 2>&1
+fi
 grep -E "^(FAIL|tb_hnf_link:)" "$OUT/sim.log" | sed 's/^/  /'
 
 if grep -q "tb_hnf_link: PASSED" "$OUT/sim.log"; then

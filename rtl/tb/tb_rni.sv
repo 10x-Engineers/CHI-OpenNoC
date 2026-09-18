@@ -1955,7 +1955,7 @@ module tb_rni;
     initial begin
         forever @(posedge clk) begin
             if($time >= 100000000) begin
-                $display("\n\n\ERROR TIMEOUT at %0t", $time);
+                $display("\n\nERROR TIMEOUT at %0t", $time);
                 $display("\n\n\
                 #####################################################\n\
                 test_result:FAILED  #################################\n\
@@ -1977,9 +1977,11 @@ module tb_rni;
     end
 
 // Waveform generation
+`ifndef VERILATOR
     initial begin
        $fsdbDumpfile("tb_rni.fsdb");
        $fsdbDumpvars;
     //    $fsdbDumpMDA();
     end
+`endif
 endmodule
