@@ -149,7 +149,7 @@ module hnf_link `HNF_PARAM
     input  wire                                lcrd_return_en,
     input  wire                                txlink_run,
     output wire                                rxcrd_cnt_full,
-    input  wire                                sysco_snp_en,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_en,
     output wire                                txflit_avail,
     output wire                                li_mshr_rxreq_valid_s0,
     output wire                                li_mshr_rxreq_seq_s0,

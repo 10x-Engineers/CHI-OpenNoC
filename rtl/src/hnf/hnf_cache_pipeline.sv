@@ -27,6 +27,9 @@ module hnf_cache_pipeline `HNF_PARAM
     //global inputs
     input  wire                                     clk,
     input  wire                                     rst,
+    // Table 15-1 (p.15-468, MUST): the Requester interfaces the Home may generate a
+    // new Snoop request to, one bit per RNF_NID_LIST_PARAM entry.
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        sysco_snp_gen_en,
 
     //inputs from hnf_mshr_ctl
     input  wire                                     mshr_l3_req_en_sx1_q,
@@ -95,6 +98,11 @@ module hnf_cache_pipeline `HNF_PARAM
     output wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      biq_req_addr_s0_q,
 
     //outputs to hnf_mshr_ctl
+    // The snoopees a pass has chosen but not yet handed to the MSHR. Sec 15.2.2
+    // (p.15-468, MUST) scopes "complete all snoop accesses to the interface" to one
+    // interface, and a fan-out this pipeline has decided on is such an access even
+    // before the tracker records it.
+    output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        pipe_snp_chosen_vec_sx,
     output logic                                    l3_pipeval_sx7_q,
     output chie_pkg::req_opcode_e                   l3_opcode_sx7_q,
     output logic                                    l3_memrd_sx7_q,
@@ -367,6 +375,8 @@ module hnf_cache_pipeline `HNF_PARAM
     wire [`SF_WAY_NUM-1:0]                   pipe_sf_free_way_vec_sx4;
     wire                                     pipe_sf_free_sx4;
     wire                                     pipe_sf_other_match_sx4;
+    wire                                     pipe_sf_other_coherent_match_sx4;
+    wire [`RNF_NUM*2-1:0]                    pipe_sf_coherent_mask_sx4;
     wire                                     pipe_sf_other_match_share_sx4;
     wire                                     pipe_sf_self_match_sx4;
     wire                                     pipe_sf_self_match_share_sx4;
@@ -1598,8 +1608,24 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0] = pipe_stash_vec_sx_q[SX4]
                                                 & {`RNF_NUM{~pipe_fill_sx4}}
                                                 & {`RNF_NUM{~(op_dl_evict_sx4_q & pipe_stash_other_holder_sx4)}};
-    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = (op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0])
-                                             | pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
+    // Table 15-1 (p.15-468, MUST): an interface outside Coherency Connect or Enabled
+    // is sent no new Snoop request, and its caches hold no coherent data -- so the
+    // directory's record of it is neither a snoopee below nor a source of the line.
+    // Both views are what they were while every interface is coherent.
+    generate
+        for(gi=0; gi<`RNF_NUM; gi=gi+1)begin : sysco_coherent_mask_logic
+            assign pipe_sf_coherent_mask_sx4[gi*2 +: 2] = {`SF_STATE_WIDTH{sysco_snp_gen_en[gi]}};
+        end
+    endgenerate
+
+    assign pipe_sf_other_coherent_match_sx4 = pipe_sf_other_match_sx4 &
+           ((&sysco_snp_gen_en) | (|(pipe_sf_match_state_sx4_q[`RNF_NUM*2-1:0] &
+                                     pipe_sf_other_valid_mask_sx4_q[`RNF_NUM*2-1:0] &
+                                     pipe_sf_coherent_mask_sx4[`RNF_NUM*2-1:0])));
+
+    assign pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0] = ((op_cmo_cs_sx4_q ? pipe_sf_snp_unq_tgt_vec_sx4[`RNF_NUM-1:0] : pipe_sf_snp_tgt_vec_sx4[`RNF_NUM-1:0])
+                                             | pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0])
+                                             & sysco_snp_gen_en[`RNF_NUM-1:0];
     assign pipe_sf_wr_state_sx4[`RNF_NUM*2-1:0] = (pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) ? pipe_sf_update_state_sx4[`RNF_NUM*2-1:0] : pipe_sf_insert_state_sx4[`RNF_NUM*2-1:0];
 
     //////////////////////////////////////////////////////////////////////////////
@@ -1625,7 +1651,7 @@ module hnf_cache_pipeline `HNF_PARAM
                 gi<`RNF_NUM;
                 gi=gi+1)begin
             assign pipe_biq_hit_tgt_vec_sx5[gi]
-                   = ~pipe_sf_self_valid_mask_sx4_q[gi*2];
+                   = ~pipe_sf_self_valid_mask_sx4_q[gi*2] & sysco_snp_gen_en[gi];
         end
     endgenerate
     //=============================================================================
@@ -1638,7 +1664,12 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_sf_wr_sx4   = (((pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4) && (pipe_sf_wr_state_sx4 != pipe_sf_match_state_sx4_q)) | pipe_sf_insert_sx4) & (~op_rdonce_sx4_q);
 
     // when no fill read miss in slc and sf
-    assign pipe_mem_rd_sx4 = ~pipe_tag_match_sx4_q & ~pipe_sf_other_match_sx4 & ~pipe_fill_sx4 & (op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q | op_wuptl_sx4_q);
+    assign pipe_snp_chosen_vec_sx = ({`RNF_NUM{pipe_req_valid_sx[SX4]}}       & pipe_sf_tgt_vec_sx4)
+                                  | ({`RNF_NUM{pipe_req_valid_sx_q[SX5]}}     & pipe_sf_tgt_vec_sx5_q)
+                                  | ({`RNF_NUM{pipe_req_valid_sx_q[SX5]}}     & pipe_biq_hit_tgt_vec_sx5_q)
+                                  | ({`RNF_NUM{l3_pipeval_sx7_q}}             & l3_snp_bit_sx7_q);
+
+    assign pipe_mem_rd_sx4 = ~pipe_tag_match_sx4_q & ~pipe_sf_other_coherent_match_sx4 & ~pipe_fill_sx4 & (op_rdonce_sx4_q | op_roinv_sx4_q | op_rdnsd_sx4_q | op_rdclean_sx4_q | op_rdunique_sx4_q | op_wuptl_sx4_q);
 
     //=============================================================================
     // Stage 5
