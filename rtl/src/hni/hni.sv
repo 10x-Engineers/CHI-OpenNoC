@@ -19,6 +19,7 @@
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
+`include "param_check.svh"
 
 module hni `HNI_PARAM
     (
@@ -521,12 +522,8 @@ module hni `HNI_PARAM
             .bready_sx(BREADY)
         );
 
-    if (HNI_MSHR_ENTRIES_WIDTH_PARAM != ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1))
-        $fatal(1, "hni: HNI_MSHR_ENTRIES_WIDTH_PARAM=%0d cannot index HNI_MSHR_ENTRIES_NUM_PARAM=%0d entries; the width is $clog2 of the count, so leave it at its default.",
-               HNI_MSHR_ENTRIES_WIDTH_PARAM, HNI_MSHR_ENTRIES_NUM_PARAM);
-    if (HNI_MSHR_EXCL_RN_WIDTH_PARAM != ((HNI_MSHR_EXCL_RN_NUM_PARAM > 1) ? $clog2(HNI_MSHR_EXCL_RN_NUM_PARAM) : 1))
-        $fatal(1, "hni: HNI_MSHR_EXCL_RN_WIDTH_PARAM=%0d cannot index HNI_MSHR_EXCL_RN_NUM_PARAM=%0d monitors; the width is $clog2 of the count, so leave it at its default.",
-               HNI_MSHR_EXCL_RN_WIDTH_PARAM, HNI_MSHR_EXCL_RN_NUM_PARAM);
+    `CHECK_DERIVED_WIDTH(hni, HNI_MSHR_ENTRIES_NUM_PARAM, HNI_MSHR_ENTRIES_WIDTH_PARAM, entries)
+    `CHECK_DERIVED_WIDTH(hni, HNI_MSHR_EXCL_RN_NUM_PARAM, HNI_MSHR_EXCL_RN_WIDTH_PARAM, monitors)
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.

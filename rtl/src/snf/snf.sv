@@ -20,6 +20,7 @@
 `include "axi4_defines.svh"
 `include "snf_defines.svh"
 `include "snf_param.svh"
+`include "param_check.svh"
 
 module snf `SNF_PARAM
     (
@@ -539,9 +540,7 @@ module snf `SNF_PARAM
             .bvalid_sx(BVALID),
             .bready_sx(BREADY)
         );
-    if (SNF_MSHR_ENTRIES_WIDTH_PARAM != ((SNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(SNF_MSHR_ENTRIES_NUM_PARAM) : 1))
-        $fatal(1, "snf: SNF_MSHR_ENTRIES_WIDTH_PARAM=%0d cannot index SNF_MSHR_ENTRIES_NUM_PARAM=%0d entries; the width is $clog2 of the count, so leave it at its default.",
-               SNF_MSHR_ENTRIES_WIDTH_PARAM, SNF_MSHR_ENTRIES_NUM_PARAM);
+    `CHECK_DERIVED_WIDTH(snf, SNF_MSHR_ENTRIES_NUM_PARAM, SNF_MSHR_ENTRIES_WIDTH_PARAM, entries)
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
