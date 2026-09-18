@@ -20,6 +20,7 @@
 `include "axi4_defines.svh"
 `include "snf_defines.svh"
 `include "snf_param.svh"
+`include "param_check.svh"
 
 module snf `SNF_PARAM
     (
@@ -539,6 +540,8 @@ module snf `SNF_PARAM
             .bvalid_sx(BVALID),
             .bready_sx(BREADY)
         );
+    `CHECK_DERIVED_WIDTH(snf, SNF_MSHR_ENTRIES_NUM_PARAM, SNF_MSHR_ENTRIES_WIDTH_PARAM, entries)
+
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
     chie_flit_opt_check #(

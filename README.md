@@ -200,7 +200,9 @@ passes them down a hierarchy.
 | `RNF_LCRD_NUM_PARAM` | 15 | L-Credits the RN-F grants per RX channel. Section 14.2.1 caps outstanding credits at 15. |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` | 8 / 0 | The RN-F's own NodeID and its Home's. 8 is the first entry of the HN-F's default `RNF_NID_LIST_PARAM`, so a default-parameterised pair agrees. |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | Exclusive monitors the RN-F holds, one per Logical Processor (section 6.2.1 p.6-283). |
-| `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Outstanding transactions per node. |
+| `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Outstanding transactions per node. On the HN-F it must be a multiple of 16: the QoS pools take 1/16, 3/16 and 1/4 of it and the Low pool the rest less the one Seq entry, and that partition is exact only there. `tools/lint.sh` lints the HN-F again at 64 and at 16. |
+| `*_MSHR_ENTRIES_WIDTH_PARAM`<br>`*_MSHR_EXCL_RN_WIDTH_PARAM` | `$clog2` of the count | Derived from the count; an override that disagrees is refused at elaboration. |
+| `HNF_BIQ_ENTRIES_NUM_PARAM` | 8 | Back-Invalidate Queue depth -- what section 4.4.2's (p.4-196) back-invalidation drains. Must be a power of two. |
 | `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` | undefined | Optional flit fields, and `` `define ``s rather than parameters: section 13.10.56 makes RSVDC optional with an implementation-defined width, section 11.3 gives MPAM 0 or 11 bits, and a packed struct cannot hold a zero-width member — so *defining* one is what puts it in the layout. `chie_flit_opt_check` holds every node's parameter to the package, and `tools/lint.sh` lints each node a second time with all of them declared. |
 | `XP_LCRD_NUM_PARAM` | 15 | Maximum outstanding L-Credits per channel. Section 14.2.1 caps this at 15; the counters are 4 bits wide, so a larger value will not fit. |
 

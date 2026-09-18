@@ -121,6 +121,10 @@ module hnf_mshr_qos `HNF_PARAM
     wire                           low_cnt_update_s0;
     wire [`QOS_POOL_CNT_WIDTH-1:0] qos_pool_hhigh_cnt_ns;
     wire [`QOS_POOL_CNT_WIDTH-1:0] qos_pool_high_cnt_ns;
+    localparam [31:0]                    HHIGH_POOL_NUM      = `QOS_HHIGH_POOL_NUM;
+    localparam [31:0]                    HIGH_POOL_NUM       = `QOS_HIGH_POOL_NUM;
+    localparam [`QOS_POOL_CNT_WIDTH-1:0] QOS_HHIGH_POOL_FULL = HHIGH_POOL_NUM[`QOS_POOL_CNT_WIDTH-1:0];
+    localparam [`QOS_POOL_CNT_WIDTH-1:0] QOS_HIGH_POOL_FULL  = HIGH_POOL_NUM[`QOS_POOL_CNT_WIDTH-1:0];
     localparam [31:0]                    MED_POOL_NUM      = `QOS_MED_POOL_NUM;
     localparam [31:0]                    LOW_POOL_NUM      = `QOS_LOW_POOL_NUM;
     localparam [`QOS_POOL_CNT_WIDTH-1:0] QOS_MED_POOL_FULL = MED_POOL_NUM[`QOS_POOL_CNT_WIDTH-1:0];
@@ -615,7 +619,7 @@ module hnf_mshr_qos `HNF_PARAM
     assign qos_pool_hhigh_cnt_ns = qos_pool_hhigh_cnt_inc_s0? (qos_pool_hhigh_cnt_q + 1'b1):
            (qos_pool_hhigh_cnt_q - 1'b1);
 
-    assign qos_pool_hhigh_full_s0 = (qos_pool_hhigh_cnt_ns == `QOS_HHIGH_POOL_NUM);
+    assign qos_pool_hhigh_full_s0 = (qos_pool_hhigh_cnt_ns == QOS_HHIGH_POOL_FULL);
 
     always_ff @(posedge clk or posedge rst) begin:update_hhigh_pool_count_timing_logic
         if (rst == 1'b1)
@@ -654,7 +658,7 @@ module hnf_mshr_qos `HNF_PARAM
     assign qos_pool_high_cnt_ns = qos_pool_high_cnt_inc_s0? (qos_pool_high_cnt_q + 1'b1):
            (qos_pool_high_cnt_q - 1'b1);
 
-    assign qos_pool_high_full_s0 = (qos_pool_high_cnt_ns == `QOS_HIGH_POOL_NUM);
+    assign qos_pool_high_full_s0 = (qos_pool_high_cnt_ns == QOS_HIGH_POOL_FULL);
 
     always_ff @(posedge clk or posedge rst) begin: update_high_pool_count_timing_logic
         if (rst == 1'b1)

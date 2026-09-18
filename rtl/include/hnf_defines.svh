@@ -91,7 +91,7 @@
 `define RNI_WIDTH                          ((HNF_MSHR_RNI_NUM_PARAM <= 1)? 1 : $clog2(HNF_MSHR_RNI_NUM_PARAM))
 `define RN_WIDTH                           ((`RN_NUM == 1)? 1 : $clog2(`RN_NUM))
 `define MSHR_ENTRIES_NUM                   HNF_MSHR_ENTRIES_NUM_PARAM
-`define MSHR_ENTRIES_WIDTH                 HNF_MSHR_ENTRIES_WIDTH_PARAM
+`define MSHR_ENTRIES_WIDTH                 ((HNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNF_MSHR_ENTRIES_NUM_PARAM) : 1)
 
 //hnf_sf_sram
 `define SF_WAY_NUM                         HNF_SF_WAY_NUM_PARAM
@@ -165,11 +165,14 @@
 `define QOS_MED_MIN                        8
 `define QOS_LOW_MAX                        7
 `define QOS_LOW_MIN                        0
-`define QOS_POOL_CNT_WIDTH                 ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 4 : 5)
-`define QOS_HHIGH_POOL_NUM                 ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 2 : 4)
-`define QOS_HIGH_POOL_NUM                  ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 6 : 12)
-`define QOS_MED_POOL_NUM                   ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 8 : 16)
-`define QOS_LOW_POOL_NUM                   ((HNF_MSHR_ENTRIES_NUM_PARAM == 32)? 15 : 31)
+// The four dynamic pools and the one Seq entry partition the MSHR exactly:
+// 1/16 + 3/16 + 1/4 + (1/2 - 1) + 1 == HNF_MSHR_ENTRIES_NUM_PARAM. hnf.sv refuses a
+// count that is not a multiple of 16, which is what makes the three divisions exact.
+`define QOS_POOL_CNT_WIDTH                 $clog2(`QOS_LOW_POOL_NUM + 1)
+`define QOS_HHIGH_POOL_NUM                 (HNF_MSHR_ENTRIES_NUM_PARAM/16)
+`define QOS_HIGH_POOL_NUM                  (3*HNF_MSHR_ENTRIES_NUM_PARAM/16)
+`define QOS_MED_POOL_NUM                   (HNF_MSHR_ENTRIES_NUM_PARAM/4)
+`define QOS_LOW_POOL_NUM                   (HNF_MSHR_ENTRIES_NUM_PARAM/2 - 1)
 // CHI E.b section 2.11 (p.2-146): a Requester limits itself "so that the Completer is
 // never required to track more than 1024 transactions that require a PCrdGrant
 // response". The legal maximum is AT 1024, which a 10-bit counter cannot hold -- the

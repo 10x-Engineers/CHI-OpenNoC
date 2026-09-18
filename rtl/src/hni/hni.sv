@@ -19,6 +19,7 @@
 `include "axi4_defines.svh"
 `include "hni_defines.svh"
 `include "hni_param.svh"
+`include "param_check.svh"
 
 module hni `HNI_PARAM
     (
@@ -520,6 +521,9 @@ module hni `HNI_PARAM
             .bvalid_sx(BVALID),
             .bready_sx(BREADY)
         );
+
+    `CHECK_DERIVED_WIDTH(hni, HNI_MSHR_ENTRIES_NUM_PARAM, HNI_MSHR_ENTRIES_WIDTH_PARAM, entries)
+    `CHECK_DERIVED_WIDTH(hni, HNI_MSHR_EXCL_RN_NUM_PARAM, HNI_MSHR_EXCL_RN_WIDTH_PARAM, monitors)
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.

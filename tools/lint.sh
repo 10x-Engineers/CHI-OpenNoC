@@ -140,6 +140,15 @@ for n in "${NODES[@]}"; do
   lint_node "$n" "optional fields" $OPT_DEFINES || rc=1
   bounds_node "$n" "default"          || rc=1
   bounds_node "$n" "optional fields" $OPT_DEFINES || rc=1
+  # The MSHR entry index and the QoS pool sizes are the only things sized from
+  # HNF_MSHR_ENTRIES_NUM_PARAM, and the passes above only ever see its default. A
+  # third HN-F elaboration off 32 is what reads the derived pool numbers at all.
+  if [ "$n" = hnf ]; then
+    lint_node   "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
+    bounds_node "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
+    lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+    bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+  fi
 done
 
 # The generated NoC. It is shipped to integrators (tools/mesh_generator/README.md)

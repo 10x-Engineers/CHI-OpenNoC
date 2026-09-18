@@ -444,7 +444,23 @@ module rnf_ctl `RNF_PARAM
     assign CMREADY = accept_ok && !ARVALID && !AWVALID;
     assign WREADY  = (st_q == S_WDATA);
 
-    wire [`RNF_CS_WIDTH-1:0] lu_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
+    // The looked-up way as the snoop port leaves it, for the same reason vic_sel_state
+    // exists on the victim path: cache_lu_state_i is read combinationally, so a snoop
+    // writing that way on the very edge a decision is taken is still ahead of it.
+    // SS4.11.1 (p.4-242, MUST): the cache state must transition as the Snoop request
+    // requires, and a decision taken from the pre-snoop state undoes that transition.
+    // The hit qualifier goes stale with the state -- a line the snoop invalidated is a
+    // miss, not a hit holding Invalid -- so both are bypassed together.
+    wire lu_snp_sel = snp_upd_v_i && (snp_upd_way_i == cache_lu_way_i) &&
+                      same_line(snp_upd_addr_i, cache_lu_addr_o);
+    // Table 15-1 (p.15-468, MUST) still has snoops answered while coh_req_i is low, so
+    // the flush port needs the same bypass as the lookup and victim ones.
+    wire flush_snp_sel = snp_upd_v_i && (snp_upd_way_i == cache_flush_way_i) &&
+                         same_line(snp_upd_addr_i, cache_flush_addr_i);
+    wire [`RNF_CS_WIDTH-1:0] flush_sel_state = flush_snp_sel ? snp_upd_state_i : cache_flush_state_i;
+    wire lu_hit_now = lu_snp_sel ? (snp_upd_state_i != `RNF_CS_I) : cache_lu_hit_i;
+    wire [`RNF_CS_WIDTH-1:0] lu_state = !lu_hit_now ? `RNF_CS_I :
+                                        lu_snp_sel  ? snp_upd_state_i : cache_lu_state_i;
 
     // Whether an LP's monitor is still set on a line.
     function automatic bit mon_set(logic [7:0] lp, logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] line);
@@ -913,7 +929,7 @@ module rnf_ctl `RNF_PARAM
                     else if (flush_v) begin
                         vic_addr_q  <= cache_flush_addr_i;
                         vic_way_q   <= cache_flush_way_i;
-                        vic_state_q <= cache_flush_state_i;
+                        vic_state_q <= flush_sel_state;
                         vic_data_q  <= cache_flush_data_i;
                         vic_meta_q  <= cache_flush_meta_i;
                         rsp_ch_q    <= CH_NONE;
@@ -921,8 +937,8 @@ module rnf_ctl `RNF_PARAM
                         excl_q      <= 1'b0;
                         // SS4.1 (p.4-160): a Dirty line is the only copy, so it goes
                         // back; Table 4-32 (p.4-209) lets a Clean one go silently.
-                        if (is_dirty(cache_flush_state_i)) begin
-                            cb_op_q       <= back_op(cache_flush_state_i);
+                        if (is_dirty(flush_sel_state)) begin
+                            cb_op_q       <= back_op(flush_sel_state);
                             cb_then_req_q <= 1'b0;
                             st_q          <= S_CB_REQ;
                         end
@@ -939,12 +955,12 @@ module rnf_ctl `RNF_PARAM
                         excl_q        <= ar_excl;
                         mpam_q        <= ARUSER[`AXI4_USER_MPAM_RANGE];
                         excl_pass_q   <= 1'b0;
-                        way_q         <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
-                        line_err_q    <= cache_lu_hit_i && cache_lu_meta_i[`RNF_META_DERR];
-                        line_poison_q <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
-                        line_vmask_q  <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                        way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
+                        line_err_q    <= lu_hit_now && cache_lu_meta_i[`RNF_META_DERR];
+                        line_poison_q <= lu_hit_now ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
+                        line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
                         acq_cs_q      <= lu_state;
-                        if (cache_lu_hit_i && !is_short(lu_state)) begin
+                        if (lu_hit_now && !is_short(lu_state)) begin
                             line_q      <= cache_lu_data_i;
                             hit_q       <= 1'b1;
                             // SS6.3.3 (p.6-290): a Load of a line already held needs
@@ -959,7 +975,7 @@ module rnf_ctl `RNF_PARAM
                         // Table 4-4 (SS4.2.1 p.4-167): a line short of valid bytes is
                         // read by ReadUnique, which Table 4-33 (p.4-212) ends UD from
                         // UDP, merging the returned bytes under its own.
-                        else if (cache_lu_hit_i) begin
+                        else if (lu_hit_now) begin
                             line_q     <= cache_lu_data_i;
                             hit_q      <= 1'b0;
                             base_udp_q <= (lu_state == `RNF_CS_UDP);
@@ -1024,7 +1040,7 @@ module rnf_ctl `RNF_PARAM
                             `RNF_CM_EVICT_SILENT, `RNF_CM_EVICT_NOTIFY,
                             `RNF_CM_EVICT_RETURN, `RNF_CM_EVICT_OFFER: begin
                                 acq_op_q <= chie_pkg::REQ_EVICT;
-                                if (!cache_lu_hit_i) st_q <= S_CMRSP;
+                                if (!lu_hit_now) st_q <= S_CMRSP;
                                 // Table 4-16 (SS4.2.3 p.4-181): a Dirty line leaves by
                                 // WriteBack whatever the core asked.
                                 else if (is_dirty(lu_state)) begin
@@ -1088,7 +1104,7 @@ module rnf_ctl `RNF_PARAM
                                 // Table 4-10 (SS4.2.2 p.4-174): CleanShared from UC,
                                 // SC or I only.
                                 else begin
-                                    drop_q <= cache_lu_hit_i &&
+                                    drop_q <= lu_hit_now &&
                                               ((CMOP == `RNF_CM_CLEAN_SHARED_EVICT) ||
                                                (lu_state == `RNF_CS_UCE));
                                     st_q   <= S_REQ;
@@ -1107,7 +1123,7 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 // Table 4-38 (p.4-218): CleanInvalid is issued from I.
                                 else begin
-                                    drop_q <= cache_lu_hit_i;
+                                    drop_q <= lu_hit_now;
                                     st_q   <= S_REQ;
                                 end
                             end
@@ -1121,7 +1137,7 @@ module rnf_ctl `RNF_PARAM
                                     st_q          <= S_CB_REQ;
                                 end
                                 else begin
-                                    drop_q <= cache_lu_hit_i;
+                                    drop_q <= lu_hit_now;
                                     st_q   <= S_REQ;
                                 end
                             end
@@ -1144,15 +1160,15 @@ module rnf_ctl `RNF_PARAM
                         wchunk_q  <= wchunk_q + 2'd1;
                         wpoison_q <= wpoison_now;
                         if (WLAST) begin
-                            way_q         <= cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
-                            line_err_q    <= cache_lu_hit_i && cache_lu_meta_i[`RNF_META_DERR];
-                            line_poison_q <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
-                            line_vmask_q  <= cache_lu_hit_i ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                            way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
+                            line_err_q    <= lu_hit_now && cache_lu_meta_i[`RNF_META_DERR];
+                            line_poison_q <= lu_hit_now ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
+                            line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
                             alloc_q       <= 1'b1;
                             ack_q         <= 1'b1;
                             // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
                             // is reset fails, and issues no transaction.
-                            if (excl_q && !(cache_lu_hit_i && !is_short(lu_state) &&
+                            if (excl_q && !(lu_hit_now && !is_short(lu_state) &&
                                             mon_set(lpid_q, addr_q))) begin
                                 hit_q   <= 1'b1;
                                 apply_q <= 1'b0;
@@ -1162,7 +1178,7 @@ module rnf_ctl `RNF_PARAM
                             // 4-32 (SS4.6 p.4-209) makes the store silent, UD once every
                             // byte is valid and UDP until then. SS6.3.3 (p.6-290) passes
                             // an Exclusive Store from it without a transaction.
-                            else if (cache_lu_hit_i && is_unique(lu_state)) begin
+                            else if (lu_hit_now && is_unique(lu_state)) begin
                                 line_q       <= cache_lu_data_i;
                                 fill_state_q <= `RNF_CS_UC;
                                 hit_q        <= 1'b1;
@@ -1172,7 +1188,7 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 hit_q <= 1'b0;
-                                if (cache_lu_hit_i) begin
+                                if (lu_hit_now) begin
                                     // SC or SD: Table 4-38 (p.4-218) and Table 4-36
                                     // (SS4.7.1 p.4-216) end both Unique, and the node
                                     // keeps its own bytes.
@@ -1508,7 +1524,9 @@ module rnf_ctl `RNF_PARAM
             // -- an invalidating snoop, a write-back or drop, a fill displacing it --
             // or is stored to.
             for (int i = 0; i < MON; i++) begin
-                if (set_now && (i == set_slot(set_lp))) begin
+                if (set_now && (i == set_slot(set_lp)) &&
+                    !(snp_upd_v_i && (snp_upd_state_i == `RNF_CS_I) &&
+                      same_line(snp_upd_addr_i, set_addr))) begin
                     mon_v_q[i]    <= 1'b1;
                     mon_lp_q[i]   <= set_lp;
                     mon_addr_q[i] <= set_addr;

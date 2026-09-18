@@ -36,7 +36,7 @@
         parameter SNF_NID_PARAM                = 3,     \
         parameter AXI4_AXDATA_WIDTH_PARAM      = 128,   \
         parameter AXI4_PA_WIDTH_PARAM          = 32,    \
-        parameter SNF_MSHR_ENTRIES_WIDTH_PARAM = 5      )
+        parameter SNF_MSHR_ENTRIES_WIDTH_PARAM = ((SNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(SNF_MSHR_ENTRIES_NUM_PARAM) : 1) )
 
 `define SNF_PARAM_INST #( \
     .AXI4_AXDATA_WIDTH_PARAM            (AXI4_AXDATA_WIDTH_PARAM           ), \
