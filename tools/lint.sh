@@ -194,13 +194,19 @@ else
 fi
 
 # rtl/tb/tb_xp_link.sv -- the crosspoint's Chapter 14 link-activation bench. It
-# runs under Verilator, so unlike tb_hnf_link.sv (which needs a licensed simulator)
-# it can be a gate rather than a manual step. --binary needs a compiler with
-# coroutine support for the bench's own timing controls.
+# runs under Verilator, so it can be a gate here rather than a manual step.
+# tb_hnf_link.sv is its HN-F counterpart and now runs under Verilator too
+# (SIM=verilator tools/link_check.sh), but stays out of CI because it builds the
+# whole HN-F. --binary needs a compiler with coroutine support for the bench's
+# own timing controls.
 run_xp_link() {
   echo "==================== crosspoint link activation ===================="
   local out d
   d=$(mktemp -d) || return 1
+  # ccache cannot see through the precompiled header --binary compiles against, so
+  # a layout change can be served stale objects and the binary aborts in malloc
+  # before any Verilog runs. See tools/link_check.sh.
+  export OBJCACHE="${OBJCACHE-}"
   out=$(cd "$d" && verilator --binary -Wno-fatal -DDISPLAY_FATAL \
           --top-module tb_xp_link \
           -I"$RTL/include" -I"$RTL/misc" -I"$TOOLS/mesh_generator" \

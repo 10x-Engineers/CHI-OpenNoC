@@ -60,6 +60,7 @@ anything around it.
 | ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all five nodes, and the generated mesh and ring systems, with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way, each one an issue here naming the clause it violated. A design can lint clean and pass its own directed benches while still violating the protocol in ways only an independent oracle notices. |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. Fields the spec overlays on one another are `union packed`, so one set of bits carries several names rather than several fields. |
+| ✅ **Runs without a licence** | The lint gate, both Chapter 14 link benches and the 136-case HN-F regression all run under Verilator. |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
 | ⚠️ **Feature-incomplete against the spec** | DVM is not implemented and MTE is partial. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
@@ -70,16 +71,15 @@ limitations" paragraph that nobody updates.
 
 ---
 
----
-
 ## Quick start
 
 ### Prerequisites
 
 | Tool | Needed for | Notes |
 | :-- | :-- | :-- |
-| Verilator ≥ 5.0, pyslang | `tools/lint.sh` | The only licence-free step. What CI runs. Verilator lints; pyslang backs `tools/check_select_bounds.py`. |
-| Xcelium **or** VCS | `tools/link_check.sh`, `rtl/Makefile` | Verilator 5.048 segfaults constructing the HN-F model (in `VL_MURMUR64_HASH`), so behavioural simulation needs a commercial simulator. |
+| Verilator ≥ 5.0, pyslang | `tools/lint.sh` | Licence-free. What CI runs. Verilator lints; pyslang backs `tools/check_select_bounds.py`. |
+| Verilator ≥ 5.050, GCC ≥ 10 | `SIM=verilator` on `tools/link_check.sh` and `rtl/Makefile` | Licence-free simulation. Earlier Verilator segfaults building the HN-F; `--timing` needs a coroutine-capable compiler, which GCC 8 is not. |
+| Xcelium **or** VCS | `tools/link_check.sh`, `rtl/Makefile` | The same benches under a commercial simulator. |
 | Python 3 + `jinja2` | the topology generators | `pip install jinja2`. There is no `requirements.txt`. |
 
 ### Lint every node
@@ -97,8 +97,9 @@ not gated.
 ### Run the link-activation conformance bench
 
 ```bash
-./tools/link_check.sh              # Xcelium
-SIM=vcs ./tools/link_check.sh      # VCS
+SIM=verilator ./tools/link_check.sh   # no licence needed -- about 10 seconds
+./tools/link_check.sh                 # Xcelium
+SIM=vcs ./tools/link_check.sh         # VCS
 ```
 
 Drives `hnf.sv` through the CHI Chapter 14 `LINKACTIVE` state machine — STOP →
@@ -109,6 +110,7 @@ hold in each state. Prints `tb_hnf_link: PASSED`.
 
 ```bash
 cd rtl
+make com sim SIM=verilator   # no licence needed
 make com                     # compile (VCS)
 make sim                     # run
 make run_dve                 # open the waveform viewer
@@ -116,23 +118,18 @@ make clean
 ```
 
 `make sim` replays 136 recorded stimulus/response cases from `rtl/case/` against
-`hnf.sv` and self-checks every response flit. `TOP_TB=tb_rni make com sim` runs the
-RN-I's AXI-side bench instead.
+`hnf.sv` and self-checks every response flit, printing `All tests passed`. A case
+that does not finish fails with the case, script line and event it stopped on.
+`TOP_TB=tb_rni make com sim` runs the RN-I's AXI-side bench instead.
 
-> Both `TOP_TB` targets elaborate. They were broken from c19c311 until
-> [#168](https://github.com/10x-Engineers/CHI-OpenNoC/issues/168): the filelist still
-> named the deleted `chie_defines.svh` and the benches were built on its bit-range
-> macros, so nothing under `rtl/tb/` compiled — only `tools/lint.sh` runs, and it
-> compiles `rtl/src/` and `rtl/misc/`, not `rtl/tb/`. The benches now use
-> `chie_pkg`'s flit structs, so a field added to one carries into them. Elaboration
-> is verified under Xcelium; no VCS licence was available to run `make sim` itself.
+> `tools/lint.sh` compiles `rtl/src/` and `rtl/misc/`, not `rtl/tb/`. To check a
+> `chie_pkg` change against the benches without a licence, elaborate them under
+> Verilator — from `rtl/`:
+> `verilator --lint-only -Wno-fatal -Iinclude -f file_list_tb.f --top-module tb_hnf`
 >
-> `rtl/tb/tb_snf.sv` is in the filelist but has no Makefile target of its own —
-> `TOP_TB=tb_snf` produces an option-less `vcs` invocation. It is compiled as the
-> Subordinate model `tb_hnf` instantiates. Fixing the target is
-> [#101](https://github.com/10x-Engineers/CHI-OpenNoC/issues/101).
-
----
+> `rtl/tb/tb_snf.sv` has no Makefile target of its own — it is compiled as the
+> Subordinate model `tb_hnf` instantiates
+> ([#101](https://github.com/10x-Engineers/CHI-OpenNoC/issues/101)).
 
 ---
 
@@ -170,8 +167,6 @@ makes the Chapter 15 pair a direct one between Requester and interconnect.
 A populated system is simulated end to end with one and with two coherent RN-Fs on
 one Home, each carrying its own Chapter 15 pair, and the generated `RNF_DCT_LIST`
 holds the Home to a non-forwarding snoop toward them.
-
----
 
 ---
 
@@ -256,8 +251,6 @@ one AXI4 port. There is no top-level SoC wrapper — you instantiate what you ne
 The HN-F is built to serve coherent Request Nodes with caches, and the RN-F is
 that Requester. `HNF_MSHR_RNF_NUM_PARAM` and `RNF_NID_LIST_PARAM` tell the Home
 about each one, and a generated mesh or ring derives both for you.
-
----
 
 ---
 
@@ -530,8 +523,6 @@ caches is Snoopable.
 
 ---
 
----
-
 ## Repository layout
 
 ```
@@ -570,8 +561,6 @@ caches is Snoopable.
     ├── mesh_generator/        Mesh fabric generator (Python + Jinja2)
     └── ring_generator/        Ring fabric generator
 ```
-
----
 
 ---
 
