@@ -28,6 +28,14 @@ command -v "$SIM" >/dev/null || { echo "$SIM not on PATH"; exit 2; }
 # generated makefile with "unrecognized command line option -fcoroutines", which
 # does not name its own cause -- so check it here instead.
 if [ "$SIM" = verilator ]; then
+  # Verilator compiles every translation unit with -include <prefix>__pch.h, so the
+  # compiler reads the precompiled header and never opens the model headers behind
+  # it. ccache hashes only what the compiler opens, so after the model's layout
+  # changes it returns objects built against the OLD layout: the translation units
+  # then disagree on the root object's size, `new` under-allocates it, and its own
+  # constructor writes past the end -- a heap-corruption abort inside malloc before
+  # any Verilog runs. Correctness over a warm cache; OBJCACHE=ccache still opts in.
+  export OBJCACHE="${OBJCACHE-}"
   CXX=${CXX:-g++}
   echo 'int main(){}' | "$CXX" -std=c++20 -fcoroutines -x c++ - -o /dev/null 2>/dev/null || {
     echo "$CXX does not support -fcoroutines -- Verilator's --timing needs GCC >= 10 or Clang >= 14."

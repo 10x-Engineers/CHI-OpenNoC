@@ -194,6 +194,10 @@ run_xp_link() {
   echo "==================== crosspoint link activation ===================="
   local out d
   d=$(mktemp -d) || return 1
+  # ccache cannot see through the precompiled header --binary compiles against, so
+  # a layout change can be served stale objects and the binary aborts in malloc
+  # before any Verilog runs. See tools/link_check.sh.
+  export OBJCACHE="${OBJCACHE-}"
   out=$(cd "$d" && verilator --binary -Wno-fatal -DDISPLAY_FATAL \
           --top-module tb_xp_link \
           -I"$RTL/include" -I"$RTL/misc" -I"$TOOLS/mesh_generator" \
