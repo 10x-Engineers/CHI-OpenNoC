@@ -38,9 +38,10 @@
      parameter HNF_SF_ENTRIES_NUM_PARAM     = 131072,\
      parameter HNF_SF_WAY_NUM_PARAM         = 16,    \
      parameter HNF_MSHR_EXCL_RN_NUM_PARAM   = 32,    \
-     parameter HNF_MSHR_EXCL_RN_WIDTH_PARAM = 5,     \
+     parameter HNF_MSHR_EXCL_RN_WIDTH_PARAM = ((HNF_MSHR_EXCL_RN_NUM_PARAM > 1) ? $clog2(HNF_MSHR_EXCL_RN_NUM_PARAM) : 1), \
      parameter HNF_MSHR_ENTRIES_NUM_PARAM   = 32,    \
-     parameter HNF_MSHR_ENTRIES_WIDTH_PARAM = 5,     \
+     parameter HNF_MSHR_ENTRIES_WIDTH_PARAM = ((HNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNF_MSHR_ENTRIES_NUM_PARAM) : 1), \
+     parameter HNF_BIQ_ENTRIES_NUM_PARAM    = 8,     \
      parameter HNF_L3_CACHE_SIZE_PARAM      = 4096,  \
      parameter HNF_L3_WAY_NUM_PARAM         = 16     )
 
@@ -69,6 +70,7 @@
     .HNF_MSHR_EXCL_RN_WIDTH_PARAM       (HNF_MSHR_EXCL_RN_WIDTH_PARAM      ), \
     .HNF_MSHR_ENTRIES_NUM_PARAM         (HNF_MSHR_ENTRIES_NUM_PARAM        ), \
     .HNF_MSHR_ENTRIES_WIDTH_PARAM       (HNF_MSHR_ENTRIES_WIDTH_PARAM      ), \
+    .HNF_BIQ_ENTRIES_NUM_PARAM          (HNF_BIQ_ENTRIES_NUM_PARAM         ), \
     .HNF_L3_CACHE_SIZE_PARAM            (HNF_L3_CACHE_SIZE_PARAM           ), \
     .HNF_L3_WAY_NUM_PARAM               (HNF_L3_WAY_NUM_PARAM              ))
 

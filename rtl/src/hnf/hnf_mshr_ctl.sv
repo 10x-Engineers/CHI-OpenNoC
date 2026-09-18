@@ -280,7 +280,8 @@ module hnf_mshr_ctl `HNF_PARAM
 
 
 
-    output wire [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_busy_sx                   //outputs to hnf_mshr_addr_buffer
+    output wire [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_busy_sx,                  //outputs to hnf_mshr_addr_buffer
+    output wire                                mshr_dn_line_hold_s1               //outputs to hnf_mshr_bypass
     );
     //internal signals
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_entry_valid_sx_q;
@@ -474,6 +475,8 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_rd_rdy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_wr_rdy_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_sent_sx;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_line_hold_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rn_data_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sn_data_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txdat_rn_rdy_sx_q;
@@ -718,6 +721,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [11:0]                          mshr_rsp_entry_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rsp_entry_vec_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_retosrc_entry_vec_sx8;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_snp_s1;
     wire                                 mshr_get_dbid_s0;
     wire                                 mshr_get_comp_s0;
     wire                                 mshr_get_rd_receipt_s0;
@@ -1753,7 +1757,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // Table 4-16 leaves that Requester holding the line, so its bit must survive.
     assign mshr_alloc_l3rd_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_wb_s1_q);
     assign mshr_alloc_l3fill_s1     = (mshr_can_alloc_entry_s1_q) & (((mshr_wu_s1_q | mshr_wb_s1_q) & mshr_memattr_allocate_s1) | (mshr_we_s1_q));
-    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_s1_q);
+    // Table 15-1 (p.15-468, MUST): with no interface in Coherency Connect or Enabled no RN
+    // cache holds coherent data and no new Snoop request may be generated, so a Snoop Filter
+    // back-invalidation's fan-out is empty and it owes no snoop to wait on. SS4.4.2 (p.4-196)
+    // only permits the spontaneous snoop, so completing with none is the correct behaviour.
+    assign mshr_seq_snp_s1          = mshr_seq_s1_q & {`MSHR_ENTRIES_NUM{|sysco_snp_gen_en}};
+    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
@@ -2915,7 +2924,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry]);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
-                   (mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   (mshr_seq_snp_s1[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_txsnp_rdy_clr_sx[entry]      = (mshr_txsnp_entry_vec_sx1[entry] & ~txsnp_mshr_busy_sx1);
         end
     endgenerate
@@ -3320,6 +3329,15 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_pipeline_busy_sx[entry]
                    = l3_rd_busy_s2_q[entry] | l3_fill_busy_sx_q[entry];
             assign mshr_mem_busy_sx[entry]      = mshr_mem_rd_busy_sx_q[entry] | mshr_mem_wr_busy_sx_q[entry] | mshr_mem_cmo_busy_sx_q[entry];
+            // busy & ~rdy is "already on the wire": rdy clears when TXREQ wins, so only an
+            // entry that has issued can hold another, and two entries cannot hold each other.
+            assign mshr_dn_sent_sx[entry]       = (mshr_mem_rd_busy_sx_q[entry] & ~mshr_mem_rd_rdy_sx_q[entry])
+                   | (mshr_mem_wr_busy_sx_q[entry] & ~mshr_mem_wr_rdy_sx_q[entry]) | mshr_mem_cmo_busy_sx_q[entry];
+            // Sec 4.11 (p.4-242, MUST): the interconnect defines the order of transactions to
+            // one cache line. Table 2-9 (p.2-119) Reserves Order 0b10/0b11 HN-F to SN-F and
+            // Table 4-14 (p.4-179) pins every write there to 0b00, so an overlapping access
+            // cannot express the order on the link and waits for the first to complete instead.
+            assign mshr_dn_line_hold_sx[entry]  = |(mshr_same_line_sx[entry] & mshr_dn_sent_sx & mshr_entry_valid_sx_q);
             assign mshr_datbuf_busy_sx[entry]   = mshr_rn_data_busy_sx_q[entry] | mshr_sn_data_busy_sx_q[entry];
             assign mshr_rsp_busy_wr_sx[entry]   = mshr_comp_busy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry];
             assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry] |
@@ -3752,6 +3770,8 @@ module hnf_mshr_ctl `HNF_PARAM
 
     // The address is mshr_addr_s1_q, not the address buffer's copy: that one is
     // rewritten to the victim's on an SLC eviction pass.
+    assign mshr_dn_line_hold_s1 = mshr_dn_line_hold_sx[mshr_entry_idx_alloc_s1_q];
+
     always_comb begin : mshr_same_line_comb_logic
         for(int e = 0; e < `MSHR_ENTRIES_NUM; e = e+1)
             mshr_same_line_sx[e] = {`MSHR_ENTRIES_NUM{1'b0}};
@@ -3803,10 +3823,10 @@ module hnf_mshr_ctl `HNF_PARAM
                 entry<`MSHR_ENTRIES_NUM;
                 entry=entry+1) begin : mshr_determine_entry_comb_logic
             assign txreq_wrap_ageq_vec[entry]
-                   = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] &
+                   = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & (~mshr_dn_line_hold_sx[entry]) & mshr_entry_valid_sx_q[entry] &
                    (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) & (((~mshr_txreq_valid_sx1_q)) | (mshr_txreq_txnid_sx1_q!=entry));
 
-            assign txreq_wrap_other_vec[entry] = mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) &
+            assign txreq_wrap_other_vec[entry] = mshr_txreq_rdy_sx[entry] & (~sleep_sx_q[entry]) & (~mshr_dn_line_hold_sx[entry]) & mshr_entry_valid_sx_q[entry] & (txreq_mshr_won_sx1 | (~mshr_txreq_valid_sx1_q)) &
                    (((~mshr_txreq_valid_sx1_q)) | (mshr_txreq_txnid_sx1_q!=entry));
 
             assign txrsp_wrap_ageq_vec[entry] = mshrageq_v_sx2_q[0] & (mshrageq_mshr_idx_sx2_q[0]==entry) & mshr_txrsp_rdy_sx[entry] & (~sleep_sx_q[entry]) & mshr_entry_valid_sx_q[entry] &
@@ -4583,11 +4603,11 @@ module hnf_mshr_ctl `HNF_PARAM
                                $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry))
 
             // The back-invalidation broadcast is the one fan-out sized from the
-            // coherent set rather than from the directory, so an empty set leaves it
-            // with no snoopee to wait on and the entry never reaches getall.
-            `display_fatal_sva(!(mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
+            // coherent set rather than from the directory. An empty set is completed with no
+            // snoop; one that took the snoop debt has a snoopee to reach getall on.
+            `display_fatal_sva(!(mshr_snp_busy_set_sx[entry] & mshr_seq_s1_q[entry]) ||
                                (seq_snp_cnt != {`MSHR_SNPCNT_WIDTH{1'b0}}),
-                               $sformatf("Fatal info: Snoop Filter back-invalidation allocated with no Requester interface in Coherency Connect or Enabled: entry %0d", entry))
+                               $sformatf("Fatal info: Snoop Filter back-invalidation took a snoop debt with an empty coherent set: entry %0d", entry))
         end
     endgenerate
 `endif

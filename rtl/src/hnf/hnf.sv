@@ -16,6 +16,7 @@
 
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
+`include "param_check.svh"
 
 module hnf `HNF_PARAM
     (
@@ -1154,6 +1155,15 @@ module hnf `HNF_PARAM
                     .cpl_lru_wr_en_q                              (cpl_lru_wr_en_q                   ),
                     .cpl_lru_wr_data_q                            (cpl_lru_wr_data_q                 )
                 );
+
+    // The MSHR entry index and the QoS pool sizes are derived from the count rather than
+    // declared beside it, so a stale paired override, or a count the pool arithmetic is not
+    // exact for, is refused here instead of truncating an index silently.
+    `CHECK_DERIVED_WIDTH(hnf, HNF_MSHR_ENTRIES_NUM_PARAM, HNF_MSHR_ENTRIES_WIDTH_PARAM, entries)
+    `CHECK_DERIVED_WIDTH(hnf, HNF_MSHR_EXCL_RN_NUM_PARAM, HNF_MSHR_EXCL_RN_WIDTH_PARAM, monitors)
+    if ((HNF_MSHR_ENTRIES_NUM_PARAM < 16) || ((HNF_MSHR_ENTRIES_NUM_PARAM % 16) != 0))
+        $fatal(1, "hnf: HNF_MSHR_ENTRIES_NUM_PARAM=%0d -- the QoS pools take 1/16, 3/16 and 1/4 of the MSHR and the Low pool the rest less the one Seq entry, so the count must be a multiple of 16.",
+               HNF_MSHR_ENTRIES_NUM_PARAM);
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.

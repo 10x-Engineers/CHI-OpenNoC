@@ -250,6 +250,7 @@ module hnf_mshr `HNF_PARAM
     wire                           mshr_alloc_en_s0;
     wire                           mshr_alloc_en_s1_q;
     wire                           rxreq_cam_hazard_s1_q;
+    wire                           mshr_dn_line_hold_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   rxreq_cam_hazard_entry_s1_q;
     wire                           excl_pass_s1;
     wire                           excl_fail_s1;
@@ -352,6 +353,7 @@ module hnf_mshr `HNF_PARAM
                         .mshr_entry_idx_alloc_s1_q                       (mshr_entry_idx_alloc_s1_q            ),
                         .mshr_alloc_en_s0                                (mshr_alloc_en_s0                     ),
                         .rxreq_cam_hazard_s1_q                           (rxreq_cam_hazard_s1_q                ),
+                        .mshr_dn_line_hold_s1                            (mshr_dn_line_hold_s1                 ),
                         .excl_pass_s1                                    (excl_pass_s1                         ),
                         .excl_fail_s1                                    (excl_fail_s1                         ),
                         .txreq_mshr_bypass_won_s1                        (txreq_mshr_bypass_won_s1             ),
@@ -551,6 +553,7 @@ module hnf_mshr `HNF_PARAM
                      .rxreq_cam_hazard_entry_s1_q                     (rxreq_cam_hazard_entry_s1_q       ),
                      .mshr_l3_hazard_valid_sx3_q                      (mshr_l3_hazard_valid_sx3_q        ),
                      .mshr_mem_busy_sx                                (mshr_mem_busy_sx                  ),
+                     .mshr_dn_line_hold_s1                            (mshr_dn_line_hold_s1              ),
                      .pipe_cam_hazard_entry_sx3_q                     (pipe_cam_hazard_entry_sx3_q       ),
                      .pipe_sleep_entry_sx3_q                          (pipe_sleep_entry_sx3_q            ),
                      .txreq_mshr_won_sx1                              (txreq_mshr_won_sx1                ),

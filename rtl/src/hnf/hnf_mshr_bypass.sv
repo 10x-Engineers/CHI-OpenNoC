@@ -52,6 +52,7 @@ module hnf_mshr_bypass `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]      mshr_entry_idx_alloc_s1_q,
     input  wire                                mshr_alloc_en_s0,
     input  wire                                rxreq_cam_hazard_s1_q,
+    input  wire                                mshr_dn_line_hold_s1,
 
     //inputs from hnf_mshr_global_monitor
     input  wire                                excl_pass_s1,
@@ -398,7 +399,10 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txrsp_bypass_tracetag_s1 = li_mshr_rxreq_tracetag_s1_q;
 
     //txreq_bypass
-    assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!excl_fail_s1;
+    // Sec 4.11 (p.4-242, MUST): the arrival-time CAM stops guarding a line once an SLC
+    // eviction rewrites the entry's address to the victim's, so the bypass asks the MSHR
+    // whether this line's downstream access is still open rather than only that CAM.
+    assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!mshr_dn_line_hold_s1&&!excl_fail_s1;
     assign mshr_txreq_bypass_qos_s1         = li_mshr_rxreq_qos_s1_q;
     assign mshr_txreq_bypass_txnid_s1       = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     // SS2.5.3 (p.2-88): a WriteNoSnp with TagOp Match names the Requester as ReturnNID
@@ -429,7 +433,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_rsvdc_s1       = li_mshr_rxreq_rsvdc_s1_q;
 
     //bypass_lost
-    assign txreq_mshr_bypass_lost_s1 = (mshr_txreq_bypass_valid_s1&&!txreq_mshr_bypass_won_s1)||(rxreq_cam_hazard_s1_q&&(tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1));
+    assign txreq_mshr_bypass_lost_s1 = (mshr_txreq_bypass_valid_s1&&!txreq_mshr_bypass_won_s1)||((rxreq_cam_hazard_s1_q||mshr_dn_line_hold_s1)&&(tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1));
     assign txrsp_mshr_bypass_lost_s1 = (mshr_txrsp_bypass_valid_s1&&!txrsp_mshr_bypass_won_s1)||(rxreq_cam_hazard_s1_q&&(rd_receipt_s1_q||wr_compdbid_s1_q||wr_dbid_s1_q));
 
 endmodule

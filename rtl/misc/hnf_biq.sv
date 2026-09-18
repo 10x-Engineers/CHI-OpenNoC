@@ -39,6 +39,13 @@ module hnf_biq #(
     output wire                 biq_empty,
     output wire                 biq_pfull
     );
+    // The full/empty test inverts the wrap bit of a $clog2(BIQ_DEPTH)+1-bit pointer, which
+    // only wraps at BIQ_DEPTH when the depth is a power of two.
+    if ((BIQ_WIDTH <= 0) || (BIQ_DEPTH <= 0))
+        $fatal(1, "hnf_biq: BIQ_WIDTH=%0d BIQ_DEPTH=%0d -- both must be overridden.", BIQ_WIDTH, BIQ_DEPTH);
+    if ((BIQ_DEPTH & (BIQ_DEPTH - 1)) != 0)
+        $fatal(1, "hnf_biq: BIQ_DEPTH=%0d -- HNF_BIQ_ENTRIES_NUM_PARAM must be a power of two.", BIQ_DEPTH);
+
     //local parameter
     localparam BIQ_PTR_WIDTH = $clog2(BIQ_DEPTH)+1;
 
