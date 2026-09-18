@@ -721,6 +721,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [11:0]                          mshr_rsp_entry_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_rsp_entry_vec_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_retosrc_entry_vec_sx8;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_snp_s1;
     wire                                 mshr_get_dbid_s0;
     wire                                 mshr_get_comp_s0;
     wire                                 mshr_get_rd_receipt_s0;
@@ -1756,7 +1757,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // Table 4-16 leaves that Requester holding the line, so its bit must survive.
     assign mshr_alloc_l3rd_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_wb_s1_q);
     assign mshr_alloc_l3fill_s1     = (mshr_can_alloc_entry_s1_q) & (((mshr_wu_s1_q | mshr_wb_s1_q) & mshr_memattr_allocate_s1) | (mshr_we_s1_q));
-    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_s1_q);
+    // Table 15-1 (p.15-468, MUST): with no interface in Coherency Connect or Enabled no RN
+    // cache holds coherent data and no new Snoop request may be generated, so a Snoop Filter
+    // back-invalidation's fan-out is empty and it owes no snoop to wait on. SS4.4.2 (p.4-196)
+    // only permits the spontaneous snoop, so completing with none is the correct behaviour.
+    assign mshr_seq_snp_s1          = mshr_seq_s1_q & {`MSHR_ENTRIES_NUM{|sysco_snp_gen_en}};
+    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
@@ -2918,7 +2924,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry]);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
-                   (mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   (mshr_seq_snp_s1[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_txsnp_rdy_clr_sx[entry]      = (mshr_txsnp_entry_vec_sx1[entry] & ~txsnp_mshr_busy_sx1);
         end
     endgenerate
@@ -4597,11 +4603,11 @@ module hnf_mshr_ctl `HNF_PARAM
                                $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry))
 
             // The back-invalidation broadcast is the one fan-out sized from the
-            // coherent set rather than from the directory, so an empty set leaves it
-            // with no snoopee to wait on and the entry never reaches getall.
-            `display_fatal_sva(!(mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
+            // coherent set rather than from the directory. An empty set is completed with no
+            // snoop; one that took the snoop debt has a snoopee to reach getall on.
+            `display_fatal_sva(!(mshr_snp_busy_set_sx[entry] & mshr_seq_s1_q[entry]) ||
                                (seq_snp_cnt != {`MSHR_SNPCNT_WIDTH{1'b0}}),
-                               $sformatf("Fatal info: Snoop Filter back-invalidation allocated with no Requester interface in Coherency Connect or Enabled: entry %0d", entry))
+                               $sformatf("Fatal info: Snoop Filter back-invalidation took a snoop debt with an empty coherent set: entry %0d", entry))
         end
     endgenerate
 `endif
