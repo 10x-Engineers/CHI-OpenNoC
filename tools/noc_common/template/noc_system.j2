@@ -30,6 +30,11 @@ package {{ module }}_pkg;
       {{ p.name }}_NID{{ ',' if not loop.last }}
 {% endfor %}
   };
+  // SS16.1 (p.16-470): "If a property is not declared, it is considered False."
+  // Every RNF port here is OpenNoC's own rnf, which declares no
+  // Direct_Cache_Transfer, so the Home this fabric serves must elect no
+  // forwarding snoop toward any of them.
+  localparam logic [RNF_NUM-1:0] RNF_DCT_LIST = {RNF_NUM{1'b0}};
 endpackage
 
 module {{ module }}

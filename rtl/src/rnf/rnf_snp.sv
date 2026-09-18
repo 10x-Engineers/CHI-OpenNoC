@@ -97,6 +97,21 @@ module rnf_snp `RNF_PARAM
         return (op == chie_pkg::SNP_SNPONCE) || (op == chie_pkg::SNP_SNPQUERY);
     endfunction
 
+    // SS4.8.1 (p.4-221) lists the Non-forwarding, Non-stash snoops, which with
+    // SnpQuery are the whole set this node answers.
+    function automatic bit is_decoded(chie_pkg::snp_opcode_e op);
+        return (op == chie_pkg::SNP_SNPONCE)          ||
+               (op == chie_pkg::SNP_SNPCLEAN)         ||
+               (op == chie_pkg::SNP_SNPSHARED)        ||
+               (op == chie_pkg::SNP_SNPNOTSHAREDDIRTY)||
+               (op == chie_pkg::SNP_SNPUNIQUE)        ||
+               (op == chie_pkg::SNP_SNPPREFERUNIQUE)  ||
+               (op == chie_pkg::SNP_SNPCLEANSHARED)   ||
+               (op == chie_pkg::SNP_SNPCLEANINVALID)  ||
+               (op == chie_pkg::SNP_SNPMAKEINVALID)   ||
+               (op == chie_pkg::SNP_SNPQUERY);
+    endfunction
+
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD) || (cs == `RNF_CS_UDP);
     endfunction
@@ -324,6 +339,19 @@ module rnf_snp `RNF_PARAM
                        .clk   ( clk_i ),
                        .rst   ( rst_i ),
                        .cond  ( prot_rxsnpflitv_i && q_full && !take )
+                   );
+
+    // SS16.1 (p.16-470): an undeclared property "is considered False", and this
+    // node declares neither Direct_Cache_Transfer, Cache_Stash_Transactions nor
+    // DVM_Support. Answering such a snoop off the Table 4-42 branch would leave
+    // the line Shared Clean, which is a coherency violation, not a response.
+    assert_checker #(
+                       3,
+                       "RN-F was sent a snoop opcode it does not decode: a Forwarding, Stash or DVM snoop at a node declaring no such property")
+                   SNP_OPCODE_check (
+                       .clk   ( clk_i ),
+                       .rst   ( rst_i ),
+                       .cond  ( prot_rxsnpflitv_i && !is_decoded(prot_rxsnpflit_i.opcode) )
                    );
 `endif
 

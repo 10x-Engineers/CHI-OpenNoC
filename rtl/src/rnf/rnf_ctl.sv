@@ -483,10 +483,18 @@ module rnf_ctl `RNF_PARAM
     end
     wire wr_zero = wr_full && (wbuf_now == '0);
 
+    // The displaced way as the snoop port leaves it: cache_vic_state_i is read
+    // combinationally, so a snoop writing that way on the very edge the victim is
+    // latched is still ahead of it. SS4.11.1 (p.4-242, MUST): the CopyBack carries
+    // the state after the snoop is processed, and a line the snoop took is Invalid.
+    wire vic_snp_sel = snp_upd_v_i && (snp_upd_way_i == cache_vic_way_i) &&
+                       same_line(snp_upd_addr_i, cache_vic_addr_i);
+    wire [`RNF_CS_WIDTH-1:0] vic_sel_state = vic_snp_sel ? snp_upd_state_i : cache_vic_state_i;
+
     // Whether the displaced way owes a write-back. Evaluated at the point the
     // transaction commits to filling, so cache_vic_* still describe the way the
     // fill will take.
-    wire need_cb = is_dirty(cache_vic_state_i);
+    wire need_cb = is_dirty(vic_sel_state);
 
     // Table 2-8 (SS2.8.3 p.2-117) sets ExpCompAck per request: required for the
     // allocating reads and the ownership requests, and WriteEvictOrEvict; not
@@ -969,10 +977,10 @@ module rnf_ctl `RNF_PARAM
                             ack_q    <= ar_alloc;
                             vic_addr_q <= cache_vic_addr_i;
                             vic_way_q  <= cache_vic_way_i;
-                            vic_state_q<= cache_vic_state_i;
+                            vic_state_q<= vic_sel_state;
                             vic_data_q <= cache_vic_data_i;
                             vic_meta_q <= cache_vic_meta_i;
-                            cb_op_q       <= back_op(cache_vic_state_i);
+                            cb_op_q       <= back_op(vic_sel_state);
                             cb_then_req_q <= 1'b1;
                             st_q <= (need_cb && ar_alloc) ? S_CB_REQ : S_REQ;
                         end
@@ -1218,10 +1226,10 @@ module rnf_ctl `RNF_PARAM
                                     end
                                     vic_addr_q <= cache_vic_addr_i;
                                     vic_way_q  <= cache_vic_way_i;
-                                    vic_state_q<= cache_vic_state_i;
+                                    vic_state_q<= vic_sel_state;
                                     vic_data_q <= cache_vic_data_i;
                                     vic_meta_q <= cache_vic_meta_i;
-                                    cb_op_q       <= back_op(cache_vic_state_i);
+                                    cb_op_q       <= back_op(vic_sel_state);
                                     cb_then_req_q <= 1'b1;
                                     st_q       <= need_cb ? S_CB_REQ : S_REQ;
                                 end

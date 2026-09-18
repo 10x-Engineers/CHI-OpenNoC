@@ -32,6 +32,9 @@ module hnf_mshr_ctl `HNF_PARAM
     //global inputs
     input  wire                                clk,
     input  wire                                rst,
+    // Table 15-1 (p.15-468, MUST): the Requester interfaces the Home may generate a
+    // new Snoop request to, one bit per RNF_NID_LIST_PARAM entry.
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_gen_en,
 
     //inputs related to request handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxreq_valid_s0,
@@ -212,7 +215,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output chie_pkg::req_opcode_e              mshr_txreq_opcode_sx1,
     output chie_pkg::size_e                    mshr_txreq_size_sx1,
     output wire                                mshr_txreq_ns_sx1,
-    output wire                                mshr_snp_outstanding_sx,
+    output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  mshr_snp_outstanding_sx,
     output wire                                mshr_txreq_allowretry_sx1,
     output chie_pkg::order_e                   mshr_txreq_order_sx1,
     output wire [3:0]                          mshr_txreq_pcrdtype_sx1,
@@ -357,6 +360,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdshared_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_prefunq_s1_q;
     wire                                 mshr_snp_will_fwd_sx7;
+    wire                                 l3_snp_dct_ok_sx7;
     logic [7:0]                          mshr_pgroupid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_busy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_rdy_sx_q;
@@ -414,6 +418,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_neednosnp_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_entry_vec_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]       l3_snp_cnt;
+    logic [`MSHR_SNPCNT_WIDTH-1:0]       seq_snp_cnt;
     logic [`RNF_NUM-1:0]                 mshr_snp_bit_sx8_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_compack_owed_rn_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_snp_compack_block_sx[0:`MSHR_ENTRIES_NUM-1];
@@ -1343,7 +1348,11 @@ module hnf_mshr_ctl `HNF_PARAM
                     (mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry] & mshr_tagop_update[entry])) & mshr_mte_mem[entry];
         end
     endgenerate
-    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
+    // SS16.1 (p.16-470): "When not specified, or set to False, Direct Cache Transfer
+    // transactions are not supported", and it is the Home's responsibility to pick the
+    // snoop type -- so a Snoopee that declares none is sent the Non-forwarding one.
+    assign l3_snp_dct_ok_sx7    = (|l3_snp_bit_sx7_q) & ~(|(l3_snp_bit_sx7_q & ~RNF_DCT_LIST_PARAM[`RNF_NUM-1:0]));
+    assign mshr_dct_set_sx8     = {`MSHR_ENTRIES_NUM{(l3_snpdirect_sx7_q & ~l3_hit_sx7_q & l3_snp_dct_ok_sx7)}} & ~mshr_excl_s1_q & ~mshr_tagop_asks_tags & (mshr_ro_s1_q | mshr_rc_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q);
     assign mshr_sn_order_set_s1 = (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP | li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE) && (!li_mshr_rxreq_expcompack_s0);
 
     always_comb begin : mshr_rxreq_srcid_onehot_s0_comb_logic
@@ -2474,7 +2483,7 @@ module hnf_mshr_ctl `HNF_PARAM
                 else if(mshr_l3_entry_vec_sx7[entry] && l3_rd_busy_s2_q[entry])
                     mshr_snpcnt_sx_q[entry] <= l3_snp_cnt;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
-                    mshr_snpcnt_sx_q[entry] <= `RNF_NUM;
+                    mshr_snpcnt_sx_q[entry] <= seq_snp_cnt;
                 else
                     ;
             end
@@ -2531,6 +2540,19 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     end
 
+    // A snoop-filter back-invalidation names no holder, so it snoops every coherent
+    // Requester. Table 15-1 (p.15-468, MUST) takes the ones that are not out of it:
+    // an interface in Coherency Disconnect or Disabled must be sent no NEW snoop,
+    // and its caches hold no coherent data for one to find.
+    always_comb begin: compute_seq_snp_cnt_comb_logic
+        seq_snp_cnt = 0;
+        for (int i = 0; i < `RNF_NUM; i = i + 1) begin
+            if (sysco_snp_gen_en[i] == 1'b1) begin
+                seq_snp_cnt = seq_snp_cnt + 1;
+            end
+        end
+    end
+
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk)begin : mshr_snp_bit_sx8_q_timing_logic
@@ -2539,7 +2561,7 @@ module hnf_mshr_ctl `HNF_PARAM
                 else if(mshr_l3_entry_vec_sx7[entry] && l3_rd_busy_s2_q[entry])
                     mshr_snp_bit_sx8_q[entry] <= l3_snp_bit_sx7_q;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
-                    mshr_snp_bit_sx8_q[entry] <= {`RNF_NUM{1'b1}};
+                    mshr_snp_bit_sx8_q[entry] <= sysco_snp_gen_en;
                 else
                     ;
             end
@@ -2574,7 +2596,7 @@ module hnf_mshr_ctl `HNF_PARAM
 
     // The same election mshr_dct_set_sx8 makes one stage later, needed here because
     // which snoop is legal depends on whether it will be a forwarding one.
-    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
+    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & l3_snp_dct_ok_sx7 & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
 
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)
@@ -3894,7 +3916,15 @@ module hnf_mshr_ctl `HNF_PARAM
                                         (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1 |
                                           (mshr_txreq_is_rd_sx1 & mshr_tagfetch_issued_sx_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_ns_sx1          = (mshr_ns_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_snp_outstanding_sx    = |mshr_snp_pending_sx;
+    // Sec 15.2.2 (p.15-468, MUST) scopes "complete all snoop accesses to the
+    // interface" to one Requester interface, so an entry's pending fan-out holds
+    // only the interfaces it named -- Sec 15.1's (p.15-466) pair is per Requester.
+    always_comb begin: mshr_snp_outstanding_comb_logic
+        mshr_snp_outstanding_sx = {`RNF_NUM{1'b0}};
+        for (int e = 0; e < `MSHR_ENTRIES_NUM; e = e + 1)
+            if (mshr_snp_pending_sx[e])
+                mshr_snp_outstanding_sx = mshr_snp_outstanding_sx | mshr_snp_bit_sx8_q[e];
+    end
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
@@ -4551,6 +4581,13 @@ module hnf_mshr_ctl `HNF_PARAM
             `display_fatal_sva(!(mshr_can_retire_entry_sx1[entry] & mshr_wb_s1_q[entry]) ||
                                mshr_l3_pass_taken_sx_q[entry],
                                $sformatf("Fatal info: WriteBackFull retired with no cache-pipeline pass, so its Snoop Filter bit was never cleared: entry %0d", entry))
+
+            // The back-invalidation broadcast is the one fan-out sized from the
+            // coherent set rather than from the directory, so an empty set leaves it
+            // with no snoopee to wait on and the entry never reaches getall.
+            `display_fatal_sva(!(mshr_seq_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
+                               (seq_snp_cnt != {`MSHR_SNPCNT_WIDTH{1'b0}}),
+                               $sformatf("Fatal info: Snoop Filter back-invalidation allocated with no Requester interface in Coherency Connect or Enabled: entry %0d", entry))
         end
     endgenerate
 `endif

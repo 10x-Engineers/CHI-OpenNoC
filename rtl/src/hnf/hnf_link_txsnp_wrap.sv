@@ -27,7 +27,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     input  wire                                txsnp_lcrdv,
     input  wire                                lcrd_return_en,
     input  wire                                txlink_run,
-    input  wire                                sysco_snp_en,
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_en,
     output wire                                txsnp_flit_avail,
 
     //inputs from hnf_mshr_ctl
@@ -62,7 +62,6 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     logic [`MSHR_SNPCNT_WIDTH-1:0]      mshr_txsnp_rn_cnt;
     logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  tgt_vec;
     logic [HNF_MSHR_RNF_NUM_PARAM-1:0]  tgt_vec_q;
-    logic                               clr_1st;
     opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0_q;
     logic [`HNF_LCRD_SNP_CNT_WIDTH-1:0] snp_crd_cnt_ns_s0;
     opennoc_hnf_pkg::snp_routed_s       txsnpflit_s0;
@@ -83,6 +82,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
 
     //internal wire signals
     wire                                txsnp_busy_sx;
+    wire                                snp_tgt_avail_sx;
     wire                                txsnp_req_s0;
     wire                                txsnpflitv_s0;
     wire [`MSHR_SNPCNT_WIDTH-1:0]       txsnp_cnt_tmp;
@@ -111,11 +111,15 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         end
     endgenerate
 
+    // Both selectors skip a snoopee whose interface Table 15-1 (p.15-468, MUST) says
+    // must not be sent a Snoop request. Skipped rather than dropped: the bit stays in
+    // the vector, so the fan-out Sec 4.4.1 (p.4-194, MUST) owes is still owed once
+    // that interface is coherent again, while the eligible snoopees go out meanwhile.
     always_comb begin:found_rn_vec_comb_logic
         found_rn_vec     = 1'b0;
         found_rn_vec_num = {`RNF_WIDTH{1'b0}};
         for (int i = 0; i<`RNF_NUM; i=i+1)begin
-            if(mshr_txsnp_rn_vec_sx1[i] & ~found_rn_vec)begin
+            if(mshr_txsnp_rn_vec_sx1[i] & sysco_snp_en[i] & ~found_rn_vec)begin
                 found_rn_vec = 1'b1;
                 found_rn_vec_num = i[`RNF_WIDTH-1:0];
             end
@@ -126,7 +130,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         found_tgt_vec     = 1'b0;
         found_tgt_vec_num = {`RNF_WIDTH{1'b0}};
         for (int i = 0; i<`RNF_NUM; i=i+1)begin
-            if(tgt_vec_q[i] & ~found_tgt_vec)begin
+            if(tgt_vec_q[i] & sysco_snp_en[i] & ~found_tgt_vec)begin
                 found_tgt_vec = 1'b1;
                 found_tgt_vec_num = i[`RNF_WIDTH-1:0];
             end
@@ -255,28 +259,19 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     // received." The counter already folds this cycle's grant in for the next one,
     // so the counted credits are the whole of what is spendable.
     assign txsnp_crd_avail_s1      = snp_crd_cnt_not_zero_sx;
-    // Table 15-1 (p.15-468): the interconnect "must not send Snoop requests" in
-    // Coherency Disabled and "must not generate new Snoop requests" in Coherency
-    // Disconnect -- both SYSCOREQ LOW. Busy holds the fan-out rather than consuming
-    // it, so Sec 4.4.1 (p.4-194, MUST) is still satisfied once coherency returns.
-    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run) | (~sysco_snp_en);
+    // The snoopee this cycle would go to: the fan-out is held only while no eligible
+    // one is left, which is per target rather than per Home -- one interface leaving
+    // coherency must not stop the snoops the others are owed.
+    assign snp_tgt_avail_sx        = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}})? found_tgt_vec : found_rn_vec;
+    assign txsnp_busy_sx           = ~txsnp_crd_avail_s1 | (~txlink_run) | (~snp_tgt_avail_sx);
     assign txsnpflitv_s0           = (txsnp_req_s0 == 1'b1 | txsnp_cnt_q>0) & (txsnp_busy_sx == 1'b0);
 
 
     //clear the bit if that bit is ready to send
     always_comb begin : compute_target_need_to_be_send
         tgt_vec = mshr_txsnp_rn_vec_sx1;
-        clr_1st = 1'b0;
-        for (int i = 0; i < `RNF_NUM ; i = i + 1)begin
-            if(mshr_txsnp_rn_vec_sx1[i] == 1'b1 & txsnp_busy_sx == 1'b0 & clr_1st == 1'b0)begin
-                tgt_vec[i] = 1'b0;
-                clr_1st    = 1'b1;
-            end
-            else begin
-                tgt_vec[i] = tgt_vec[i];
-                clr_1st    = clr_1st;
-            end
-        end
+        if((txsnp_busy_sx == 1'b0) & (found_rn_vec == 1'b1))
+            tgt_vec[found_rn_vec_num] = 1'b0;
     end
 
     //save the rn vector and snoopee cnt
@@ -357,6 +352,20 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     //-----------------------------------------------------------------------------
     // DISPLAY INFO
     //-----------------------------------------------------------------------------
+`ifdef DISPLAY_FATAL
+    `display_fatal_arm
+    // A fan-out is held only while none of its remaining snoopees may be sent to,
+    // and Table 15-1 (p.15-468) leaves a target unsendable only in Coherency
+    // Disabled -- which SS15.2.2 (p.15-468, MUST) keeps the interface out of while
+    // a snoop against it is outstanding. So this is a hold with no end.
+    `display_fatal_sva(!(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ||
+                       (|(tgt_vec_q & sysco_snp_en)),
+                       $sformatf("Fatal info: snoop fan-out held with every remaining snoopee in Coherency Disabled: targets %b, coherent %b, TxnID %h", tgt_vec_q, sysco_snp_en, txsnpflit_s0_q.flit.txnid))
+    `display_fatal_sva(!(mshr_txsnp_valid_sx1_q & (txsnp_cnt_q == {`MSHR_SNPCNT_WIDTH{1'b0}}))
+                       || (|(mshr_txsnp_rn_vec_sx1 & sysco_snp_en)),
+                       $sformatf("Fatal info: snoop fan-out named only Requester interfaces in Coherency Disabled: targets %b, coherent %b, TxnID %h", mshr_txsnp_rn_vec_sx1, sysco_snp_en, mshr_txsnp_txnid_sx1_q))
+`endif
+
 `ifdef DISPLAY_INFO
     always_ff @(posedge clk)begin
         if(txsnpflitv)begin
