@@ -138,8 +138,7 @@ module hnf_cache_pipeline `HNF_PARAM
     localparam ADDR_WIDTH     = chie_pkg::REQ_ADDR_WIDTH;
     localparam OPCODE_WIDTH   = 7;
     localparam NID_WIDTH      = CHIE_NID_WIDTH_PARAM;
-    localparam BIQ_NUM        = 8;
-    localparam BIQ_NUM_WIDTH  = $clog2(BIQ_NUM);
+    localparam BIQ_NUM        = HNF_BIQ_ENTRIES_NUM_PARAM;
     localparam BIQ_DATA_WIDTH = ADDR_WIDTH;
 
     //internal variables

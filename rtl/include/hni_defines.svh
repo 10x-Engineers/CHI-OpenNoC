@@ -24,7 +24,7 @@
 `define HNI0_ID                            HNI_NODEID_PARAM
 
 `define HNI_MSHR_ENTRIES_NUM               HNI_MSHR_ENTRIES_NUM_PARAM
-`define HNI_MSHR_ENTRIES_WIDTH             HNI_MSHR_ENTRIES_WIDTH_PARAM
+`define HNI_MSHR_ENTRIES_WIDTH             ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1)
 `define HNI_AXI4_AXID_WIDTH                11
 `define HNI_AXI4_AXADDR_WIDTH              AXI4_PA_WIDTH_PARAM
 
@@ -64,7 +64,7 @@
 `define HNI_LL_DAT_MAX_CRD_VALUE           XP_LCRD_NUM_PARAM
 
 //hni_mshr_qos
-`define HNI_QOS_CNT_WIDTH                      HNI_MSHR_ENTRIES_WIDTH_PARAM
+`define HNI_QOS_CNT_WIDTH                      ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1)
 `define HNI_QOS_CLASS_WIDTH                    1
 `define HNI_QOS_CLASS_HIGH                     1
 `define HNI_QOS_CLASS_LOW                      0

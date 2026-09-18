@@ -521,6 +521,13 @@ module hni `HNI_PARAM
             .bready_sx(BREADY)
         );
 
+    if (HNI_MSHR_ENTRIES_WIDTH_PARAM != ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1))
+        $fatal(1, "hni: HNI_MSHR_ENTRIES_WIDTH_PARAM=%0d cannot index HNI_MSHR_ENTRIES_NUM_PARAM=%0d entries; the width is $clog2 of the count, so leave it at its default.",
+               HNI_MSHR_ENTRIES_WIDTH_PARAM, HNI_MSHR_ENTRIES_NUM_PARAM);
+    if (HNI_MSHR_EXCL_RN_WIDTH_PARAM != ((HNI_MSHR_EXCL_RN_NUM_PARAM > 1) ? $clog2(HNI_MSHR_EXCL_RN_NUM_PARAM) : 1))
+        $fatal(1, "hni: HNI_MSHR_EXCL_RN_WIDTH_PARAM=%0d cannot index HNI_MSHR_EXCL_RN_NUM_PARAM=%0d monitors; the width is $clog2 of the count, so leave it at its default.",
+               HNI_MSHR_EXCL_RN_WIDTH_PARAM, HNI_MSHR_EXCL_RN_NUM_PARAM);
+
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
     chie_flit_opt_check #(
