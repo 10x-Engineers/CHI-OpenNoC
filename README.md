@@ -60,7 +60,7 @@ anything around it.
 | ✅ **Elaborates clean** | Verilator ≥ 5.0 lints all five nodes, and the generated mesh and ring systems, with zero errors and zero `ALWNEVER`/`COMBDLY`/`LATCH`/`CASEINCOMPLETE` warnings, gated in CI on every push and PR, beside `tools/check_select_bounds.py`, which unrolls every constant-bounded `for` loop and rejects a part-select that then reads past its operand -- the class IEEE 1800 leaves as x and only some front ends reject (#197). The lint also compiles the design's own `ASSERT_CHECKER_ON` / `DISPLAY_FATAL` blocks, and they now **run** as well: the CHI VIP builds every OpenNoC target with `+define+DISPLAY_FATAL+ASSERT_CHECKER_ON`, so an invariant the design states about itself is checked on every regression rather than only parsed. |
 | ✅ **Protocol-verified against a CHI VIP** | Every node has been driven by an independent Issue-E.b verification IP with an [AMBA CHI Issue E.b PDF] as its oracle. Over 90 protocol defects have been found and fixed this way, each one an issue here naming the clause it violated. A design can lint clean and pass its own directed benches while still violating the protocol in ways only an independent oracle notices. |
 | ✅ **SystemVerilog throughout** | Flits and AXI channels are packed structs with enums for the encoded fields; ANSI port lists; no `reg`, no bare `always @`. Fields the spec overlays on one another are `union packed`, so one set of bits carries several names rather than several fields. |
-| ⚠️ **Only partly runnable without a licence** | The lint gate and both Chapter 14 link benches run under Verilator. The 136-case HN-F regression does not — it builds, then hangs in the first case ([#293](https://github.com/10x-Engineers/CHI-OpenNoC/issues/293)). |
+| ✅ **Runs without a licence** | The lint gate, both Chapter 14 link benches and the 136-case HN-F regression all run under Verilator. |
 | ⚠️ **Not synthesis-hardened** | SRAMs are behavioural arrays with an `FPGA_MEMORY` swap-in hook. No timing constraints, no lint against a synthesis ruleset, no power intent, no DFT. |
 | ⚠️ **Feature-incomplete against the spec** | DVM is not implemented and MTE is partial. The [support matrix](#chi-feature-support) says exactly what is and is not, per node, with the decode site for each claim. |
 | ⚠️ **Parameter space is narrow** | The defaults are the only combination that is regularly exercised. See [Configuration](#configuration) for the specific ones that are load-bearing. |
@@ -78,8 +78,8 @@ limitations" paragraph that nobody updates.
 | Tool | Needed for | Notes |
 | :-- | :-- | :-- |
 | Verilator ≥ 5.0, pyslang | `tools/lint.sh` | Licence-free. What CI runs. Verilator lints; pyslang backs `tools/check_select_bounds.py`. |
-| Verilator ≥ 5.050, GCC ≥ 10 | `SIM=verilator tools/link_check.sh` | Licence-free simulation of the link benches. Earlier Verilator segfaults building the HN-F; `--timing` needs a coroutine-capable compiler, which GCC 8 is not. |
-| Xcelium **or** VCS | `rtl/Makefile` | The 136-case HN-F regression: it builds under Verilator but hangs in the first case ([#293](https://github.com/10x-Engineers/CHI-OpenNoC/issues/293)). |
+| Verilator ≥ 5.050, GCC ≥ 10 | `SIM=verilator` on `tools/link_check.sh` and `rtl/Makefile` | Licence-free simulation. Earlier Verilator segfaults building the HN-F; `--timing` needs a coroutine-capable compiler, which GCC 8 is not. |
+| Xcelium **or** VCS | `tools/link_check.sh`, `rtl/Makefile` | The same benches under a commercial simulator. |
 | Python 3 + `jinja2` | the topology generators | `pip install jinja2`. There is no `requirements.txt`. |
 
 ### Lint every node
@@ -110,6 +110,7 @@ hold in each state. Prints `tb_hnf_link: PASSED`.
 
 ```bash
 cd rtl
+make com sim SIM=verilator   # no licence needed
 make com                     # compile (VCS)
 make sim                     # run
 make run_dve                 # open the waveform viewer
@@ -117,8 +118,9 @@ make clean
 ```
 
 `make sim` replays 136 recorded stimulus/response cases from `rtl/case/` against
-`hnf.sv` and self-checks every response flit. `TOP_TB=tb_rni make com sim` runs the
-RN-I's AXI-side bench instead.
+`hnf.sv` and self-checks every response flit, printing `All tests passed`. A case
+that does not finish fails with the case, script line and event it stopped on.
+`TOP_TB=tb_rni make com sim` runs the RN-I's AXI-side bench instead.
 
 > `tools/lint.sh` compiles `rtl/src/` and `rtl/misc/`, not `rtl/tb/`. To check a
 > `chie_pkg` change against the benches without a licence, elaborate them under
