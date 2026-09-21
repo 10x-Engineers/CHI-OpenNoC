@@ -105,7 +105,7 @@ module tb_snf `HNF_PARAM
     chie_pkg::rsp_flit_s txrspflit_tmp;
     logic [$bits(txrspflit_tmp.tgtid)-1:0]     txrsp_tgtid;
     logic [$bits(txrspflit_tmp.txnid)-1:0]     txrsp_txnid;
-    logic [$bits(txrspflit_tmp.opcode)-1:0]    txrsp_opcode;
+    chie_pkg::rsp_opcode_e                     txrsp_opcode;
     reg                                        send_rsp;
     reg [chie_pkg::DATA_WIDTH-1:0]        wr_data_l;
     reg [chie_pkg::DATA_WIDTH-1:0]        wr_data_h;
@@ -258,21 +258,6 @@ module tb_snf `HNF_PARAM
 
     assign wr_en = dbg_sn_wr_en? 1'b1:wr_en_q? 1'b1:1'b0;
 
-    generate
-        if(CHIE_DATACHECK_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_tmp0.datacheck = '0;
-                txdatflit_tmp1.datacheck = '0;
-            end
-        end
-        if(CHIE_POISON_WIDTH_PARAM != 0)begin
-            always @*begin
-                txdatflit_tmp0.poison = '0;
-                txdatflit_tmp1.poison = '0;
-            end
-        end
-    endgenerate
-
     always@*begin
         txdatflit_tmp0.qos      = '0;
         txdatflit_tmp0.tgtid    = txdat_tgtid;
@@ -280,7 +265,7 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp0.txnid    = txdat_txnid;
         txdatflit_tmp0.homenid  = `HNF0_ID;
         txdatflit_tmp0.opcode   = chie_pkg::DAT_COMPDATA;
-        txdatflit_tmp0.resperr  = '0;
+        txdatflit_tmp0.resperr  = chie_pkg::RESP_ERR_NORM_OK;
         txdatflit_tmp0.resp     = chie_pkg::RESP_UC_UD;
         txdatflit_tmp0.datasource.fwdstate = '0;
         txdatflit_tmp0.cbusy    = '0;
@@ -293,6 +278,8 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp0.tracetag = '0;
         txdatflit_tmp0.be       = {chie_pkg::BE_WIDTH{1'b1}};
         txdatflit_tmp0.data     = rd_data[255:0];
+        txdatflit_tmp0.datacheck = chie_pkg::datacheck_of(txdatflit_tmp0.data);
+        txdatflit_tmp0.poison   = '0;
     end
 
     always@*begin
@@ -302,7 +289,7 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp1.txnid    = txdat_txnid;
         txdatflit_tmp1.homenid  = `HNF0_ID;
         txdatflit_tmp1.opcode   = chie_pkg::DAT_COMPDATA;
-        txdatflit_tmp1.resperr  = '0;
+        txdatflit_tmp1.resperr  = chie_pkg::RESP_ERR_NORM_OK;
         txdatflit_tmp1.resp     = chie_pkg::RESP_UC_UD;
         txdatflit_tmp1.datasource.fwdstate = '0;
         txdatflit_tmp1.cbusy    = '0;
@@ -315,6 +302,8 @@ module tb_snf `HNF_PARAM
         txdatflit_tmp1.tracetag = '0;
         txdatflit_tmp1.be       = {chie_pkg::BE_WIDTH{1'b1}};
         txdatflit_tmp1.data     = rd_data[511:256];
+        txdatflit_tmp1.datacheck = chie_pkg::datacheck_of(txdatflit_tmp1.data);
+        txdatflit_tmp1.poison   = '0;
     end
 
     always@(posedge CLK or posedge RST)begin
@@ -359,11 +348,11 @@ module tb_snf `HNF_PARAM
 
     always@(posedge CLK or posedge RST)begin
         if(RST == 1'b1)
-            txrsp_opcode <= '0;
+            txrsp_opcode <= chie_pkg::RSP_RSPLCRDRETURN;
         else if((rxreqflit_v ==  1'b1))
-            txrsp_opcode <= wrnosnp_dwt? chie_pkg::RSP_DBIDRESP:(rxreq_is_wrnosnpf | rxreq_is_wrnosnpp)? chie_pkg::RSP_COMPDBIDRESP:rdnsnp_recipt? chie_pkg::RSP_READRECEIPT:'d0;
+            txrsp_opcode <= wrnosnp_dwt? chie_pkg::RSP_DBIDRESP:(rxreq_is_wrnosnpf | rxreq_is_wrnosnpp)? chie_pkg::RSP_COMPDBIDRESP:rdnsnp_recipt? chie_pkg::RSP_READRECEIPT:chie_pkg::RSP_RSPLCRDRETURN;
         else if((rxdatflit_v ==  1'b1))
-            txrsp_opcode <= ncbwrdata_from_rn? chie_pkg::RSP_COMP:'d0;
+            txrsp_opcode <= ncbwrdata_from_rn? chie_pkg::RSP_COMP:chie_pkg::RSP_RSPLCRDRETURN;
     end
 
     always@(posedge CLK or posedge RST)begin
@@ -381,8 +370,8 @@ module tb_snf `HNF_PARAM
         txrspflit_tmp.srcid    = `SN_ID;
         txrspflit_tmp.txnid    = txrsp_txnid;
         txrspflit_tmp.opcode   = txrsp_opcode;
-        txrspflit_tmp.resperr  = '0;
-        txrspflit_tmp.resp     = '0;
+        txrspflit_tmp.resperr  = chie_pkg::RESP_ERR_NORM_OK;
+        txrspflit_tmp.resp     = chie_pkg::RESP_I;
         txrspflit_tmp.fwdstate = '0;
         txrspflit_tmp.cbusy    = '0;
         txrspflit_tmp.dbid     = '0;
