@@ -186,11 +186,13 @@ module rnf_snp `RNF_PARAM
     chie_pkg::snp_flit_s head;
     assign head = chie_pkg::snp_flit_s'(head_bits);
 
-    function automatic bit on_defer_line(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] addr);
-        return defer_v_i && ((addr >> `RNF_LINE_OFFSET_W) == (defer_addr_i >> `RNF_LINE_OFFSET_W));
+    function automatic bit on_defer_line(logic                                 dv,
+                                         logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] da,
+                                         logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] addr);
+        return dv && ((addr >> `RNF_LINE_OFFSET_W) == (da >> `RNF_LINE_OFFSET_W));
     endfunction
 
-    wire head_line_deferred = on_defer_line({head.addr, 3'b000});
+    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000});
 
     // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
     // the snoops behind it, but only for as long as the Home takes to send the rest
@@ -283,7 +285,7 @@ module rnf_snp `RNF_PARAM
     // SS4.11.1 (p.4-242, MUST): "a Request Node must not respond to a Snoop request
     // before receiving all data packets" -- which also holds a snoop taken before
     // its line's first Data packet arrived, until the response has started.
-    wire resp_deferred = on_defer_line(snp_addr_q) && !dat_lo_sent_q;
+    wire resp_deferred = on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !dat_lo_sent_q;
 
     assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q && !resp_deferred;
     assign snp_txdatflitv_o  = (st_q == S_DAT) && !resp_deferred;
