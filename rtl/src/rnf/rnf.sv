@@ -137,6 +137,7 @@ module rnf `RNF_PARAM
     wire                 prot_rxdatflitv;
     wire                 prot_rxsnpflitv;
     wire                 prot_link_run;
+    wire                 prot_txflitv;
     wire                 sysco_transition;
 
     wire                                 snp_lu_hit;
@@ -162,6 +163,8 @@ module rnf `RNF_PARAM
     wire                                 snp_pop;
     wire                                 ctl_defer_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_defer_addr;
+    wire                                 snp_line_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr;
 
     // A snoop response takes TXDAT ahead of a CopyBack, for the same reason it
     // takes TXRSP: SS4.11.1 (p.4-242, MUST) has the RN-F answer a snoop without
@@ -265,8 +268,10 @@ module rnf `RNF_PARAM
                      ,.snp_txrspflit_sent_i  ( prot_txrspflit_sent &  snp_txrspflitv )
                      ,.snp_txdatflit_o       ( snp_txdatflit    )
                      ,.snp_txdatflitv_o      ( snp_txdatflitv   )
-                     ,.snp_txdatflit_sent_i  ( prot_txdatflit_sent )
+                     ,.snp_txdatflit_sent_i  ( prot_txdatflit_sent &  snp_txdatflitv )
                      ,.snp_busy_o            ( snp_busy         )
+                     ,.snp_line_v_o          ( snp_line_v       )
+                     ,.snp_line_addr_o       ( snp_line_addr    )
                  );
 
     // A snoop response takes the channel first: it is what releases the Home's
@@ -367,6 +372,8 @@ module rnf `RNF_PARAM
                      ,.link_run_i            ( prot_link_run        )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
+                     ,.snp_line_v_i          ( snp_line_v           )
+                     ,.snp_line_addr_i       ( snp_line_addr        )
                      ,.txn_active_o          ( txn_active           )
                  );
 
@@ -419,6 +426,7 @@ module rnf `RNF_PARAM
                      ,.prot_snp_pop_i        ( snp_pop             )
                      ,.link_hold_i           ( COHERENCY_EN | snoop_service_req )
                      ,.prot_link_run_o       ( prot_link_run       )
+                     ,.prot_txflitv_o        ( prot_txflitv        )
                  );
 
     rnf_sysco u_rnf_sysco(
@@ -440,6 +448,6 @@ module rnf `RNF_PARAM
     // SS15.2.1 (p.15-467, MUST) adds the coherency transitions: SACTIVE must be
     // asserted across them "to guarantee the SYSCOACK transition occurs".
     assign TXSACTIVE = (txn_active | snp_busy | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
-                        | sysco_transition) & (~RST);
+                        | prot_txflitv | sysco_transition) & (~RST);
 
 endmodule

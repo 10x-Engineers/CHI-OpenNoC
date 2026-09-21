@@ -83,7 +83,9 @@ module rnf_link_ctl `RNF_PARAM
     input  wire                 link_hold_i,
 
     // both directions in RUN, so the protocol layer may present a flit
-    output wire                 prot_link_run_o
+    output wire                 prot_link_run_o,
+    // a Protocol flit on a TX channel this cycle
+    output wire                 prot_txflitv_o
     );
 
     // internal wire
@@ -95,7 +97,7 @@ module rnf_link_ctl `RNF_PARAM
     wire                 rxsnp_lcrd_avail;
     wire                 rxrsp_lcrd_full;
     wire                 rxdat_lcrd_full;
-    wire                 rxsnp_lcrd_full;
+    wire                 rxsnp_lcrd_home_none;
     wire                 rxrsplcrdv_w;
     wire                 rxdatlcrdv_w;
     wire                 rxsnplcrdv_w;
@@ -121,6 +123,7 @@ module rnf_link_ctl `RNF_PARAM
     logic                txreqflitv_q;
     logic                txrspflitv_q;
     logic                txdatflitv_q;
+    logic                prot_txflitv_q;
     chie_pkg::req_flit_s txreqflit_q;
     chie_pkg::rsp_flit_s txrspflit_q;
     chie_pkg::dat_flit_s txdatflit_q;
@@ -142,7 +145,7 @@ module rnf_link_ctl `RNF_PARAM
 
     // Table 14-2 (p.14-450): the returns are expected in DEACTIVATE, so the ack
     // may only drop once every credit this Receiver granted has come back.
-    assign rxcrd_cnt_full = rxrsp_lcrd_full & rxdat_lcrd_full & rxsnp_lcrd_full
+    assign rxcrd_cnt_full = rxrsp_lcrd_full & rxdat_lcrd_full & rxsnp_lcrd_home_none
                             & ~prot_link_run_o;
 
     chi_link_handshake inst_chi_link_handshake(
@@ -302,6 +305,19 @@ module rnf_link_ctl `RNF_PARAM
     assign TXDATFLITV = txdatflitv_q;
     assign TXDATFLIT  = txdatflit_q;
 
+    // SS14.7.2 (p.14-460, MUST): TXSACTIVE is held "until after the last flit
+    // relating to all transactions is sent", and the flit is on the wire a cycle
+    // after the protocol layer is told it went. The L-Credit returns are left out:
+    // TXSACTIVE is permitted to drop while they are sent.
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            prot_txflitv_q <= 1'b0;
+        else
+            prot_txflitv_q <= prot_txreqflit_sent_o | prot_txrspflit_sent_o | prot_txdatflit_sent_o;
+    end
+
+    assign prot_txflitv_o = prot_txflitv_q;
+
     //***************** RXRSP Channel *****************
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
@@ -459,8 +475,23 @@ module rnf_link_ctl `RNF_PARAM
                       ,.rst               ( rst_i               )
                       ,.lcrd_inc          ( prot_snp_pop_i | rxsnp_ret_apply )
                       ,.lcrd_dec          ( rxsnplcrdv_w        )
-                      ,.lcrd_full         ( rxsnp_lcrd_full     )
+                      ,.lcrd_full         (                     )
                       ,.lcrd_avail        ( rxsnp_lcrd_avail    )
                   );
+
+    // SS14.6.3 (p.14-458, MUST): DEACTIVATE is held "until all L-Credits are
+    // returned", which a flit returns on arrival. A queued snoop still keeps its
+    // slot from the handler above, and cannot be answered until the link is back,
+    // so the handler's count alone would hold DEACTIVATE forever.
+    logic [$clog2(RNF_LCRD_NUM_PARAM+1)-1:0] rxsnp_home_cnt_q;
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            rxsnp_home_cnt_q <= '0;
+        else
+            rxsnp_home_cnt_q <= rxsnp_home_cnt_q + rxsnplcrdv_w - rxsnpflitv_q;
+    end
+
+    assign rxsnp_lcrd_home_none = (rxsnp_home_cnt_q == '0) & ~rxsnplcrdv_w;
 
 endmodule

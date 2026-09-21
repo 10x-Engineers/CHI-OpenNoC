@@ -181,6 +181,10 @@ module rnf_ctl `RNF_PARAM
     output wire                                 defer_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] defer_addr_o,
 
+    // The line the snoop port is answering.
+    input  wire                                 snp_line_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_i,
+
     output wire                                 txn_active_o
     );
 
@@ -580,7 +584,14 @@ module rnf_ctl `RNF_PARAM
         end
     end
 
-    assign prot_txreqflitv_o = (st_q == S_REQ) || (st_q == S_CB_REQ) || (st_q == S_PCRD_RET);
+    // SS5.6.1 (p.5-274, MUST): "The response to a Snoop request that hazards with an
+    // outstanding Evict must be SnpResp_I". A snoop taken before the drop reads the
+    // line as it was, so its Evict waits until that response has gone.
+    wire evict_snp_hazard = (acq_op_q == chie_pkg::REQ_EVICT) && snp_line_v_i &&
+                            same_line(snp_line_addr_i, addr_q);
+
+    assign prot_txreqflitv_o = ((st_q == S_REQ) && !evict_snp_hazard) ||
+                               (st_q == S_CB_REQ) || (st_q == S_PCRD_RET);
 
     // SS2.6.1 (p.2-100, MUST): a CompAck takes its TgtID from the completion's
     // HomeNID and its TxnID from its DBID, not from this node's own request.

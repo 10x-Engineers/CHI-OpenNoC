@@ -67,7 +67,12 @@ module rnf_snp `RNF_PARAM
     output wire                                 snp_txdatflitv_o,
     input  wire                                 snp_txdatflit_sent_i,
 
-    output wire                                 snp_busy_o
+    output wire                                 snp_busy_o,
+
+    // The line of the snoop being answered, from the cycle it is taken until its
+    // response has gone.
+    output wire                                 snp_line_v_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o
     );
 
     localparam logic [1:0] S_IDLE = 2'd0;
@@ -181,9 +186,13 @@ module rnf_snp `RNF_PARAM
     chie_pkg::snp_flit_s head;
     assign head = chie_pkg::snp_flit_s'(head_bits);
 
-    wire head_line_deferred =
-        defer_v_i &&
-        ({head.addr, 3'b000} >> `RNF_LINE_OFFSET_W) == (defer_addr_i >> `RNF_LINE_OFFSET_W);
+    function automatic bit on_defer_line(logic                                 dv,
+                                         logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] da,
+                                         logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] addr);
+        return dv && ((addr >> `RNF_LINE_OFFSET_W) == (da >> `RNF_LINE_OFFSET_W));
+    endfunction
+
+    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000});
 
     // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
     // the snoops behind it, but only for as long as the Home takes to send the rest
@@ -273,8 +282,13 @@ module rnf_snp `RNF_PARAM
         snp_txdatflit_o.datacheck = chie_pkg::datacheck_of(snp_txdatflit_o.data);
     end
 
-    assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q;
-    assign snp_txdatflitv_o  = (st_q == S_DAT);
+    // SS4.11.1 (p.4-242, MUST): "a Request Node must not respond to a Snoop request
+    // before receiving all data packets" -- which also holds a snoop taken before
+    // its line's first Data packet arrived, until the response has started.
+    wire resp_deferred = on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !dat_lo_sent_q;
+
+    assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q && !resp_deferred;
+    assign snp_txdatflitv_o  = (st_q == S_DAT) && !resp_deferred;
     assign cache_upd_v_o     = take &&
                                cache_lu_hit_i && (nxt_state != cur_state);
     assign cache_upd_addr_o  = snp_addr;
@@ -283,6 +297,8 @@ module rnf_snp `RNF_PARAM
     // A queued snoop is owed an answer too, so it counts as work in progress: SS15.2.1
     // (p.15-467) holds SYSCOREQ until "All data packets are sent for snoops".
     assign snp_busy_o        = (st_q != S_IDLE) || !q_empty;
+    assign snp_line_v_o      = (st_q != S_IDLE) || take;
+    assign snp_line_addr_o   = cache_lu_addr_o;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
