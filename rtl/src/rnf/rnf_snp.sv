@@ -47,6 +47,12 @@ module rnf_snp `RNF_PARAM
     input  wire                                 defer_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] defer_addr_i,
 
+    // A CopyBack of this node's own whose CompDBIDResp has arrived: SS4.11.2
+    // (p.4-243, MUST) orders it ahead of any snoop to that line, so none is taken
+    // until its WriteData has gone and the line is retired.
+    input  wire                                 cb_hold_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cb_hold_addr_i,
+
     // Cache
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cache_lu_addr_o,
     input  wire                                 cache_lu_hit_i,
@@ -192,7 +198,8 @@ module rnf_snp `RNF_PARAM
         return dv && ((addr >> `RNF_LINE_OFFSET_W) == (da >> `RNF_LINE_OFFSET_W));
     endfunction
 
-    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000});
+    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000}) ||
+                              on_defer_line(cb_hold_v_i, cb_hold_addr_i, {head.addr, 3'b000});
 
     // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
     // the snoops behind it, but only for as long as the Home takes to send the rest
