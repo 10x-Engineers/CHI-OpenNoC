@@ -66,8 +66,8 @@
 //hni_mshr_qos
 `define HNI_QOS_CNT_WIDTH                      ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1)
 `define HNI_QOS_CLASS_WIDTH                    1
-`define HNI_QOS_CLASS_HIGH                     1
-`define HNI_QOS_CLASS_LOW                      0
+`define HNI_QOS_CLASS_HIGH                     `HNI_QOS_CLASS_WIDTH'd1
+`define HNI_QOS_CLASS_LOW                      `HNI_QOS_CLASS_WIDTH'd0
 `define HNI_QOS_HIGH_MAX                       15
 `define HNI_QOS_HIGH_MIN                       8
 `define HNI_QOS_LOW_MAX                        7

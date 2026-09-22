@@ -78,6 +78,9 @@ module rni_wr_buffer `RNI_PARAM
     // meaningful once that entry's last beat has landed (awctrl's
     // wdata_recv_done_q), which is where it is read.
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_o,
+    // Per entry: every Allocation Tag of the line is marked for update. Read with
+    // the same timing as wb_entry_all_be_o.
+    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_tu_o,
     input  wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_i[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output chie_pkg::dat_flit_s                wb_txdatflit_d3_o,
     output wire                                wb_txdatflitv_d3_o,
@@ -390,9 +393,13 @@ module rni_wr_buffer `RNI_PARAM
     // SS2.10.3 (p.2-135, MUST) gives WriteNoSnpFull / WriteUniqueFull "all byte
     // enables must be asserted", so the Full opcode is only available once the
     // accumulated strobes cover the whole line.
+    // SS12.5.2 (p.12-379, MUST) gives the Full writes with TagOp=Update "all TU bits
+    // must be asserted", where the Ptl forms admit any combination -- so the same
+    // gate on the accumulated TU decides which form an Update write may take.
     generate
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: wr_all_be
             assign wb_entry_all_be_o[entry] = &w_strb_d2_q[entry];
+            assign wb_entry_all_tu_o[entry] = &w_tu_d2_q[entry];
         end
     endgenerate
 

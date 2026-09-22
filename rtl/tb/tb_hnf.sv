@@ -904,7 +904,7 @@ module tb_hnf;
         rxrspflit                             = chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
         rxrspflit.srcid = `RN1_ID;
         rxrspflit.tgtid = `HNF0_ID;
-        rn_rxrspflit  <= chie_pkg::rsp_flit_s'(flit[j][chie_pkg::RSP_FLIT_WIDTH-1:0]);
+        rn_rxrspflit  <= rxrspflit;
         rn_rxrspflitv <= 1'b1;
         j             <= j + 1;
 `ifdef TB_INFO

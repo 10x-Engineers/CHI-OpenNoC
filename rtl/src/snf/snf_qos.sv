@@ -636,7 +636,6 @@ module snf_qos `SNF_PARAM
             assign ret_cnt_h_zero[ret_entry]  = ret_cnt_h_entry_s2_q[ret_entry] == {`SNF_RET_BANK_CNT_WIDTH{1'b0}};
 
             assign ret_cnt_h_one[ret_entry]  = (ret_cnt_h_entry_s2_q[ret_entry] == RET_CNT_ONE) & (~(ret_cnt_h_inc_s0[ret_entry] == 1'b1));
-            assign retry_h_num_one = |ret_cnt_h_one;
 
             //retry bank low count
             assign ret_cnt_l_inc_s0[ret_entry] = ret_is_l_s0 & ret_cnt_inc_ptr_s0[ret_entry];
@@ -666,10 +665,11 @@ module snf_qos `SNF_PARAM
             assign ret_cnt_l_zero[ret_entry]  = ret_cnt_l_entry_s2_q[ret_entry] == {`SNF_RET_BANK_CNT_WIDTH{1'b0}};
 
             assign ret_cnt_l_one[ret_entry]  = (ret_cnt_l_entry_s2_q[ret_entry] == RET_CNT_ONE) & (~(ret_cnt_l_inc_s0[ret_entry] == 1'b1));
-            assign retry_l_num_one = |ret_cnt_l_one;
-
         end
     endgenerate
+
+    assign retry_h_num_one = |ret_cnt_h_one;
+    assign retry_l_num_one = |ret_cnt_l_one;
 
     assign h_retry_req_entry = (ret_bank_entry_v_s1_q & ~ret_cnt_h_zero) | ret_cnt_h_inc_s0;
 

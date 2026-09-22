@@ -234,6 +234,47 @@ if command -v verilator >/dev/null; then
   run_xp_link || rc=1
 fi
 
+# chie_flit_opt_check's refusals are `initial`-block $fatals, which --lint-only
+# never reaches: it elaborates but runs nothing, and an uninstantiated module under
+# --top-module is simply dropped. So a node that never instantiates the check has
+# no refusal at all and nothing above says so -- rnf.sv was in that state, and a
+# CHIE_DATA_WIDTH=512 RN-F elaborated cleanly and then hung on its first read.
+run_width_refusal() {
+  echo "==================== Data_Width refusal ===================="
+  local n rcw=0 out d
+  for n in hnf hni rni rnf snf; do
+    if grep -q "chie_flit_opt_check" "src/$n/$n.sv"; then
+      echo "  $n instantiates chie_flit_opt_check"
+    else
+      echo "  FAIL: src/$n/$n.sv does not instantiate chie_flit_opt_check, so a"
+      echo "        CHIE_DATA_WIDTH != 256 build of $n is accepted rather than refused."
+      rcw=1
+    fi
+  done
+  # The structural pass above cannot show the refusal actually firing, so one node
+  # is built and run at 512. The RN-F is that node: it is the cheapest to build and
+  # the one the instantiation was missing from.
+  d=$(mktemp -d) || return 1
+  export OBJCACHE="${OBJCACHE-}"
+  out=$(verilator --binary -Wno-fatal -DDISPLAY_FATAL -DCHIE_DATA_WIDTH=512 \
+          --top-module rnf -Iinclude -Imisc -Isrc/rnf --Mdir "$d/obj" -o sim \
+          include/chie_pkg.sv misc/chie_flit_opt_check.sv src/rnf/*.sv 2>&1 \
+        && "$d/obj/sim" 2>&1)
+  rm -rf "$d"
+  if echo "$out" | grep -q "CHIE_DATA_WIDTH=512"; then
+    echo "  rnf refuses CHIE_DATA_WIDTH=512 at time zero"
+  else
+    echo "  FAIL: an rnf built at CHIE_DATA_WIDTH=512 did not refuse"
+    echo "$out" | tail -20 | sed 's/^/  /'
+    rcw=1
+  fi
+  return $rcw
+}
+
+if command -v verilator >/dev/null; then
+  run_width_refusal || rc=1
+fi
+
 echo
 if [ $rc -eq 0 ]; then echo "lint OK"; else echo "lint FAILED"; fi
 exit $rc

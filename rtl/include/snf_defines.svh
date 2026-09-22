@@ -68,8 +68,8 @@
 // snf_mshr_qos
 `define SNF_QOS_CNT_WIDTH                      ((SNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(SNF_MSHR_ENTRIES_NUM_PARAM) : 1)
 `define SNF_QOS_CLASS_WIDTH                    1
-`define SNF_QOS_CLASS_HIGH                     1
-`define SNF_QOS_CLASS_LOW                      0
+`define SNF_QOS_CLASS_HIGH                     `SNF_QOS_CLASS_WIDTH'd1
+`define SNF_QOS_CLASS_LOW                      `SNF_QOS_CLASS_WIDTH'd0
 `define SNF_QOS_HIGH_MIN                       8
 `define SNF_QOS_LOW_MAX                        7
 `define SNF_QOS_HIGH_POOL_NUM                  SNF_MSHR_ENTRIES_NUM_PARAM/2
