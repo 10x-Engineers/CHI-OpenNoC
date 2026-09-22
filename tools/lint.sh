@@ -44,7 +44,8 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=(hnf hni rni rnf snf); fi
+ALL_NODES=(hnf hni rni rnf snf)
+if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=("${ALL_NODES[@]}"); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
 # clean run under a different binary does not prove a clean run in CI: 5.020 also
@@ -242,8 +243,8 @@ fi
 run_width_refusal() {
   echo "==================== Data_Width refusal ===================="
   local n rcw=0 out d
-  for n in hnf hni rni rnf snf; do
-    if grep -q "chie_flit_opt_check" "src/$n/$n.sv"; then
+  for n in "${ALL_NODES[@]}"; do
+    if grep -q "u_chie_flit_opt_check" "src/$n/$n.sv"; then
       echo "  $n instantiates chie_flit_opt_check"
     else
       echo "  FAIL: src/$n/$n.sv does not instantiate chie_flit_opt_check, so a"
@@ -253,27 +254,35 @@ run_width_refusal() {
   done
   # The structural pass above cannot show the refusal actually firing, so one node
   # is built and run at 512. The RN-F is that node: it is the cheapest to build and
-  # the one the instantiation was missing from.
+  # the one the instantiation was missing from. A build failure is reported as a
+  # build failure -- "did not refuse" would accuse the RTL of a defect that is not
+  # there, which is the conflation run_xp_link's coroutine arm also exists to avoid.
   d=$(mktemp -d) || return 1
+  # ccache cannot see through --binary's precompiled header; same reason as run_xp_link.
   export OBJCACHE="${OBJCACHE-}"
-  out=$(verilator --binary -Wno-fatal -DDISPLAY_FATAL -DCHIE_DATA_WIDTH=512 \
-          --top-module rnf -Iinclude -Imisc -Isrc/rnf --Mdir "$d/obj" -o sim \
-          include/chie_pkg.sv misc/chie_flit_opt_check.sv src/rnf/*.sv 2>&1 \
-        && "$d/obj/sim" 2>&1)
+  if ! out=$(verilator --binary -Wno-fatal -DDISPLAY_FATAL -DCHIE_DATA_WIDTH=512 \
+               --top-module rnf -Iinclude -Imisc -Isrc/rnf --Mdir "$d/obj" -o sim \
+               $(node_sources rnf) 2>&1); then
+    echo "  FAIL: the CHIE_DATA_WIDTH=512 rnf build did not complete -- this is a"
+    echo "        toolchain or elaboration failure, not a missing refusal."
+    echo "$out" | tail -20 | sed 's/^/  /'
+    rm -rf "$d"; return 1
+  fi
+  out=$("$d/obj/sim" 2>&1)
   rm -rf "$d"
-  if echo "$out" | grep -q "CHIE_DATA_WIDTH=512"; then
+  # Anchored on chie_flit_opt_check's own $fatal text, so nothing but that refusal
+  # firing can satisfy the gate.
+  if echo "$out" | grep -q "Section 16.1 (p.16-471) permits 128, 256 and 512"; then
     echo "  rnf refuses CHIE_DATA_WIDTH=512 at time zero"
   else
-    echo "  FAIL: an rnf built at CHIE_DATA_WIDTH=512 did not refuse"
+    echo "  FAIL: an rnf built at CHIE_DATA_WIDTH=512 ran without refusing"
     echo "$out" | tail -20 | sed 's/^/  /'
     rcw=1
   fi
   return $rcw
 }
 
-if command -v verilator >/dev/null; then
-  run_width_refusal || rc=1
-fi
+run_width_refusal || rc=1
 
 echo
 if [ $rc -eq 0 ]; then echo "lint OK"; else echo "lint FAILED"; fi

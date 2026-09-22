@@ -1038,7 +1038,7 @@ module rni_awctrl `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_entry_full_write
             assign aw_entry_full_write_w[entry] = aw_line_sized_w[entry] & wdata_recv_done_q[entry] &
                    wb_entry_all_be_i[entry] &
-                   ((awctrl_entry_tagop_o[entry] != 2'b10) | wb_entry_all_tu_i[entry]);
+                   ((awctrl_entry_tagop_o[entry] != chie_pkg::TAGOP_UPDATE) | wb_entry_all_tu_i[entry]);
         end
     endgenerate
 

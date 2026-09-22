@@ -393,11 +393,8 @@ module rni_wr_buffer `RNI_PARAM
     // SS2.10.3 (p.2-135, MUST) gives WriteNoSnpFull / WriteUniqueFull "all byte
     // enables must be asserted", so the Full opcode is only available once the
     // accumulated strobes cover the whole line.
-    // SS12.5.2 (p.12-379, MUST) gives the Full writes with TagOp=Update "all TU bits
-    // must be asserted", where the Ptl forms admit any combination -- so the same
-    // gate on the accumulated TU decides which form an Update write may take.
     generate
-        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: wr_all_be
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: wr_entry_all
             assign wb_entry_all_be_o[entry] = &w_strb_d2_q[entry];
             assign wb_entry_all_tu_o[entry] = &w_tu_d2_q[entry];
         end
