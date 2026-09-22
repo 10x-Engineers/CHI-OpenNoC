@@ -204,13 +204,15 @@ module rnf_ctl `RNF_PARAM
     localparam logic [3:0] S_PCRD_RET= 4'd11;
     localparam logic [3:0] S_WU_DAT  = 4'd12;
     localparam logic [3:0] S_CMRSP   = 4'd13;
+    localparam logic [3:0] S_CMO     = 4'd14;
 
     // What the request in S_REQ is waiting for.
     localparam logic [2:0] K_READ    = 3'd0;   // a Data response, the line filled from it
     localparam logic [2:0] K_MRU     = 3'd1;   // Comp, or a Data response if the line was lost
     localparam logic [2:0] K_OWN     = 3'd2;   // Comp granting ownership
     localparam logic [2:0] K_NOTE    = 3'd3;   // Comp and nothing else: Evict and the CMOs
-    localparam logic [2:0] K_WU      = 3'd4;   // DBIDResp, WriteData, Comp
+    localparam logic [2:0] K_WU      = 3'd4;   // DBIDResp, WriteData, Comp, and a
+                                               // Combined Write's CompCMO
 
     // Where the finished transaction is answered.
     localparam logic [1:0] CH_NONE   = 2'd0;
@@ -308,6 +310,9 @@ module rnf_ctl `RNF_PARAM
     logic                                       wr_sent_q;
     logic                                       cb_done_q;
     logic                                       drop_q;
+    // The CompCMO of the request in flight, and where S_CMO goes once it lands.
+    logic                                       cmo_got_q;
+    logic [3:0]                                 cmo_ret_st_q;
 
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
     localparam int MON = RNF_EXCL_LP_NUM_PARAM;
@@ -397,6 +402,20 @@ module rnf_ctl `RNF_PARAM
         for (int c = 0; c < 8; c++)
             merge_poison[c] = (&be[c*8 +: 8]) ? wpois[c]
                                              : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
+    endfunction
+
+    // SS2.3.2 (p.2-57, p.2-66): the Combined Writes without Persist, whose CMO leg
+    // completes on a CompCMO of its own.
+    function automatic bit is_cmb_write(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)  ||
+               (op == chie_pkg::REQ_WRITENOSNPFULLCLEANINV) ||
+               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)   ||
+               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)  ||
+               (op == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH) ||
+               (op == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)  ||
+               (op == chie_pkg::REQ_WRITEBACKFULLCLEANSH)   ||
+               (op == chie_pkg::REQ_WRITEBACKFULLCLEANINV)  ||
+               (op == chie_pkg::REQ_WRITECLEANFULLCLEANSH);
     endfunction
 
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
@@ -679,6 +698,7 @@ module rnf_ctl `RNF_PARAM
                ((f.opcode == chie_pkg::DAT_COMPDATA) || (f.opcode == chie_pkg::DAT_DATASEPRESP));
     endfunction
 
+    wire rx_compcmo      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPCMO);
     wire rx_dat_mine     = prot_rxdatflitv_i && is_read_data(prot_rxdatflit_i, txnid_q);
     wire rx_dat_arriving = rxdat_arr_v_i && is_read_data(rxdat_arr_flit_i, txnid_q);
     wire rx_dat_comb = rx_dat_mine &&
@@ -757,6 +777,13 @@ module rnf_ctl `RNF_PARAM
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
     wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
+
+    // SS2.11 (p.2-146): a transaction is outstanding until every response it is owed
+    // has arrived, CompCMO among them, and SS2.3.2 (p.2-58, p.2-66) orders the CompCMO
+    // against none of the others -- so it is taken in whichever state it lands in.
+    wire cmo_got_now = cmo_got_q || rx_compcmo;
+    wire wu_cmo_now  = !is_cmb_write(acq_op_q) || cmo_got_now;
+    wire cb_cmo_now  = !is_cmb_write(cb_op_q)  || cmo_got_now;
 
     function automatic bit same_set(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
                                     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
@@ -899,6 +926,8 @@ module rnf_ctl `RNF_PARAM
             wr_sent_q     <= 1'b0;
             cb_done_q     <= 1'b0;
             drop_q        <= 1'b0;
+            cmo_got_q     <= 1'b0;
+            cmo_ret_st_q  <= S_IDLE;
         end
         else begin
             automatic logic                                 set_now  = 1'b0;
@@ -919,6 +948,17 @@ module rnf_ctl `RNF_PARAM
 
             if (acq_snp_now && (st_q != S_IDLE))
                 acq_cs_q <= snp_upd_state_i;
+
+            // Each attempt's CompCMO is its own: a request resent after RetryAck owes
+            // a fresh one.
+            if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i)
+                cmo_got_q <= 1'b0;
+            if (rx_compcmo) begin
+                cmo_got_q <= 1'b1;
+                // SS9.4.3 (p.9-341): CompCMO carries the CMO leg's error, which the
+                // core is owed as it is a Comp's.
+                if (is_err(prot_rxrspflit_i.resperr)) err_q <= 1'b1;
+            end
 
             // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
             // its CopyBack is in flight, and the WriteData must say so.
@@ -1311,8 +1351,14 @@ module rnf_ctl `RNF_PARAM
                             // a snoop on this line is still answered from it.
                             cb_done_q <= 1'b1;
                             wr_hi_q   <= 1'b0;
-                            txnid_q   <= txnid_q + 12'd1;
-                            st_q      <= cb_then_req_q ? S_REQ : fin_st;
+                            if (cb_cmo_now) begin
+                                txnid_q <= txnid_q + 12'd1;
+                                st_q    <= cb_then_req_q ? S_REQ : fin_st;
+                            end
+                            else begin
+                                cmo_ret_st_q <= cb_then_req_q ? S_REQ : fin_st;
+                                st_q         <= S_CMO;
+                            end
                         end
                         else wr_hi_q <= 1'b1;
                     end
@@ -1447,9 +1493,13 @@ module rnf_ctl `RNF_PARAM
                             if (wu_dbid_now) begin
                                 if ((acq_op_q != chie_pkg::REQ_WRITEUNIQUEZERO) && !wr_sent_q)
                                     st_q <= S_WU_DAT;
-                                else if (wu_comp_now) begin
+                                else if (wu_comp_now && wu_cmo_now) begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
+                                end
+                                else if (wu_comp_now) begin
+                                    cmo_ret_st_q <= fin_st;
+                                    st_q         <= S_CMO;
                                 end
                             end
                         end
@@ -1482,11 +1532,16 @@ module rnf_ctl `RNF_PARAM
                     if (prot_txdatflit_sent_i) begin
                         if (wr_hi_q) begin
                             wr_sent_q <= 1'b1;
-                            if (got_rsp_q || rx_comp) begin
+                            if (!(got_rsp_q || rx_comp))
+                                st_q <= S_DATA;
+                            else if (wu_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
                                 st_q    <= fin_st;
                             end
-                            else st_q <= S_DATA;
+                            else begin
+                                cmo_ret_st_q <= fin_st;
+                                st_q         <= S_CMO;
+                            end
                         end
                         else wr_hi_q <= 1'b1;
                     end
@@ -1501,6 +1556,15 @@ module rnf_ctl `RNF_PARAM
 
                 S_PCRD_RET: begin
                     if (prot_txreqflit_sent_i) st_q <= S_IDLE;
+                end
+
+                // The write leg is done and the CMO leg still owes its CompCMO; the
+                // core's response and the TxnID both wait for it.
+                S_CMO: begin
+                    if (rx_compcmo) begin
+                        txnid_q <= txnid_q + 12'd1;
+                        st_q    <= cmo_ret_st_q;
+                    end
                 end
 
                 S_ACK: begin
