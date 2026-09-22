@@ -161,6 +161,7 @@ module rni `RNI_PARAM
     chie_pkg::req_flit_s                awctrl_txreqflit_s4;
     chie_pkg::req_flit_s                misc_txreqflit_s4;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_tu;
     wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     wire                                misc_txreqflitv_s4;
     wire                                misc_txreqflit_sent_s4;
@@ -370,6 +371,7 @@ module rni `RNI_PARAM
                    ,.wb_req_entry_d3_i                     ( wb_req_entry_d3               )
                    ,.wb_not_busy_d1_i                      ( wb_not_busy_d1                )
                    ,.wb_entry_all_be_i                     ( wb_entry_all_be               )
+                   ,.wb_entry_all_tu_i                     ( wb_entry_all_tu               )
                    ,.awctrl_entry_tagop_o                  ( awctrl_entry_tagop            )
                    ,.awctrl_txdat_rdy_v_d2_o               ( awctrl_txdat_rdy_v_d2         )
                    ,.awctrl_txdat_rdy_entry_d2_o           ( awctrl_txdat_rdy_entry_d2     )
@@ -429,6 +431,7 @@ module rni `RNI_PARAM
                       ,.BVALID0                               ( BVALID0                       )
                       ,.BREADY0                               ( BREADY0                       )
                       ,.wb_entry_all_be_o                     ( wb_entry_all_be               )
+                      ,.wb_entry_all_tu_o                     ( wb_entry_all_tu               )
                       ,.awctrl_entry_tagop_i                  ( awctrl_entry_tagop            )
                       ,.wb_txdatflit_d3_o                     ( wb_txdatflit_d3               )
                       ,.wb_txdatflitv_d3_o                    ( wb_txdatflitv_d3              )

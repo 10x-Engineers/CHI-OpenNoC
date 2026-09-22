@@ -190,16 +190,16 @@ module snf `SNF_PARAM
         if (RST)
             rxreq_out_crd_q <= {`SNF_LL_REQ_CRD_CNT_WIDTH{1'b0}};
         else if (rxreq_out_crd_upd_sx)
-            rxreq_out_crd_q <= RXREQLCRDV ? (rxreq_out_crd_q + `SNF_LL_CRD_INCDEC_ONE)
-                                          : (rxreq_out_crd_q - `SNF_LL_CRD_INCDEC_ONE);
+            rxreq_out_crd_q <= RXREQLCRDV ? (rxreq_out_crd_q + `SNF_LL_REQ_CRD_CNT_WIDTH'(`SNF_LL_CRD_INCDEC_ONE))
+                                          : (rxreq_out_crd_q - `SNF_LL_REQ_CRD_CNT_WIDTH'(`SNF_LL_CRD_INCDEC_ONE));
     end
 
     always_ff @(posedge CLK or posedge RST) begin
         if (RST)
             rxdat_out_crd_q <= {`SNF_LL_DAT_CRD_CNT_WIDTH{1'b0}};
         else if (rxdat_out_crd_upd_sx)
-            rxdat_out_crd_q <= RXDATLCRDV ? (rxdat_out_crd_q + `SNF_LL_CRD_INCDEC_ONE)
-                                          : (rxdat_out_crd_q - `SNF_LL_CRD_INCDEC_ONE);
+            rxdat_out_crd_q <= RXDATLCRDV ? (rxdat_out_crd_q + `SNF_LL_DAT_CRD_CNT_WIDTH'(`SNF_LL_CRD_INCDEC_ONE))
+                                          : (rxdat_out_crd_q - `SNF_LL_DAT_CRD_CNT_WIDTH'(`SNF_LL_CRD_INCDEC_ONE));
     end
 
     assign rxreq_out_crd_upd_sx   = RXREQLCRDV ^ RXREQFLITV;

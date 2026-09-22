@@ -76,6 +76,7 @@ module rni_awctrl `RNI_PARAM
     // txdatflit request
     input  wire                                wb_not_busy_d1_i,
     input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_i,
+    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_tu_i,
     // Sec 12.13 (p.12-390, MUST): the write data carries its request's TagOp.
     output wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_o[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output wire                                awctrl_txdat_rdy_v_d2_o,
@@ -191,6 +192,7 @@ module rni_awctrl `RNI_PARAM
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  wdata_recv_done_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_line_sized_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_full_pending_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_entry_full_write_w;
     logic                                aw_full_write_r;
     wire                                 txdat_select_entry_two_packets_w;
     wire                                 txdat_select_new_entry_w;
@@ -1027,11 +1029,23 @@ module rni_awctrl `RNI_PARAM
             aw_excl_r = aw_excl_r | (awctrl_entry_req_ptr_q[i] & awctrl_entry_excl_q[i]);
     end
 
+    // SS12.5.2 (p.12-379, MUST): a Full write with TagOp=Update must assert every TU
+    // bit, where the Ptl forms admit "any combination of TU and BE bits". TU names
+    // which Allocation Tags to update (SS13.10.39 p.13-435), so an Update the manager
+    // marked for only some tags cannot be widened to all of them -- it is issued as
+    // the Ptl form, which SS2.10.3 (p.2-135) lets assert every byte enable anyway.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_entry_full_write
+            assign aw_entry_full_write_w[entry] = aw_line_sized_w[entry] & wdata_recv_done_q[entry] &
+                   wb_entry_all_be_i[entry] &
+                   ((awctrl_entry_tagop_o[entry] != chie_pkg::TAGOP_UPDATE) | wb_entry_all_tu_i[entry]);
+        end
+    endgenerate
+
     always_comb begin: aw_full_write_sel
         aw_full_write_r = 1'b0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
-            aw_full_write_r = aw_full_write_r | (awctrl_entry_req_ptr_q[i] & aw_line_sized_w[i] &
-                                                 wdata_recv_done_q[i] & wb_entry_all_be_i[i]);
+            aw_full_write_r = aw_full_write_r | (awctrl_entry_req_ptr_q[i] & aw_entry_full_write_w[i]);
     end
 
     always_comb begin
