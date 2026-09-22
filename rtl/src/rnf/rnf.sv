@@ -462,4 +462,12 @@ module rnf `RNF_PARAM
     assign TXSACTIVE = (txn_active | snp_busy | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
                         | prot_txflitv | sysco_transition) & (~RST);
 
+    // A node's optional-field widths and chie_pkg's layout are one declaration; this
+    // refuses a build where they disagree rather than silently shifting every field.
+    chie_flit_opt_check #(
+        .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
+        .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+    ) u_chie_flit_opt_check ();
+
 endmodule

@@ -694,7 +694,9 @@ module rnf_ctl `RNF_PARAM
     wire rx_rsp_txn  = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q);
     wire rx_comp     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMP);
     wire rx_sep      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_RESPSEPDATA);
-    wire rx_dbid     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESP);
+    // SS2.3.2 (p.2-52): write data follows "DBIDResp, DBIDRespOrd, or CompDBIDResp".
+    wire rx_dbid     = rx_rsp_txn && ((prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESP) ||
+                                      (prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESPORD));
     // SS2.3.2 (p.2-51) / Table 4-39 (p.4-219): a CopyBack completes with the
     // combined CompDBIDResp, never a separate DBIDResp and Comp.
     wire rx_compdbid = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPDBIDRESP);
