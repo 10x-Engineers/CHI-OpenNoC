@@ -160,6 +160,8 @@ module rnf_ctl `RNF_PARAM
     input  wire                                 prot_txdatflit_sent_i,
     input  wire                                 prot_rxdatflitv_i,
     input  chie_pkg::dat_flit_s                 prot_rxdatflit_i,
+    input  wire                                 rxdat_arr_v_i,
+    input  chie_pkg::dat_flit_s                 rxdat_arr_flit_i,
     input  wire                                 prot_rxrspflitv_i,
     input  chie_pkg::rsp_flit_s                 prot_rxrspflit_i,
 
@@ -672,9 +674,13 @@ module rnf_ctl `RNF_PARAM
     // combined CompDBIDResp, never a separate DBIDResp and Comp.
     wire rx_compdbid = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPDBIDRESP);
     wire rx_retryack = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_RETRYACK);
-    wire rx_dat_mine = prot_rxdatflitv_i && (prot_rxdatflit_i.txnid == txnid_q) &&
-                       ((prot_rxdatflit_i.opcode == chie_pkg::DAT_COMPDATA) ||
-                        (prot_rxdatflit_i.opcode == chie_pkg::DAT_DATASEPRESP));
+    function automatic bit is_read_data(chie_pkg::dat_flit_s f, logic [11:0] txnid);
+        return (f.txnid == txnid) &&
+               ((f.opcode == chie_pkg::DAT_COMPDATA) || (f.opcode == chie_pkg::DAT_DATASEPRESP));
+    endfunction
+
+    wire rx_dat_mine     = prot_rxdatflitv_i && is_read_data(prot_rxdatflit_i, txnid_q);
+    wire rx_dat_arriving = rxdat_arr_v_i && is_read_data(rxdat_arr_flit_i, txnid_q);
     wire rx_dat_comb = rx_dat_mine &&
                        (prot_rxdatflit_i.opcode == chie_pkg::DAT_COMPDATA);
 
@@ -1626,8 +1632,10 @@ module rnf_ctl `RNF_PARAM
     assign CMDONE = (st_q == S_CMRSP);
     assign CMRESP = err_q ? 2'b10 : 2'b00;
 
-    // From the first Data packet until the fill it completes has been written.
-    assign defer_v_o    = ((st_q == S_DATA) && (got_lo_q || got_hi_q || rx_dat_mine)) || fill_v_q;
+    // From the first Data packet until the fill it completes has been written. SS4.11.1
+    // (p.4-242, MUST) is judged at the interface, so a packet counts from its cycle on the pins.
+    assign defer_v_o    = ((st_q == S_DATA) &&
+                           (got_lo_q || got_hi_q || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
     assign defer_addr_o = addr_q;
 
     // SS14.7.1 (p.14-460): a held surplus P-Credit is a PCrdReturn this node still

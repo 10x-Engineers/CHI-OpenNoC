@@ -75,6 +75,10 @@ module rnf_link_ctl `RNF_PARAM
     output chie_pkg::rsp_flit_s prot_rxrspflit_o,
     output logic                prot_rxdatflitv_o,
     output chie_pkg::dat_flit_s prot_rxdatflit_o,
+    // The Data flit on the RXDAT pins this cycle, which prot_rxdatflit_o
+    // presents one cycle later.
+    output wire                 rxdat_arr_v_o,
+    output chie_pkg::dat_flit_s rxdat_arr_flit_o,
     output logic                prot_rxsnpflitv_o,
     output chie_pkg::snp_flit_s prot_rxsnpflit_o,
     // A snoop the protocol layer has taken off its queue.
@@ -378,16 +382,21 @@ module rnf_link_ctl `RNF_PARAM
         end
     end
 
+`ifdef LINKFLITPEND_EN
+    wire rxdat_capture = rxdatflitpend_q & RXDATFLITV;
+`else
+    wire rxdat_capture = RXDATFLITV;
+`endif
+
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
             prot_rxdatflit_o <= '0;
-`ifdef LINKFLITPEND_EN
-        else if (rxdatflitpend_q == 1'b1 && RXDATFLITV == 1'b1)
-`else
-        else if (RXDATFLITV == 1'b1)
-`endif
+        else if (rxdat_capture == 1'b1)
             prot_rxdatflit_o <= RXDATFLIT;
     end
+
+    assign rxdat_arr_v_o    = rxdat_capture & (RXDATFLIT.opcode != chie_pkg::DAT_DATLCRDRETURN);
+    assign rxdat_arr_flit_o = RXDATFLIT;
 
     assign prot_rxdatflitv_o = rxdatflitv_q
                                & (prot_rxdatflit_o.opcode != chie_pkg::DAT_DATLCRDRETURN);

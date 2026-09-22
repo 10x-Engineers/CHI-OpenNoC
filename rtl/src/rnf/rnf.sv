@@ -135,6 +135,8 @@ module rnf `RNF_PARAM
     chie_pkg::snp_flit_s prot_rxsnpflit;
     wire                 prot_rxrspflitv;
     wire                 prot_rxdatflitv;
+    wire                 rxdat_arr_v;
+    chie_pkg::dat_flit_s rxdat_arr_flit;
     wire                 prot_rxsnpflitv;
     wire                 prot_link_run;
     wire                 prot_txflitv;
@@ -359,6 +361,8 @@ module rnf `RNF_PARAM
                      ,.prot_txdatflit_sent_i ( prot_txdatflit_sent & ~snp_txdatflitv )
                      ,.prot_rxdatflitv_i     ( prot_rxdatflitv      )
                      ,.prot_rxdatflit_i      ( prot_rxdatflit       )
+                     ,.rxdat_arr_v_i         ( rxdat_arr_v          )
+                     ,.rxdat_arr_flit_i      ( rxdat_arr_flit       )
                      ,.prot_rxrspflitv_i     ( prot_rxrspflitv      )
                      ,.prot_rxrspflit_i      ( prot_rxrspflit       )
                      ,.coh_enabled_i         ( coh_enabled          )
@@ -421,6 +425,8 @@ module rnf `RNF_PARAM
                      ,.prot_rxrspflit_o      ( prot_rxrspflit      )
                      ,.prot_rxdatflitv_o     ( prot_rxdatflitv     )
                      ,.prot_rxdatflit_o      ( prot_rxdatflit      )
+                     ,.rxdat_arr_v_o         ( rxdat_arr_v         )
+                     ,.rxdat_arr_flit_o      ( rxdat_arr_flit      )
                      ,.prot_rxsnpflitv_o     ( prot_rxsnpflitv     )
                      ,.prot_rxsnpflit_o      ( prot_rxsnpflit      )
                      ,.prot_snp_pop_i        ( snp_pop             )
