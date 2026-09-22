@@ -165,6 +165,8 @@ module rnf `RNF_PARAM
     wire                                 snp_pop;
     wire                                 ctl_defer_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_defer_addr;
+    wire                                 ctl_cb_hold_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_cb_hold_addr;
     wire                                 snp_line_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr;
 
@@ -255,6 +257,8 @@ module rnf `RNF_PARAM
                      ,.snp_pop_o             ( snp_pop          )
                      ,.defer_v_i             ( ctl_defer_v      )
                      ,.defer_addr_i          ( ctl_defer_addr   )
+                     ,.cb_hold_v_i           ( ctl_cb_hold_v    )
+                     ,.cb_hold_addr_i        ( ctl_cb_hold_addr )
                      ,.cache_lu_addr_o       ( snp_lu_addr      )
                      ,.cache_lu_hit_i        ( snp_lu_hit       )
                      ,.cache_lu_state_i      ( snp_lu_state     )
@@ -376,6 +380,8 @@ module rnf `RNF_PARAM
                      ,.link_run_i            ( prot_link_run        )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
+                     ,.cb_hold_v_o           ( ctl_cb_hold_v        )
+                     ,.cb_hold_addr_o        ( ctl_cb_hold_addr     )
                      ,.snp_line_v_i          ( snp_line_v           )
                      ,.snp_line_addr_i       ( snp_line_addr        )
                      ,.txn_active_o          ( txn_active           )

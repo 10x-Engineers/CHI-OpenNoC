@@ -183,6 +183,12 @@ module rnf_ctl `RNF_PARAM
     output wire                                 defer_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] defer_addr_o,
 
+    // SS13.10.44 (p.13-436, MUST): one Resp across every packet of the WriteData,
+    // so a snoop to the CopyBack's line is not taken from its CompDBIDResp until
+    // the way is retired.
+    output wire                                 cb_hold_v_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cb_hold_addr_o,
+
     // The line the snoop port is answering.
     input  wire                                 snp_line_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_i,
@@ -961,7 +967,7 @@ module rnf_ctl `RNF_PARAM
             end
 
             // Table 4-39 fn a (p.4-220): the snoop port may move the victim while
-            // its CopyBack is in flight, and the WriteData must say so.
+            // its CopyBack awaits CompDBIDResp, and the WriteData must say so.
             if (vic_snp_now)
                 vic_state_q <= snp_upd_state_i;
 
@@ -1347,8 +1353,8 @@ module rnf_ctl `RNF_PARAM
                 S_CB_DAT: begin
                     if (prot_txdatflit_sent_i) begin
                         if (wr_hi_q) begin
-                            // The way is free only now: until the data has gone,
-                            // a snoop on this line is still answered from it.
+                            // The way is free only now; cb_hold_v_o keeps this
+                            // line's snoops queued until the retirement lands.
                             cb_done_q <= 1'b1;
                             wr_hi_q   <= 1'b0;
                             if (cb_cmo_now) begin
@@ -1701,6 +1707,9 @@ module rnf_ctl `RNF_PARAM
     assign defer_v_o    = ((st_q == S_DATA) &&
                            (got_lo_q || got_hi_q || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
     assign defer_addr_o = addr_q;
+
+    assign cb_hold_v_o    = (st_q == S_CB_DAT) || cb_done_q;
+    assign cb_hold_addr_o = vic_addr_q;
 
     // SS14.7.1 (p.14-460): a held surplus P-Credit is a PCrdReturn this node still
     // owes, so it counts as work in progress even from idle.
