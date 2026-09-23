@@ -142,6 +142,7 @@ module rni_arctrl
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_respsep_recv_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxdat_sepform_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_respsep_owed_w;
+    wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_ordrsp_owed_w;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_sepform_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_respsep_recv_q;
     wire                                 arctrl_entry_dealloc_v_w;
@@ -1321,6 +1322,11 @@ module rni_arctrl
         end
     endgenerate
 
-    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] | arctrl_rdata_retired_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    // SS2.5.2 (p.2-87): the TxnID is free only once "All responses associated with
+    // a previous transaction" have arrived, and an ordered read's ReadReceipt may
+    // land after its last CompData -- SS14.7.2 (p.14-462) names it the completing
+    // flit then.
+    assign arctrl_ordrsp_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] | arctrl_rdata_retired_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_ordrsp_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     assign arctrl_entry_dealloc_v_w = |arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 endmodule
