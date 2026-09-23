@@ -414,7 +414,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_taggroupid_s1  = bypass_wr_match_s1 ? li_mshr_rxreq_lpid_s1_q : 8'd0;
     // SS12.10 (p.12-385): the request issued for the Requester carries its TagOp.
     assign mshr_txreq_bypass_tagop_s1       = !tx_rdnosnp_s1_q
-                                            ? opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1)
+                                            ? opennoc_hnf_pkg::hnf_dn_wr_tagop(li_mshr_rxreq_tagop_s1_q, tx_wrnosnpful_s1, li_mshr_rxreq_memattr_s1_q)
                                             : (li_mshr_rxreq_tagop_s1_q inside {chie_pkg::TAGOP_TRANSFER, chie_pkg::TAGOP_MATCH})
                                             ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, do_dmt_s1_q,
                                                                                li_mshr_rxreq_size_s1_q, li_mshr_rxreq_memattr_s1_q)

@@ -99,8 +99,8 @@ Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.
 | :--- | :---: | :--- |
 | `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 | |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | |
-| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | default `RNF_DCT_LIST_PARAM` [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
-| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟡 | sent to targets that declare no Stash support [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
+| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM` |
+| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | only to a target set in `RNF_STASH_LIST_PARAM` |
 | `SnpSharedFwd`, `SnpQuery` | ⬜ | [#334](https://github.com/10x-Engineers/CHI-OpenNoC/issues/334) |
 | `SnpDVMOp` | ⬜ | MN only [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | All snoop responses, incl. `SnpRespDataPtl` | 🟢 | |
@@ -124,10 +124,10 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
 | Atomics | ⚪ | ⚪ | — | ⬜ | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
-| Stash | — | 🟢 | — | ⬜ | 🟡 | HN-I completes without stashing; HN-F target choice [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318), RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
+| Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | HN-F write-TagOp gate and a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
+| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
@@ -193,7 +193,7 @@ no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-En
 ./tools/lint.sh hnf snf                # lint selected nodes
 
 SIM=verilator ./tools/link_check.sh    # Chapter 14 link bench (default: Xcelium; SIM=vcs)
-SIM=verilator ./tools/dvm_check.sh     # DVMOp error completion at the HN-F and HN-I
+SIM=verilator ./tools/home_check.sh    # directed HN-F / HN-I benches (DVMOp, Stash targets)
 
 cd rtl
 make com sim SIM=verilator             # 136-case HN-F regression (default: VCS)
@@ -230,7 +230,8 @@ and are overridden at instantiation.
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F |
 | `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F) | |
 | `HNF_MSHR_RNF_NUM_PARAM`, `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Coherent Requesters served by the HN-F |
-| `RNF_DCT_LIST_PARAM` | all True | Per-Requester `Direct_Cache_Transfer`; default should be False [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
+| `RNF_DCT_LIST_PARAM` | all False | Per-Requester `Direct_Cache_Transfer` (section 16.1) |
+| `RNF_STASH_LIST_PARAM` | all False | Per-Requester: receives Stash snoops (section 9.4.6) |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | 64 B lines |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
@@ -256,7 +257,7 @@ rtl/
 ├── tb/          behavioural benches
 ├── case/        136 HN-F stimulus/response cases
 └── Makefile
-tools/           lint.sh, check_select_bounds.py, link_check.sh, dvm_check.sh, mesh/ring generators
+tools/           lint.sh, check_select_bounds.py, link_check.sh, home_check.sh, mesh/ring generators
 doc/hnf/         HN-F design overview (Chinese)
 ```
 

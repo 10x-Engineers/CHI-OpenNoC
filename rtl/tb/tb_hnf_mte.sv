@@ -10,12 +10,17 @@
 * See the Mulan PSL v2 for more details.
 */
 // =============================================================================
-// tb_hnf_dvm -- the DVMOp an HN-F answers without being an MN (tb_home_peer.svh).
+// tb_hnf_mte -- a WriteNoSnp with TagOp Match to memory that is not Normal
+// WriteBack. Sec 12.1 (p.12-372) permits tagging in no request to such memory,
+// so the HN-F forwards none downstream, and Sec 12.11.3 (p.12-387, MUST) still
+// owes the Requester a TagMatch -- a Fail -- which the Home sends itself. A small
+// Subordinate emulator answers the Home's downstream write in either shape:
+// DWT (only the Comp reaches the Home) or staged through the Home.
 // =============================================================================
 `include "hnf_defines.svh"
 `include "hnf_param.svh"
 
-module tb_hnf_dvm;
+module tb_hnf_mte;
 
   parameter CHIE_REQ_ADDR_WIDTH_PARAM   = chie_pkg::REQ_ADDR_WIDTH;
   parameter CHIE_SNP_ADDR_WIDTH_PARAM   = chie_pkg::SNP_ADDR_WIDTH;
@@ -42,7 +47,7 @@ module tb_hnf_dvm;
   parameter HNF_L3_CACHE_SIZE_PARAM     = 64;
   parameter HNF_L3_WAY_NUM_PARAM        = 16;
 
-    localparam string BENCH = "tb_hnf_dvm";
+    localparam string BENCH = "tb_hnf_mte";
     localparam RN_NID       = 8;
     localparam HOME_NID     = HNF_NID_PARAM;
 
@@ -101,6 +106,104 @@ module tb_hnf_dvm;
         .notify_reg(notify_reg)
     );
 
+    chie_pkg::req_flit_s dn_q[$];
+    chie_pkg::dat_flit_s dn_dat_q[$];
+    always @(posedge CLK) begin
+        if (!RST && TXREQFLITV && (TXREQFLIT.opcode != chie_pkg::REQ_REQLCRDRETURN)) dn_q.push_back(TXREQFLIT);
+        if (!RST && TXDATFLITV && (TXDATFLIT.tgtid == SNF_NID_PARAM))                dn_dat_q.push_back(TXDATFLIT);
+    end
+
+    // The Subordinate's half of the Home's downstream write (Sec 2.3.9 p.2-78).
+    task automatic serve_downstream(input chie_pkg::req_flit_s dn);
+        chie_pkg::rsp_flit_s rsp;
+        integer n;
+        begin
+            if (dn.tagop != chie_pkg::TAGOP_INVALID)
+                fail($sformatf("%s to the Subordinate carries TagOp %0d for memory that is not Normal WriteBack (Sec 12.1 p.12-372)",
+                               dn.opcode.name(), dn.tagop));
+            rsp       = '0;
+            rsp.srcid = SNF_NID_PARAM;
+            rsp.tgtid = HOME_NID;
+            rsp.txnid = dn.txnid;
+            // Under DWT the grant and the data run between Requester and Subordinate,
+            // off this link; the Home hears only the Comp.
+            if (!dn.snpattr.dodwt) begin
+                rsp.opcode = chie_pkg::RSP_DBIDRESP;
+                rsp.dbid   = 12'h7;
+                send_rsp(rsp);
+                for (n = 0; n < TIMEOUT_CYCLES && dn_dat_q.size() == 0; n = n + 1) @(posedge CLK);
+                if (dn_dat_q.size() == 0) begin
+                    fail("the Home never sent its write data to the Subordinate");
+                    return;
+                end
+                if (dn_dat_q[0].tagop != chie_pkg::TAGOP_INVALID)
+                    fail("write data to the Subordinate carries a TagOp its request does not (Sec 12.13 p.12-390)");
+                dn_dat_q.delete(0);
+            end
+            rsp.opcode = chie_pkg::RSP_COMP;
+            send_rsp(rsp);
+        end
+    endtask
+
+    task automatic match_write(input logic [11:0] txnid, input logic [chie_pkg::REQ_ADDR_WIDTH-1:0] addr);
+        chie_pkg::req_flit_s req;
+        chie_pkg::dat_flit_s dat;
+        chie_pkg::rsp_flit_s r;
+        integer              n, i;
+        bit                  ok, sent, dn_done;
+        begin
+            req            = '0;
+            req.opcode     = chie_pkg::REQ_WRITENOSNPPTL;
+            req.size       = chie_pkg::SIZE_8B;
+            req.addr       = addr;
+            req.srcid      = RN_NID;
+            req.tgtid      = HOME_NID;
+            req.txnid      = txnid;
+            req.allowretry = 1'b1;
+            req.tagop      = chie_pkg::TAGOP_MATCH;
+            req.lpid       = 8'h5;   // TagGroupID (Sec 13.10.40 p.13-435)
+            send_req(req);
+
+            // Serve whichever shape the Home takes until the Requester's Comp arrives.
+            sent = 1'b0; dn_done = 1'b0; ok = 1'b0;
+            for (n = 0; n < TIMEOUT_CYCLES && !ok; n = n + 1) begin
+                if (dn_q.size() > 0) begin
+                    if (dn_q[0].snpattr.dodwt) sent = 1'b1;   // the data goes to the Subordinate
+                    serve_downstream(dn_q[0]);
+                    dn_q.delete(0);
+                    dn_done = 1'b1;
+                end
+                for (i = 0; i < rsp_q.size(); i = i + 1)
+                    if (rsp_q[i].txnid == txnid && rsp_q[i].opcode == chie_pkg::RSP_DBIDRESP && !sent) begin
+                        dat           = '0;
+                        dat.opcode    = chie_pkg::DAT_NONCOPYBACKWRDATA;
+                        dat.srcid     = RN_NID;
+                        dat.tgtid     = rsp_q[i].srcid;
+                        dat.txnid     = rsp_q[i].dbid;
+                        dat.be        = 'hFF;
+                        dat.tagop     = chie_pkg::TAGOP_MATCH;
+                        dat.datacheck = chie_pkg::datacheck_of(dat.data);
+                        rsp_q.delete(i); rsp_cyc.delete(i);
+                        send_dat(dat);
+                        sent = 1'b1;
+                        break;
+                    end
+                for (i = 0; i < rsp_q.size(); i = i + 1)
+                    if (rsp_q[i].txnid == txnid &&
+                        rsp_q[i].opcode inside {chie_pkg::RSP_COMP, chie_pkg::RSP_COMPDBIDRESP}) ok = 1'b1;
+                if (!ok) @(posedge CLK);
+            end
+            if (!ok) fail("the Match write never completed");
+            if (!dn_done) fail("the Home never wrote to the Subordinate");
+
+            take_rsp_op(chie_pkg::RSP_TAGMATCH, r, ok);
+            if (!ok)
+                fail("no TagMatch for a TagOp Match write -- Sec 12.11.3 (p.12-387, MUST) owes one even where MTE is not supported");
+            else if (r.resp[0] != 1'b0)
+                fail("TagMatch reports Pass for memory without MTE -- Sec 12.11.3 (p.12-387, MUST) requires Fail");
+        end
+    endtask
+
     initial begin
         bring_up;
         // notify_reg reports the SRAM initialisation done, as tb_hnf waits for it.
@@ -111,10 +214,7 @@ module tb_hnf_dvm;
             join_any
             disable fork;
         end join
-        if (errors == 0) begin
-            dvm(1'b1, 12'h11);
-            dvm(1'b0, 12'h12);
-        end
+        if (errors == 0) match_write(12'h31, 'h5000);
         finish_bench;
     end
 
