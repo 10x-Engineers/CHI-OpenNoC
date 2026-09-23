@@ -19,7 +19,8 @@ A fork of [RV-BOSC/OpenNoC](https://github.com/RV-BOSC/OpenNoC) (taken at `4f57d
 
 **Status:** simulation-verified, not silicon-proven or synthesis-hardened (behavioural
 SRAMs, no timing constraints, no DFT). DVM is not implemented and MTE is partial. Only
-the default parameters are regularly exercised. Known defects are in the
+the default parameters are regularly exercised. Every non-🟢 cell in [§2](#2-chi-support)
+links its tracking issue; known defects are in the
 [issue tracker](https://github.com/10x-Engineers/CHI-OpenNoC/issues).
 
 ## Contents
@@ -56,49 +57,54 @@ Each node is a standalone module; there is no SoC wrapper.
 | :---: | :--- |
 | 🟢 | Serviced |
 | 🟡 | Partial |
-| ⚪ | Not implemented; error-completed (NDERR, section 9.1) with the transaction structure intact |
-| 🔴 | Not implemented |
+| ⚪ | Not implemented; error-completed (NDERR, section 9.1) with the transaction structure intact. Conformant |
+| ⬜ | Not implemented; optional and legally absent (a section 16.1 declaration or a MAY) |
+| 🔴 | Not conformant today, open bug |
 | ⬛ | No response, by the spec |
-| — | Not applicable to this node (a request that arrives anyway is error-completed) |
+| — | Not a target of this node / not applicable |
+
+The **Issue** column tracks the work to reach 🟢.
 
 ### Request opcodes (Completers)
 
-| Request | SN-F | HN-I | HN-F |
-| :--- | :---: | :---: | :---: |
-| `ReadNoSnp` | 🟢 | 🟢 | 🟢 |
-| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ |
-| `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 |
-| `ReadShared` | — | ⚪ | 🟢 as `ReadNotSharedDirty` |
-| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 as `ReadUnique` |
-| `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 |
-| `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 |
-| `WriteUniqueZero` | ⚪ | ⚪ | 🟢 |
-| `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 |
-| `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🟢 |
-| `WriteUnique*Stash`, `StashOnce*` | — | ⚪ | 🟢 |
-| Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 |
-| Combined Writes, others (9) | ⚪ | ⚪ | 🟢 |
-| `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 |
-| `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 |
-| Atomics (18) | ⚪ | ⚪ | 🟢 executed at the Home |
-| `DVMOp` | ⚪ | ⚪ | ⚪ |
-| `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ |
+| Request | SN-F | HN-I | HN-F | Issue |
+| :--- | :---: | :---: | :---: | :--- |
+| `ReadNoSnp` | 🟢 | 🟢 | 🟢 | |
+| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ | Home-to-SN only: received from an RN it stays ⚪; HN-F issuing it [#332](https://github.com/10x-Engineers/CHI-OpenNoC/issues/332) |
+| `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 | |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
+| `ReadShared` | — | ⚪ | 🟢 as `ReadNotSharedDirty` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
+| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 as `ReadUnique` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
+| `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 | |
+| `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 | |
+| `WriteUniqueZero` | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
+| `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
+| `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
+| `WriteUnique*Stash`, `StashOnce*` | — | 🔴 | 🟢 | [#316](https://github.com/10x-Engineers/CHI-OpenNoC/issues/316) |
+| Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
+| Combined Writes, others (9) | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
+| `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
+| `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
+| Atomics (18) | ⚪ | ⚪ | 🟢 executed at the Home | [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322) |
+| `DVMOp` | 🔴 | 🔴 | 🔴 | error answer lacks `DBIDResp` [#315](https://github.com/10x-Engineers/CHI-OpenNoC/issues/315); serviced only by an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
+
+A read that is not a target of the SN-F currently gets a bare `Comp` rather than `CompData` ([#315](https://github.com/10x-Engineers/CHI-OpenNoC/issues/315)).
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
 
 ### Snoops (HN-F)
 
-| Snoop | |
-| :--- | :---: |
-| `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 |
-| `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 |
-| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 |
-| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 |
-| `SnpSharedFwd`, `SnpQuery` | not generated (permitted) |
-| `SnpDVMOp` | 🔴 |
-| All snoop responses, incl. `SnpRespDataPtl` | 🟢 |
+| Snoop | | Issue |
+| :--- | :---: | :--- |
+| `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 | |
+| `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | |
+| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | default `RNF_DCT_LIST_PARAM` [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
+| `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟡 | sent to targets that declare no Stash support [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
+| `SnpSharedFwd`, `SnpQuery` | ⬜ | [#334](https://github.com/10x-Engineers/CHI-OpenNoC/issues/334) |
+| `SnpDVMOp` | ⬜ | MN only [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| All snoop responses, incl. `SnpRespDataPtl` | 🟢 | |
 
 Every snoop is sent with `DoNotGoToSD = 1`.
 
@@ -107,36 +113,42 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Feature | SN-F | HN-I | RN-I | RN-F | HN-F | Notes |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | Link activation (Ch. 14) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `TXSACTIVE` (section 14.7.4) | 🟢 | 🟢 | — | 🟢 | 🟢 | RN-I has no SACTIVE ports |
+| `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🔴 | 🟢 | 🟢 | RN-I has no SACTIVE ports [#320](https://github.com/10x-Engineers/CHI-OpenNoC/issues/320) |
 | Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| QoS | 🟢 | 🟢 | 🟢 | — | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F issues QoS 0 |
+| QoS | 🟢 | 🟢 | 🟢 | ⬜ | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F issues QoS 0 [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
 | DMT / DWT | 🟢 | — | — | — | 🟢 | |
-| DCT | — | — | — | — | 🟢 | per-RN-F via `RNF_DCT_LIST_PARAM` |
+| DCT | — | — | — | ⬜ | 🟢 | RN-F as a DCT target [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Snoop filter, L3 | — | — | — | — | 🟢 | |
+| Snoop handling | — | — | — | 🔴 | — | Fwd/Stash snoops leave the line valid [#317](https://github.com/10x-Engineers/CHI-OpenNoC/issues/317) |
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
-| CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs |
-| Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | |
-| Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | |
-| Atomics | ⚪ | ⚪ | — | — | 🟢 | |
-| Stash | ⚪ | ⚪ | — | — | 🟢 | |
+| CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
+| Atomics | ⚪ | ⚪ | — | ⬜ | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
+| Stash | — | 🔴 | — | ⬜ | 🟡 | HN-I [#316](https://github.com/10x-Engineers/CHI-OpenNoC/issues/316), HN-F target choice [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318), RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
+| DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | — | 🟡 | tags over AXI `USER`; RN-F ties MTE fields to zero |
+| MTE / `TagOp` | 🟡 | 🔴 | 🔴 | ⬜ | 🟡 | non-WriteBack TagOps and a Match hang [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
 | Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
 | `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `Data_Width` 128 / 512 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | 256 only [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 
 ### RN-F interface declarations (section 16.1)
 
-| Property | Value |
-| :-- | :-- |
-| `Atomic_Transactions`, `Cache_Stash_Transactions`, `Direct_Cache_Transfer` | False |
-| `CleanSharedPersistSep_Request`, `CCF_Wrap_Order`, `Enhanced_Features`, `DVM_Support` | False |
-| `Data_Poison` | True |
-| `Data_Check` / `Check_Type` | `Odd_Parity` / `Odd_Parity_Byte_Data` |
-| `MPAM_Support` | `MPAM_9_1` with `CHIE_MPAM_PRESENT`, else False |
-| `Req_Addr_Width` / `NodeID_Width` / `Data_Width` | 44 / 7 / 256 |
+| Property | Value | Issue |
+| :-- | :-- | :-- |
+| `Atomic_Transactions` | False | [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
+| `Cache_Stash_Transactions` | False | [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
+| `Direct_Cache_Transfer`, `Enhanced_Features`, `CleanSharedPersistSep_Request` | False | [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| `DVM_Support` | False | [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| `CCF_Wrap_Order` | False | |
+| `Data_Poison` | True | |
+| `Data_Check` / `Check_Type` | `Odd_Parity` / `Odd_Parity_Byte_Data` | |
+| `MPAM_Support` | `MPAM_9_1` with `CHIE_MPAM_PRESENT`, else False | |
+| `Req_Addr_Width` / `NodeID_Width` / `Data_Width` | 44 / 7 / 256 | [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 
 ### What the RN-I generates
 
@@ -150,7 +162,8 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 - `AxLOCK` becomes `Excl` only for `AxID < 256` (it must fit in `LPID`) on the Non-cacheable rows.
   Other exclusives are bridged as plain accesses and answered `OKAY`.
 - MTE crosses on `AxUSER` (`TagOp`, `TagGroupID`), `W/RUSER` (`Tag`, `TU`) and `BUSER`
-  (`[0]` TagMatch received, `[1]` pass). A `TagOp` the chosen opcode cannot carry goes out as `Invalid`.
+  (`[0]` TagMatch received, `[1]` pass). A `TagOp` the chosen opcode cannot carry goes out as `Invalid`. TagOps on
+  Device/Non-cacheable accesses are not yet suppressed ([#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319)).
 - Also sends `PCrdReturn` for unused P-Credits. Issues no CMO, Atomic or `ReadNoSnpSep`.
 
 ### What the RN-F generates
@@ -162,7 +175,8 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. The RN-F issues
-no `ReadNotSharedDirty`, `CleanSharedPersist*`, Stash, Atomic, `DVMOp` or Non-snoopable request.
+no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)), Atomic ([#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324)),
+`DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)) or Non-snoopable request ([#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328)).
 
 ---
 
@@ -212,11 +226,11 @@ and are overridden at instantiation.
 | :-- | --: | :-- |
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | 44..52 build; only 44 exercised |
 | `CHIE_NID_WIDTH_PARAM` | 7 | 7..11 build; only 7 exercised |
-| `CHIE_DATA_WIDTH_PARAM` | 256 | **256 only**, other values are refused |
+| `CHIE_DATA_WIDTH_PARAM` | 256 | **256 only**, other values are refused [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F |
 | `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F) | |
 | `HNF_MSHR_RNF_NUM_PARAM`, `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Coherent Requesters served by the HN-F |
-| `RNF_DCT_LIST_PARAM` | all True | Per-Requester `Direct_Cache_Transfer` |
+| `RNF_DCT_LIST_PARAM` | all True | Per-Requester `Direct_Cache_Transfer`; default should be False [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318) |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | 64 B lines |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
