@@ -429,21 +429,25 @@ package opennoc_hnf_pkg;
     endcase
   endfunction
 
+  // SS12.1 (p.12-372): "Memory tagging is permitted only in requests to Normal
+  // WriteBack memory".
+  function automatic logic hnf_mte_mem(chie_pkg::memattr_s memattr);
+    return memattr.cacheable & ~memattr.device;
+  endfunction
+
   // SS12.10 (p.12-385): a write issued for the Requester carries its TagOp, Match
-  // included; SS12.5.2 (p.12-379, MUST) gives Transfer to the Full write alone.
-  function automatic logic [1:0] hnf_dn_wr_tagop(logic [1:0] req_tagop, logic full);
+  // included; SS12.5.2 (p.12-379, MUST) gives Transfer to the Full write alone, and
+  // SS12.1 none at all to memory that is not Normal WriteBack.
+  function automatic logic [1:0] hnf_dn_wr_tagop(logic [1:0] req_tagop, logic full,
+                                                 chie_pkg::memattr_s memattr);
+    if (!hnf_mte_mem(memattr))
+      return chie_pkg::TAGOP_INVALID;
     case (req_tagop)
       chie_pkg::TAGOP_UPDATE   : return chie_pkg::TAGOP_UPDATE;
       chie_pkg::TAGOP_MATCH    : return chie_pkg::TAGOP_MATCH;
       chie_pkg::TAGOP_TRANSFER : return full ? chie_pkg::TAGOP_TRANSFER : chie_pkg::TAGOP_INVALID;
       default                  : return chie_pkg::TAGOP_INVALID;
     endcase
-  endfunction
-
-  // SS12.1 (p.12-372): "Memory tagging is permitted only in requests to Normal
-  // WriteBack memory".
-  function automatic logic hnf_mte_mem(chie_pkg::memattr_s memattr);
-    return memattr.cacheable & ~memattr.device;
   endfunction
 
   // The TagOp of a Read to the Subordinate that is to fetch tags. SS12.10 (p.12-385):

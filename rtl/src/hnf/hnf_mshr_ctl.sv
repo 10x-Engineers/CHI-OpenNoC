@@ -3187,7 +3187,8 @@ module hnf_mshr_ctl `HNF_PARAM
                 else if(mshr_txreq_entry_vec_sx1[entry] & txreq_mshr_won_sx1 & ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1)
                     mshr_dn_wr_tagop_q[entry] <= mshr_txreq_tagop_sx1;
                 else if(mshr_can_alloc_entry_s1_q[entry])
-                    mshr_dn_wr_tagop_q[entry] <= opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[entry], ~mshr_wrnosnpp_s1_q[entry]);
+                    mshr_dn_wr_tagop_q[entry] <= opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[entry], ~mshr_wrnosnpp_s1_q[entry],
+                                                                                  mshr_memattr_s1_q[entry]);
                 else
                     ;
             end
@@ -3413,9 +3414,12 @@ module hnf_mshr_ctl `HNF_PARAM
                 // SS12.11.1 (p.12-386): the Subordinate answers a Match the Home forwards.
                 else if(mshr_txreq_entry_vec_sx1[entry] & txreq_mshr_won_sx1 & mshr_txreq_wr_match_sx1)
                     mshr_tagmatch_owed_sx_q[entry] <= 1'b0;
+                // SS12.11.3 (p.12-387, MUST): with no Match forwarded for memory that
+                // is not Normal WriteBack, the Home owes the TagMatch itself.
                 else if(mshr_can_alloc_entry_s1_q[entry])
                     mshr_tagmatch_owed_sx_q[entry] <= mshr_tagop_match_s1_q[entry] &
-                        (mshr_wu_s1_q[entry] | ((mshr_wrnosnp_s1_q[entry] | mshr_wrnosnpp_s1_q[entry]) & excl_fail_s1));
+                        (mshr_wu_s1_q[entry] | ((mshr_wrnosnp_s1_q[entry] | mshr_wrnosnpp_s1_q[entry]) &
+                                                (excl_fail_s1 | ~mshr_mte_mem[entry])));
                 else
                     ;
             end
@@ -4074,10 +4078,12 @@ module hnf_mshr_ctl `HNF_PARAM
                                      mshr_err_s1_q[mshr_txrsp_idx_sx1_q] ? chie_pkg::RESP_ERR_NON_DATA :
                                      mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q][1] ? mshr_dn_resperr_s1_q[mshr_txrsp_idx_sx1_q] :
                                      (((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_wrnosnp_s1_q[mshr_txrsp_idx_sx1_q]) & mshr_excl_s1_q[mshr_txrsp_idx_sx1_q] & (!mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]))? chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK);
-    // SS12.11.1 (p.12-386, MUST): TagMatch Resp is Pass where the match was not performed,
-    // else accurate; Table 13-35 (p.13-437) reads Resp[0]=1 as Pass.
+    // SS12.11.1 (p.12-386, MUST): TagMatch Resp is Fail for memory without MTE (SS12.11.3
+    // p.12-387), Pass where the match was not performed, else accurate; Table 13-35
+    // (p.13-437) reads Resp[0]=1 as Pass.
     assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
-                                   ? ((dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] | mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]) ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
+                                   ? (((dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] | mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]) &
+                                       mshr_mte_mem[mshr_txrsp_idx_sx1_q]) ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
                                      ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
     // CHI E.b Sec 2.5.9 (p.2-90, MUST): "A Comp response message sent separate from
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
@@ -4470,7 +4476,7 @@ module hnf_mshr_ctl `HNF_PARAM
                                                                         mshr_txreq_size_sx1, mshr_memattr_s1_q[e]);
         end
         else if (mshr_txreq_passthru_sx1)
-            mshr_txreq_tagop_sx1 = opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[e], ~ptl);
+            mshr_txreq_tagop_sx1 = opennoc_hnf_pkg::hnf_dn_wr_tagop(mshr_tagop_s1_q[e], ~ptl, mshr_memattr_s1_q[e]);
         else if ((dbf_mshr_tags_dirty_sx[e] && (ptl ? dbf_mshr_tags_any_sx[e] : dbf_mshr_tags_full_sx[e])) ||
                  (~mshr_txreq_evict_wr_sx1 && ~mshr_txreq_icn_wr_sx1 && mshr_tagop_update[e] &&
                   (mshr_wu_s1_q[e] | mshr_wb_s1_q[e] | mshr_wc_s1_q[e])))

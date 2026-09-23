@@ -127,7 +127,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | HN-F write-TagOp gate and a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
+| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |

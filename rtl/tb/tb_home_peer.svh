@@ -50,7 +50,7 @@
     reg  TXREQLCRDV = 1'b0, TXRSPLCRDV = 1'b0, TXSNPLCRDV = 1'b0, TXDATLCRDV = 1'b0;
 
     integer errors = 0;
-    integer crd_req = 0, crd_dat = 0;
+    integer crd_req = 0, crd_rsp = 0, crd_dat = 0;
     integer cycle = 0;
 
     task fail(input string what);
@@ -63,6 +63,7 @@
     always @(posedge CLK) begin
         cycle = cycle + 1;
         if (RXREQLCRDV) crd_req = crd_req + 1;
+        if (RXRSPLCRDV) crd_rsp = crd_rsp + 1;
         if (RXDATLCRDV) crd_dat = crd_dat + 1;
     end
 
@@ -95,6 +96,35 @@
             @(negedge CLK);
             RXREQFLITV = 1'b0;
             crd_req = crd_req - 1;
+        end
+    endtask
+
+    task send_rsp(input chie_pkg::rsp_flit_s f);
+        begin
+            wait (crd_rsp > 0);
+            @(negedge CLK);
+            RXRSPFLITV = 1'b1; RXRSPFLIT = f;
+            @(negedge CLK);
+            RXRSPFLITV = 1'b0;
+            crd_rsp = crd_rsp - 1;
+        end
+    endtask
+
+    // The next response of this opcode, whatever its TxnID.
+    task automatic take_rsp_op(input chie_pkg::rsp_opcode_e op, output chie_pkg::rsp_flit_s r,
+                               output bit ok);
+        integer n, i;
+        begin
+            ok = 1'b0;
+            for (n = 0; n < TIMEOUT_CYCLES && !ok; n = n + 1) begin
+                for (i = 0; i < rsp_q.size() && !ok; i = i + 1)
+                    if (rsp_q[i].opcode == op) begin
+                        r = rsp_q[i];
+                        rsp_q.delete(i); rsp_cyc.delete(i);
+                        ok = 1'b1;
+                    end
+                if (!ok) @(posedge CLK);
+            end
         end
     endtask
 
