@@ -80,7 +80,8 @@ The **Issue** column tracks the work to reach 🟢.
 | `WriteUniqueZero` | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
 | `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
-| `WriteUnique*Stash`, `StashOnce*` | — | 🔴 | 🟢 | [#316](https://github.com/10x-Engineers/CHI-OpenNoC/issues/316) |
+| `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
+| `StashOnceSep*` | — | 🟡 `CompStashDone` | 🟢 | Table B-3 names no HN-I source for it |
 | Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
 | Combined Writes, others (9) | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
@@ -123,7 +124,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
 | Atomics | ⚪ | ⚪ | — | ⬜ | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
-| Stash | — | 🔴 | — | ⬜ | 🟡 | HN-I [#316](https://github.com/10x-Engineers/CHI-OpenNoC/issues/316), HN-F target choice [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318), RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
+| Stash | — | 🟢 | — | ⬜ | 🟡 | HN-I completes without stashing; HN-F target choice [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318), RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
 | MTE / `TagOp` | 🟡 | 🔴 | 🔴 | ⬜ | 🟡 | non-WriteBack TagOps and a Match hang [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
