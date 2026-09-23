@@ -148,7 +148,6 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wr_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_wrzero_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rd_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_dodmt_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_dodwt_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_ewa_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_comp_s1_q;
@@ -196,7 +195,6 @@ module snf_mshr `SNF_PARAM
     wire                                 rxreq_persist_fold_s0;
     wire                                 txrsp_persist_sx;
     wire                                 txrsp_dwt_grant_sx;
-    wire                                 rxreq_dodmt_s0;
     wire                                 rxreq_dodwt_s0;
     logic                                rxreq_ns_s0;
     chie_pkg::order_e                    rxreq_order_s0;
@@ -331,7 +329,6 @@ module snf_mshr `SNF_PARAM
     // packet otherwise gives LPID; Sec 13.10.16 (p.13-420) puts it in the DBID
     // bits of the Persist and CompPersist that reflect it.
     assign rxreq_pgroupid_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.lpid         : '0;
-    assign rxreq_dodmt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_rd_s0 == 1'b1) && (rxreq_alloc_flit_s0.srcid != rxreq_alloc_flit_s0.returnnid) :1'b0;
     // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
     // in WriteNoSnpZero and WriteUniqueZero is never permitted."
     assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (rxreq_alloc_flit_s0.snpattr.dodwt)      :1'b0;
@@ -614,15 +611,6 @@ module snf_mshr `SNF_PARAM
                     errwr_data_done_q[entry] <= 1'b0;
                 else if(dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))
                     errwr_data_done_q[entry] <= 1'b1;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : rxreq_dodmt_s1_q_timing_logic
-                if(rst == 1'b1)
-                    rxreq_dodmt_s1_q[entry] <= 1'b0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxreq_dodmt_s1_q[entry] <= 1'b0;
-                else if(mshr_entry_alloc_sx[entry] == 1'b1)
-                    rxreq_dodmt_s1_q[entry] <= rxreq_dodmt_s0;
             end
 
             always_ff @(posedge clk or posedge rst)begin : rxreq_dodwt_s1_q_timing_logic
@@ -1196,7 +1184,11 @@ module snf_mshr `SNF_PARAM
                                     : (((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx] == 2'b01))
                                         | ((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0)) ? 2'b10 // ccid[1]=0,packet2;ccid[1]=1,packet1
                                             : 2'b00));
-    assign mshr_txdat_txnid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? mshr_entry_q[mshr_txdat_entry_idx_sx].returntxnid : mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
+    // Sec 2.5.4: ReturnTxnID is "Used as the TxnID in the CompData and DataSepResp responses"
+    // of a ReadNoSnp(Sep) or Non-store Atomic -- copied as given, never re-derived. The field is
+    // inapplicable on the other reads, so their errored CompData answers the request's own TxnID.
+    assign mshr_txdat_txnid_sx      = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? mshr_entry_q[mshr_txdat_entry_idx_sx].txnid
+                                                                               : mshr_entry_q[mshr_txdat_entry_idx_sx].returntxnid;
     // Sec 4.5.1 (p.4-197, MUST): "A Subordinate Node can send DataSepResp only in
     // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
     assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
@@ -1205,7 +1197,8 @@ module snf_mshr `SNF_PARAM
     assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_ERR_NON_DATA
                                                                              : chie_pkg::RESP_ERR_NORM_OK;
     assign mshr_txdat_dbid_sx       = mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
-    assign mshr_txdat_tgtid_sx      = (rxreq_dodmt_s1_q[mshr_txdat_entry_idx_sx] == 1'b1) ? mshr_entry_q[mshr_txdat_entry_idx_sx].returnnid : mshr_entry_q[mshr_txdat_entry_idx_sx].srcid;
+    assign mshr_txdat_tgtid_sx      = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? mshr_entry_q[mshr_txdat_entry_idx_sx].srcid
+                                                                               : mshr_entry_q[mshr_txdat_entry_idx_sx].returnnid; // Sec 2.5.3, as the TxnID above
     assign mshr_txdat_srcid_sx      = SNF_NID_PARAM; // Sec 2.6.1 (p.2-94, MUST), as txrsp_srcid_sx
     assign mshr_txdat_homenid_sx    = mshr_entry_q[mshr_txdat_entry_idx_sx].srcid;
     assign mshr_txdat_tracetag_sx   = mshr_entry_q[mshr_txdat_entry_idx_sx].tracetag;
