@@ -714,6 +714,9 @@ module tb_hnf;
       .HNF_MSHR_RNF_NUM_PARAM      (HNF_MSHR_RNF_NUM_PARAM),
       .HNF_MSHR_RNI_NUM_PARAM      (HNF_MSHR_RNI_NUM_PARAM),
       .RNF_NID_LIST_PARAM          (RNF_NID_LIST_PARAM),
+      // The recorded cases include Forwarding-snoop flows, so the bench's
+      // Requesters declare Direct_Cache_Transfer (SS16.1 p.16-470).
+      .RNF_DCT_LIST_PARAM          ({32{1'b1}}),
       .RNI_NID_LIST_PARAM          (RNI_NID_LIST_PARAM),
       .HNF_NID_PARAM               (HNF_NID_PARAM),
       .SNF_NID_PARAM               (SNF_NID_PARAM),
