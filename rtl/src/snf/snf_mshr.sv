@@ -346,13 +346,15 @@ module snf_mshr `SNF_PARAM
     assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|rxreq_cw_s0|rxreq_wrzero_s0):1'b0;
     assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSISTSEP);
     // Table 13-32 (Sec 13.10.37 p.13-435) shares the 0b11 encoding between Match and
-    // Fetch, and the direction tells them apart: on a Write it is Match, which
-    // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Table 12-2 (Sec 12.12 p.12-389)
-    // gives Match to the standalone WriteNoSnp forms alone -- every Combined Write
-    // row and both Write Zero rows are N.
+    // Fetch, and the direction tells them apart: on a Write or an Atomic it is Match,
+    // which Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Table 12-2 (Sec 12.12
+    // p.12-389) gives Match to the standalone WriteNoSnp forms and to Atomic* -- every
+    // Combined Write row and both Write Zero rows are N -- and Sec 12.10 (p.12-385)
+    // permits it on an Atomic to the Subordinate.
     assign rxreq_tagmatch_s0    = rxreq_alloc_en_s0
                                 & ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)
-                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL))
+                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)
+                                 | rxreq_atomic_s0)
                                 & (rxreq_alloc_flit_s0.tagop == 2'b11);
     // Table 13-32 shares 0b11 between Match and Fetch: on a Read it is Fetch, which
     // Sec 12.10 (p.12-385) joins Transfer in asking for the location's tags.
@@ -575,7 +577,7 @@ module snf_mshr `SNF_PARAM
                     // so the Persist holds a slot of its own.
                     txrsp_persist_owed_q[entry] <= (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) & ~rxreq_persist_fold_s0;
                     // Sec 12.11.1 (p.12-386): the TagMatch is owed on top of the
-                    // write's own completion, and "must be sent even if the WriteData
+                    // transaction's own completion, and "must be sent even if the WriteData
                     // is canceled or a Tag Match is not performed" -- so it is owed
                     // from allocation, not from the data.
                     txrsp_tagmatch_owed_q[entry] <= rxreq_tagmatch_s0;
@@ -954,7 +956,7 @@ module snf_mshr `SNF_PARAM
     assign arvalid_en_s1 = rxreq_alloc_en_s1_q ? ((~sleep_s2_q[mshr_entry_idx_alloc_s1_q]) && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q]) : 1'b0;
     assign arvalid_en2_s1 = wakeup_valid ? rxreq_rd_s1_q[wakeup_idx_sx] : 1'b0;
 
-    // A TagOp=Match write fetches the location's Allocation Tags on the read channel
+    // A TagOp=Match write or Atomic fetches the location's Allocation Tags on the read channel
     // so Sec 12.11.1's (p.12-386, MUST) verdict can be accurate. It is a third
     // producer for the AR FIFO and takes the lowest priority of the three: the
     // request is a level held in the data buffer until acknowledged, so losing the
@@ -1050,7 +1052,7 @@ module snf_mshr `SNF_PARAM
     assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
     assign aruser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
     // The one tag operation this Subordinate sources for itself: the fetch that a
-    // TagOp=Match write needs before Sec 12.11.1's (p.12-386, MUST) verdict can be
+    // TagOp=Match write or Atomic needs before Sec 12.11.1's (p.12-386, MUST) verdict can be
     // accurate. Table 13-32 (Sec 13.10.37 p.13-435) makes Transfer the Clean-tag
     // read, which is what memory holds (Sec 12.4.1 p.12-376).
     assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = arvalid_tagfetch_s1_q ? 2'b01 : '0;
@@ -1398,7 +1400,7 @@ module snf_mshr `SNF_PARAM
     //************************************************************************//
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every TagOp=Match write,
+            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every TagOp=Match write and Atomic,
             // so the debt holds the entry open the way the CMO and Persist legs do.
             // txrsp_rdy_sx_q alone does not cover it: the verdict can still be in
             // flight, and an entry freed then would drop the response.
