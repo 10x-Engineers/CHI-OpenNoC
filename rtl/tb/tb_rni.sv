@@ -155,6 +155,8 @@ module tb_rni;
         .TXLINKACTIVEACK                ( TXLINKACTIVEACK            ),
         .RXLINKACTIVEREQ                ( RXLINKACTIVEREQ            ),
         .RXLINKACTIVEACK                (                            ),
+        .TXSACTIVE                      (                            ),
+        .RXSACTIVE                      ( 1'b1                       ),
         .RXRSPFLITPEND                  ( 1'b1                       ),
         .RXRSPFLITV                     ( RXRSPFLITV                 ),
         .RXRSPFLIT                      ( RXRSPFLIT                  ),
