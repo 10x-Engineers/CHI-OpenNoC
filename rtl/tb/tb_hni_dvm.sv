@@ -10,7 +10,7 @@
 * See the Mulan PSL v2 for more details.
 */
 // =============================================================================
-// tb_hni_dvm -- the DVMOp an HN-I answers without being an MN (tb_home_dvm_peer.svh).
+// tb_hni_dvm -- the DVMOp an HN-I answers without being an MN (tb_home_peer.svh).
 // The AXI side is tied ready and idle: an errored DVMOp reaches no endpoint.
 // =============================================================================
 `include "axi4_defines.svh"
@@ -23,7 +23,7 @@ module tb_hni_dvm;
     localparam RN_NID       = 8;
     localparam HOME_NID     = 0;
 
-`include "tb_home_dvm_peer.svh"
+`include "tb_home_peer.svh"
 
     hni u_hni (
         .CLK(CLK), .RST(RST),
@@ -43,5 +43,14 @@ module tb_hni_dvm;
         .WDATA(), .WUSER(), .WSTRB(), .WLAST(), .WVALID(), .WREADY(1'b1),
         .BID('0), .BRESP('0), .BVALID(1'b0), .BREADY()
     );
+
+    initial begin
+        bring_up;
+        if (errors == 0) begin
+            dvm(1'b1, 12'h11);
+            dvm(1'b0, 12'h12);
+        end
+        finish_bench;
+    end
 
 endmodule

@@ -56,5 +56,5 @@ jobs:
       - name: Lint every node
         run: ./tools/lint.sh
 
-      - name: DVMOp error completion at the Homes
-        run: SIM=verilator ./tools/dvm_check.sh
+      - name: Directed Home benches
+        run: SIM=verilator ./tools/home_check.sh

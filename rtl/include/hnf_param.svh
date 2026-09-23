@@ -30,7 +30,8 @@
      parameter HNF_MSHR_RNF_NUM_PARAM       = 4,     \
      parameter HNF_MSHR_RNI_NUM_PARAM       = 0,     \
      parameter RNF_NID_LIST_PARAM           = {7'd48,7'd16,7'd40,7'd8}, \
-     parameter RNF_DCT_LIST_PARAM           = {32{1'b1}}, \
+     parameter RNF_DCT_LIST_PARAM           = {32{1'b0}}, \
+     parameter RNF_STASH_LIST_PARAM         = {32{1'b0}}, \
      parameter RNI_NID_LIST_PARAM           = {7'd1}, \
      parameter HNF_NID_PARAM                = 0,     \
      parameter SNF_NID_PARAM                = 32,     \
@@ -60,6 +61,7 @@
     .HNF_MSHR_RNI_NUM_PARAM             (HNF_MSHR_RNI_NUM_PARAM            ), \
     .RNF_NID_LIST_PARAM                 (RNF_NID_LIST_PARAM                ), \
     .RNF_DCT_LIST_PARAM                 (RNF_DCT_LIST_PARAM                ), \
+    .RNF_STASH_LIST_PARAM               (RNF_STASH_LIST_PARAM              ), \
     .RNI_NID_LIST_PARAM                 (RNI_NID_LIST_PARAM                ), \
     .HNF_NID_PARAM                      (HNF_NID_PARAM                     ), \
     .SNF_NID_PARAM                      (SNF_NID_PARAM                     ), \
