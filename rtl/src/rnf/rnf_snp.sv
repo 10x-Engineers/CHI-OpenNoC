@@ -25,8 +25,9 @@
 // with SnpRespData_SC_PD rather than SD, which Table 4-42's (p.4-223) own SC row
 // admits and SS4.10's (p.4-241) DoNotGoToSD can never forbid.
 //
-// The forwarding, Stash and DVM snoops are not decoded at all: this node
-// declares neither DCT nor Stash.
+// This node declares neither DCT nor Stash, but still answers those snoops
+// coherently: each is decoded as the Non-forwarding, Non-stash snoop whose
+// response it gives (base_of()). SnpDVMOp is not decoded: DVM_Support is False.
 //
 // Snoops are answered in every coherency state: Table 15-1 (p.15-468) requires it
 // in all but Coherency Disabled, and does not forbid it there.
@@ -95,6 +96,24 @@ module rnf_snp `RNF_PARAM
     logic                                 pass_dirty_q;
     logic                                 dat_lo_sent_q;
 
+    // SS4.8.3 (p.4-229): the Snoopee "is permitted, but not expected, to convert
+    // the Snoop to its corresponding Non-forwarding type". SS4.8.2 (p.4-227):
+    // SnpUniqueStash and SnpMakeInvalidStash take SnpUnique's and SnpMakeInvalid's
+    // responses. SnpStashUnique/SnpStashShared keep their own opcode.
+    function automatic chie_pkg::snp_opcode_e base_of(chie_pkg::snp_opcode_e op);
+        case (op)
+            chie_pkg::SNP_SNPONCEFWD:           return chie_pkg::SNP_SNPONCE;
+            chie_pkg::SNP_SNPCLEANFWD:          return chie_pkg::SNP_SNPCLEAN;
+            chie_pkg::SNP_SNPSHAREDFWD:         return chie_pkg::SNP_SNPSHARED;
+            chie_pkg::SNP_SNPNOTSHAREDDIRTYFWD: return chie_pkg::SNP_SNPNOTSHAREDDIRTY;
+            chie_pkg::SNP_SNPPREFERUNIQUEFWD:   return chie_pkg::SNP_SNPPREFERUNIQUE;
+            chie_pkg::SNP_SNPUNIQUEFWD:         return chie_pkg::SNP_SNPUNIQUE;
+            chie_pkg::SNP_SNPUNIQUESTASH:       return chie_pkg::SNP_SNPUNIQUE;
+            chie_pkg::SNP_SNPMAKEINVALIDSTASH:  return chie_pkg::SNP_SNPMAKEINVALID;
+            default:                            return op;
+        endcase
+    endfunction
+
     // SS4.4.1 (p.4-194): an invalidating snoop must leave the Snoopee Invalid.
     function automatic bit is_invalidating(chie_pkg::snp_opcode_e op);
         return (op == chie_pkg::SNP_SNPUNIQUE) ||
@@ -102,15 +121,27 @@ module rnf_snp `RNF_PARAM
                (op == chie_pkg::SNP_SNPMAKEINVALID);
     endfunction
 
-    // Table 4-41 (SS4.8.1 p.4-222) leaves SnpOnce's state as it was, and Table
-    // 4-45 (p.4-226) has SnpQuery report a state without disturbing it.
+    // Table 4-41 (SS4.8.1 p.4-222) leaves SnpOnce's state as it was, Table 4-45
+    // (p.4-226) has SnpQuery report a state without disturbing it, and SS4.8.2
+    // (p.4-228, MUST) forbids SnpStashUnique/SnpStashShared to change it.
     function automatic bit is_state_preserving(chie_pkg::snp_opcode_e op);
-        return (op == chie_pkg::SNP_SNPONCE) || (op == chie_pkg::SNP_SNPQUERY);
+        return (op == chie_pkg::SNP_SNPONCE) || (op == chie_pkg::SNP_SNPQUERY) ||
+               is_stash_hint(op);
     endfunction
 
-    // SS4.8.1 (p.4-221) lists the Non-forwarding, Non-stash snoops, which with
-    // SnpQuery are the whole set this node answers.
+    // Tables 4-47/4-48 (p.4-228/4-229): answered with the precise state and no
+    // Data Pull, which SS7.1.1 (p.7-295) lets a Snoopee decline.
+    function automatic bit is_stash_hint(chie_pkg::snp_opcode_e op);
+        return (op == chie_pkg::SNP_SNPSTASHUNIQUE) || (op == chie_pkg::SNP_SNPSTASHSHARED);
+    endfunction
+
+    // SS4.8.1 (p.4-221) lists the Non-forwarding, Non-stash snoops; base_of()
+    // folds every other snoop but SnpDVMOp onto one of them.
     function automatic bit is_decoded(chie_pkg::snp_opcode_e op);
+        return is_stash_hint(op) || is_base_decoded(base_of(op));
+    endfunction
+
+    function automatic bit is_base_decoded(chie_pkg::snp_opcode_e op);
         return (op == chie_pkg::SNP_SNPONCE)          ||
                (op == chie_pkg::SNP_SNPCLEAN)         ||
                (op == chie_pkg::SNP_SNPSHARED)        ||
@@ -216,7 +247,9 @@ module rnf_snp `RNF_PARAM
     assign cache_lu_addr_o = (st_q == S_IDLE) ? snp_addr : snp_addr_q;
 
     wire [`RNF_CS_WIDTH-1:0] cur_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
-    wire [`RNF_CS_WIDTH-1:0] nxt_state = final_state(head.opcode, cur_state);
+    chie_pkg::snp_opcode_e head_op;
+    assign head_op = base_of(head.opcode);
+    wire [`RNF_CS_WIDTH-1:0] nxt_state = final_state(head_op, cur_state);
 
     // SS4.9 (p.4-240): a Dirty line goes back whatever RetToSrc says, a Shared
     // Clean one only when RetToSrc is asserted, and a Unique Clean one is that
@@ -227,8 +260,9 @@ module rnf_snp `RNF_PARAM
     // Snoopee retains a copy", which would exempt SnpUnique from SC -- but
     // Table 4-43 (p.4-224) gives that cell SnpRespData_I as its only response,
     // so the table governs.
-    wire data_eligible = (head.opcode != chie_pkg::SNP_SNPMAKEINVALID) &&
-                         (head.opcode != chie_pkg::SNP_SNPQUERY);
+    wire data_eligible = (head_op != chie_pkg::SNP_SNPMAKEINVALID) &&
+                         (head_op != chie_pkg::SNP_SNPQUERY) &&
+                         !is_stash_hint(head_op);
     wire want_data     = data_eligible &&
                          (is_dirty(cur_state) ||
                           ((cur_state == `RNF_CS_SC) && head.rettosrc));
@@ -364,13 +398,11 @@ module rnf_snp `RNF_PARAM
                        .cond  ( prot_rxsnpflitv_i && q_full && !take )
                    );
 
-    // SS16.1 (p.16-470): an undeclared property "is considered False", and this
-    // node declares neither Direct_Cache_Transfer, Cache_Stash_Transactions nor
-    // DVM_Support. Answering such a snoop off the Table 4-42 branch would leave
-    // the line Shared Clean, which is a coherency violation, not a response.
+    // SS16.1.1 (p.16-473, MUST): with DVM_Support False the interconnect must
+    // suppress DVM operations, so a SnpDVMOp never reaches this node.
     assert_checker #(
                        3,
-                       "RN-F was sent a snoop opcode it does not decode: a Forwarding, Stash or DVM snoop at a node declaring no such property")
+                       "RN-F was sent a snoop opcode it does not decode: a SnpDVMOp at a node declaring DVM_Support False")
                    SNP_OPCODE_check (
                        .clk   ( clk_i ),
                        .rst   ( rst_i ),
