@@ -126,7 +126,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Stash | — | 🔴 | — | ⬜ | 🟡 | HN-I [#316](https://github.com/10x-Engineers/CHI-OpenNoC/issues/316), HN-F target choice [#318](https://github.com/10x-Engineers/CHI-OpenNoC/issues/318), RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🔴 | 🔴 | ⬜ | 🟡 | non-WriteBack TagOps and a Match hang [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
+| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | HN-F write-TagOp gate and a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
@@ -160,8 +160,8 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 - `AxLOCK` becomes `Excl` only for `AxID < 256` (it must fit in `LPID`) on the Non-cacheable rows.
   Other exclusives are bridged as plain accesses and answered `OKAY`.
 - MTE crosses on `AxUSER` (`TagOp`, `TagGroupID`), `W/RUSER` (`Tag`, `TU`) and `BUSER`
-  (`[0]` TagMatch received, `[1]` pass). A `TagOp` the chosen opcode cannot carry goes out as `Invalid`. TagOps on
-  Device/Non-cacheable accesses are not yet suppressed ([#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319)).
+  (`[0]` TagMatch received, `[1]` pass). Only Normal WriteBack (Cacheable) accesses carry a `TagOp`
+  (section 12.1); any other, or one the chosen opcode cannot carry, goes out as `Invalid`.
 - Also sends `PCrdReturn` for unused P-Credits. Issues no CMO, Atomic or `ReadNoSnpSep`.
 
 ### What the RN-F generates
