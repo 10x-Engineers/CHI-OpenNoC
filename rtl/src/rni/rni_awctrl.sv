@@ -991,14 +991,16 @@ module rni_awctrl `RNI_PARAM
     end
     assign aw_lpid_alias_w = aw_lpid_alias_r;
 
-    assign aw_tagop_w = aw_axtagop_r[1] ? aw_axtagop_r : 2'b00;
+    // Sec 12.1 (p.12-372): only a Normal WriteBack (Cacheable) write carries a TagOp.
+    assign aw_tagop_w = (aw_cacheable_w & aw_axtagop_r[1]) ? aw_axtagop_r : 2'b00;
 
     // The same narrowing per entry, so the write data can be built from AWUSER that
     // was latched at the AW handshake rather than from whichever entry is selected.
     generate
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:aw_entry_tagop
             assign awctrl_entry_tagop_o[entry] =
-                awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_LSB+1] ?
+                (awctrl_entry_info_q[entry].cache[1] & (|awctrl_entry_info_q[entry].cache[3:2]) &
+                 awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_LSB+1]) ?
                 awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_RANGE] : 2'b00;
         end
     endgenerate

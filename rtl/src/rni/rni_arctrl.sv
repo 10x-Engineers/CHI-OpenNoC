@@ -702,11 +702,11 @@ module rni_arctrl
         end
     end
 
-    // Table 12-2 (Sec 12.12 p.12-388) gives ReadOnce {Invalid, Transfer} and
-    // ReadNoSnp {Invalid, Transfer, Fetch}, and Table 13-32 (Sec 13.10.37 p.13-435)
-    // encodes Transfer 0b01 and Fetch 0b11 -- Update is no read's row. An ARUSER
-    // TagOp the elected opcode does not admit is presented as Invalid, which the
-    // table permits everywhere.
+    // Sec 12.1 (p.12-372): "Memory tagging is permitted only in requests to Normal
+    // WriteBack memory" -- the Cacheable rows, which this bridge sends as ReadOnce.
+    // Table 12-2 (Sec 12.12 p.12-388) gives ReadOnce {Invalid, Transfer}, and Table
+    // 13-32 (Sec 13.10.37 p.13-435) encodes Transfer 0b01. Any other ARUSER TagOp is
+    // presented as Invalid, which the table permits everywhere.
     always_comb begin: ar_axtagop_sel_t
         ar_axtagop_r[`AXI4_TAGOP_WIDTH-1:0] = '0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
@@ -722,8 +722,7 @@ module rni_arctrl
     end
     assign ar_lpid_alias_w = ar_lpid_alias_r;
 
-    assign ar_tagop_w = (ar_axtagop_r == 2'b01)                    ? 2'b01 :
-                        ((ar_axtagop_r == 2'b11) & ~ar_cacheable_w) ? 2'b11 : 2'b00;
+    assign ar_tagop_w = (ar_cacheable_w & (ar_axtagop_r == 2'b01)) ? 2'b01 : 2'b00;
 
     // The same Device decode, held per entry rather than for the one currently
     // selected: Table 2-11 (Sec 2.9.4 p.2-129) gives every Device row
