@@ -225,6 +225,8 @@ module snf_mshr `SNF_PARAM
     wire                                 rxreq_errcw_iw_s0;
     wire                                 rxreq_errstash_s0;
     wire                                 rxreq_errdat_s0;
+    wire                                 rxreq_errdvm_s0;
+    wire                                 rxreq_errrd_s0;
     wire                                 rxreq_errrsp_s0;
     wire                                 rxreq_err_s0;
     wire                                 rxreq_rsponly_s0;
@@ -235,6 +237,7 @@ module snf_mshr `SNF_PARAM
     wire                                 txrsp_rsponly_en_sx;
     wire                                 txrsp_errgrant_en_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_errdat_rdy_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_errrd_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     all_rsp_sent_sx;
     wire                                 txrsp_sent_sx;
     wire                                 txrsp_en_s1;
@@ -275,6 +278,8 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rdsep_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errwr_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errdat_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errdvm_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errrd_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_err_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rsponly_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errgrant_s1_q;
@@ -421,14 +426,26 @@ module snf_mshr `SNF_PARAM
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
                                                  | rxreq_errcw_iw_s0);
-    assign rxreq_errwr_s0       = (rxreq_err_s0 && rxreq_atomic_s0) | rxreq_errcb_s0 | rxreq_erriw_s0;
+    // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
+    // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
+    assign rxreq_errdvm_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
+    // Table 9-2 (p.9-337): a read carries its error on the CompData packets.
+    assign rxreq_errrd_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_READONCE)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCECLEANINVALID)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCEMAKEINVALID)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READSHARED)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE));
+    assign rxreq_errwr_s0       = (rxreq_err_s0 && rxreq_atomic_s0) | rxreq_errcb_s0 | rxreq_erriw_s0 | rxreq_errdvm_s0;
     assign rxreq_errdat_s0      = rxreq_err_s0 && rxreq_atomicdat_s0;
     // Table 4-38 (p.4-218) completes StashOnceSep* with "Comp + StashDone or
     // CompStashDone"; a bare Comp leaves the Requester's outstanding-StashDone
     // count (Sec 7.3 p.7-297) never satisfied.
     assign rxreq_errstash_s0    = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE));
-    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errgrant_s0;
+    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errgrant_s0 && ~rxreq_errrd_s0;
     assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
     // Sec 2.6.2 step 7 (p.2-102): the Subordinate may fold Comp and Persist into a
     // combined CompPersist "if the ReturnNID and SrcID of the request are the same
@@ -512,6 +529,8 @@ module snf_mshr `SNF_PARAM
                     rxreq_rdsep_s1_q[entry]    <= 1'b0;
                     rxreq_errwr_s1_q[entry]    <= 1'b0;
                     rxreq_errdat_s1_q[entry]   <= 1'b0;
+                    rxreq_errdvm_s1_q[entry]   <= 1'b0;
+                    rxreq_errrd_s1_q[entry]    <= 1'b0;
                     rxreq_errgrant_s1_q[entry] <= 1'b0;
                     rxreq_err_s1_q[entry]      <= 1'b0;
                     rxreq_rsponly_s1_q[entry]  <= 1'b0;
@@ -522,6 +541,8 @@ module snf_mshr `SNF_PARAM
                     rxreq_rdsep_s1_q[entry]    <= rxreq_rd_s0 & rxreq_rdsep_s0;
                     rxreq_errwr_s1_q[entry]    <= rxreq_errwr_s0;
                     rxreq_errdat_s1_q[entry]   <= rxreq_errdat_s0;
+                    rxreq_errdvm_s1_q[entry]   <= rxreq_errdvm_s0;
+                    rxreq_errrd_s1_q[entry]    <= rxreq_errrd_s0;
                     rxreq_errgrant_s1_q[entry] <= rxreq_errgrant_s0;
                     rxreq_err_s1_q[entry]      <= rxreq_err_s0;
                     rxreq_rsponly_s1_q[entry]  <= rxreq_rsponly_s0;
@@ -543,7 +564,7 @@ module snf_mshr `SNF_PARAM
                     mshr_tagreturn_q[entry]      <= 1'b0;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
-                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0
+                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0 & ~rxreq_errdvm_s0
                                                & ~rxreq_ewa_s0 & ~rxreq_errcb_s0;
                     txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0 | rxreq_errcw_s0;
                     txrsp_cmo_opcode_q[entry] <= (rxreq_cwpersist_s0 & rxreq_persist_fold_s0) ? chie_pkg::RSP_COMPPERSIST
@@ -764,7 +785,7 @@ module snf_mshr `SNF_PARAM
                                        | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1;
     // Sec 2.8.5 (p.2-120): the ReadReceipt is owed whenever Order is non-zero,
     // whether or not the read data goes back direct to the Requester.
-    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] && (mshr_entry_q[mshr_entry_idx_alloc_s1_q].order != 2'b00);
+    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && (rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errrd_s1_q[mshr_entry_idx_alloc_s1_q]) && (mshr_entry_q[mshr_entry_idx_alloc_s1_q].order != 2'b00);
     assign txrsp_rsponly_en_s1         = rxreq_alloc_en_s1_q && rxreq_rsponly_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
     // Table 9-6 (p.9-340) keeps DBIDResp at OK, so an errored write still grants
     // normally and carries its NDERR on the completion that follows. Table 9-9
@@ -777,7 +798,7 @@ module snf_mshr `SNF_PARAM
                                        : txrsp_readreceipt_en_s1 ? chie_pkg::RSP_READRECEIPT
                                        : txrsp_compdbidresp_en_s1 ? chie_pkg::RSP_COMPDBIDRESP
                                        : txrsp_rsponly_en_s1 ? rxreq_rsponly_opcode_s1_q[mshr_entry_idx_alloc_s1_q]
-                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdat_s1_q[mshr_entry_idx_alloc_s1_q])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdat_s1_q[mshr_entry_idx_alloc_s1_q]) && (~rxreq_errdvm_s1_q[mshr_entry_idx_alloc_s1_q])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
                                        : chie_pkg::RSP_RSPLCRDRETURN;
 
     // A request that hit a same-address hazard was put to sleep before its RSP was
@@ -791,7 +812,7 @@ module snf_mshr `SNF_PARAM
     assign txrsp_opcode_en_sx          = txrsp_dbidresp_en_sx ? chie_pkg::RSP_DBIDRESP
                                        : txrsp_compdbidresp_en_sx ? chie_pkg::RSP_COMPDBIDRESP
                                        : txrsp_rsponly_en_sx ? rxreq_rsponly_opcode_s1_q[wakeup_idx_sx]
-                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdat_s1_q[wakeup_idx_sx])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdat_s1_q[wakeup_idx_sx]) && (~rxreq_errdvm_s1_q[wakeup_idx_sx])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
                                        : chie_pkg::RSP_RSPLCRDRETURN;
 
     assign txrsp_ewa_dwt_rdy_sx         = dbf_mshr_rxdat_ok_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_ewa_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_dodwt_s1_q[dbf_mshr_rxdat_ok_idx_sx];
@@ -863,7 +884,8 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign txrsp_comp_rdy_sx[entry] = (txrsp_ewa_dwt_rdy_sx      && (entry == txrsp_ewa_dwt_rdy_entry_sx))
                                             | (txrsp_noewa_rdy_sx        && (entry == txrsp_noewa_rdy_entry_sx))
-                                            | (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx));
+                                            | (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx))
+                                            | (dbf_mshr_rxdat_ok_sx && rxreq_errdvm_s1_q[entry] && (entry == dbf_mshr_rxdat_ok_idx_sx));
             assign txrsp_comp_queued_sx[entry] = txrsp_q2_valid_q[entry] | txrsp_comp_rdy_sx[entry];
         end
     endgenerate
@@ -1105,6 +1127,8 @@ module snf_mshr `SNF_PARAM
                     txdat_rdy_sx_q[entry]   <= 2'b00;
                 else if (txdat_errdat_rdy_sx[entry])
                     txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
+                else if (txdat_errrd_rdy_sx[entry])
+                    txdat_rdy_sx_q[entry]   <= (mshr_entry_q[entry].size == chie_pkg::SIZE_64B) ? 2'b11 : 2'b01;
                 else if (txdat1_rdy_sx[entry] && (~txdat2_rdy_sx[entry]))
                     txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
                 else if ((~txdat1_rdy_sx[entry]) && txdat2_rdy_sx[entry])
@@ -1138,6 +1162,10 @@ module snf_mshr `SNF_PARAM
             assign txdat_errdat_rdy_sx[entry] = dbf_mshr_rxdat_ok_sx && rxreq_errdat_s1_q[entry]
                                              && (entry == dbf_mshr_rxdat_ok_idx_sx)
                                              && (txdat_rdy_sx_q[entry] == 2'b00);
+            // Sec 9.4.4 (p.9-342, MUST): an errored read still returns every packet;
+            // nothing is fetched, so they are armed as soon as the entry is awake.
+            assign txdat_errrd_rdy_sx[entry]  = rxreq_errrd_s1_q[entry] && (~sleep_s2_q[entry])
+                                             && (txdat_rdy_sx_q[entry] == 2'b00);
             assign txdat_valid_sx[entry]  = (txdat_sent_sx_q[entry] != txdat_rdy_sx_q[entry]);
         end
     endgenerate
@@ -1170,7 +1198,8 @@ module snf_mshr `SNF_PARAM
     // Sec 4.5.1 (p.4-197, MUST): "A Subordinate Node can send DataSepResp only in
     // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
     assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
-    assign mshr_txdat_resp_sx       = chie_pkg::RESP_UC_UD;
+    // Sec 9.3 (p.9-336): Resp I is legal on a read only alongside a Non-data Error.
+    assign mshr_txdat_resp_sx       = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_I : chie_pkg::RESP_UC_UD;
     assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_ERR_NON_DATA
                                                                              : chie_pkg::RESP_ERR_NORM_OK;
     assign mshr_txdat_dbid_sx       = mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
@@ -1383,7 +1412,7 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
                                                 && (((rxreq_wr_s1_q[entry]) && all_rsp_sent_sx[entry] && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
-                                                    |((rxreq_rd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((mshr_entry_q[entry].size == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((mshr_entry_q[entry].size != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
+                                                    |((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((mshr_entry_q[entry].size == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((mshr_entry_q[entry].size != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
                                                     // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
                                                     // entry is freed at once rather than leaked.
                                                     |(rxreq_drop_s1_q[entry])

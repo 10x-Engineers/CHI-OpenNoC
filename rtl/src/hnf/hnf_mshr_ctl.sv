@@ -1290,10 +1290,10 @@ module hnf_mshr_ctl `HNF_PARAM
     // the error rides on the data response (Table 9-2 p.9-337).
     assign op_errrd     = op_err & (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
     // Sec 9.4.4 (p.9-342, MUST) keeps an errored write's data transfer, so a class
-    // that owes one grants a DBID and consumes it before completing. No opcode is in
-    // it today: hnf_serviced_as() maps the Atomics onto WriteUniquePtl and this Home
-    // executes them.
-    assign op_errwrdat  = 1'b0;
+    // that owes one grants a DBID and consumes it before completing. Sec 16.1.1
+    // (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and Sec 2.3.7
+    // (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
+    assign op_errwrdat  = op_err & (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
 
     assign mshr_err_set_s0      = {`MSHR_ENTRIES_NUM{op_err}}      & mshr_can_alloc_entry_s0;
     assign mshr_errrd_set_s0    = {`MSHR_ENTRIES_NUM{op_errrd}}    & mshr_can_alloc_entry_s0;
@@ -2901,7 +2901,8 @@ module hnf_mshr_ctl `HNF_PARAM
                    ((mshr_wrnosnp_s1_q[entry]) & (mshr_get_comp_s1_q[entry]) & mshr_comp_entry_vec_s1_q[entry] & (mshr_dwt_s2_q[entry] | mshr_wrzero_s1_q[entry])) ||
                    ((mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_s1_q[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry]) & (mshr_neednosnp_sx7[entry] | mshr_snp_getall_s1[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry]))) ||
                    (mshr_cu_s1_q[entry] & excl_fail_s1 & mshr_can_alloc_entry_s1_q[entry]) ||
-                   (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & ~mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
+                   (mshr_errwrdat_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry] & mshr_dat_new_get_s1_q[entry]);
             assign mshr_comp_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             // A Write Zero's grant comes from hnf_mshr_bypass but its Comp does not,
             // so -- like a DWT write -- the entry owes one the bypass never sent.

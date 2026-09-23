@@ -86,10 +86,8 @@ The **Issue** column tracks the work to reach 🟢.
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | Atomics (18) | ⚪ | ⚪ | 🟢 executed at the Home | [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322) |
-| `DVMOp` | 🔴 | 🔴 | 🔴 | error answer lacks `DBIDResp` [#315](https://github.com/10x-Engineers/CHI-OpenNoC/issues/315); serviced only by an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| `DVMOp` | ⚪ | ⚪ | ⚪ | serviced only by an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
-
-A read that is not a target of the SN-F currently gets a bare `Comp` rather than `CompData` ([#315](https://github.com/10x-Engineers/CHI-OpenNoC/issues/315)).
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
@@ -194,6 +192,7 @@ no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-En
 ./tools/lint.sh hnf snf                # lint selected nodes
 
 SIM=verilator ./tools/link_check.sh    # Chapter 14 link bench (default: Xcelium; SIM=vcs)
+SIM=verilator ./tools/dvm_check.sh     # DVMOp error completion at the HN-F and HN-I
 
 cd rtl
 make com sim SIM=verilator             # 136-case HN-F regression (default: VCS)
@@ -256,7 +255,7 @@ rtl/
 ├── tb/          behavioural benches
 ├── case/        136 HN-F stimulus/response cases
 └── Makefile
-tools/           lint.sh, check_select_bounds.py, link_check.sh, mesh/ring generators
+tools/           lint.sh, check_select_bounds.py, link_check.sh, dvm_check.sh, mesh/ring generators
 doc/hnf/         HN-F design overview (Chinese)
 ```
 

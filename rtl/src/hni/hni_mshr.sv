@@ -293,6 +293,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_atomicdat_s0;
     wire                                   rxreq_err_s0;
     wire                                   rxreq_errrd_s0;
+    wire                                   rxreq_dvm_s0;
     wire                                   rxreq_errwrdat_s0;
     wire                                   rxreq_errwr_s0;
     wire                                   rxreq_errdat_s0;
@@ -443,9 +444,13 @@ module hni_mshr `HNI_PARAM
                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCEMAKEINVALID)
                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE)
                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEREADUNIQUE));
+    // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
+    // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
+    assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
     assign rxreq_errwrdat_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH);
+                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
+                               | rxreq_dvm_s0;
     assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_errcw_s0 | rxreq_errwrdat_s0);
     assign rxreq_errdat_s0     = rxreq_err_s0 && rxreq_atomicdat_s0;
     // Table 4-39 (p.4-219) gives a Write Zero no WriteData response but still a DBID,
@@ -468,10 +473,10 @@ module hni_mshr `HNI_PARAM
     // split DBIDResp, and a Comp released on the endpoint's own B response.
     assign rxreq_wrgrant_s0     = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errgrant_s0;
     assign rxreq_comp_owed_s0   = rxreq_rsp1_owed_s0 && (~rxreq_rdshape_s0) && (~rxreq_errdat_s0)
-                               && rxreq_wrgrant_s0 && (~rxreq_ewa_s0);
+                               && rxreq_wrgrant_s0 && ((~rxreq_ewa_s0) | rxreq_dvm_s0);
     assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? chie_pkg::RSP_READRECEIPT
                                 : rxreq_errdat_s0  ? chie_pkg::RSP_DBIDRESP
-                                : rxreq_wrgrant_s0 ? (rxreq_ewa_s0 ? chie_pkg::RSP_COMPDBIDRESP
+                                : rxreq_wrgrant_s0 ? ((rxreq_ewa_s0 & ~rxreq_dvm_s0) ? chie_pkg::RSP_COMPDBIDRESP
                                                                   : chie_pkg::RSP_DBIDRESP)
                                 : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMPPERSIST
                                 : rxreq_errstash_s0 ? chie_pkg::RSP_COMPSTASHDONE
