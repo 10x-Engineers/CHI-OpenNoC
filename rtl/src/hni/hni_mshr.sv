@@ -298,7 +298,8 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_errwr_s0;
     wire                                   rxreq_errdat_s0;
     wire                                   rxreq_errgrant_s0;
-    wire                                   rxreq_errstash_s0;
+    wire                                   rxreq_stashsep_s0;
+    wire                                   rxreq_stashonce_s0;
     wire                                   rxreq_rdshape_s0;
     wire                                   rxreq_rsp1_owed_s0;
     chie_pkg::rsp_opcode_e                 rxreq_rsp1_opcode_s0;
@@ -378,8 +379,8 @@ module hni_mshr `HNI_PARAM
     assign rxreq_mpam_s0       = (rxreq_alloc_en_s0 == 1'b1)? chie_pkg::req_mpam_of(rxreq_alloc_flit_s0)
                                                             : chie_pkg::mpam_default(1'b0);
     assign rxreq_rd_s0         = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)|(rxreq_opcode_s0 == chie_pkg::REQ_READONCE)|(rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN)|(rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)|(rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)) :1'b0;
-    assign rxreq_wrf_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)|rxreq_cwf_s0|rxreq_wrzero_s0):1'b0;
-    assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|rxreq_cwp_s0):1'b0;
+    assign rxreq_wrf_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)|rxreq_cwf_s0|rxreq_wrzero_s0):1'b0;
+    assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)|rxreq_cwp_s0):1'b0;
 
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt", and Sec 4.2 (p.4-162) requires
@@ -437,7 +438,13 @@ module hni_mshr `HNI_PARAM
     // interconnect and Sec 16.3.3 (p.16-479, MUST) answers with an Error response.
     // Sec 9.4.4 (p.9-342, MUST) then keeps the transaction structure intact, so the
     // class carries its shape -- grant, write data, read data -- as well as its error.
-    assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_drop_s0);
+    // Sec 9.4.6 (p.9-344, MUST): a Home that does not stash completes a Stash request
+    // "without signaling an error". Sec 7.2 (p.7-296) serves the Stash writes as
+    // their WriteUnique twins above; a StashOnce* has nothing to do but complete.
+    assign rxreq_stashonce_s0  = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESHARED)
+                                                             | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCEUNIQUE)
+                                                             | rxreq_stashsep_s0) :1'b0;
+    assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_stashonce_s0 | rxreq_drop_s0);
     assign rxreq_errrd_s0      = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_READSHARED)
                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP)
                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCECLEANINVALID)
@@ -448,8 +455,6 @@ module hni_mshr `HNI_PARAM
     // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
     assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
     assign rxreq_errwrdat_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
                                | rxreq_dvm_s0;
     assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_errcw_s0 | rxreq_errwrdat_s0);
     assign rxreq_errdat_s0     = rxreq_err_s0 && rxreq_atomicdat_s0;
@@ -457,8 +462,8 @@ module hni_mshr `HNI_PARAM
     // so it joins the errored writes in owing a CompDBIDResp without owing data.
     assign rxreq_errgrant_s0   = rxreq_errwr_s0 | (rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO));
     // Table 4-38 (p.4-218): StashOnceSep* is completed by CompStashDone.
-    assign rxreq_errstash_s0   = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE));
+    assign rxreq_stashsep_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
+                               | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE);
     // Sec 2.8.5 (p.2-120): a read owes a ReadReceipt when it is ordered, and its
     // completion rides on the data. Everything else owes an RSP up front.
     assign rxreq_rdshape_s0    = rxreq_rd_s0 | rxreq_errrd_s0;
@@ -479,7 +484,7 @@ module hni_mshr `HNI_PARAM
                                 : rxreq_wrgrant_s0 ? ((rxreq_ewa_s0 & ~rxreq_dvm_s0) ? chie_pkg::RSP_COMPDBIDRESP
                                                                   : chie_pkg::RSP_DBIDRESP)
                                 : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMPPERSIST
-                                : rxreq_errstash_s0 ? chie_pkg::RSP_COMPSTASHDONE
+                                : rxreq_stashsep_s0 ? chie_pkg::RSP_COMPSTASHDONE
                                 : chie_pkg::RSP_COMP;
 
     generate
