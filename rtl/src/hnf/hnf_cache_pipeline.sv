@@ -569,12 +569,14 @@ module hnf_cache_pipeline `HNF_PARAM
     // Home sends the snoop with a stash hint to the specified target" -- a target
     // the directory need not hold, so this vector joins the fan-out below rather
     // than being selected from it. A StashNID naming no RN-F on this port is
-    // SS7.4.2's no-target case and one-hots to zero.
+    // SS7.4.2's no-target case and one-hots to zero, and so is one whose
+    // RNF_STASH_LIST_PARAM bit is clear: SS9.4.6 (p.9-344, MUST) has the Home
+    // "disregard the Stash hint" for a target that does not receive Stash snoops.
     always_comb begin : func_stashnid2onehot
         pipe_stash_onehot_sx1 = {`RNF_NUM{1'b0}};
         pipe_stash_list_sx1[`RNF_NUM*NID_WIDTH-1:0] = RNF_NID_LIST_PARAM;
         for (int i = 0; i < `RNF_NUM; i = i+1)
-            if (pipe_stash_list_sx1[NID_WIDTH*i +: NID_WIDTH] == mshr_l3_stash_nid_sx1_q)
+            if ((pipe_stash_list_sx1[NID_WIDTH*i +: NID_WIDTH] == mshr_l3_stash_nid_sx1_q) && RNF_STASH_LIST_PARAM[i])
                 pipe_stash_onehot_sx1[i] = 1'b1;
     end
 

@@ -31,10 +31,11 @@ package {{ module }}_pkg;
 {% endfor %}
   };
   // SS16.1 (p.16-470): "If a property is not declared, it is considered False."
-  // Every RNF port here is OpenNoC's own rnf, which declares no
-  // Direct_Cache_Transfer, so the Home this fabric serves must elect no
-  // forwarding snoop toward any of them.
-  localparam logic [RNF_NUM-1:0] RNF_DCT_LIST = {RNF_NUM{1'b0}};
+  // Every RNF port here is OpenNoC's own rnf, which declares neither
+  // Direct_Cache_Transfer nor Cache_Stash_Transactions, so the Home this fabric
+  // serves must elect no forwarding snoop, and no stash target, among them.
+  localparam logic [RNF_NUM-1:0] RNF_DCT_LIST   = {RNF_NUM{1'b0}};
+  localparam logic [RNF_NUM-1:0] RNF_STASH_LIST = {RNF_NUM{1'b0}};
 endpackage
 
 module {{ module }}
