@@ -30,6 +30,10 @@ module rni `RNI_PARAM
     input  wire                            RXLINKACTIVEREQ,
     output wire                            RXLINKACTIVEACK,
 
+    // SS14.7 (p.14-460) Protocol-layer activity
+    output wire                            TXSACTIVE,
+    input  wire                            RXSACTIVE,
+
     // CHI interface
     input  wire                            RXRSPFLITPEND,
     input  wire                            RXRSPFLITV,
@@ -166,6 +170,7 @@ module rni `RNI_PARAM
     wire                                misc_txreqflitv_s4;
     wire                                misc_txreqflit_sent_s4;
     wire                                arctrl_entry_any_v;
+    wire                                misc_pcrd_held;
     wire                                awctrl_entry_any_v;
     wire                                awctrl_txreqflitv_s4;
     wire                                awctrl_txreqflit_sent_s4;
@@ -335,6 +340,7 @@ module rni `RNI_PARAM
                  ,.misc_txreqflit_s4_o                   ( misc_txreqflit_s4             )
                  ,.misc_txreqflitv_s4_o                  ( misc_txreqflitv_s4            )
                  ,.misc_txreqflit_sent_s4_i              ( misc_txreqflit_sent_s4        )
+                 ,.misc_pcrd_held_o                      ( misc_pcrd_held                )
              );
 
     rni_awctrl `RNI_PARAM_INST
@@ -506,5 +512,25 @@ module rni `RNI_PARAM
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
         .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
     ) u_chie_flit_opt_check ();
+
+    // SS14.7.2 (p.14-462, MUST): a Request Node asserts TXSACTIVE no later than its
+    // TXREQFLITV and holds it until after the final completing flit. An entry lives
+    // from AXI acceptance until its last response is retired, a Protocol flit takes
+    // one more cycle from rni_link_ctl to the pins, and a P-Credit still held is
+    // work in progress too (SS14.7.1 p.14-460). RXSACTIVE is not consulted: this
+    // node answers link activation unconditionally.
+    logic txprot_on_pins_q;
+    always_ff @(posedge CLK or posedge RST) begin
+        if (RST == 1'b1)
+            txprot_on_pins_q <= 1'b0;
+        else
+            txprot_on_pins_q <= arctrl_txreqflit_sent_s4 | awctrl_txreqflit_sent_s4 | misc_txreqflit_sent_s4
+                              | (awctrl_txrspflitv_d0 & awctrl_txrspflit_sent_d0)
+                              | (wb_txdatflitv_d3 & wb_txdatflit_sent_d3);
+    end
+
+    assign TXSACTIVE = (arctrl_entry_any_v | awctrl_entry_any_v | misc_pcrd_held
+                        | arctrl_txreqflitv_s4 | awctrl_txreqflitv_s4 | misc_txreqflitv_s4
+                        | awctrl_txrspflitv_d0 | wb_txdatflitv_d3 | txprot_on_pins_q) & (~RST);
 
 endmodule

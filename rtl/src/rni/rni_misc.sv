@@ -48,7 +48,12 @@ module rni_misc `RNI_PARAM
     // rni_link_ctl Interface -- the PCrdReturn source
     output chie_pkg::req_flit_s             misc_txreqflit_s4_o,
     output wire                             misc_txreqflitv_s4_o,
-    input  wire                             misc_txreqflit_sent_s4_i
+    input  wire                             misc_txreqflit_sent_s4_i,
+
+    // A P-Credit is held, arriving or owed back: SS14.7.1 (p.14-460) keeps a
+    // RetryAck'd transaction in progress "until the associated credit has been
+    // supplied and used or returned".
+    output wire                             misc_pcrd_held_o
     );
 
     //wire
@@ -243,6 +248,7 @@ module rni_misc `RNI_PARAM
     end
 
     assign misc_txreqflitv_s4_o = pcrd_return_v_q;
+    assign misc_pcrd_held_o     = (|pcrd_held_vec_w) | pcrdgnt_recv_d1_w | pcrd_return_v_q;
 
     // ar and aw H arbitration
     assign nxt_h_pcrdgnt_ptr_w = (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b0))? 1 : (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b1))? 0 : h_pcrdgnt_ptr_q;

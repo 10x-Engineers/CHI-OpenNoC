@@ -111,13 +111,13 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Feature | SN-F | HN-I | RN-I | RN-F | HN-F | Notes |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | Link activation (Ch. 14) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🔴 | 🟢 | 🟢 | RN-I has no SACTIVE ports [#320](https://github.com/10x-Engineers/CHI-OpenNoC/issues/320) |
+| `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | QoS | 🟢 | 🟢 | 🟢 | ⬜ | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F issues QoS 0 [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
 | DMT / DWT | 🟢 | — | — | — | 🟢 | |
 | DCT | — | — | — | ⬜ | 🟢 | RN-F as a DCT target [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Snoop filter, L3 | — | — | — | — | 🟢 | |
-| Snoop handling | — | — | — | 🔴 | — | Fwd/Stash snoops leave the line valid [#317](https://github.com/10x-Engineers/CHI-OpenNoC/issues/317) |
+| Snoop handling | — | — | — | 🟢 | — | Fwd/Stash snoops answered as their Non-forwarding twin; `SnpDVMOp` needs DVM [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
 | CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
