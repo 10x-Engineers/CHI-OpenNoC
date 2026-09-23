@@ -9,6 +9,8 @@
 #                     granted, takes its NCBWrData, and completes NDERR
 #   tb_hnf_stash      Sec 9.4.6 (p.9-344): no Stash snoop to a target the HN-F
 #                     declares unable to receive one, and no error
+#   tb_hnf_mte        Sec 12.1 / 12.11.3: no TagOp downstream for memory that is
+#                     not Normal WriteBack, and the Home's own TagMatch Fail
 set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
 
@@ -27,12 +29,13 @@ MISC="misc/poll_function.sv misc/poll_with_start_entry.sv misc/sync_fifo.sv
       misc/chi_link_handshake.sv misc/chie_flit_opt_check.sv"
 declare -A SRCS=(
   [tb_hnf_dvm]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_dvm.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
+  [tb_hnf_mte]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_mte.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hnf_stash]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_stash.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hni_dvm]="include/chie_pkg.sv tb/tb_hni_dvm.sv src/hni/*.sv misc/assert_checker.sv $MISC"
 )
 
 rc=0
-for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash; do
+for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte; do
   OUT=$(mktemp -d)
   case "$SIM" in
     xrun)      CMD=(xrun -sv -incdir include -incdir tb -top "$top" -xmlibdirname "$OUT/xcelium.d") ;;
