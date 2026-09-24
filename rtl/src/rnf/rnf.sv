@@ -74,13 +74,15 @@ module rnf `RNF_PARAM
 
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
     // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
-    // core's intent for the access (rnf_defines.svh); AxLOCK makes it exclusive,
-    // AxUSER carries its MPAM label and W/RUSER its Poison (axi4_defines.svh).
+    // core's intent for the access, and ARORD asks a ReadOnce* for Request Order
+    // (rnf_defines.svh); AxLOCK makes it exclusive, AxUSER carries its MPAM label
+    // and W/RUSER its Poison (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE,
     input  wire [`RNF_AR_COH_W-1:0]      ARCOH,
+    input  wire [`RNF_AR_ORD_W-1:0]      ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK,
     input  wire [`AXI4_ARUSER_WIDTH-1:0] ARUSER,
     input  wire                          ARVALID,
@@ -293,6 +295,7 @@ module rnf `RNF_PARAM
                      ,.ARLEN                 ( ARLEN                )
                      ,.ARSIZE                ( ARSIZE               )
                      ,.ARCOH                 ( ARCOH                )
+                     ,.ARORD                 ( ARORD                )
                      ,.ARLOCK                ( ARLOCK               )
                      ,.ARUSER                ( ARUSER               )
                      ,.ARVALID               ( ARVALID              )

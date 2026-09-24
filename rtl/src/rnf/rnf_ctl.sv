@@ -75,6 +75,7 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE,
     input  wire [`RNF_AR_COH_W-1:0]             ARCOH,
+    input  wire [`RNF_AR_ORD_W-1:0]             ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0]        ARLOCK,
     input  wire [`AXI4_ARUSER_WIDTH-1:0]        ARUSER,
     input  wire                                 ARVALID,
@@ -211,6 +212,7 @@ module rnf_ctl `RNF_PARAM
     localparam logic [3:0] S_WU_DAT  = 4'd12;
     localparam logic [3:0] S_CMRSP   = 4'd13;
     localparam logic [3:0] S_CMO     = 4'd14;
+    localparam logic [3:0] S_RCPT    = 4'd15;
 
     // What the request in S_REQ is waiting for.
     localparam logic [2:0] K_READ    = 3'd0;   // a Data response, the line filled from it
@@ -233,6 +235,7 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_LINE_BITS-1:0]                  line_q;
     logic [`RNF_CS_WIDTH-1:0]                   fill_state_q;
     logic                                       got_lo_q, got_hi_q, got_rsp_q;
+    logic                                       got_rcpt_q;     // an ordered read's ReadReceipt
     logic [CHIE_NID_WIDTH_PARAM-1:0]            ack_tgt_q;
     logic [11:0]                                ack_txnid_q;
     logic                                       ack_tt_q;
@@ -272,6 +275,7 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_AW_COH_W-1:0]                   aw_coh_q;
     logic [`RNF_WAY_W-1:0]                      way_q;
     chie_pkg::req_opcode_e                      acq_op_q;
+    chie_pkg::order_e                           ord_q;          // the Order a ReadOnce* went out with
     logic [2:0]                                 kind_q;
     logic                                       ack_q;     // ExpCompAck
     logic                                       alloc_q;   // the completion installs the line
@@ -452,6 +456,10 @@ module rnf_ctl `RNF_PARAM
     // SS4.2.1 (p.4-163): the ReadOnce family is non-allocating, so its data is not
     // cached and nothing is displaced for it.
     wire ar_alloc = !is_read_once(ar_op);
+    // Table 4-1 (p.4-165): a ReadOnce* may carry Request Order and no other, and no
+    // other read may be ordered at all.
+    wire chie_pkg::order_e ar_ord = (is_read_once(ar_op) && ARORD[0]) ? chie_pkg::ORDER_REQ_WR_OBS
+                                                                      : chie_pkg::ORDER_NONE;
     // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
     wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
     wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
@@ -599,6 +607,8 @@ module rnf_ctl `RNF_PARAM
             prot_txreqflit_o.opcode       = acq_op_q;
             prot_txreqflit_o.addr         = addr_q;
             prot_txreqflit_o.expcompack   = ack_q;
+            // SS2.11 (p.2-145): a resend keeps the first attempt's Order.
+            prot_txreqflit_o.order        = ord_q;
             // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores.
             prot_txreqflit_o.excl.excl    = excl_q && core_q &&
                                             (excl_load_op(acq_op_q) ||
@@ -694,6 +704,7 @@ module rnf_ctl `RNF_PARAM
     wire rx_rsp_txn  = prot_rxrspflitv_i && (prot_rxrspflit_i.txnid == txnid_q);
     wire rx_comp     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMP);
     wire rx_sep      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_RESPSEPDATA);
+    wire rx_rcpt     = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_READRECEIPT);
     // SS2.3.2 (p.2-52): write data follows "DBIDResp, DBIDRespOrd, or CompDBIDResp".
     wire rx_dbid     = rx_rsp_txn && ((prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESP) ||
                                       (prot_rxrspflit_i.opcode == chie_pkg::RSP_DBIDRESPORD));
@@ -782,6 +793,10 @@ module rnf_ctl `RNF_PARAM
     wire got_lo_now = got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0));
     wire got_hi_now = got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0));
     wire data_done  = got_lo_now && got_hi_now && (got_rsp_q || rx_sep || rx_dat_comb);
+    // SS2.8.5 (p.2-119): an ordered read is released by its ReadReceipt, or by a
+    // RespSepData sent in its place, and stays outstanding until then (SS2.11 p.2-146).
+    wire rcpt_owed  = (ord_q != chie_pkg::ORDER_NONE) &&
+                      !(got_rcpt_q || rx_rcpt || got_rsp_q || rx_sep);
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
     wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
@@ -902,6 +917,8 @@ module rnf_ctl `RNF_PARAM
             aw_coh_q      <= `RNF_AW_CACHED;
             way_q         <= '0;
             acq_op_q      <= chie_pkg::REQ_READSHARED;
+            ord_q         <= chie_pkg::ORDER_NONE;
+            got_rcpt_q    <= 1'b0;
             kind_q        <= K_READ;
             ack_q         <= 1'b0;
             alloc_q       <= 1'b0;
@@ -987,6 +1004,8 @@ module rnf_ctl `RNF_PARAM
                     cb_keep_q  <= 1'b0;
                     exok_q     <= 1'b0;
                     base_udp_q <= 1'b0;
+                    got_rcpt_q <= 1'b0;
+                    ord_q      <= chie_pkg::ORDER_NONE;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
@@ -1053,6 +1072,7 @@ module rnf_ctl `RNF_PARAM
                         else begin
                             hit_q    <= 1'b0;
                             acq_op_q <= ar_op;
+                            ord_q    <= ar_ord;
                             kind_q   <= K_READ;
                             alloc_q  <= ar_alloc;
                             ack_q    <= ar_alloc;
@@ -1396,6 +1416,7 @@ module rnf_ctl `RNF_PARAM
                         ack_tt_q    <= prot_rxrspflit_i.tracetag;
                     end
                     if (rx_sep) got_rsp_q <= 1'b1;
+                    if (rx_rcpt) got_rcpt_q <= 1'b1;
                     if (rx_dat_comb) begin
                         ack_tgt_q   <= prot_rxdatflit_i.homenid;
                         ack_txnid_q <= prot_rxdatflit_i.dbid;
@@ -1443,6 +1464,7 @@ module rnf_ctl `RNF_PARAM
                                 // Table 4-33 (p.4-212): ReadUnique ends a UDP line UD.
                                 if (base_udp_q && !acq_lost) fill_state_q <= `RNF_CS_UD;
                                 if (ack_q) st_q <= S_ACK;
+                                else if (rcpt_owed) st_q <= S_RCPT;
                                 else begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
@@ -1572,6 +1594,15 @@ module rnf_ctl `RNF_PARAM
                     if (rx_compcmo) begin
                         txnid_q <= txnid_q + 12'd1;
                         st_q    <= cmo_ret_st_q;
+                    end
+                end
+
+                // An ordered read has its data but still owes its ReadReceipt; the
+                // core's response and the TxnID both wait for it.
+                S_RCPT: begin
+                    if (rx_rcpt) begin
+                        txnid_q <= txnid_q + 12'd1;
+                        st_q    <= fin_st;
                     end
                 end
 

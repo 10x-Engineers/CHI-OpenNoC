@@ -58,6 +58,11 @@
 `define RNF_AR_ONCE_CLEAN_INV 3'd5
 `define RNF_AR_ONCE_MAKE_INV  3'd6
 
+// ARORD qualifies ARVALID: set, a ReadOnce* miss asks for Request Order (Table 2-9
+// SS2.8.5 p.2-119), the one non-zero Order Table 4-1 (p.4-165) permits the ReadOnce
+// family. Every other read ignores it, as none of them may be ordered.
+`define RNF_AR_ORD_W          1
+
 // AWCOH qualifies AWVALID. READ_UNIQUE upgrades a Shared line with MakeReadUnique
 // instead of CleanUnique; IMMEDIATE writes an uncached line with WriteUnique
 // (Table 4-16 p.4-181), and IMMEDIATE_CLEANSH combines it with CleanShared.
