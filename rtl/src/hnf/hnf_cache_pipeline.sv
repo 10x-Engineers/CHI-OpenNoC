@@ -2334,10 +2334,10 @@ module hnf_cache_pipeline `HNF_PARAM
                     sf_state_s_count = 'd0;
                     for (int j = 0; j < `RNF_NUM; j = j + 1)begin
                         if({sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2+1],sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2]} == 2'b01)begin
-                            sf_state_u_count = sf_state_u_count + 1;
+                            sf_state_u_count = sf_state_u_count + 1'b1;
                         end
                         if({sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2+1],sf_rd_clines_q[i*`SF_CLINE_WIDTH+j*2]} == 2'b11)begin
-                            sf_state_s_count = sf_state_s_count + 1;
+                            sf_state_s_count = sf_state_s_count + 1'b1;
                         end
                     end
                     if(sf_state_u_count > 'd1)begin
@@ -2353,7 +2353,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     sf_state_u_count = 'd0;
                     for (int i = 0; i < `RNF_NUM; i = i + 1)begin
                         if({pipe_sf_match_state_sx4_q[i*2+1],pipe_sf_match_state_sx4_q[i*2]} == 2'b01)begin
-                            sf_state_u_count = sf_state_u_count + 1;
+                            sf_state_u_count = sf_state_u_count + 1'b1;
                         end
                     end
                     if(sf_state_u_count != 'd0)begin

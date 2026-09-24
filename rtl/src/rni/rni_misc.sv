@@ -251,7 +251,7 @@ module rni_misc `RNI_PARAM
     assign misc_pcrd_held_o     = (|pcrd_held_vec_w) | pcrdgnt_recv_d1_w | pcrd_return_v_q;
 
     // ar and aw H arbitration
-    assign nxt_h_pcrdgnt_ptr_w = (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b0))? 1 : (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b1))? 0 : h_pcrdgnt_ptr_q;
+    assign nxt_h_pcrdgnt_ptr_w = (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b0))? 1'b1 : (ar_pcrdgnt_h_present_d3_i & aw_pcrdgnt_h_present_d3_i & (h_pcrdgnt_ptr_q == 1'b1))? 1'b0 : h_pcrdgnt_ptr_q;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if(rst_i == 1'b1)
@@ -264,7 +264,7 @@ module rni_misc `RNI_PARAM
     assign aw_pcrdgnt_h_win_d3_o = ~l_disable_h_w & aw_pcrdgnt_h_present_d3_i & (~ar_pcrdgnt_h_present_d3_i | (h_pcrdgnt_ptr_q == 1'b1));
 
     // ar and aw L arbitration
-    assign nxt_l_pcrdgnt_ptr_w = (ar_pcrdgnt_l_present_d3_i & aw_pcrdgnt_l_present_d3_i & (l_pcrdgnt_ptr_q == 1'b0))? 1 : (ar_pcrdgnt_l_present_d3_i & aw_pcrdgnt_l_present_d3_i & (l_pcrdgnt_ptr_q == 1'b1))? 0 : l_pcrdgnt_ptr_q;
+    assign nxt_l_pcrdgnt_ptr_w = (ar_pcrdgnt_l_present_d3_i & aw_pcrdgnt_l_present_d3_i & (l_pcrdgnt_ptr_q == 1'b0))? 1'b1 : (ar_pcrdgnt_l_present_d3_i & aw_pcrdgnt_l_present_d3_i & (l_pcrdgnt_ptr_q == 1'b1))? 1'b0 : l_pcrdgnt_ptr_q;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if(rst_i == 1'b1)
