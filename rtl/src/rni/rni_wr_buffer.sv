@@ -620,8 +620,8 @@ module rni_wr_buffer `RNI_PARAM
         end
     end
 
-    assign B_CH_S0.id   = brsp_fifo_out_d3_w.last? brsp_fifo_out_d3_w.axid : 0;
-    assign B_CH_S0.resp = brsp_fifo_out_d3_w.last? (brsp_fifo_out_d3_w.resperr | brsp_seg_resperr_q[2-1:0]) : 0;
+    assign B_CH_S0.id   = brsp_fifo_out_d3_w.last? brsp_fifo_out_d3_w.axid : '0;
+    assign B_CH_S0.resp = brsp_fifo_out_d3_w.last? (brsp_fifo_out_d3_w.resperr | brsp_seg_resperr_q[2-1:0]) : '0;
     // Sec 12.1 (p.12-372): the Tag Match verdict, on the last beat's response.
     assign B_CH_S0.user = brsp_fifo_out_d3_w.last ? brsp_fifo_out_d3_w.buser : '0;
 

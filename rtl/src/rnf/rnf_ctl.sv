@@ -639,13 +639,13 @@ module rnf_ctl `RNF_PARAM
     // data byte value to zero". Every other CopyBackWrData of a Full CopyBack
     // asserts all 64 (SS4.2.3 p.4-177).
     wire cb_invalid = (cb_resp_of(vic_state_q) == chie_pkg::RESP_I);
-    wire [`RNF_LINE_BITS-1:0] wu_line = merge_line('0, wbuf_q, wbe_q);
+    wire [`RNF_LINE_BITS-1:0] wu_line = merge_line(`RNF_LINE_BITS'(0), wbuf_q, wbe_q);
     // SS2.10.3 (p.2-135): a WriteBackPtl asserts the enables of the valid bytes, and
     // any deasserted enable zeroes its byte.
     wire [`RNF_LINE_BYTES-1:0] cb_be   = cb_invalid ? '0 :
                                          (cb_op_q == chie_pkg::REQ_WRITEBACKPTL) ? vic_meta_q[`RNF_META_VMASK]
                                                                                  : '1;
-    wire [`RNF_LINE_BITS-1:0]  cb_line = merge_line('0, vic_data_q, cb_be);
+    wire [`RNF_LINE_BITS-1:0]  cb_line = merge_line(`RNF_LINE_BITS'(0), vic_data_q, cb_be);
     // SS9.5 (p.9-347, MUST): the Poison travels with the bytes it tags.
     logic [7:0] cb_poison, wu_poison;
     always_comb begin
@@ -1415,13 +1415,13 @@ module rnf_ctl `RNF_PARAM
                         automatic int base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
                         if (take_data) begin
                             for (int b = 0; b < 32; b++)
-                                if (!merge_vm[base*8 + b])
+                                if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
                                     line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
                             for (int c = 0; c < 4; c++)
-                                line_poison_q[base + c] <=
-                                    (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[base + c] :
+                                line_poison_q[3'(base + c)] <=
+                                    (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
                                     (prot_rxdatflit_i.poison[c] |
-                                     (line_poison_q[base + c] & (|merge_vm[(base + c)*8 +: 8])));
+                                     (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
                         end
                         if (base == 0) got_lo_q <= 1'b1;
                         else           got_hi_q <= 1'b1;

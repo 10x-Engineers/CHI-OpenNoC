@@ -286,8 +286,8 @@ generate for (entry=0; entry<RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1)begin
     generate
         for (bank=0; bank<`RNI_RD_BANK_NUM; bank=bank+1) begin
             assign data_bank_vec_d4_w[bank]     = arctrl_rb_valid_d4_i & rp_fifo_avail_d4_w & arctrl_rb_ctmask_d4_i[bank];
-            assign data_bank_ctmask_d4_w[bank]  = data_bank_vec_d4_w[bank]? arctrl_rb_ctmask_d4_i[bank] : 0;
-            assign data_bank_idx_d4_w[bank]     = data_bank_vec_d4_w[bank]? arctrl_rb_idx_d4_i : 0;
+            assign data_bank_ctmask_d4_w[bank]  = data_bank_vec_d4_w[bank]? arctrl_rb_ctmask_d4_i[bank] : 1'b0;
+            assign data_bank_idx_d4_w[bank]     = data_bank_vec_d4_w[bank]? arctrl_rb_idx_d4_i : '0;
             assign data_bank_resperr_d4_w[bank] = data_bank_vec_d4_w[bank]? resperr_bank_d3_q[arctrl_rb_idx_d4_i][bank] : chie_pkg::RESP_ERR_NORM_OK;
             assign data_bank_poison_d4_w[bank]  = data_bank_vec_d4_w[bank]? poison_bank_d3_q[arctrl_rb_idx_d4_i][bank] : '0;
         end

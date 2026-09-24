@@ -594,7 +594,7 @@ module hni_data_buffer `HNI_PARAM
         txdat_flit.tgtid     = mshr_txdat_tgtid_sx;
         txdat_flit.srcid     = `HNI0_ID;
         txdat_flit.txnid     = mshr_txdat_txnid_sx;
-        txdat_flit.homenid   = (mshr_txdat_opcode_sx == chie_pkg::DAT_COMPDATA)?`HNI0_ID : '0;
+        txdat_flit.homenid   = (mshr_txdat_opcode_sx == chie_pkg::DAT_COMPDATA)?`HNI0_ID[chie_pkg::NID_WIDTH-1:0] : '0;
         txdat_flit.opcode    = mshr_txdat_opcode_sx;
         txdat_flit.resperr   = rresp_q[txdat_entry_idx_sx][1] ? chie_pkg::RESP_ERR_NON_DATA
                                                                                     : mshr_txdat_resperr_sx;

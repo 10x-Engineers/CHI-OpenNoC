@@ -2544,7 +2544,7 @@ module hnf_mshr_ctl `HNF_PARAM
         l3_snp_cnt = 0;
         for (int i = 0; i < `RNF_NUM; i = i + 1) begin
             if (l3_snp_bit_sx7_q[i] == 1'b1) begin
-                l3_snp_cnt = l3_snp_cnt + 1;
+                l3_snp_cnt = l3_snp_cnt + 1'b1;
             end
         end
     end
@@ -2557,7 +2557,7 @@ module hnf_mshr_ctl `HNF_PARAM
         seq_snp_cnt = 0;
         for (int i = 0; i < `RNF_NUM; i = i + 1) begin
             if (sysco_snp_gen_en[i] == 1'b1) begin
-                seq_snp_cnt = seq_snp_cnt + 1;
+                seq_snp_cnt = seq_snp_cnt + 1'b1;
             end
         end
     end
@@ -3931,7 +3931,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 16.1's (p.16-471) substitute carries no Persist of its own -- the Home owes
     // that one -- so its ReturnNID and ReturnTxnID are inapplicable.
     assign mshr_txreq_returnnid_sx1   = mshr_txreq_is_cmo_sx1 ? '0
-                                      : (mshr_txreq_fwd_sx1?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM);
+                                      : (mshr_txreq_fwd_sx1?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0]);
     assign mshr_txreq_returntxnid_sx1 = mshr_txreq_is_cmo_sx1 ? '0
                                       : (mshr_txreq_fwd_sx1?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
     // Sec 2.10.3 (p.2-135, MUST): a WriteNoSnpFull must assert every byte enable, so
@@ -3952,7 +3952,7 @@ module hnf_mshr_ctl `HNF_PARAM
     end
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
     assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
-    assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:0);
+    assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:'0);
     // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
     // interconnect due to a Prefetch from Home or an eviction from the System
     // cache" carries EWA, Cacheable and Allocate all 1 and Device 0.
@@ -4179,7 +4179,7 @@ module hnf_mshr_ctl `HNF_PARAM
             cpl_rob <= 0;
         end
         else begin
-            cpl_rob <= cpl_rob + 'b1;
+            cpl_rob <= cpl_rob + 1'b1;
         end
     end
 
@@ -4309,7 +4309,7 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_txdat_tgtid_sx2   = (txdat_mshr_rd_to_rn_sx2?
                                   (mshr_txdat_stash_pull_sx2? mshr_stash_pull_srcid_s1_q[txdat_mshr_rd_idx_sx2]
                                                             : mshr_srcid_s1_q[txdat_mshr_rd_idx_sx2])
-                                  :SNF_NID_PARAM);
+                                  :SNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0]);
         mshr_txdat_txnid_sx2   = (txdat_mshr_rd_to_rn_sx2?
                                   (mshr_txdat_stash_pull_sx2? mshr_stash_pull_txnid_s1_q[txdat_mshr_rd_idx_sx2]
                                                             : mshr_txnid_s1_q[txdat_mshr_rd_idx_sx2])

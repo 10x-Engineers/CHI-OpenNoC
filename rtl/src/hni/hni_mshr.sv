@@ -495,7 +495,7 @@ module hni_mshr `HNI_PARAM
 
     //ax channel signal
     assign rxreq_axsize_s0  = ((rxreq_size_s0 == 3'b110) | (rxreq_size_s0 == 3'b101)) ? 3'b100 : rxreq_size_s0;
-    assign rxreq_axlen_s0   = rxreq_device_s0 ? ((rxreq_size_s0 == 3'b110) ? (8'd3-{6'b0,rxreq_addr_s0[5:4]}) : ((rxreq_size_s0 == 3'b101) ? ({7'b0,~rxreq_addr_s0[4]}) : 8'b0)) : ((rxreq_size_s0 == 3'b110) ? 'b11 : ((rxreq_size_s0 == 3'b101) ? 'b1 : 8'b0));
+    assign rxreq_axlen_s0   = rxreq_device_s0 ? ((rxreq_size_s0 == 3'b110) ? (8'd3-{6'b0,rxreq_addr_s0[5:4]}) : ((rxreq_size_s0 == 3'b101) ? ({7'b0,~rxreq_addr_s0[4]}) : 8'b0)) : ((rxreq_size_s0 == 3'b110) ? 8'b11 : ((rxreq_size_s0 == 3'b101) ? 8'b1 : 8'b0));
 
     assign rxreq_dbf_en_s0        = rxreq_alloc_en_s0;
     assign rxreq_dbf_axid_s0      = rxreq_axid_s0;
@@ -1012,10 +1012,10 @@ module hni_mshr `HNI_PARAM
             txrsp_fifo_set_s1_q <= {(`HNI_MSHR_ENTRIES_WIDTH+1){1'b0}};
         end
         else if(txrsp_en_s1 && txrsp_en2_s1) begin
-            txrsp_fifo_set_s1_q <= txrsp_fifo_set_s1_q + 2;
+            txrsp_fifo_set_s1_q <= txrsp_fifo_set_s1_q + (`HNI_MSHR_ENTRIES_WIDTH+1)'(2);
         end
         else if (txrsp_en_s1 || txrsp_en2_s1 || txrsp_en3_sx) begin
-            txrsp_fifo_set_s1_q <= txrsp_fifo_set_s1_q + 1;
+            txrsp_fifo_set_s1_q <= txrsp_fifo_set_s1_q + 1'b1;
         end
     end
 
@@ -1111,7 +1111,7 @@ module hni_mshr `HNI_PARAM
         if(rst == 1'b1)
             txrsp_fifo_cnt_sx_q     <= {(`HNI_MSHR_ENTRIES_WIDTH+1){1'b0}};
         else if(txrsp_won_sx == 1'b1)
-            txrsp_fifo_cnt_sx_q     <= txrsp_fifo_cnt_sx_q + 1;
+            txrsp_fifo_cnt_sx_q     <= txrsp_fifo_cnt_sx_q + 1'b1;
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_txrsp_logic
@@ -1199,7 +1199,7 @@ module hni_mshr `HNI_PARAM
         if(rst == 1'b1)
             txdat_fifo_set_s1_q <= {(`HNI_MSHR_ENTRIES_WIDTH+1){1'b0}};
         else if(txdat_en_sx)
-            txdat_fifo_set_s1_q <= txdat_fifo_set_s1_q + 1;
+            txdat_fifo_set_s1_q <= txdat_fifo_set_s1_q + 1'b1;
     end
 
     generate
@@ -1251,7 +1251,7 @@ module hni_mshr `HNI_PARAM
         if(rst == 1'b1)
             txdat_fifo_cnt_sx_q     <= {(`HNI_MSHR_ENTRIES_WIDTH+1){1'b0}};
         else if(mshr_txdat_won_sx == 1'b1)
-            txdat_fifo_cnt_sx_q     <= txdat_fifo_cnt_sx_q + 1;
+            txdat_fifo_cnt_sx_q     <= txdat_fifo_cnt_sx_q + 1'b1;
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_txdat_logic
@@ -1335,10 +1335,10 @@ module hni_mshr `HNI_PARAM
             arvalid_fifo_set_sx_q <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         end
         else if(arvalid_en_s1 && arvalid_en2_s1) begin
-            arvalid_fifo_set_sx_q <= arvalid_fifo_set_sx_q + 2;
+            arvalid_fifo_set_sx_q <= arvalid_fifo_set_sx_q + `HNI_MSHR_ENTRIES_WIDTH'(2);
         end
         else if (arvalid_en_s1 || arvalid_en2_s1) begin
-            arvalid_fifo_set_sx_q <= arvalid_fifo_set_sx_q + 1;
+            arvalid_fifo_set_sx_q <= arvalid_fifo_set_sx_q + 1'b1;
         end
     end
 
@@ -1373,7 +1373,7 @@ module hni_mshr `HNI_PARAM
         if(rst == 1'b1)
             arvalid_fifo_cnt_sx_q     <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         else if((arvalid_sx == 1'b1) && (arready_sx == 1'b1))
-            arvalid_fifo_cnt_sx_q     <= arvalid_fifo_cnt_sx_q + 1;
+            arvalid_fifo_cnt_sx_q     <= arvalid_fifo_cnt_sx_q + 1'b1;
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_arvalid_logic
@@ -1416,7 +1416,7 @@ module hni_mshr `HNI_PARAM
 
     //************************************************************************//
     assign mshr_rdat_en_sx          = ((arvalid_sx == 1'b1) && (arready_sx == 1'b1));
-    assign mshr_rdat_entry_idx_sx   = mshr_rdat_en_sx ? arvalid_entry_idx_s1_q : 0;
+    assign mshr_rdat_entry_idx_sx   = mshr_rdat_en_sx ? arvalid_entry_idx_s1_q : '0;
 
     assign errdat_ready_sx = errdat_pending_q & (~sleep_sx_q);
 
@@ -1480,7 +1480,7 @@ module hni_mshr `HNI_PARAM
             awvalid_fifo_set_s2_q   <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         end
         else if(awvalid_en_s1 == 1'b1) begin
-            awvalid_fifo_set_s2_q   <= awvalid_fifo_set_s2_q + 1;
+            awvalid_fifo_set_s2_q   <= awvalid_fifo_set_s2_q + 1'b1;
         end
     end
 
@@ -1503,7 +1503,7 @@ module hni_mshr `HNI_PARAM
         if(rst == 1'b1)
             awvalid_fifo_cnt_sx_q   <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         else if((awvalid_sx == 1'b1) && (awready_sx == 1'b1))
-            awvalid_fifo_cnt_sx_q   <= awvalid_fifo_cnt_sx_q + 1;
+            awvalid_fifo_cnt_sx_q   <= awvalid_fifo_cnt_sx_q + 1'b1;
     end
 
     always_ff @(posedge clk or posedge rst)begin : mshr_awvalid_logic
