@@ -1412,12 +1412,14 @@ module rnf_ctl `RNF_PARAM
                     // Table 4-33 fn c (p.4-212): returned bytes fill only those the
                     // line does not already hold valid.
                     if (rx_dat_mine) begin
-                        automatic int base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
+                        // Unsigned: a size cast keeps its operand's signedness, so a
+                        // signed offset of 32+ would index below zero.
+                        automatic int unsigned base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
                         if (take_data) begin
-                            for (int b = 0; b < 32; b++)
+                            for (int unsigned b = 0; b < 32; b++)
                                 if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
                                     line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
-                            for (int c = 0; c < 4; c++)
+                            for (int unsigned c = 0; c < 4; c++)
                                 line_poison_q[3'(base + c)] <=
                                     (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
                                     (prot_rxdatflit_i.poison[c] |
