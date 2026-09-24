@@ -41,6 +41,14 @@
 `define SNF_MASK_WL_MSB                    3
 
 ////////////////////////////////////////////////////////////////////////
+// Data packets per 64-byte line. SS2.10.4 (p.2-136), Table 2-15: a line is
+// 512/Data_Width packets of Data_Width/128 sixteen-byte chunks each, and packet p
+// carries DataID p x SNF_PKT_CHUNKS.
+`define SNF_PKTS                           (512 / chie_pkg::DATA_WIDTH)
+`define SNF_PKT_CHUNKS                     (chie_pkg::DATA_WIDTH / 128)
+`define SNF_PKT_CHUNKS_LOG2                ($clog2(chie_pkg::DATA_WIDTH / 128))
+
+////////////////////////////////////////////////////////////////////////
 // snf_link_req_channel_lcredit
 `define SNF_LL_REQ_CRD_CNT_WIDTH           4
 `define SNF_LL_REQ_CRD_CNT_MSB             3

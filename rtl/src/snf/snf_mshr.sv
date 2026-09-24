@@ -156,11 +156,11 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    txrsp_rdy_sx_q;
     chie_pkg::rsp_opcode_e               txrsp_opcode_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txrsp_entry_idx_sx;
-    logic [1:0]                          txdat_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_PKTS-1:0]                txdat_rdy_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx;
     logic                                txdat_en_sx_q;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx_q;
-    logic [1:0]                          txdat_sent_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNF_PKTS-1:0]                txdat_sent_sx_q[`SNF_MSHR_ENTRIES_NUM-1:0];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_tagfetch_q;
     logic                                arvalid_tagfetch_s1_q;
@@ -255,9 +255,17 @@ module snf_mshr `SNF_PARAM
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txrsp_valid_idx_sx;
     wire                                 txrsp_comp_wrdatcancel_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   txrsp_comp_wrcancel_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat1_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat2_rdy_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     rdat_allrcvd_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     rdat_ready_sx;
+    wire [3:0]                           rdat_chunks_sx[`SNF_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNF_PKTS-1:0]                 rdat_pkts_sx[`SNF_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNF_PKTS-1:0]                 crit_pkt_sx[`SNF_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNF_PKTS-1:0]                 txdat_pkt_avail_sx;
+    wire [1:0]                           txdat_crit_pkt_sx;
+    wire [2*`SNF_PKTS-1:0]               txdat_pkt_avail2_sx;
+    wire [`SNF_PKTS-1:0]                 txdat_pkt_rot_sx;
+    logic [1:0]                          txdat_pkt_rank_sx;
+    wire [1:0]                           txdat_pkt_sx;
+    wire [`SNF_PKTS-1:0]                 txdat_pkt_onehot_sx;
     wire                                 arvalid_en_s1;
     wire                                 arvalid_en2_s1;
     wire                                 tagfetch_push_sx;
@@ -1053,6 +1061,22 @@ module snf_mshr `SNF_PARAM
     //                                TXDAT                                   //
     //************************************************************************//
 
+    // SS2.10.4 (p.2-136): the 16-byte chunks of the line a read of this Size returns --
+    // the Size-aligned container of its address, at most the line.
+    function automatic logic [3:0] read_chunks(chie_pkg::size_e size, logic [1:0] ccid);
+        case (size)
+            chie_pkg::SIZE_64B: read_chunks = 4'b1111;
+            chie_pkg::SIZE_32B: read_chunks = ccid[1] ? 4'b1100 : 4'b0011;
+            default:            read_chunks = 4'b0001 << ccid;
+        endcase
+    endfunction
+
+    // Table 2-15 (SS2.10.4 p.2-136): packet p holds chunks p*SNF_PKT_CHUNKS onward.
+    function automatic logic [`SNF_PKTS-1:0] chunk_pkts(logic [3:0] chunks);
+        for (int p = 0; p < `SNF_PKTS; p++)
+            chunk_pkts[p] = |chunks[p*`SNF_PKT_CHUNKS +: `SNF_PKT_CHUNKS];
+    endfunction
+
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk or posedge rst) begin: rdat_valid_s1_q_logic
@@ -1071,16 +1095,8 @@ module snf_mshr `SNF_PARAM
             always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
                 if(rst == 1'b1)
                     rdat_pdmask_q[entry] <= 4'b0000;
-                else if ((dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx)) && (mshr_txdat_en_sx && (entry == mshr_txdat_entry_idx_sx)) && (mshr_txdat_dataid_sx == 2'b00))
-                    rdat_pdmask_q[entry] <= (dbf_mshr_rdata_cdmask_sx | rdat_pdmask_q[entry]) & 4'b1100;
-                else if ((dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx)) && (mshr_txdat_en_sx && (entry == mshr_txdat_entry_idx_sx)) && (mshr_txdat_dataid_sx == 2'b10))
-                    rdat_pdmask_q[entry] <= (dbf_mshr_rdata_cdmask_sx | rdat_pdmask_q[entry]) & 4'b0011;
-                else if ((dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx))&& (~(mshr_txdat_en_sx && (entry == mshr_txdat_entry_idx_sx))))
+                else if (dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx))
                     rdat_pdmask_q[entry] <= dbf_mshr_rdata_cdmask_sx | rdat_pdmask_q[entry];
-                else if(~(dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx)) && (mshr_txdat_en_sx && (entry == mshr_txdat_entry_idx_sx)) && (mshr_txdat_dataid_sx == 2'b00))
-                    rdat_pdmask_q[entry] <= rdat_pdmask_q[entry] & 4'b1100;
-                else if(~(dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx)) && (mshr_txdat_en_sx && (entry == mshr_txdat_entry_idx_sx)) && (mshr_txdat_dataid_sx == 2'b10))
-                    rdat_pdmask_q[entry] <= rdat_pdmask_q[entry] & 4'b0011;
                 else if (mshr_retired_valid_sx && entry == mshr_retired_idx_sx)
                     rdat_pdmask_q[entry] <= 4'b0000;
             end
@@ -1089,22 +1105,19 @@ module snf_mshr `SNF_PARAM
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // SS2.10.4 (p.2-136): a read returns the Size-aligned container of its
+            // address in 16-byte chunks, carried by the packets that hold them, the one
+            // with Addr[5:4] -- the critical chunk -- among them.
+            assign rdat_chunks_sx[entry] = read_chunks(mshr_entry_q[entry].size, mshr_entry_q[entry].ccid);
+            assign rdat_pkts_sx[entry]   = chunk_pkts(rdat_chunks_sx[entry]);
+            assign crit_pkt_sx[entry]    = chunk_pkts(4'b0001 << mshr_entry_q[entry].ccid);
+
             // Sec 9.4.1 (p.9-337, MUST): a Read's data response carries a Non-data
             // Error "either in none or in all data response packets", and the AXI
-            // error is not final until the last beat is in. A two-packet transfer
-            // therefore holds its first packet until the whole burst has arrived;
-            // a single-packet one has nothing to hold.
-            assign rdat_allrcvd_sx[entry] = (mshr_entry_q[entry].size == chie_pkg::SIZE_64B) ?
-                                (rdat_pdmask_q[entry] == 4'b1111) : 1'b1;
-
-            assign txdat1_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (~txdat_rdy_sx_q[entry][0]) && rdat_allrcvd_sx[entry]) ?
-                                (((mshr_entry_q[entry].ccid[1] == 1'b0) && (rdat_pdmask_q[entry][1:0] == 2'b11))
-                                | ((mshr_entry_q[entry].ccid[1] == 1'b1) && (rdat_pdmask_q[entry][3:2] == 2'b11))
-                                | (mshr_entry_q[entry].size < chie_pkg::SIZE_32B) && (|(rdat_pdmask_q[entry])))
-                                : 1'b0; // packet 1
-
-            assign txdat2_rdy_sx[entry] = (rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry][0]) && (~txdat_rdy_sx_q[entry][1]))? //packet 2
-                                 (((mshr_entry_q[entry].ccid[1] == 1'b0) && (rdat_pdmask_q[entry][3:2] == 2'b11)) | ((mshr_entry_q[entry].ccid[1] == 1'b1) && (rdat_pdmask_q[entry][1:0] == 2'b11))) : 1'b0;
+            // error is not final until the last chunk is in. So every packet the read
+            // owes is armed together, once all of its chunks have arrived.
+            assign rdat_ready_sx[entry] = rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry] == '0)
+                                        && ((rdat_pdmask_q[entry] & rdat_chunks_sx[entry]) == rdat_chunks_sx[entry]);
         end
     endgenerate
 
@@ -1112,19 +1125,15 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk or posedge rst) begin
                 if(rst == 1'b1)
-                    txdat_rdy_sx_q[entry]   <= 2'b00;
+                    txdat_rdy_sx_q[entry]   <= '0;
                 else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
-                    txdat_rdy_sx_q[entry]   <= 2'b00;
+                    txdat_rdy_sx_q[entry]   <= '0;
                 else if (txdat_errdat_rdy_sx[entry])
-                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
+                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | crit_pkt_sx[entry];
                 else if (txdat_errrd_rdy_sx[entry])
-                    txdat_rdy_sx_q[entry]   <= (mshr_entry_q[entry].size == chie_pkg::SIZE_64B) ? 2'b11 : 2'b01;
-                else if (txdat1_rdy_sx[entry] && (~txdat2_rdy_sx[entry]))
-                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b01;
-                else if ((~txdat1_rdy_sx[entry]) && txdat2_rdy_sx[entry])
-                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b10;
-                else if (txdat1_rdy_sx[entry] && txdat2_rdy_sx[entry])
-                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | 2'b11;
+                    txdat_rdy_sx_q[entry]   <= rdat_pkts_sx[entry];
+                else if (rdat_ready_sx[entry])
+                    txdat_rdy_sx_q[entry]   <= rdat_pkts_sx[entry];
             end
         end
     endgenerate
@@ -1133,13 +1142,11 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk or posedge rst)begin: txdat_sent_logic
                 if (rst)
-                    txdat_sent_sx_q[entry]      <= 2'b00;
-                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b00) && (mshr_entry_q[entry].ccid[1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b10) && (mshr_entry_q[entry].ccid[1] == 1'b1))))
-                    txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | 2'b01;
-                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry) && (((mshr_txdat_dataid_sx == 2'b10) && (mshr_entry_q[entry].ccid[1] == 1'b0)) | ((mshr_txdat_dataid_sx == 2'b00) && (mshr_entry_q[entry].ccid[1] == 1'b1))) && (txdat_sent_sx_q[entry][0] == 1'b1))
-                    txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | 2'b10;
+                    txdat_sent_sx_q[entry]      <= '0;
+                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry))
+                    txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | txdat_pkt_onehot_sx;
                 else if (mshr_retired_valid_sx && entry == mshr_retired_idx_sx)
-                    txdat_sent_sx_q[entry]      <= 2'b00;
+                    txdat_sent_sx_q[entry]      <= '0;
             end
         end
     endgenerate
@@ -1151,11 +1158,11 @@ module snf_mshr `SNF_PARAM
             // returns one data packet once it has taken the operand.
             assign txdat_errdat_rdy_sx[entry] = dbf_mshr_rxdat_ok_sx && rxreq_errdat_s1_q[entry]
                                              && (entry == dbf_mshr_rxdat_ok_idx_sx)
-                                             && (txdat_rdy_sx_q[entry] == 2'b00);
+                                             && (txdat_rdy_sx_q[entry] == '0);
             // Sec 9.4.4 (p.9-342, MUST): an errored read still returns every packet;
             // nothing is fetched, so they are armed as soon as the entry is awake.
             assign txdat_errrd_rdy_sx[entry]  = rxreq_errrd_s1_q[entry] && (~sleep_s2_q[entry])
-                                             && (txdat_rdy_sx_q[entry] == 2'b00);
+                                             && (txdat_rdy_sx_q[entry] == '0);
             assign txdat_valid_sx[entry]  = (txdat_sent_sx_q[entry] != txdat_rdy_sx_q[entry]);
         end
     endgenerate
@@ -1179,11 +1186,22 @@ module snf_mshr `SNF_PARAM
     assign mshr_txdat_update        = mshr_txdat_en_sx & mshr_txdat_won_sx;
     assign mshr_txdat_entry_idx_sx  = txdat_entry_idx_sx;
     assign mshr_txdat_en_sx         = sel_idx_valid;
-    assign mshr_txdat_dataid_sx     = ((((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0))
-                                        | ((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1))) ? 2'b00 //ccid[1]=0,packet1;ccid[1]=1,packet2
-                                    : (((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b0) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][1] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx] == 2'b01))
-                                        | ((mshr_entry_q[mshr_txdat_entry_idx_sx].ccid[1] == 1'b1) && (txdat_rdy_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b1) && (txdat_sent_sx_q[mshr_txdat_entry_idx_sx][0] == 1'b0)) ? 2'b10 // ccid[1]=0,packet2;ccid[1]=1,packet1
-                                            : 2'b00));
+    // The selected entry's next packet: the one holding the critical chunk first, the
+    // rest in line order after it (CCID, SS13.10.51 p.13-440), and its DataID (Table
+    // 2-15 SS2.10.4 p.2-136). The ready packets are rotated so the critical one is
+    // bit 0, and the lowest ready bit is its rank from there.
+    assign txdat_pkt_avail_sx  = txdat_rdy_sx_q[mshr_txdat_entry_idx_sx] & ~txdat_sent_sx_q[mshr_txdat_entry_idx_sx];
+    assign txdat_crit_pkt_sx   = mshr_entry_q[mshr_txdat_entry_idx_sx].ccid >> `SNF_PKT_CHUNKS_LOG2;
+    assign txdat_pkt_avail2_sx = {txdat_pkt_avail_sx, txdat_pkt_avail_sx};
+    assign txdat_pkt_rot_sx    = `SNF_PKTS'(txdat_pkt_avail2_sx >> txdat_crit_pkt_sx);
+    always_comb begin: txdat_pkt_rank_comb_logic
+        txdat_pkt_rank_sx = 2'd0;
+        for (int r = `SNF_PKTS-1; r >= 0; r--)
+            if (txdat_pkt_rot_sx[r]) txdat_pkt_rank_sx = 2'(r);
+    end
+    assign txdat_pkt_sx          = (txdat_crit_pkt_sx + txdat_pkt_rank_sx) & 2'(`SNF_PKTS-1);
+    assign txdat_pkt_onehot_sx   = `SNF_PKTS'(1) << txdat_pkt_sx;
+    assign mshr_txdat_dataid_sx  = txdat_pkt_sx << `SNF_PKT_CHUNKS_LOG2;
     // Sec 2.5.4: ReturnTxnID is "Used as the TxnID in the CompData and DataSepResp responses"
     // of a ReadNoSnp(Sep) or Non-store Atomic -- copied as given, never re-derived. The field is
     // inapplicable on the other reads, so their errored CompData answers the request's own TxnID.
@@ -1407,13 +1425,13 @@ module snf_mshr `SNF_PARAM
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
                                                 && (((rxreq_wr_s1_q[entry]) && all_rsp_sent_sx[entry] && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
-                                                    |((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (((mshr_entry_q[entry].size == 3'b110) && (txdat_sent_sx_q[entry] == 2'b11)) | ((mshr_entry_q[entry].size != 3'b110) && ((txdat_sent_sx_q[entry] == 2'b01) | (txdat_sent_sx_q[entry] == 2'b10)))))
+                                                    |((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (txdat_sent_sx_q[entry] == rdat_pkts_sx[entry]))
                                                     // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
                                                     // entry is freed at once rather than leaked.
                                                     |(rxreq_drop_s1_q[entry])
                                                     |((rxreq_rsponly_s1_q[entry] | rxreq_errgrant_s1_q[entry]) && all_rsp_sent_sx[entry]
                                                         && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry])
-                                                        && ((~rxreq_errdat_s1_q[entry]) | (txdat_sent_sx_q[entry] != 2'b00))));
+                                                        && ((~rxreq_errdat_s1_q[entry]) | (|txdat_sent_sx_q[entry]))));
         end
     endgenerate
 

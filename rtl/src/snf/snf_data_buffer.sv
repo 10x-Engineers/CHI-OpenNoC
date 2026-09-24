@@ -91,26 +91,28 @@ module snf_data_buffer `SNF_PARAM
     logic [`SNF_MASK_CD_WIDTH-1:0]      wdata_cdmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MASK_WL_WIDTH-1:0]      wdata_wlmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MASK_WL_WIDTH-1:0]      dbf_wlmask_s1_q;
-    logic [2*chie_pkg::DATA_WIDTH-1:0]  dbf_data_q[0:`SNF_MSHR_ENTRIES_NUM-1];
-    logic [2*chie_pkg::BE_WIDTH-1:0]    dbf_be_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0]  dbf_data_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]    dbf_be_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    // Every per-entry vector holds one whole 64-byte line: SNF_PKTS packets of the
+    // Data_Width the flit carries (SS2.10.4 p.2-136).
     // CHI E.b SS9.5 (p.9-347, MUST): "The Poison value, once set, must be
     // propagated along with the data", so the tag is held beside the line it
-    // tags -- one bit per 64-bit chunk, both halves of the line.
-    logic [2*chie_pkg::POISON_WIDTH-1:0] dbf_poison_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    // tags -- one bit per 64-bit chunk of the line.
+    logic [`SNF_PKTS*chie_pkg::POISON_WIDTH-1:0] dbf_poison_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     // CHI E.b SS12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes, so a
-    // 64-byte line's worth is two packets' Tag fields; SS13.10.39 (p.13-435) pairs a
-    // TU bit with each. Buffered beside the data they tag, like Poison.
-    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
-    logic [2*chie_pkg::TU_WIDTH-1:0]    dbf_tu_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    // 64-byte line's worth is SNF_PKTS packets' Tag fields; SS13.10.39 (p.13-435) pairs
+    // a TU bit with each. Buffered beside the data they tag, like Poison.
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]   dbf_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::TU_WIDTH-1:0]    dbf_tu_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     // SS12.11.1 (p.12-386, MUST) owes a TagMatch its real verdict, so a TagOp=Match
     // write has to compare the Physical Tags it carries against the Allocation Tags
     // the location holds. Those live in AXI memory, so the write fetches them on the
     // read channel once its own data has been taken -- the fetch clobbers dbf_data_q
     // and dbf_be_q, which is why the operands are snapshotted here rather than read
     // back out of the shared buffer.
-    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_match_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
-    logic [2*chie_pkg::BE_WIDTH-1:0]    dbf_match_be_q[0:`SNF_MSHR_ENTRIES_NUM-1];
-    logic [2*chie_pkg::TAG_WIDTH-1:0]   dbf_alloc_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]   dbf_match_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]    dbf_match_be_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]   dbf_alloc_tag_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MASK_CD_WIDTH-1:0]      dbf_match_cdmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MASK_WL_WIDTH-1:0]      dbf_match_wlmask_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   match_perform_q;
@@ -118,7 +120,7 @@ module snf_data_buffer `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagfetch_busy_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagmatch_done_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   tagmatch_pass_q;
-    logic [2*chie_pkg::TAG_WIDTH-1:0]   wdata_recv_match_tag_sx;
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]   wdata_recv_match_tag_sx;
     logic [chie_pkg::TAG_WIDTH-1:0]     rxdat_match_tag_s0;
     wire                                rxdat_match_s0;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_rec_idx_sx_q;
@@ -127,7 +129,7 @@ module snf_data_buffer `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   wdata_fifo_valid_sx;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wdata_fifo_entry_idx_sx[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   wdata_cancel_q;
-    logic [1:0]                         wdata_recv_cnt_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_PKTS-1:0]               wdata_recv_cnt_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]   wrzero_pending_q;
     logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] wrzero_inject_idx_sx;
 
@@ -138,15 +140,15 @@ module snf_data_buffer `SNF_PARAM
     wire                                   wdata_to_slave;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]     wdata_to_slave_idx;
     wire [`SNF_MASK_CD_WIDTH-1:0]          wdata_cdmask_next;
-    wire [1:0]                             wdata_recv_sx;
-    wire [1:0]                             wdata_recv_cnt_next;
+    wire [`SNF_PKTS-1:0]                   wdata_recv_sx;
+    wire [`SNF_PKTS-1:0]                   wdata_recv_cnt_next;
     wire                                   wdata_recv_update;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]     wdata_recv_idx;
-    logic [2*chie_pkg::DATA_WIDTH-1:0]     wdata_recv_data_sx;
-    logic [2*chie_pkg::BE_WIDTH-1:0]       wdata_recv_be_sx;
-    logic [2*chie_pkg::POISON_WIDTH-1:0]   wdata_recv_poison_sx;
-    logic [2*chie_pkg::TAG_WIDTH-1:0]      wdata_recv_tag_sx;
-    logic [2*chie_pkg::TU_WIDTH-1:0]       wdata_recv_tu_sx;
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0]     wdata_recv_data_sx;
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]       wdata_recv_be_sx;
+    logic [`SNF_PKTS*chie_pkg::POISON_WIDTH-1:0]   wdata_recv_poison_sx;
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]      wdata_recv_tag_sx;
+    logic [`SNF_PKTS*chie_pkg::TU_WIDTH-1:0]       wdata_recv_tu_sx;
     wire                                   wdata_cancel_recv_s0;
     wire                                   wrzero_inject_sx;
     logic [chie_pkg::DATA_WIDTH-1:0]       dbf_txdat_data_sx;
@@ -154,6 +156,7 @@ module snf_data_buffer `SNF_PARAM
     logic [chie_pkg::POISON_WIDTH-1:0]     dbf_txdat_poison_sx;
     logic [chie_pkg::TAG_WIDTH-1:0]        dbf_txdat_tag_sx;
     wire                                   dbf_txdat_en_sx;
+    wire [1:0]                             dbf_txdat_pkt_sx;
     wire [`SNF_MASK_CD_WIDTH-1:0]          dbf_cdmask_s0;
     wire [`SNF_MASK_CD_WIDTH-1:0]          dbf_rd_cdmask_next_sel;
     wire [`SNF_MASK_CD_WIDTH-1:0]          dbf_rd_cdmask_next;
@@ -162,6 +165,7 @@ module snf_data_buffer `SNF_PARAM
     chie_pkg::dat_opcode_e                 rxdat_opcode_s0;
     logic [chie_pkg::BE_WIDTH-1:0]         rxdat_be_s0;
     logic [1:0]                            rxdat_dataid_s0;
+    wire  [1:0]                            rxdat_pkt_s0;
     logic [chie_pkg::DATA_WIDTH-1:0]       rxdat_data_s0;
     logic [chie_pkg::POISON_WIDTH-1:0]     rxdat_poison_s0;
     logic [chie_pkg::TAG_WIDTH-1:0]        rxdat_tag_s0;
@@ -169,10 +173,10 @@ module snf_data_buffer `SNF_PARAM
     logic [`AXI4_RRESP_WIDTH-1:0]          rresp_q[0:`SNF_MSHR_ENTRIES_NUM-1];
     wire                                   rdata_recv_update_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]     rdata_recv_entry_idx_sx;
-    logic [1:0] [chie_pkg::DATA_WIDTH-1:0] rdata_recv_data_sx;
-    logic [1:0] [chie_pkg::BE_WIDTH-1:0]   rdata_recv_be_sx;
-    logic [2*chie_pkg::POISON_WIDTH-1:0]   rdata_recv_poison_sx;
-    logic [2*chie_pkg::TAG_WIDTH-1:0]      rdata_recv_tag_sx;
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0] rdata_recv_data_sx;
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]   rdata_recv_be_sx;
+    logic [`SNF_PKTS*chie_pkg::POISON_WIDTH-1:0]   rdata_recv_poison_sx;
+    logic [`SNF_PKTS*chie_pkg::TAG_WIDTH-1:0]      rdata_recv_tag_sx;
      logic [1:0] mshr_txdat_ccid_sx;
 
     genvar entry;
@@ -582,10 +586,12 @@ module snf_data_buffer `SNF_PARAM
     assign dbf_txdat_valid_sx = dbf_txdat_en_sx;
     assign dbf_txdat_en_sx = mshr_txdat_en_sx && txdat_dbf_rdy_s1;
     assign dbf_txdat_entry_idx_sx = mshr_txdat_entry_idx_sx;
-    assign dbf_txdat_data_sx = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_data_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::DATA_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_data_q[dbf_txdat_entry_idx_sx][chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] : '0)) : '0;
-    assign dbf_txdat_tag_sx    = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_tag_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::TAG_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_tag_q[dbf_txdat_entry_idx_sx][chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH] : '0)) : '0;
-    assign dbf_txdat_poison_sx = (dbf_txdat_en_sx) ? ((mshr_txdat_dataid_sx == 2'b00) ? dbf_poison_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::POISON_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_poison_q[dbf_txdat_entry_idx_sx][chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] : '0)) : '0;
-    assign dbf_txdat_be_sx = (dbf_txdat_en_sx) ?  ((mshr_txdat_dataid_sx == 2'b00) ? dbf_be_q[dbf_txdat_entry_idx_sx][0 +: chie_pkg::BE_WIDTH] : ((mshr_txdat_dataid_sx == 2'b10) ? dbf_be_q[dbf_txdat_entry_idx_sx][chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH] : '0)) : '0;
+    // Table 2-15 (SS2.10.4 p.2-136): DataID names the packet's place in the line.
+    assign dbf_txdat_pkt_sx    = mshr_txdat_dataid_sx >> `SNF_PKT_CHUNKS_LOG2;
+    assign dbf_txdat_data_sx   = (dbf_txdat_en_sx) ? dbf_data_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] : '0;
+    assign dbf_txdat_tag_sx    = (dbf_txdat_en_sx) ? dbf_tag_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH] : '0;
+    assign dbf_txdat_poison_sx = (dbf_txdat_en_sx) ? dbf_poison_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] : '0;
+    assign dbf_txdat_be_sx     = (dbf_txdat_en_sx) ? dbf_be_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH] : '0;
 
     assign mshr_txdat_ccid_sx = rxreq_alloc_ccid_s2_q[dbf_txdat_entry_idx_sx];
 
@@ -639,13 +645,13 @@ module snf_data_buffer `SNF_PARAM
         for(entry = 0;entry<`SNF_MSHR_ENTRIES_NUM;entry = entry+1) begin:recv_data_cnt_timing_logic
             always_ff @(posedge clk or posedge rst) begin
                 if (rst)begin
-                    wdata_recv_cnt_q[entry] <= 2'b00;
+                    wdata_recv_cnt_q[entry] <= '0;
                 end
                 else if (wdata_recv_update && (entry == wdata_recv_idx))begin
                     wdata_recv_cnt_q[entry] <= wdata_recv_cnt_next;
                 end
                 else if (dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))begin
-                    wdata_recv_cnt_q[entry] <= 2'b00;
+                    wdata_recv_cnt_q[entry] <= '0;
                 end
             end
         end
@@ -711,9 +717,10 @@ module snf_data_buffer `SNF_PARAM
     assign wdata_recv_idx  = rxdat_valid_s0 ? rxdat_txnid_s0[`SNF_MSHR_ENTRIES_WIDTH-1:0] : wrzero_inject_idx_sx;
     assign wdata_recv_cnt_next = wdata_recv_cnt_q[wdata_recv_idx] | wdata_recv_sx;
     assign wdata_cancel_recv_s0 = rxdat_valid_s0 && (rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL);
-    assign wdata_recv_sx = wrzero_inject_sx ? 2'b11
-                         : (wdata_recv_update == 1'b1) ? ((rxdat_dataid_s0 == 2'b00) ? 2'b01 : 2'b10) : 2'b00;
-    // The received beat lands in the half of the line its DataID names
+    assign rxdat_pkt_s0  = rxdat_dataid_s0 >> `SNF_PKT_CHUNKS_LOG2;
+    assign wdata_recv_sx = wrzero_inject_sx ? '1
+                         : (wdata_recv_update == 1'b1) ? (`SNF_PKTS'(1) << rxdat_pkt_s0) : '0;
+    // The received beat lands in the packet of the line its DataID names
     // (SS2.10.4 p.2-136). A Write Zero injects the whole line instead, and a
     // cancelled write contributes nothing.
     always_comb begin : wdata_recv_t
@@ -724,28 +731,23 @@ module snf_data_buffer `SNF_PARAM
         wdata_recv_tu_sx     = '0;
         wdata_recv_match_tag_sx = '0;
         if (!wrzero_inject_sx && (wdata_cancel_recv_s0 == 1'b0)) begin
-            if (rxdat_dataid_s0 == 2'b00) begin
-                wdata_recv_data_sx[0 +: chie_pkg::DATA_WIDTH]       = rxdat_data_s0;
-                wdata_recv_be_sx[0 +: chie_pkg::BE_WIDTH]           = rxdat_be_s0;
-                wdata_recv_poison_sx[0 +: chie_pkg::POISON_WIDTH]   = rxdat_poison_s0;
-                wdata_recv_tag_sx[0 +: chie_pkg::TAG_WIDTH]         = rxdat_tag_s0;
-                wdata_recv_tu_sx[0 +: chie_pkg::TU_WIDTH]           = rxdat_tu_s0;
-                wdata_recv_match_tag_sx[0 +: chie_pkg::TAG_WIDTH]   = rxdat_match_tag_s0;
-            end
-            else if (rxdat_dataid_s0 == 2'b10) begin
-                wdata_recv_data_sx[chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH]     = rxdat_data_s0;
-                wdata_recv_be_sx[chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH]           = rxdat_be_s0;
-                wdata_recv_poison_sx[chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] = rxdat_poison_s0;
-                wdata_recv_tag_sx[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]          = rxdat_tag_s0;
-                wdata_recv_tu_sx[chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH]             = rxdat_tu_s0;
-                wdata_recv_match_tag_sx[chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]     = rxdat_match_tag_s0;
-            end
+            wdata_recv_data_sx[rxdat_pkt_s0*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH]        = rxdat_data_s0;
+            wdata_recv_be_sx[rxdat_pkt_s0*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH]              = rxdat_be_s0;
+            wdata_recv_poison_sx[rxdat_pkt_s0*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH]  = rxdat_poison_s0;
+            wdata_recv_tag_sx[rxdat_pkt_s0*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]           = rxdat_tag_s0;
+            wdata_recv_tu_sx[rxdat_pkt_s0*chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH]              = rxdat_tu_s0;
+            wdata_recv_match_tag_sx[rxdat_pkt_s0*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH]     = rxdat_match_tag_s0;
         end
     end
 
 
 
-    assign dbf_mshr_rxdat_ok_sx = (((rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q] == 3'b110) && (wdata_recv_cnt_q[wdata_rec_idx_sx_q] == 2'b11)) | ((rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q] != 3'b110) && (|wdata_recv_cnt_q[wdata_rec_idx_sx_q])));
+    // SS2.10.4 (p.2-136): a write of Size bytes arrives in max(1, Size/packet bytes)
+    // packets, one per DataID; a Write Zero's injected line holds all of them.
+    localparam int PKT_BYTES_LOG2 = $clog2(chie_pkg::DATA_WIDTH / 8);
+    wire [2:0] rxdat_ok_size = rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q];
+    wire [3:0] rxdat_ok_pkts = (int'(rxdat_ok_size) > PKT_BYTES_LOG2) ? (4'd1 << (int'(rxdat_ok_size) - PKT_BYTES_LOG2)) : 4'd1;
+    assign dbf_mshr_rxdat_ok_sx = ($countones(wdata_recv_cnt_q[wdata_rec_idx_sx_q]) >= int'(rxdat_ok_pkts));
     assign dbf_mshr_rxdat_ok_idx_sx = wdata_rec_idx_sx_q;
     assign dbf_mshr_rxdat_cancel_sx = dbf_mshr_rxdat_ok_sx && wdata_cancel_q[dbf_mshr_rxdat_ok_idx_sx];
     assign dbf_mshr_rxdat_cancel_idx_sx = dbf_mshr_rxdat_ok_idx_sx;
