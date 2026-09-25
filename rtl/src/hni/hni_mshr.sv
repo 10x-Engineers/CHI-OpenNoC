@@ -1112,6 +1112,9 @@ module hni_mshr `HNI_PARAM
                     txrsp_tm_pend_q[entry] <= rxreq_tagmatch_s1_q[entry];
                 else if (txrsp_en2_s1 && (entry == wakeup_idx_sx))
                     txrsp_tm_pend_q[entry] <= rxreq_tagmatch_s1_q[entry];
+                // hni_txrsp's fast path sends a WriteNoSnp's grant without this queue.
+                else if (txrsp_fp_won_s1 && (entry == mshr_entry_idx_alloc_s1_q))
+                    txrsp_tm_pend_q[entry] <= rxreq_tagmatch_s1_q[entry];
                 else if (txrsp_en3_sx && txrsp_third_is_tm_sx && (entry == txrsp_third_idx_sx))
                     txrsp_tm_pend_q[entry] <= 1'b0;
             end

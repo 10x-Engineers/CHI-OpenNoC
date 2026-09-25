@@ -11,6 +11,8 @@
 #                     declares unable to receive one, and no error
 #   tb_hnf_mte        Sec 12.1 / 12.11.3: no TagOp downstream for memory that is
 #                     not Normal WriteBack, and the Home's own TagMatch Fail
+#   tb_hni_mte        Sec 12.11.3 (p.12-387): the HN-I holds no tags, so a Match
+#                     write or Atomic is answered TagMatch Fail
 set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
 
@@ -30,12 +32,13 @@ MISC="misc/poll_function.sv misc/poll_with_start_entry.sv misc/sync_fifo.sv
 declare -A SRCS=(
   [tb_hnf_dvm]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_dvm.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hnf_mte]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_mte.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
+  [tb_hni_mte]="include/chie_pkg.sv tb/tb_hni_mte.sv src/hni/*.sv misc/assert_checker.sv $MISC"
   [tb_hnf_stash]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_stash.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hni_dvm]="include/chie_pkg.sv tb/tb_hni_dvm.sv src/hni/*.sv misc/assert_checker.sv $MISC"
 )
 
 rc=0
-for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte; do
+for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte tb_hni_mte; do
   OUT=$(mktemp -d)
   case "$SIM" in
     xrun)      CMD=(xrun -sv -incdir include -incdir tb -top "$top" -xmlibdirname "$OUT/xcelium.d") ;;
