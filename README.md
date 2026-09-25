@@ -18,7 +18,7 @@ A fork of [RV-BOSC/OpenNoC](https://github.com/RV-BOSC/OpenNoC) (taken at `4f57d
 2025-06-25), maintained here. Original copyright headers are kept.
 
 **Status:** simulation-verified, not silicon-proven or synthesis-hardened (behavioural
-SRAMs, no timing constraints, no DFT). DVM is not implemented and MTE is partial. Only
+SRAMs, no timing constraints, no DFT). The RN-F takes no part in DVM and MTE is partial. Only
 the default parameters are regularly exercised. Every non-🟢 cell in [§2](#2-chi-support)
 links its tracking issue; known defects are in the
 [issue tracker](https://github.com/10x-Engineers/CHI-OpenNoC/issues).
@@ -47,6 +47,7 @@ Each node is a standalone module; there is no SoC wrapper.
 | **RN-I** | `rtl/src/rni/rni.sv` | AXI4 subordinate | AXI4 → CHI bridge, bursts split at 64 B / 4 KB |
 | **RN-F** | `rtl/src/rnf/rnf.sv` | AXI4 subordinate + policy/CMO ports | Coherent Requester, set-associative cache, snoop port, Chapter 15 SYSCO |
 | **SN-F** | `rtl/src/snf/snf.sv` | AXI4 manager | Memory Subordinate |
+| **MN** | `rtl/src/mn/mn.sv` | per-Requester SYSCO snoop enable/pending | Miscellaneous Node: completes every `DVMOp`, sends its `SnpDVMOp` pair to every other DVM-capable Requester in `MN_RN_NID_LIST_PARAM`, and completes a Sync only after the Non-syncs it held |
 | **Crosspoint** | `rtl/misc/chi_xp_channel.sv`, `chi_ring_channel.sv` | — | One CHI channel per instance; four make a mesh/ring node |
 
 ---
@@ -87,7 +88,7 @@ The **Issue** column tracks the work to reach 🟢.
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | Atomics (18) | ⚪ | ⚪ | 🟢 executed at the Home | [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322) |
-| `DVMOp` | ⚪ | ⚪ | ⚪ | serviced only by an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| `DVMOp` | ⚪ | ⚪ | ⚪ | serviced by the MN (§1), the one Completer Table B-1 (p.B-493) names |
 | `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
 
 ¹ Table B-3 (p.B-495) lists only ICN(HN-F) as a source of `StashDone`/`CompStashDone` and of a Home's `TagMatch`, yet Table B-1 routes these requests to an HN-I, and Sections 2.3.4 (p.2-72) and 12.11.3 (p.12-387, MUST) still owe those responses. The HN-I sends them; the section text is taken to govern.
@@ -104,7 +105,7 @@ Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM` |
 | `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | only to a target set in `RNF_STASH_LIST_PARAM` |
 | `SnpSharedFwd`, `SnpQuery` | ⬜ | [#334](https://github.com/10x-Engineers/CHI-OpenNoC/issues/334) |
-| `SnpDVMOp` | ⬜ | MN only [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| `SnpDVMOp` | — | sent by the MN (Table B-2 p.B-494) |
 | All snoop responses, incl. `SnpRespDataPtl` | 🟢 | |
 
 Every snoop is sent with `DoNotGoToSD = 1`.
@@ -127,7 +128,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Write Zero | 🟡 | 🟢 | — | 🟢 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333) |
 | Atomics | ⚪ | ⚪ | — | 🟢 | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322); RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
 | Stash | — | 🟢 | — | 🟢 | 🟢 | HN-I completes without stashing; RN-F is a source and a Data Pull target |
-| DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| DVM | — | — | — | ⬜ | — | serviced by the MN (below); RN-F [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
 | MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹; RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE` |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
@@ -136,6 +137,14 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
 | `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | `Data_Width` 128 / 512 | 🟢 | ⬜ | ⬜ | ⬜ | ⬜ | SN-F packetises by `Data_Width`; the other nodes are 256 only, so a whole system is too [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+
+The MN (§1) implements Chapter 14 link activation and `TXSACTIVE`, Retry / P-Credits -- a
+Sync and a Non-sync are credited apart (`PCrdType` 1 / 0), so Syncs never hold the entry
+section 8.1.3 (p.8-307) reserves for a Non-sync -- and every `Data_Width`. It forwards a
+DVM_v8.4 payload unexamined, sends no early Comp, carries the DVMOp's QoS without classes,
+and consolidates a DERR write or a snoop error into the Comp (section 9.4.5). It snoops a
+Requester only while that Requester's `SYSCO_SNP_EN` (its `SYSCOREQ`) is HIGH, and holds
+`SYSCO_SNP_PEND` HIGH while a `SnpDVMOp` to it is unanswered, for whoever owns its `SYSCOACK`.
 
 ### RN-F interface declarations (section 16.1)
 
@@ -204,7 +213,7 @@ line has a way it can take without a write-back, and allocates the line the pull
 ./tools/lint.sh hnf snf                # lint selected nodes
 
 SIM=verilator ./tools/link_check.sh    # Chapter 14 link bench (default: Xcelium; SIM=vcs)
-SIM=verilator ./tools/home_check.sh    # directed HN-F / HN-I benches (DVMOp, Stash targets)
+SIM=verilator ./tools/home_check.sh    # directed HN-F / HN-I / MN benches (DVMOp, Stash targets)
 
 cd rtl
 make com sim SIM=verilator             # 136-case HN-F regression (default: VCS)
@@ -252,6 +261,10 @@ and are overridden at instantiation.
 | `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Multiple of 16 on the HN-F |
 | `HNF_BIQ_ENTRIES_NUM_PARAM` | 8 | Power of two |
 | `RNF_LCRD_NUM_PARAM`, `XP_LCRD_NUM_PARAM` | 15 | Max 15 (section 14.2.1) |
+| `MN_NID_PARAM` | 4 | The MN's NodeID |
+| `MN_RN_NUM_PARAM`, `MN_RN_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Every DVM-capable RN-F / RN-D: the Requesters the MN serves and snoops |
+| `MN_ENTRIES_NUM_PARAM` | 4 | DVMOps in flight, at least 2: Syncs may hold all but one (section 8.1.3) |
+| `MN_RN_SNPDVM_NUM_PARAM` | 2 | `SnpDVMOp`s each Requester accepts at once, at least 2 (section 8.1.3); one place is kept for a Sync |
 | `CHIE_REQ_RSVDC_WIDTH` / `CHIE_DAT_RSVDC_WIDTH` / `CHIE_MPAM_PRESENT` | undefined | `` `define ``s; defining one adds the field |
 
 Derived widths (`CHIE_{BE,POISON,DATACHECK}_WIDTH_PARAM`, `*_MSHR_*_WIDTH_PARAM`) follow their source
@@ -265,7 +278,7 @@ parameter. If you override one to a value that disagrees, elaboration refuses it
 rtl/
 ├── include/     chie_pkg.sv (flits, enums), per-node param/define headers
 ├── misc/        link handshake, crosspoint channels, FIFOs, arbiters, checkers
-├── src/         hnf/ hni/ rni/ rnf/ snf/
+├── src/         hnf/ hni/ rni/ rnf/ snf/ mn/
 ├── tb/          behavioural benches
 ├── case/        136 HN-F stimulus/response cases
 └── Makefile

@@ -44,7 +44,7 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-ALL_NODES=(hnf hni rni rnf snf)
+ALL_NODES=(hnf hni rni rnf snf mn)
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=("${ALL_NODES[@]}"); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
@@ -153,10 +153,20 @@ for n in "${NODES[@]}"; do
   # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F packetises by it
   # (snf_defines.svh SNF_PKTS), so it is elaborated at the other two widths as well;
   # every other node still refuses anything but 256 (chie_flit_opt_check).
-  if [ "$n" = snf ]; then
+  # The MN reads one NCBWrData packet's Data[63:0], so it accepts every width too.
+  if [ "$n" = snf ] || [ "$n" = mn ]; then
     for w in 128 512; do
       lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
       bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
+    done
+  fi
+  # The tracker, the snoopee list and a snoopee's SnpDVMOp count size every MN index;
+  # the smallest legal set and a larger one are both elaborated.
+  if [ "$n" = mn ]; then
+    for g in "-GMN_ENTRIES_NUM_PARAM=2 -GMN_RN_NUM_PARAM=1 -GMN_RN_NID_LIST_PARAM=8" \
+             "-GMN_ENTRIES_NUM_PARAM=8 -GMN_RN_SNPDVM_NUM_PARAM=4"; do
+      lint_node   "$n" "$g" $g || rc=1
+      bounds_node "$n" "$g" $g || rc=1
     done
   fi
 done
