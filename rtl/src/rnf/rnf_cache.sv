@@ -14,9 +14,10 @@
 `include "rnf_defines.svh"
 
 // The RN-F's coherent cache: SS4.1's (p.4-160) seven states, with the tag and
-// data a line needs. Capacity, associativity and replacement are SS4.6's
-// (p.4-209) IMPLEMENTATION DEFINED axes and are declared as parameters; the
-// 64-byte line is not, SS2.10.1 (p.2-134) fixes it.
+// data a line needs, and in meta_q its four Allocation Tags with their Clean or
+// Dirty state (SS12.3 p.12-374). Capacity, associativity and replacement are
+// SS4.6's (p.4-209) IMPLEMENTATION DEFINED axes and are declared as parameters;
+// the 64-byte line is not, SS2.10.1 (p.2-134) fixes it.
 //
 // Replacement is round-robin per set -- one of SS4.6's permitted choices, and
 // the one whose victim is a function of the set alone, so a fill never has to

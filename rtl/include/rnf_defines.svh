@@ -38,11 +38,18 @@
 // from (SS9.4.1 p.9-337), the Poison of each 64-bit chunk (SS9.5 p.9-347), and
 // the bytes that are valid, which only a UDP line leaves short of all 64
 // (SS4.1.1 p.4-161). SS9.8 (p.9-352) sets DERR and Poison independently.
-`define RNF_META_W       73
+// The line's four Allocation Tags, tag k for bytes [16k +: 16] (SS13.10.38
+// p.13-435), and SS12.3's (p.12-374) tag state: TV when the tags are valid, and
+// TD when they are Dirty -- which counts only while the line itself is Dirty, so
+// a snoop or WriteClean that makes the line Clean has passed the tags on with it.
+`define RNF_META_W       91
+`define RNF_META_TD      90
+`define RNF_META_TV      89
+`define RNF_META_TAGS    88:73
 `define RNF_META_DERR    72
 `define RNF_META_POISON  71:64
 `define RNF_META_VMASK   63:0
-`define RNF_META_FULL    {1'b0, 8'h00, 64'hFFFF_FFFF_FFFF_FFFF}
+`define RNF_META_FULL    {1'b0, 1'b0, 16'h0000, 1'b0, 8'h00, 64'hFFFF_FFFF_FFFF_FFFF}
 
 `define RNF_MSHR_W ((RNF_MSHR_ENTRIES_PARAM == 1) ? 1 : $clog2(RNF_MSHR_ENTRIES_PARAM))
 
@@ -124,5 +131,14 @@
 `define RNF_ATM_NEAR          2'd0
 `define RNF_ATM_FAR           2'd1
 `define RNF_ATM_FAR_SNOOPME   2'd2
+
+// MTE (Chapter 12) crosses on axi4_defines.svh's AxUSER / W/RUSER / BUSER carrier,
+// for a Normal WriteBack access with BROADCASTMTE asserted (SS12.1 p.12-372). A
+// non-zero ARUSER TagOp asks for the line's Allocation Tags on RUSER. AWUSER TagOp
+// Update writes WUSER's Tag wherever its TU is set; Match checks WUSER's Tag against
+// the line's where WSTRB is set, and BUSER returns the verdict ([0] reported,
+// [1] pass), which is a Pass when no match could be performed (SS12.11.1 p.12-386).
+// Table 12-2 (SS12.12 p.12-389) gives a Combined WriteUnique neither TagOp and a
+// far Atomic no Update, so those are refused SLVERR.
 
 `endif

@@ -101,6 +101,7 @@ module {{ module }}
   ,output [`AXI4_BRESP_WIDTH-1:0]  {{ p.name }}_BRESP
   ,output {{ p.name }}_BVALID
   ,input  {{ p.name }}_BREADY
+  ,output [`AXI4_BUSER_WIDTH-1:0]  {{ p.name }}_BUSER
   // The core's intent, a ReadOnce*'s Order, an atomic operation and cache
   // maintenance, beside its AXI4 port (rnf_defines.svh).
   ,input  [`RNF_AR_COH_W-1:0]      {{ p.name }}_ARCOH
@@ -110,6 +111,7 @@ module {{ module }}
   ,input  [`RNF_ATM_W-1:0]         {{ p.name }}_AWATM
   ,output [`AXI4_RDATA_WIDTH-1:0]  {{ p.name }}_BATDATA
   ,input  {{ p.name }}_BROADCASTATOMIC
+  ,input  {{ p.name }}_BROADCASTMTE
   ,input  [chie_pkg::NID_WIDTH-1:0] {{ p.name }}_STASHNID
   ,input  {{ p.name }}_STASHNIDVALID
   ,input  {{ p.name }}_CMVALID
@@ -149,8 +151,8 @@ module {{ module }}
                'RID', 'RDATA', 'RRESP', 'RUSER', 'RLAST', 'RVALID', 'RREADY',
                'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWCACHE', 'AWQOS', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
                'WDATA', 'WSTRB', 'WUSER', 'WLAST', 'WVALID', 'WREADY',
-               'BID', 'BRESP', 'BVALID', 'BREADY',
-               'ARCOH', 'ARORD', 'AWCOH', 'AWATOP', 'AWATM', 'BATDATA', 'BROADCASTATOMIC',
+               'BID', 'BRESP', 'BVALID', 'BREADY', 'BUSER',
+               'ARCOH', 'ARORD', 'AWCOH', 'AWATOP', 'AWATM', 'BATDATA', 'BROADCASTATOMIC', 'BROADCASTMTE',
                'STASHNID', 'STASHNIDVALID',
                'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})

@@ -44,6 +44,12 @@
 //
 // Snoops are answered in every coherency state: Table 15-1 (p.15-468) requires it
 // in all but Coherency Disabled, and does not forbid it there.
+//
+// With BROADCASTMTE a SnpRespData carries the line's tags (SS12.9.4 p.12-384): by
+// Update where it passes Dirty tags with the line's dirtiness, else by Transfer
+// where the tags are valid. A forwarded CompData carries none. A line with Dirty
+// tags answers SnpUniqueFwd as SnpUnique, since SS12.9.2 (p.12-383, MUST) forbids
+// forwarding them.
 module rnf_snp `RNF_PARAM
     (
     input  wire                                 clk_i,
@@ -51,6 +57,9 @@ module rnf_snp `RNF_PARAM
 
     input  wire                                 prot_rxsnpflitv_i,
     input  chie_pkg::snp_flit_s                 prot_rxsnpflit_i,
+
+    // SS16.2.6 (p.16-476, MUST): deasserted, no response carries MTE.
+    input  wire                                 mte_en_i,
 
     // A snoop taken off the queue, so its L-Credit can be granted again: SS14.2.1
     // (p.14-445) has a Receiver grant only what it can accept.
@@ -135,6 +144,7 @@ module rnf_snp `RNF_PARAM
     // The response carries a Data Pull under DBID pull_dbid_q.
     logic                                 pull_q;
     logic [11:0]                          pull_dbid_q;
+    logic                                 tag_dirty_q;
 
     // SS4.8.3 (p.4-229): the Snoopee "is permitted, but not expected, to convert
     // the Snoop to its corresponding Non-forwarding type". SS4.8.2 (p.4-227):
@@ -312,11 +322,17 @@ module rnf_snp `RNF_PARAM
     assign cache_lu_addr_o = (st_q == S_IDLE) ? snp_addr : snp_addr_q;
 
     wire [`RNF_CS_WIDTH-1:0] cur_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
+    // SS12.3 (p.12-374): the line's tags are Dirty only while the line is.
+    wire head_tag_dirty = mte_en_i && cache_lu_meta_i[`RNF_META_TV] &&
+                          cache_lu_meta_i[`RNF_META_TD] && is_dirty(cur_state);
+    // SS12.9.2 (p.12-383, MUST): with Dirty tags the invalidating Forwarding snoop
+    // "Must not forward data to the Requester" and returns data and tags to Home.
+    wire head_fwd_as_base = (head.opcode == chie_pkg::SNP_SNPUNIQUEFWD) && head_tag_dirty;
     chie_pkg::snp_opcode_e head_op;
     assign head_op = base_of(head.opcode);
     // SS4.8.3 (p.4-229): "Expected ... to forward a copy of the cache line to the
     // Requester if the cache line is in one of the following states: UD, UC, SD, SC".
-    wire head_fwd = is_fwd(head.opcode) && cache_lu_hit_i &&
+    wire head_fwd = is_fwd(head.opcode) && cache_lu_hit_i && !head_fwd_as_base &&
                     ((cur_state == `RNF_CS_UC) || (cur_state == `RNF_CS_UD) ||
                      (cur_state == `RNF_CS_SC) || (cur_state == `RNF_CS_SD));
     wire [`RNF_CS_WIDTH-1:0] nxt_state = head_fwd ? fwd_final(head.opcode, cur_state)
@@ -404,6 +420,16 @@ module rnf_snp `RNF_PARAM
             poison_out[c] = meta_q[64 + c] && (|be_q[c*8 +: 8]);
     end
 
+    // SS12.9.4 (p.12-384): SnpRespDataPtl carries no tags; Update "All TU bits must be
+    // asserted. The data state must include Pass Dirty". SS4.8.3 (p.4-231, MUST): Dirty
+    // tags go "Update if the response state includes Pass Dirty", Transfer if not.
+    wire [1:0]  dat_tagop   = (!mte_en_i || ptl_q || !meta_q[`RNF_META_TV]) ? chie_pkg::TAGOP_INVALID :
+                              (pass_dirty_q && tag_dirty_q)                ? chie_pkg::TAGOP_UPDATE
+                                                                           : chie_pkg::TAGOP_TRANSFER;
+    localparam int TAG_PKT = DW / 32;
+    localparam int TU_PKT  = DW / 128;
+    wire [15:0] tags_out = meta_q[`RNF_META_TAGS];
+
     logic [DW-1:0]      pkt_data [NPKT];
     logic [PKT_B-1:0]   pkt_be   [NPKT];
     logic [PSN_PKT-1:0] pkt_psn  [NPKT];
@@ -445,6 +471,11 @@ module rnf_snp `RNF_PARAM
         // any combination.
         snp_txdatflit_o.be      = pkt_be[pkt_q];
         snp_txdatflit_o.poison  = pkt_psn[pkt_q];
+        snp_txdatflit_o.tagop   = dat_tagop;
+        if (dat_tagop != chie_pkg::TAGOP_INVALID)
+            snp_txdatflit_o.tag = tags_out[int'(pkt_q)*TAG_PKT +: TAG_PKT];
+        if (dat_tagop == chie_pkg::TAGOP_UPDATE)
+            snp_txdatflit_o.tu  = '1;
         // SS4.8.3 (p.4-229) and SS2.3.1 (p.2-43): the forwarded line is the
         // Requester's CompData -- addressed to FwdNID under FwdTxnID, its HomeNID and
         // DBID naming the Home and the snoop the CompAck completes against.
@@ -456,6 +487,9 @@ module rnf_snp `RNF_PARAM
             snp_txdatflit_o.homenid = snp_q.srcid;
             snp_txdatflit_o.dbid    = snp_q.txnid;
             snp_txdatflit_o.datasource.datasource = 4'd0;
+            snp_txdatflit_o.tagop   = chie_pkg::TAGOP_INVALID;
+            snp_txdatflit_o.tag     = '0;
+            snp_txdatflit_o.tu      = '0;
         end
         // SS9.6 (p.9-348): odd byte parity over the data sent.
         snp_txdatflit_o.datacheck = chie_pkg::datacheck_of(snp_txdatflit_o.data);
@@ -496,6 +530,7 @@ module rnf_snp `RNF_PARAM
             fwd_resp_q    <= chie_pkg::RESP_I;
             pull_q        <= 1'b0;
             pull_dbid_q   <= '0;
+            tag_dirty_q   <= 1'b0;
         end
         else begin
             case (st_q)
@@ -512,6 +547,7 @@ module rnf_snp `RNF_PARAM
                         fwd_resp_q    <= fwd_state(head.opcode, cur_state);
                         pull_q        <= head_pull;
                         pull_dbid_q   <= pull_txnid_i;
+                        tag_dirty_q   <= head_tag_dirty;
                         pkt_q         <= '0;
                         started_q     <= 1'b0;
                         st_q          <= head_fwd  ? S_FWD :

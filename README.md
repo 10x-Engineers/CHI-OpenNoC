@@ -129,7 +129,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Stash | — | 🟢 | — | 🟢 | 🟢 | HN-I completes without stashing; RN-F is a source and a Data Pull target |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | ⬜ | 🟡 | HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹; RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
+| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹; RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE` |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
@@ -177,6 +177,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `AWCOH` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL`, `IMMEDIATE_PERSEP`, `IMMEDIATE_STASH` | `CleanUnique`, `MakeReadUnique`, `MakeUnique`, `ReadUnique`, `WriteUnique{Full,Ptl,Zero}` and their `CleanSh`, `CleanShPerSep` and `Stash` forms; on a Device/Non-cacheable write, `WriteNoSnp{Full,Ptl}CleanSh{,PerSep}` |
 | `STASHNID`, `STASHNIDVALID` (with `AWVALID` or `CMVALID`) | NodeID | The Stash target of a `*Stash` write or `StashOnce*` |
 | `AWATOP`, `AWATM` (with `AWVALID`) | AXI5 `AWATOP`; `NEAR`, `FAR`, `FAR_SNOOPME` | `NEAR`: the store's own acquire, then the operation in the cache. `FAR`: a Dirty line written back or a Clean one dropped, then `Atomic*` with `SnoopMe = 0`. `FAR_SNOOPME`: `Atomic*` with `SnoopMe = 1`. The original value returns on `BATDATA` with `BVALID`. With `BROADCASTATOMIC` low a far request executes near, and a Device/Non-cacheable one is refused `SLVERR` |
+| `ARUSER`/`AWUSER` `TagOp` (MTE, with `BROADCASTMTE`) | `ARUSER` non-zero; `AWUSER` `Update`, `Match` | Every allocating read carries `Transfer`, and a read's tags return on `RUSER`. A line held without the tags an access needs is written back or dropped and read again, a whole-line store by `ReadUnique` with `Fetch`; a whole-line store writing every tag is `MakeUnique` with `Update`. `WriteUnique*` and a far `Atomic*` carry the core's `Update` or `Match`, and a CopyBack returns Dirty tags `Update`, Clean ones `Transfer`. `BUSER` is the verdict of a cached store's own match or of the Completer's `TagMatch`. A Combined `WriteUnique` asked either, or a far `Atomic` asked `Update`, is refused `SLVERR` (Table 12-2) |
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID`, `CLEAN_SHARED_PERSIST`, `CLEAN_SHARED_PERSIST_SEP`, `CLEAN_SHARED_PERSIST_SEP_EVICT` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh`, `WriteBackFullCleanShPerSep`, `WriteCleanFullCleanShPerSep`; `STASH_ONCE_SHARED`, `STASH_ONCE_UNIQUE` give `StashOnceShared`, `StashOnceUnique` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. Every request carries the

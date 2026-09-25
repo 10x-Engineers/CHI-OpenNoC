@@ -77,7 +77,8 @@ module rnf `RNF_PARAM
     // core's intent for the access, ARORD asks a ReadOnce* for Request Order, and
     // AWATOP/AWATM make a write an atomic operation whose original value returns on
     // BATDATA (rnf_defines.svh); AxCACHE names its memory type, AxQOS its QoS, AxLOCK
-    // makes it exclusive, AxUSER carries its MPAM label and W/RUSER its Poison
+    // makes it exclusive, AxUSER carries its MPAM label, W/RUSER its Poison, and
+    // AxUSER, W/RUSER and BUSER its MTE fields (rnf_defines.svh)
     // (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
@@ -122,9 +123,12 @@ module rnf `RNF_PARAM
     output wire                          BVALID,
     input  wire                          BREADY,
     output wire [`AXI4_RDATA_WIDTH-1:0]  BATDATA,
+    output wire [`AXI4_BUSER_WIDTH-1:0]  BUSER,
 
     // SS16.2.4 (p.16-476): Atomic transactions are generated only while asserted.
     input  wire                          BROADCASTATOMIC,
+    // SS16.2.6 (p.16-476): requests and responses carry MTE only while asserted.
+    input  wire                          BROADCASTMTE,
 
     // The Stash target of a stash write or maintenance operation (rnf_defines.svh).
     input  wire [CHIE_NID_WIDTH_PARAM-1:0] STASHNID,
@@ -282,6 +286,7 @@ module rnf `RNF_PARAM
                      ,.rst_i                 ( RST              )
                      ,.prot_rxsnpflitv_i     ( prot_rxsnpflitv  )
                      ,.prot_rxsnpflit_i      ( prot_rxsnpflit   )
+                     ,.mte_en_i              ( BROADCASTMTE     )
                      ,.snp_pop_o             ( snp_pop          )
                      ,.defer_v_i             ( ctl_defer_v      )
                      ,.defer_addr_i          ( ctl_defer_addr   )
@@ -367,7 +372,9 @@ module rnf `RNF_PARAM
                      ,.BVALID                ( BVALID               )
                      ,.BREADY                ( BREADY               )
                      ,.BATDATA               ( BATDATA              )
+                     ,.BUSER                 ( BUSER                )
                      ,.BROADCASTATOMIC       ( BROADCASTATOMIC      )
+                     ,.BROADCASTMTE          ( BROADCASTMTE         )
                      ,.STASHNID              ( STASHNID             )
                      ,.STASHNIDVALID         ( STASHNIDVALID        )
                      ,.CMVALID               ( CMVALID              )
