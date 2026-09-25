@@ -463,14 +463,14 @@ package chie_pkg;
   // SS12.5.2 (p.12-379, MUST): "Tag Match must be performed for only those tags that
   // have at least one corresponding BE bit asserted. A Tag Match must not be performed
   // when all BE bits are set to zero." Over one 64-byte line: SS12.2 (p.12-373) gives
-  // it 2*TAG_WIDTH tag bits, four bits per aligned 16 bytes, against 2*BE_WIDTH byte
-  // enables. A line with no enabled byte returns 1, which SS12.11.1 (p.12-386, MUST)
-  // makes a Pass at a Completer that supports MTE -- the caller decides that it does.
-  parameter int LINE_TAG_NUM = (2*TAG_WIDTH)/4;
-  parameter int LINE_BE_PER_TAG = (2*BE_WIDTH)/LINE_TAG_NUM;
-  function automatic logic tag_match_pass(logic [(2*TAG_WIDTH)-1:0] phys,
-                                          logic [(2*TAG_WIDTH)-1:0] alloc,
-                                          logic [(2*BE_WIDTH)-1:0]  be);
+  // it one four-bit tag per aligned 16 bytes -- four tags against 64 byte enables at
+  // any Data_Width. A line with no enabled byte returns 1, which SS12.11.1 (p.12-386,
+  // MUST) makes a Pass at a Completer that supports MTE -- the caller decides that it does.
+  parameter int LINE_TAG_NUM = 64/16;
+  parameter int LINE_BE_PER_TAG = 16;
+  function automatic logic tag_match_pass(logic [(4*LINE_TAG_NUM)-1:0] phys,
+                                          logic [(4*LINE_TAG_NUM)-1:0] alloc,
+                                          logic [63:0]                 be);
     tag_match_pass = 1'b1;
     for (int t = 0; t < LINE_TAG_NUM; t++)
       if (|be[t*LINE_BE_PER_TAG +: LINE_BE_PER_TAG])
