@@ -323,7 +323,6 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_dataless_s0;
     wire                                   rxreq_errwr_s0;
     wire                                   rxreq_errdat_s0;
-    wire                                   rxreq_errgrant_s0;
     wire                                   rxreq_stashsep_s0;
     wire                                   rxreq_stashonce_s0;
     wire                                   rxreq_rdshape_s0;
@@ -498,7 +497,6 @@ module hni_mshr `HNI_PARAM
     assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
     assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_dvm_s0);
     assign rxreq_errdat_s0     = rxreq_err_s0 && rxreq_atomicdat_s0;
-    assign rxreq_errgrant_s0   = rxreq_errwr_s0;
     // Table 4-38 (p.4-218): StashOnceSep* is completed by CompStashDone.
     assign rxreq_stashsep_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
                                | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE);
@@ -514,7 +512,7 @@ module hni_mshr `HNI_PARAM
     // CompDBIDResp IS the grant that invites the write data, so it completes before
     // this Home has issued the AXI access; with EWA deasserted the write owes the
     // split DBIDResp, and a Comp released on the endpoint's own B response.
-    assign rxreq_wrgrant_s0     = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errgrant_s0;
+    assign rxreq_wrgrant_s0     = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0;
     // Sec 12.11.3 (p.12-387, MUST): with no Allocation Tag here, a TagOp Match write
     // or Atomic is still owed a TagMatch, reporting Fail. Table 12-2 (p.12-388) gives
     // Match to the standalone WriteNoSnp/WriteUnique forms and the Atomics alone.

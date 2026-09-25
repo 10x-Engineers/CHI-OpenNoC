@@ -736,10 +736,10 @@ module hni_data_buffer `HNI_PARAM
                 wpoison_current = dbf_poison_q[entry];
             end
         end
-        if (dbf_atm_v_q[wr_entry_current])
-            wdata_current = atm_wdata_sx;
-        if (dbf_atm_v_q[wr_entry_current])
+        if (dbf_atm_v_q[wr_entry_current]) begin
+            wdata_current   = atm_wdata_sx;
             wpoison_current = atm_wpoison_sx;
+        end
     end
 
     // The read-modify-write of an executed Atomic, over the one entry the W channel is
