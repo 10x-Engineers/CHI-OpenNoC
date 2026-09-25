@@ -36,6 +36,9 @@ module hni_data_buffer `HNI_PARAM
     input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  rxreq_dbf_entry_idx_s0,  //allocate entry idx
     input  wire                                rxreq_dbf_wr_s0,  //write txn or read txn
     input  wire                                rxreq_dbf_wrzero_s0,
+    input  wire                                rxreq_dbf_atm_s0,
+    input  chie_pkg::req_opcode_e              rxreq_dbf_opcode_s0,
+    input  wire                                rxreq_dbf_endian_s0,
     input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s0,
     input  wire                                rxreq_dbf_device_s0,
     input  chie_pkg::size_e                    rxreq_dbf_size_s0,  //rxdata/txdata size
@@ -75,6 +78,9 @@ module hni_data_buffer `HNI_PARAM
     output wire                                dbf_rvalid_sx,
     output logic [`HNI_MSHR_ENTRIES_WIDTH-1:0] dbf_rvalid_entry_idx_sx,
     output wire [3:0]                          dbf_cdmask_sx,
+    output wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_wr_nobyte_sx,
+    output wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_rd_done_sx,
+    output wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_rd_err_sx,
     output wire                                mshr_txdat_won_sx,
     output wire                                w_last,
 
@@ -117,11 +123,11 @@ module hni_data_buffer `HNI_PARAM
     logic [chie_pkg::POISON_WIDTH-1:0] mshr_txdat_poison_sx;
     logic [10:0]                       axid_current;
     logic [`HNI_MASK_CD_WIDTH-1:0]     rd_cdmask_current;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`HNI_LINE_BITS-1:0] dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`HNI_LINE_BITS/8-1:0]   dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     // Section 9.5 (p.9-347): one Poison bit per 64 bits, so one line's worth is
     // POISON_WIDTH*2 -- the tag that has to travel with the data, both ways.
-    logic [chie_pkg::POISON_WIDTH*2-1:0] dbf_poison_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`HNI_LINE_BITS/64-1:0] dbf_poison_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`AXI4_RDATA_WIDTH*4/64-1:0]   rdata_poison_receive;
     logic                              dbf_rvalid_q;
     logic [chie_pkg::DATA_WIDTH-1:0]   mshr_txdat_data_sx;
@@ -129,16 +135,34 @@ module hni_data_buffer `HNI_PARAM
     logic [1:0]                        mshr_txdat_dataid_q;
     logic [1:0]                        mshr_txdat_ccid_sx;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]  wvalid_q;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] wdata_current;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   wstrb_current;
-    logic [chie_pkg::POISON_WIDTH*2-1:0] wpoison_current;
+    logic [`HNI_LINE_BITS-1:0] wdata_current;
+    logic [`HNI_LINE_BITS/8-1:0]   wstrb_current;
+    logic [`HNI_LINE_BITS/64-1:0] wpoison_current;
     logic [`HNI_MASK_CD_WIDTH-1:0]     wr_cdmask_current;
     logic [`HNI_MASK_WL_WIDTH-1:0]     wr_wlmask_current;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0] wr_entry_current;
+    logic [`HNI_LINE_BITS-1:0] atm_wdata_sx;
+    logic [`HNI_LINE_BITS/64-1:0] atm_wpoison_sx;
+    // The executed Atomic's record and operand (Sec 4.2.5 p.4-185): kept out of the
+    // line, which holds the value read from memory -- the one CompData returns.
+    logic                              dbf_atm_v_q     [0:`HNI_MSHR_ENTRIES_NUM-1];
+    chie_pkg::req_opcode_e             dbf_atm_op_q    [0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [5:0]                        dbf_atm_off_q   [0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [4:0]                        dbf_atm_len_q   [0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic                              dbf_atm_end_q   [0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`HNI_LINE_BITS-1:0]         dbf_atm_data_q  [0:`HNI_MSHR_ENTRIES_NUM-1];
+    logic [`HNI_LINE_BITS/64-1:0]      dbf_atm_poison_q[0:`HNI_MSHR_ENTRIES_NUM-1];
+    wire  [`HNI_PKT_IDX_W-1:0]         rxdat_pkt_s0;
+    wire  [`HNI_PKT_IDX_W-1:0]         txdat_pkt_sx;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]  dbf_rd_done_q;
+    wire  [4:0]                        rxreq_atm_len_s0;
+    logic [`HNI_LINE_BITS/8-1:0]   rxreq_atm_mask_s0;
 
     wire                               rxdatflit_valid_s0;
     wire [11:0]                        rxdat_txnid_s0;
     chie_pkg::dat_opcode_e             rxdat_opcode_s0;
     wire [chie_pkg::BE_WIDTH-1:0]      rxdat_be_s0;
+    wire                               rxdat_cbinv_s0;
     wire [1:0]                         rxdat_dataid_s0;
     wire [chie_pkg::DATA_WIDTH-1:0]    rxdat_data_s0;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] rxdat_entry_idx_s0;
@@ -155,12 +179,18 @@ module hni_data_buffer `HNI_PARAM
     assign rxdatflit_valid_s0  = rxdat_valid_s0;
     assign rxdat_txnid_s0  = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.txnid  : '0;
     assign rxdat_opcode_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.opcode : chie_pkg::DAT_DATLCRDRETURN;//NONCOPYBACKWRDATA/NCBWRDATACOMPACK
-    assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.be     : '0;
+    // Sec 4.11.1 (p.4-242): a CopyBackWrData_I's data is not valid, so it names no
+    // byte to write whatever its BE carry.
+    assign rxdat_cbinv_s0  = (rxdatflit_s0.opcode == chie_pkg::DAT_COPYBACKWRDATA) && (rxdatflit_s0.resp == chie_pkg::RESP_I);
+    assign rxdat_be_s0     = ((rxdat_valid_s0 == 1'b1) && !rxdat_cbinv_s0) ? rxdatflit_s0.be : '0;
     assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.dataid : '0;
     assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.data   : '0;
     assign rxdat_poison_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.poison : '0;
 
     assign rxdat_entry_idx_s0  = rxdat_txnid_s0[`HNI_MSHR_ENTRIES_WIDTH-1:0];
+    // Table 2-15 (Sec 2.10.4 p.2-136): the packet a DataID names.
+    assign rxdat_pkt_s0        = `HNI_PKT_IDX_W'(rxdat_dataid_s0 >> `HNI_PKT_CHUNKS_LOG2);
+    assign txdat_pkt_sx        = `HNI_PKT_IDX_W'(mshr_txdat_dataid_sx >> `HNI_PKT_CHUNKS_LOG2);
 
     assign dbf_rxdat_valid_s0  = rxdatflit_valid_s0;
     assign dbf_rxdat_txnid_s0  = rxdat_txnid_s0;
@@ -419,6 +449,43 @@ module hni_data_buffer `HNI_PARAM
                     rresp_q[i] <= 2'b0;
                 end
             end
+
+            always_ff @(posedge clk or posedge rst)begin:rd_done_timing_logic
+                if(rst)
+                    dbf_rd_done_q[i] <= 1'b0;
+                else if(mshr_retired_valid_sx && i == mshr_retired_idx_sx)
+                    dbf_rd_done_q[i] <= 1'b0;
+                else if(rvalid && rready && rlast && rready_q[i] && (rid == rxreq_alloc_axid_q[i]))
+                    dbf_rd_done_q[i] <= 1'b1;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin:atm_record_logic
+                if(rst)begin
+                    dbf_atm_v_q[i]      <= 1'b0;
+                    dbf_atm_op_q[i]     <= chie_pkg::REQ_REQLCRDRETURN;
+                    dbf_atm_off_q[i]    <= 6'd0;
+                    dbf_atm_len_q[i]    <= 5'd0;
+                    dbf_atm_end_q[i]    <= 1'b0;
+                    dbf_atm_data_q[i]   <= '0;
+                    dbf_atm_poison_q[i] <= '0;
+                end
+                else if(mshr_retired_valid_sx && i == mshr_retired_idx_sx)begin
+                    dbf_atm_v_q[i]      <= 1'b0;
+                    dbf_atm_data_q[i]   <= '0;
+                    dbf_atm_poison_q[i] <= '0;
+                end
+                else if(rxreq_dbf_en_s0 && rxreq_dbf_atm_s0 && i == rxreq_dbf_entry_idx_s0)begin
+                    dbf_atm_v_q[i]      <= 1'b1;
+                    dbf_atm_op_q[i]     <= rxreq_dbf_opcode_s0;
+                    dbf_atm_off_q[i]    <= rxreq_dbf_addr_s0[5:0];
+                    dbf_atm_len_q[i]    <= rxreq_atm_len_s0;
+                    dbf_atm_end_q[i]    <= rxreq_dbf_endian_s0;
+                end
+                else if(rxdat_valid_s0 && dbf_atm_v_q[i] && (i == rxdat_entry_idx_s0))begin
+                    dbf_atm_data_q[i][rxdat_pkt_s0*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH]       <= rxdat_data_s0;
+                    dbf_atm_poison_q[i][rxdat_pkt_s0*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] <= rxdat_poison_s0;
+                end
+            end
        end
     endgenerate
 
@@ -433,7 +500,7 @@ module hni_data_buffer `HNI_PARAM
                     dbf_rd_cdmask_q[i]    <= {`HNI_MASK_CD_WIDTH{1'b0}};
                     dbf_rd_wlmask_q[i]    <= {`HNI_MASK_WL_WIDTH{1'b0}};
                 end
-                else if(rxreq_dbf_en_s0 && i == rxreq_dbf_entry_idx_s0 && !rxreq_dbf_wr_s0)begin
+                else if(rxreq_dbf_en_s0 && i == rxreq_dbf_entry_idx_s0 && (!rxreq_dbf_wr_s0 || rxreq_dbf_atm_s0))begin
                     dbf_rd_cdmask_q[i]    <= dbf_cdmask_s0;
                     dbf_rd_wlmask_q[i]    <= dbf_wlmask_s0;
                 end
@@ -496,34 +563,34 @@ module hni_data_buffer `HNI_PARAM
         for(i = 0;i<`HNI_MSHR_ENTRIES_NUM;i = i+1) begin:dbf_receive_data_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if(rst)begin
-                    dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                    dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b0}};
-                    dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
+                    dbf_data_q[i]   <= {`HNI_LINE_BITS{1'b0}};
+                    dbf_be_q[i]     <= {`HNI_LINE_BITS/8{1'b0}};
+                    dbf_poison_q[i] <= {`HNI_LINE_BITS/64{1'b0}};
                 end
                 else begin
                     if (mshr_retired_valid_sx && i == mshr_retired_idx_sx) begin//entry retired
-                        dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b0}};
-                        dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
+                        dbf_data_q[i]   <= {`HNI_LINE_BITS{1'b0}};
+                        dbf_be_q[i]     <= {`HNI_LINE_BITS/8{1'b0}};
+                        dbf_poison_q[i] <= {`HNI_LINE_BITS/64{1'b0}};
                     end
                     // Table 4-39 (p.4-219): a Write Zero has no WriteData response, so
                     // its payload is sourced here -- zeros with every byte enable set.
                     else if (rxreq_dbf_en_s0 && rxreq_dbf_wrzero_s0 && (i == rxreq_dbf_entry_idx_s0)) begin
-                        dbf_data_q[i]   <= {chie_pkg::DATA_WIDTH*2{1'b0}};
-                        dbf_be_q[i]     <= {chie_pkg::BE_WIDTH*2{1'b1}};
-                        dbf_poison_q[i] <= {chie_pkg::POISON_WIDTH*2{1'b0}};
+                        dbf_data_q[i]   <= {`HNI_LINE_BITS{1'b0}};
+                        dbf_be_q[i]     <= {`HNI_LINE_BITS/8{1'b1}};
+                        dbf_poison_q[i] <= {`HNI_LINE_BITS/64{1'b0}};
                     end
-                    else if (rxdat_valid_s0 && rxreq_dbf_wr_q[i] && (i == rxdat_entry_idx_s0))begin
-                        if(rxdat_dataid_s0 == 2'b00)begin
-                            dbf_data_q[i][chie_pkg::DATA_WIDTH-1:0] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
-                            dbf_be_q[i][chie_pkg::BE_WIDTH-1:0]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH-1:0];
-                            dbf_poison_q[i][chie_pkg::POISON_WIDTH-1:0] <= rxdat_poison_s0 | dbf_poison_q[i][chie_pkg::POISON_WIDTH-1:0];
-                        end
-                        else if(rxdat_dataid_s0 == 2'b10)begin
-                            dbf_data_q[i][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH] <= rxdat_data_s0[chie_pkg::DATA_WIDTH-1:0];
-                            dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH]     <= rxdat_be_s0[chie_pkg::BE_WIDTH-1:0] | dbf_be_q[i][chie_pkg::BE_WIDTH*2-1:chie_pkg::BE_WIDTH];
-                            dbf_poison_q[i][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH] <= rxdat_poison_s0 | dbf_poison_q[i][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH];
-                        end
+                    // Sec 2.10.5 (p.2-137): the element the Atomic writes sits at Addr, len
+                    // bytes wide, which is the whole of what its write-back may touch.
+                    else if (rxreq_dbf_en_s0 && rxreq_dbf_atm_s0 && (i == rxreq_dbf_entry_idx_s0)) begin
+                        dbf_be_q[i]     <= rxreq_atm_mask_s0;
+                    end
+                    else if (rxdat_valid_s0 && rxreq_dbf_wr_q[i] && !dbf_atm_v_q[i] && (i == rxdat_entry_idx_s0))begin
+                        dbf_data_q[i][rxdat_pkt_s0*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] <= rxdat_data_s0;
+                        dbf_be_q[i][rxdat_pkt_s0*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH]
+                            <= rxdat_be_s0 | dbf_be_q[i][rxdat_pkt_s0*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH];
+                        dbf_poison_q[i][rxdat_pkt_s0*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH]
+                            <= rxdat_poison_s0 | dbf_poison_q[i][rxdat_pkt_s0*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH];
                     end
                     else if(rvalid && rready && rready_q[i] && (rid == rxreq_alloc_axid_q[i]))begin
                         dbf_data_q[i]   <= rdata_receive | dbf_data_q[i];
@@ -542,6 +609,23 @@ module hni_data_buffer `HNI_PARAM
     endgenerate
 
     assign rready_rst    = |rready_rst_q;
+
+    generate
+        for(i = 0;i<`HNI_MSHR_ENTRIES_NUM;i = i+1) begin:wr_nobyte_logic
+            assign dbf_wr_nobyte_sx[i] = ~(|dbf_be_q[i]);
+            assign dbf_rd_done_sx[i]   = dbf_rd_done_q[i];
+            assign dbf_rd_err_sx[i]    = rresp_q[i][1];
+        end
+    endgenerate
+
+    assign rxreq_atm_len_s0 = 5'(chie_pkg::atomic_elem_bytes(rxreq_dbf_opcode_s0, rxreq_dbf_size_s0));
+
+    always_comb begin: atm_mask_comb_logic
+        rxreq_atm_mask_s0 = '0;
+        for (int unsigned b = 0; b < `HNI_LINE_BITS/8; b = b + 1)
+            if ((b >= {26'd0, rxreq_dbf_addr_s0[5:0]}) && (b < {26'd0, rxreq_dbf_addr_s0[5:0]} + {27'd0, rxreq_atm_len_s0}))
+                rxreq_atm_mask_s0[b] = 1'b1;
+    end
     
     always_comb begin: dbf_rvalid_comb_logic
         dbf_rvalid_entry_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
@@ -568,16 +652,9 @@ module hni_data_buffer `HNI_PARAM
             for (int entry = 0;entry<`HNI_MSHR_ENTRIES_NUM;entry = entry+1) begin:txdata
                 if(entry[`HNI_MSHR_ENTRIES_WIDTH-1:0] == txdat_entry_idx_sx)begin
                     mshr_txdat_ccid_sx = rxreq_alloc_ccid_q[entry];
-                    if(mshr_txdat_dataid_sx == 2'b00)begin
-                        mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH-1:0];
-                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
-                        mshr_txdat_poison_sx = dbf_poison_q[entry][chie_pkg::POISON_WIDTH-1:0];
-                    end
-                    else if(mshr_txdat_dataid_sx == 2'b10)begin
-                        mshr_txdat_data_sx   = dbf_data_q[entry][chie_pkg::DATA_WIDTH*2-1:chie_pkg::DATA_WIDTH];
-                        mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
-                        mshr_txdat_poison_sx = dbf_poison_q[entry][chie_pkg::POISON_WIDTH*2-1:chie_pkg::POISON_WIDTH];
-                    end
+                    mshr_txdat_data_sx   = dbf_data_q[entry][txdat_pkt_sx*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH];
+                    mshr_txdat_be_sx     = mshr_txdat_be_ovr_en_sx ? mshr_txdat_be_ovr_sx : {chie_pkg::BE_WIDTH{1'b1}};
+                    mshr_txdat_poison_sx = dbf_poison_q[entry][txdat_pkt_sx*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH];
                 end
             end
         end
@@ -637,12 +714,19 @@ module hni_data_buffer `HNI_PARAM
 
     assign wvalid = |wvalid_q;
 
+    always_comb begin: wr_entry_current_comb_logic
+        wr_entry_current = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int entry =0; entry<`HNI_MSHR_ENTRIES_NUM; entry = entry+1)
+            if (wvalid_q[entry])
+                wr_entry_current = entry[`HNI_MSHR_ENTRIES_WIDTH-1:0];
+    end
+
     always_comb begin: current_wr_mask_wdata_wstrb_comb_logic
         wr_cdmask_current = {`HNI_MASK_CD_WIDTH{1'b0}};
         wr_wlmask_current = {`HNI_MASK_WL_WIDTH{1'b0}};
-        wdata_current = {chie_pkg::DATA_WIDTH*2{1'b0}};
-        wstrb_current = {chie_pkg::BE_WIDTH*2{1'b0}};
-        wpoison_current = {chie_pkg::POISON_WIDTH*2{1'b0}};
+        wdata_current = {`HNI_LINE_BITS{1'b0}};
+        wstrb_current = {`HNI_LINE_BITS/8{1'b0}};
+        wpoison_current = {`HNI_LINE_BITS/64{1'b0}};
         for (int entry =0; entry<`HNI_MSHR_ENTRIES_NUM; entry = entry+1)begin
             if (wvalid_q[entry])begin
                 wr_cdmask_current = dbf_wr_cdmask_q[entry];
@@ -652,6 +736,62 @@ module hni_data_buffer `HNI_PARAM
                 wpoison_current = dbf_poison_q[entry];
             end
         end
+        if (dbf_atm_v_q[wr_entry_current]) begin
+            wdata_current   = atm_wdata_sx;
+            wpoison_current = atm_wpoison_sx;
+        end
+    end
+
+    // The read-modify-write of an executed Atomic, over the one entry the W channel is
+    // carrying. Table 4-19 (Sec 4.2.5 p.4-185) and Table 4-20 (p.4-186) give the
+    // arithmetic, Sec 2.10.5 (p.2-137) the placement: the element at Addr, and
+    // AtomicCompare's Swap half at that offset with bit[log2(len)] inverted. The
+    // operand is held at its line position, whichever packets carried it.
+    always_comb begin: atm_rmw_comb_logic
+        int unsigned                    a_len, a_off, a_poff, a_soff;
+        chie_pkg::req_opcode_e          a_op;
+        logic [127:0]                   a_init128, a_cmp128, a_swap128, a_wr128;
+        logic [63:0]                    a_res;
+        logic                           a_match, a_opnd_poison;
+
+        a_op    = dbf_atm_op_q[wr_entry_current];
+        a_len   = {27'd0, dbf_atm_len_q[wr_entry_current]};
+        a_off   = {26'd0, dbf_atm_off_q[wr_entry_current]};
+        a_poff  = a_off;
+        a_soff  = {26'd0, chie_pkg::atomic_swap_off(dbf_atm_off_q[wr_entry_current], a_len)};
+
+        a_init128     = 128'd0;
+        a_cmp128      = 128'd0;
+        a_swap128     = 128'd0;
+        a_opnd_poison = 1'b0;
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < a_len) begin
+                a_init128[b*8 +: 8] = dbf_data_q[wr_entry_current][((a_off + b) & 63)*8 +: 8];
+                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[wr_entry_current][((a_poff + b) & 63)*8 +: 8];
+                a_swap128[b*8 +: 8] = dbf_atm_data_q[wr_entry_current][((a_soff + b) & 63)*8 +: 8];
+                a_opnd_poison = a_opnd_poison
+                              | dbf_atm_poison_q[wr_entry_current][((a_poff + b) & 63) / 8]
+                              | ((a_op == chie_pkg::REQ_ATOMICCOMPARE)
+                                 & dbf_atm_poison_q[wr_entry_current][((a_soff + b) & 63) / 8]);
+            end
+
+        a_match = chie_pkg::atomic_compare_eq(a_init128, a_cmp128, a_len);
+        a_res   = chie_pkg::atomic_alu(a_op, a_len, dbf_atm_end_q[wr_entry_current],
+                                       a_init128[63:0], a_cmp128[63:0]);
+        // Table 2-16 (Sec 2.10.5 p.2-137) bounds AtomicStore/Load/Swap at 8 bytes and
+        // AtomicCompare at 16.
+        a_wr128 = (a_op == chie_pkg::REQ_ATOMICCOMPARE) ? (a_match ? a_swap128 : a_init128)
+                                                        : {64'd0, a_res};
+
+        atm_wdata_sx   = dbf_data_q[wr_entry_current];
+        // Sec 9.5 (p.9-347): a result computed from poisoned data is itself poisoned.
+        atm_wpoison_sx = dbf_poison_q[wr_entry_current];
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < a_len) begin
+                atm_wdata_sx[((a_off + b) & 63)*8 +: 8] = a_wr128[b*8 +: 8];
+                if (a_opnd_poison)
+                    atm_wpoison_sx[((a_off + b) & 63) / 8] = 1'b1;
+            end
     end
 
     //write data to AXI slave
