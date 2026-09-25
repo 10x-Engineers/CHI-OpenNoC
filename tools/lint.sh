@@ -155,6 +155,8 @@ for n in "${NODES[@]}"; do
     bounds_node "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
     lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
     bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+    # SS2.3.1 (p.2-46) flow 4 and SS4.3's (p.4-192) SnpQuery port are parameter-enabled.
+    lint_node   "$n" "optional Home features" -GHNF_SEP_RESP_EN_PARAM=1 -GHNF_SNPQUERY_EN_PARAM=1 || rc=1
   fi
   # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512, so a node that packetises
   # by it is elaborated at the other two widths as well.

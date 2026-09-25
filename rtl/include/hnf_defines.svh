@@ -57,13 +57,15 @@
 
 `include "display_fatal.svh"
 
-`define CACHE_LINE_WIDTH                   CHIE_DATA_WIDTH_PARAM*2
-`define CACHE_BE_WIDTH                     CHIE_BE_WIDTH_PARAM*2
+// A line is opennoc_hnf_pkg::HNF_PKTS data packets at any Data_Width (SS2.10.4 p.2-136).
+`define HNF_PKTS                           opennoc_hnf_pkg::HNF_PKTS
+`define CACHE_LINE_WIDTH                   (CHIE_DATA_WIDTH_PARAM*`HNF_PKTS)
+`define CACHE_BE_WIDTH                     (CHIE_BE_WIDTH_PARAM*`HNF_PKTS)
 // CHI E.b SS9.5 (p.9-347): one Poison bit per 64-bit chunk of the line.
-`define CACHE_POISON_WIDTH                 CHIE_POISON_WIDTH_PARAM*2
+`define CACHE_POISON_WIDTH                 (CHIE_POISON_WIDTH_PARAM*`HNF_PKTS)
 // SS12.2 (p.12-373): the widths of opennoc_hnf_pkg::hnf_tagv_s.
-`define CACHE_TAG_WIDTH                    (chie_pkg::TAG_WIDTH*2)
-`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + chie_pkg::TU_WIDTH*2 + 1)
+`define CACHE_TAG_WIDTH                    opennoc_hnf_pkg::HNF_LINE_TAG
+`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + opennoc_hnf_pkg::HNF_LINE_TU + 1)
 `define CACHE_BLOCK_OFFSET                 6
 `define RNF_NUM                            HNF_MSHR_RNF_NUM_PARAM
 `define RNI_NUM                            HNF_MSHR_RNI_NUM_PARAM

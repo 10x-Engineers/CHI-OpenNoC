@@ -182,7 +182,8 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             txsnpflit_base_s0.flit.opcode       = mshr_txsnp_opcode_sx1;
             txsnpflit_base_s0.flit.addr         = mshr_txsnp_addr_sx1;
             txsnpflit_base_s0.flit.ns           = mshr_txsnp_ns_sx1;
-            txsnpflit_base_s0.flit.donotgotosd  = {1{1'b1}};
+            // SS13.10.34 (p.13-434): inapplicable and zero in SnpQuery.
+            txsnpflit_base_s0.flit.donotgotosd  = (mshr_txsnp_opcode_sx1 != chie_pkg::SNP_SNPQUERY);
             txsnpflit_base_s0.flit.rettosrc     = mshr_txsnp_rettosrc_sx1;
             txsnpflit_base_s0.flit.tracetag     = mshr_txsnp_tracetag_sx1;
 `ifdef CHIE_MPAM_PRESENT

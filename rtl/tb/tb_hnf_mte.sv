@@ -103,7 +103,9 @@ module tb_hnf_mte;
         .TXSNPFLITV(TXSNPFLITV), .TXSNPFLIT(TXSNPFLIT), .TXSNPFLITPEND(TXSNPFLITPEND),
         .TXDATFLITV(TXDATFLITV), .TXDATFLIT(TXDATFLIT), .TXDATFLITPEND(TXDATFLITPEND),
         .SYSCOREQ(SYSCOREQ), .SYSCOACK(SYSCOACK),
-        .notify_reg(notify_reg)
+        .notify_reg(notify_reg),
+        .SNPQ_REQ_VALID(1'b0), .SNPQ_REQ_READY(), .SNPQ_REQ_ADDR('0), .SNPQ_REQ_NS(1'b0),
+        .SNPQ_REQ_RN('0), .SNPQ_RSP_VALID(), .SNPQ_RSP_SENT(), .SNPQ_RSP_RESP(), .SNPQ_RSP_RESPERR()
     );
 
     chie_pkg::req_flit_s dn_q[$];

@@ -39,6 +39,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //inputs related to request handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxreq_valid_s0,
     input  wire                                li_mshr_rxreq_seq_s0,
+    input  wire                                li_mshr_rxreq_snpq_s0,
+    input  wire [`RNF_WIDTH-1:0]               snpq_req_rn_s0,
     input  wire [3:0]                          li_mshr_rxreq_qos_s0,
     input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
     input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
@@ -192,9 +194,9 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [6:0]                         mshr_dbf_atm_len_s0,
     output logic                               mshr_dbf_atm_end_s0,
     output logic                               mshr_dbf_rd_atm_sx1,
-    output logic [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
-    output logic [1:0]                         mshr_dbf_rd_atm_pe_sx1,
-    output logic [1:0]                         mshr_dbf_rd_pe_sx1,
+    output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_rd_atm_be_sx1,
+    output logic [`HNF_PKTS-1:0]               mshr_dbf_rd_atm_pe_sx1,
+    output logic [`HNF_PKTS-1:0]               mshr_dbf_rd_pe_sx1,
     output logic [1:0]                         mshr_dbf_rd_tagop_sx1,
     output logic [1:0]                         mshr_dbf_rd_dn_tagop_sx1,
     output logic [1:0]                         mshr_txreq_tagop_sx1,
@@ -202,7 +204,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     output logic                               mshr_dbf_home_fill_valid_sx1_q,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
-    output logic [1:0]                         mshr_dbf_home_fill_pe_sx1_q,
+    output logic [`HNF_PKTS-1:0]               mshr_dbf_home_fill_pe_sx1_q,
     output logic [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_retired_idx_sx1_q,
     output logic                               mshr_dbf_retired_valid_sx1_q,
 
@@ -266,6 +268,12 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic                               mshr_l3_fill_sx1_q,
     output logic [CHIE_NID_WIDTH_PARAM-1:0]    mshr_l3_rnf_sx1_q,
     output logic                               mshr_l3_seq_retire_sx1_q,
+
+    // SS4.3 (p.4-192, MUST): the Snoopee's precise state, from the SnpQuery port's snoop.
+    output wire                                snpq_rsp_valid,
+    output wire                                snpq_rsp_sent,
+    output chie_pkg::resp_state_e              snpq_rsp_resp,
+    output chie_pkg::resp_err_e                snpq_rsp_resperr,
     output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
     output logic                               mshr_l3_snoopme_sx1_q,
     output logic [chie_pkg::NID_WIDTH-1:0]     mshr_l3_stash_nid_sx1_q,
@@ -433,18 +441,19 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snprsp_entry_vec_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_neednosnp_vec_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdat_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdat_getone_s1_q;
+    // SS2.10.4 (p.2-136): packets of a transfer counted against its Size and Data_Width.
+    logic [opennoc_hnf_pkg::HNF_PKT_CNT_W-1:0] mshr_snpdat_pkts_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snp_getnum_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_d_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_ptl_s1_q;
     wire                                 mshr_snpdatptl_s0;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_ptl_set_s1;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_full_line_s1;
-    logic [1:0]                          mshr_snp_getid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`HNF_PKTS-1:0]                mshr_snp_getid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dct_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_entry_vec_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_rngetone_s1_q;
-    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_memgetone_s1_q;
+    logic [opennoc_hnf_pkg::HNF_PKT_CNT_W-1:0] mshr_dat_rn_pkts_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [opennoc_hnf_pkg::HNF_PKT_CNT_W-1:0] mshr_dat_mem_pkts_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_old_get_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dat_new_get_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cancel_s1_q;
@@ -635,6 +644,14 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_upd_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_s0_w;
     wire                                 op_seq;
+    wire                                 op_snpq;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpq_s1_q;
+    logic [`RNF_WIDTH-1:0]               mshr_snpq_rn_q;
+    wire  [`RNF_NUM-1:0]                 mshr_snpq_tgt_s1;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snpq_snp_s1;
+    logic                                mshr_snpq_sent_q;
+    chie_pkg::resp_state_e               mshr_snpq_resp_q;
+    chie_pkg::resp_err_e                 mshr_snpq_resperr_q;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_upd_sx;
@@ -654,11 +671,10 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_set_sx8;
     wire                                 mshr_sn_order_set_s1;
-    wire                                 mshr_order_reqord;
     wire                                 mshr_order_owo;
     wire                                 mshr_request_excl;
     wire                                 mshr_excl_or_owo;
-    wire                                 mshr_excl_or_reqord;
+    wire                                 mshr_dmt_closed;
     wire                                 mshr_request_order;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_memattr_allocate_s1;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_alloc_s1_q;
@@ -668,6 +684,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_datbuf_sn_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dbid_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_rd_receipt_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_sep_rd_sx;
+    wire                                 mshr_alloc_sep_rd;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_comp_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dmt_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dwt_s1;
@@ -687,8 +705,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snpdat_gettwo_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_d_set_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_d_clr_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_set_0_s1;
-    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_set_1_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_set_s1;
+    wire [`HNF_PKTS-1:0]                 mshr_snpdat_pkt_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_snp_getid_clr_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_set_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_clr_s1;
@@ -1272,6 +1290,33 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // A SnpQuery from the port takes the same internally generated slot, one at a
+    // time, and names one Requester interface to snoop.
+    assign op_snpq = li_mshr_rxreq_snpq_s0;
+    generate
+        for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_snpq_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_snpq_s1_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_snpq_s1_q[entry] <= 1'b0;
+                else if(mshr_can_alloc_entry_s0[entry])
+                    mshr_snpq_s1_q[entry] <= op_snpq;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    always_ff @(posedge clk or posedge rst)begin : mshr_snpq_rn_q_timing_logic
+        if(rst == 1'b1)
+            mshr_snpq_rn_q <= {`RNF_WIDTH{1'b0}};
+        else if(op_snpq)
+            mshr_snpq_rn_q <= snpq_req_rn_s0;
+        else
+            ;
+    end
+
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt." Every request the link admits
     // is therefore classified here; anything outside the serviced set above owes the
@@ -1284,7 +1329,7 @@ module hnf_mshr_ctl `HNF_PARAM
                         | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN);
     assign op_serviced  = op_rdnosnp | op_ro | op_roinv | op_rdnosd | op_ru | op_rc
                         | op_wrnosnp | op_wu | op_wb | op_wc | op_we
-                        | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq;
+                        | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq | op_snpq;
     assign op_err       = li_mshr_rxreq_valid_s0 & ~(op_serviced | op_drop);
     // Table 4-6 (p.4-168) / Table 4-8 (p.4-171): a read is completed by CompData, so
     // the error rides on the data response (Table 9-2 p.9-337).
@@ -1734,18 +1779,27 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // SS2.3.1 (p.2-46) flow 4 in place of DMT: RespSepData from this Home, ReadNoSnpSep
+    // to the Subordinate. Unordered reads only, as the bypass elects it.
+    generate
+        for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_sep_rd_logic
+            assign mshr_sep_rd_sx[entry] = HNF_SEP_RESP_EN_PARAM & mshr_dmt_sx8_q[entry] &
+                                           (mshr_tagop_s1_q[entry] == chie_pkg::TAGOP_INVALID) &
+                                           (mshr_order_s1_q[entry] == chie_pkg::ORDER_NONE);
+        end
+    endgenerate
+
     //************************************************************************//
 
     //                   mshr allocate s1 stage decode logic
 
     //************************************************************************//
 
-    assign mshr_order_reqord        = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) & (mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b0);
     assign mshr_order_owo           = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) & (mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b1);
     assign mshr_request_excl        = (mshr_excl_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b1);
     assign mshr_excl_or_owo         = (mshr_order_owo) | (mshr_request_excl);
-    assign mshr_excl_or_reqord      = (mshr_order_reqord) | (mshr_request_excl);
-    assign mshr_request_order       = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) | (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b11);
+    assign mshr_dmt_closed          = !opennoc_hnf_pkg::hnf_dmt_permitted(mshr_order_s1_q[mshr_entry_idx_alloc_s1_q], mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q]) | (mshr_request_excl);
+    assign mshr_request_order       = opennoc_hnf_pkg::hnf_ordered(mshr_order_s1_q[mshr_entry_idx_alloc_s1_q]);
 
     assign mshr_memattr_allocate_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_l3_alloc_s1_q[mshr_entry_idx_alloc_s1_q]}});
     // Table 4-16 (p.4-181) leaves the Requester Invalid after a WriteBackFull, so
@@ -1762,7 +1816,10 @@ module hnf_mshr_ctl `HNF_PARAM
     // back-invalidation's fan-out is empty and it owes no snoop to wait on. SS4.4.2 (p.4-196)
     // only permits the spontaneous snoop, so completing with none is the correct behaviour.
     assign mshr_seq_snp_s1          = mshr_seq_s1_q & {`MSHR_ENTRIES_NUM{|sysco_snp_gen_en}};
-    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1);
+    // The same Table 15-1 (p.15-468, MUST) rule for the one interface a SnpQuery names.
+    assign mshr_snpq_tgt_s1         = (`RNF_NUM'(1) << mshr_snpq_rn_q) & sysco_snp_gen_en;
+    assign mshr_snpq_snp_s1         = mshr_snpq_s1_q & {`MSHR_ENTRIES_NUM{|mshr_snpq_tgt_s1}};
+    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1 | mshr_snpq_snp_s1);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
@@ -1773,8 +1830,13 @@ module hnf_mshr_ctl `HNF_PARAM
     // completes with "DBIDResp + CompData_I", so it owes no Comp of its own.
     assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & ~mshr_atomicrd_s1_q & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
     assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
-    assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q));
-    assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_excl_or_reqord}}));
+    // A ReadNoSnp taking separate responses owes its RespSepData at acceptance, as the bypass's.
+    assign mshr_alloc_sep_rd        = HNF_SEP_RESP_EN_PARAM & ~mshr_dmt_closed &
+                                      (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == chie_pkg::ORDER_NONE) &
+                                      (mshr_tagop_s1_q[mshr_entry_idx_alloc_s1_q] == chie_pkg::TAGOP_INVALID);
+    assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & (({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q)) |
+                                                                      ({`MSHR_ENTRIES_NUM{mshr_alloc_sep_rd}} & mshr_rdnosnp_s1_q));
+    assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_dmt_closed}}));
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
     // the buffer entry until it has, the way an Exclusive or OWO write does.
@@ -1838,18 +1900,20 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_snp_d_s0        = li_mshr_rxdat_resp_s0[3-1];
     assign mshr_snpdat_entry_s0 = li_mshr_rxdat_txnid_s0;
     assign mshr_snpdatid_s0     = li_mshr_rxdat_dataid_s0;
-    assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & ((mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][1] == 1'b1 & mshr_snpdatid_s0 == 2'b00) | (mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0][0] == 1'b1 & mshr_snpdatid_s0 == 2'b10));
+    assign mshr_snpdat_pkt_s0   = `HNF_PKTS'(1) << opennoc_hnf_pkg::hnf_pkt_of_dataid(mshr_snpdatid_s0);
+    assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & (&(mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0] | mshr_snpdat_pkt_s0));
 
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snp_decode_comb_logic
 
             assign mshr_snpdat_entry_vec_s0[entry] = (mshr_snpdat_entry_s0 == entry) & (mshr_snpdat_v_s0);
-            assign mshr_snpdat_gettwo_s0[entry]    = (mshr_snpdat_entry_vec_s0[entry])? mshr_snpdat_getone_s1_q[entry]:1'b0;
+            // The last packet of a Snoop response's 64-byte line.
+            assign mshr_snpdat_gettwo_s0[entry]    = mshr_snpdat_entry_vec_s0[entry] &
+                                                     (mshr_snpdat_pkts_s1_q[entry] == opennoc_hnf_pkg::HNF_PKT_CNT_W'(`HNF_PKTS - 1));
             assign mshr_snp_d_set_s1[entry]        = (mshr_snpdat_entry_vec_s0[entry] & mshr_snp_d_s0) ? 1'b1 : 1'b0;
             assign mshr_snp_ptl_set_s1[entry]      = (mshr_snpdat_entry_vec_s0[entry] & mshr_snpdatptl_s0);
             assign mshr_snp_d_clr_s1[entry]        = (mshr_can_retire_entry_sx1[entry]);
-            assign mshr_snp_getid_set_0_s1[entry]  = (mshr_snpdat_entry_vec_s0[entry] & (mshr_snpdatid_s0 == 2'b00));
-            assign mshr_snp_getid_set_1_s1[entry]  = (mshr_snpdat_entry_vec_s0[entry] & (mshr_snpdatid_s0 == 2'b10));
+            assign mshr_snp_getid_set_s1[entry]    = mshr_snpdat_entry_vec_s0[entry];
             assign mshr_snp_getid_clr_s1[entry]    = (mshr_can_retire_entry_sx1[entry]);
             assign mshr_dct_set_s1[entry]          = (mshr_snpdat_entry_vec_s0[entry] & mshr_snpdatfwd_s0) ||
                    (mshr_snprsp_entry_vec_s0[entry] & mshr_snprspfwd_s0);
@@ -1862,8 +1926,8 @@ module hnf_mshr_ctl `HNF_PARAM
                    ~(|mshr_snp_getid_s1_q[entry]));
             assign mshr_snp_getall_s1[entry]       = ((mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) & (mshr_snpcnt_sx_q[entry] != {`MSHR_SNPCNT_WIDTH{1'b0}}));
             assign mshr_snp_pending_sx[entry]      = (mshr_snpcnt_sx_q[entry] != {`MSHR_SNPCNT_WIDTH{1'b0}}) & ~mshr_snp_getall_s1[entry];
-            assign mshr_snp_get_64B_s1[entry]      = (mshr_snp_getid_s1_q[entry][0] & mshr_snp_getid_s1_q[entry][1]);
-            // Both data packets arrived, AND every byte in them is valid. Sec 2.10.3
+            assign mshr_snp_get_64B_s1[entry]      = &mshr_snp_getid_s1_q[entry];
+            // Every data packet arrived, AND every byte in them is valid. Sec 2.10.3
             // (p.2-135) lets SnpRespDataPtl assert "any combination of byte enables",
             // all of them included -- so the opcode alone does not say whether the
             // line is whole; the accumulated byte enables do. Where it is not,
@@ -1926,12 +1990,14 @@ module hnf_mshr_ctl `HNF_PARAM
     end
 
     generate
-        for (entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snpdat_getone_s1_q_timing_logic
+        for (entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snpdat_pkts_s1_q_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if (rst == 1'b1)
-                    mshr_snpdat_getone_s1_q[entry] <= 1'b0;
+                    mshr_snpdat_pkts_s1_q[entry] <= '0;
+                else if (mshr_snpdat_gettwo_s0[entry])
+                    mshr_snpdat_pkts_s1_q[entry] <= '0;
                 else if (mshr_snpdat_entry_vec_s0[entry])
-                    mshr_snpdat_getone_s1_q[entry] <= ~mshr_snpdat_getone_s1_q[entry];
+                    mshr_snpdat_pkts_s1_q[entry] <= mshr_snpdat_pkts_s1_q[entry] + 1'b1;
                 else
                     ;
             end
@@ -2008,13 +2074,11 @@ module hnf_mshr_ctl `HNF_PARAM
         for (entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_snp_getid_s1_q_timing_logic
             always_ff @(posedge clk or posedge rst)begin
                 if(rst == 1'b1)
-                    mshr_snp_getid_s1_q[entry] <= 2'b00;
+                    mshr_snp_getid_s1_q[entry] <= '0;
                 else if(mshr_snp_getid_clr_s1[entry])
-                    mshr_snp_getid_s1_q[entry] <= 2'b00;
-                else if(mshr_snp_getid_set_0_s1[entry])
-                    mshr_snp_getid_s1_q[entry][0] <= 1'b1;
-                else if(mshr_snp_getid_set_1_s1[entry])
-                    mshr_snp_getid_s1_q[entry][1] <= 1'b1;
+                    mshr_snp_getid_s1_q[entry] <= '0;
+                else if(mshr_snp_getid_set_s1[entry])
+                    mshr_snp_getid_s1_q[entry] <= mshr_snp_getid_s1_q[entry] | mshr_snpdat_pkt_s0;
                 else
                     ;
             end
@@ -2048,7 +2112,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_ncb_dat_s0         = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK | li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA);
     assign mshr_rn_wrdat_s0        = mshr_cb_dat_s0 | mshr_ncb_dat_s0 | mshr_datcancel_s0;
     assign mshr_rn_dat_s0          = mshr_rn_wrdat_s0 | mshr_wrzero_inject_sx;
-    assign mshr_rn_dat_getall_s0   = ((mshr_dat_rngetone_s1_q[mshr_dat_entry_idx_s0] | mshr_size_s1_q[mshr_dat_entry_idx_s0] != 3'b110) & mshr_rn_wrdat_s0)
+    assign mshr_rn_dat_getall_s0   = (((int'(mshr_dat_rn_pkts_s1_q[mshr_dat_entry_idx_s0]) + 1) >=
+                                        opennoc_hnf_pkg::hnf_pkts_of_size(mshr_size_s1_q[mshr_dat_entry_idx_s0])) & mshr_rn_wrdat_s0)
                                    | mshr_wrzero_inject_sx;
     assign mshr_datcancel_s0       = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL);
     assign mshr_set_stop_cb_s0     = mshr_rn_dat_s0 & ((mshr_rn_dat_get_i_sc_s0 & (mshr_wb_s1_q[mshr_dat_entry_idx_s0] | mshr_we_s1_q[mshr_dat_entry_idx_s0])) |
@@ -2057,7 +2122,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_data_state_s0      = li_mshr_rxdat_valid_s0? li_mshr_rxdat_resp_s0:chie_pkg::RESP_I;
     assign mshr_rn_dat_get_i_s0    = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_I);
     assign mshr_rn_dat_get_uc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_UD);
-    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_PD)) | ((mshr_ncb_dat_s0 | mshr_wrzero_inject_sx) & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_l3_alloc_s1_q[mshr_dat_entry_idx_s0]);
+    // Table 4-27 (p.4-200): CopyBackWrData_UD_PD and _SD_PD both pass responsibility for memory.
+    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 inside {chie_pkg::RESP_UC_PD, chie_pkg::RESP_SD_PD})) | ((mshr_ncb_dat_s0 | mshr_wrzero_inject_sx) & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_l3_alloc_s1_q[mshr_dat_entry_idx_s0]);
     assign mshr_rn_dat_get_sc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_SC);
     assign mshr_rn_dat_get_i_sc_s0 = mshr_rn_dat_get_i_s0 | mshr_rn_dat_get_sc_s0;
 
@@ -2068,7 +2134,9 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_all_dat_alloc_s1[entry]  = (mshr_dat_new_get_s1_q[entry]) & (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry]) &
                    (mshr_dat_old_get_s1_q[entry] | (mshr_l3hit_sx8_q[entry] & ~mshr_tagfetch_pend_sx_q[entry] & ~mshr_l3_tagfetch_sx7[entry])) &
                    mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry];
-            assign mshr_dat_to_rn_s1[entry]      = ((mshr_dat_old_get_s1_q[entry] | (mshr_dat_memgetone_s1_q[entry] & mshr_size_s1_q[entry] != 3'b110)) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
+            assign mshr_dat_to_rn_s1[entry]      = ((mshr_dat_old_get_s1_q[entry] |
+                                                     ((int'(mshr_dat_mem_pkts_s1_q[entry]) >= opennoc_hnf_pkg::hnf_pkts_of_size(mshr_size_s1_q[entry])) &
+                                                      (mshr_size_s1_q[entry] != chie_pkg::SIZE_64B))) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
                                                     (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & !mshr_dct_s1_q[entry] &
                                                     (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
                                                      (mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry])));
@@ -2110,19 +2178,20 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dat_stop_cb_s1_q[entry] <= 1'b0;
                 else if(mshr_can_retire_entry_sx1[entry])
                     mshr_dat_stop_cb_s1_q[entry] <= 1'b0;
-                else if(mshr_set_stop_cb_s0 && mshr_dat_entry_vec_s0[entry] && mshr_dat_rngetone_s1_q[entry])
+                else if(mshr_set_stop_cb_s0 && mshr_dat_entry_vec_s0[entry] && mshr_rn_dat_getall_s0)
                     mshr_dat_stop_cb_s1_q[entry] <= 1'b1;
                 else
                     ;
             end
 
-            always_ff @(posedge clk or posedge rst) begin: mshr_dat_memgetone_s1_q_timing_logic
+            always_ff @(posedge clk or posedge rst) begin: mshr_dat_mem_pkts_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_dat_memgetone_s1_q[entry] <= 1'b0;
+                    mshr_dat_mem_pkts_s1_q[entry] <= '0;
                 else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_dat_memgetone_s1_q[entry] <= 1'b0;
-                else if(mshr_dat_entry_vec_s0[entry] && mshr_mem_dat_s0)
-                    mshr_dat_memgetone_s1_q[entry] <= 1'b1;
+                    mshr_dat_mem_pkts_s1_q[entry] <= '0;
+                else if(mshr_dat_entry_vec_s0[entry] && mshr_mem_dat_s0 &&
+                        (mshr_dat_mem_pkts_s1_q[entry] != opennoc_hnf_pkg::HNF_PKT_CNT_W'(`HNF_PKTS)))
+                    mshr_dat_mem_pkts_s1_q[entry] <= mshr_dat_mem_pkts_s1_q[entry] + 1'b1;
                 else
                     ;
             end
@@ -2133,12 +2202,12 @@ module hnf_mshr_ctl `HNF_PARAM
                 else if(mshr_can_retire_entry_sx1[entry])
                     mshr_dat_old_get_s1_q[entry] <= 1'b0;
                 else if(mshr_dat_entry_vec_s0[entry] && mshr_mem_dat_s0)
-                    mshr_dat_old_get_s1_q[entry] <= mshr_dat_memgetone_s1_q[entry];
+                    mshr_dat_old_get_s1_q[entry] <= (int'(mshr_dat_mem_pkts_s1_q[entry]) + 1 == `HNF_PKTS);
                 // Sec 5.1.5 (p.5-251): where the Snoop response leaves bytes
                 // invalid the Home "waits for the data response from memory, merges
                 // the partial Snoop response data ... and sends the resultant data
                 // to the Requester" -- so holding the whole line is a property of
-                // the accumulated byte enables, not of the second packet arriving.
+                // the accumulated byte enables, not of the last packet arriving.
                 else if((mshr_snpdat_entry_vec_s0[entry]) & mshr_snp_get_64B_s0 & dbf_mshr_be_full_s0 &
                         (dbf_mshr_tags_full_s0 | ~mshr_needs_tags[entry] | (mshr_wup_s1_q[entry] & ~mshr_l3_alloc_s1_q[entry])))
                     mshr_dat_old_get_s1_q[entry] <= 1'b1;
@@ -2146,13 +2215,14 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
-            always_ff @(posedge clk or posedge rst) begin: mshr_dat_rngetone_s1_q_timing_logic
+            always_ff @(posedge clk or posedge rst) begin: mshr_dat_rn_pkts_s1_q_timing_logic
                 if(rst == 1'b1)
-                    mshr_dat_rngetone_s1_q[entry] <= 1'b0;
+                    mshr_dat_rn_pkts_s1_q[entry] <= '0;
                 else if(mshr_can_retire_entry_sx1[entry])
-                    mshr_dat_rngetone_s1_q[entry] <= 1'b0;
-                else if(mshr_dat_entry_vec_s0[entry] && mshr_rn_dat_s0)
-                    mshr_dat_rngetone_s1_q[entry] <= 1'b1;
+                    mshr_dat_rn_pkts_s1_q[entry] <= '0;
+                else if(mshr_dat_entry_vec_s0[entry] && mshr_rn_dat_s0 &&
+                        (mshr_dat_rn_pkts_s1_q[entry] != opennoc_hnf_pkg::HNF_PKT_CNT_W'(`HNF_PKTS)))
+                    mshr_dat_rn_pkts_s1_q[entry] <= mshr_dat_rn_pkts_s1_q[entry] + 1'b1;
                 else
                     ;
             end
@@ -2389,8 +2459,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     assign mshr_l3_val_sx7  = l3_pipeval_sx7_q & !l3_replay_sx7_q;
-    assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) & ~((mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b10) | (mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b11) &
-            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) &
+    assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) &
+            opennoc_hnf_pkg::hnf_dmt_permitted(mshr_order_s1_q[l3_mshr_entry_sx7_q], mshr_compack_s1_q[l3_mshr_entry_sx7_q]) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) &
             // SS7.3 (p.7-298) permits DMT to the Stash target for a Data Pull, but the
             // downstream read this pass issues carries the Requester's ReturnNID and
             // ReturnTxnID -- so electing it would have the Subordinate answer the Stash
@@ -2493,6 +2563,8 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snpcnt_sx_q[entry] <= l3_snp_cnt;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
                     mshr_snpcnt_sx_q[entry] <= seq_snp_cnt;
+                else if(mshr_snpq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                    mshr_snpcnt_sx_q[entry] <= {{(`MSHR_SNPCNT_WIDTH-1){1'b0}}, |mshr_snpq_tgt_s1};
                 else
                     ;
             end
@@ -2571,6 +2643,8 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snp_bit_sx8_q[entry] <= l3_snp_bit_sx7_q;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
                     mshr_snp_bit_sx8_q[entry] <= sysco_snp_gen_en;
+                else if(mshr_snpq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                    mshr_snp_bit_sx8_q[entry] <= mshr_snpq_tgt_s1;
                 else
                     ;
             end
@@ -2584,7 +2658,7 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
                 else if(mshr_l3_entry_vec_sx7[entry] && l3_rd_busy_s2_q[entry])
                     mshr_stash_bit_sx8_q[entry] <= l3_stash_bit_sx7_q;
-                else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                else if((mshr_seq_s1_q[entry] || mshr_snpq_s1_q[entry]) && mshr_can_alloc_entry_s1_q[entry])
                     mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
                 else
                     ;
@@ -2597,11 +2671,39 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snpcode_sx8_q[entry] <= mshr_snpcode_sx7;
                 else if(mshr_seq_s1_q[entry])
                     mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPCLEANINVALID;
+                else if(mshr_snpq_s1_q[entry])
+                    mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPQUERY;
                 else
                     ;
             end
         end
     endgenerate
+
+    // SS4.3 (p.4-192, MUST): "The Snoop response must include the precise state of
+    // the cache line at the targeted Snoopee", which is what the port reports; an
+    // interface outside the coherency domain is sent none (Table 15-1 p.15-468).
+    always_ff @(posedge clk or posedge rst)begin : mshr_snpq_rsp_timing_logic
+        if(rst == 1'b1) begin
+            mshr_snpq_sent_q    <= 1'b0;
+            mshr_snpq_resp_q    <= chie_pkg::RESP_I;
+            mshr_snpq_resperr_q <= chie_pkg::RESP_ERR_NORM_OK;
+        end
+        else if(|(mshr_snpq_s1_q & mshr_can_alloc_entry_s1_q)) begin
+            mshr_snpq_sent_q    <= |mshr_snpq_tgt_s1;
+            mshr_snpq_resp_q    <= chie_pkg::RESP_I;
+            mshr_snpq_resperr_q <= chie_pkg::RESP_ERR_NORM_OK;
+        end
+        else if(|(mshr_snprsp_entry_vec_s0 & mshr_snpq_s1_q)) begin
+            mshr_snpq_resp_q    <= li_mshr_rxrsp_resp_s0;
+            mshr_snpq_resperr_q <= li_mshr_rxrsp_resperr_s0;
+        end
+        else
+            ;
+    end
+    assign snpq_rsp_valid   = |(mshr_can_retire_entry_sx1 & mshr_snpq_s1_q);
+    assign snpq_rsp_sent    = mshr_snpq_sent_q;
+    assign snpq_rsp_resp    = mshr_snpq_resp_q;
+    assign snpq_rsp_resperr = mshr_snpq_resperr_q;
 
     // The same election mshr_dct_set_sx8 makes one stage later, needed here because
     // which snoop is legal depends on whether it will be a forwarding one.
@@ -2775,7 +2877,7 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_mem_rd_busy_set_sx[entry]    = (mshr_alloc_memrd_s1[entry]) || (mshr_l3_memrd_sx7[entry]) || (mshr_snp_memrd_s1[entry]) ||
                    (mshr_tagfetch_go_sx[entry]);
             assign mshr_mem_rd_busy_clr_sx[entry]    = (mshr_dat_to_rn_s1[entry]) ||
-                   (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry]) ||
+                   (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry] & ~mshr_sep_rd_sx[entry]) ||
                    (mshr_get_rd_receipt_s1_q[entry]) ||
                    (mshr_all_dat_alloc_s1[entry]) ||
                    (mshr_tagfetch_issued_sx_q[entry] & mshr_dat_old_get_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
@@ -2890,7 +2992,11 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]) ||
                    (mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_dbid_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
-            assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
+            // A read elected DMT after allocation owes its RespSepData when the ReadNoSnpSep
+            // first goes out; a ReadNoSnp's was owed at allocation, as the bypass's.
+            assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1) ||
+                   (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry] & mshr_txreq_is_rd_sx1 & mshr_sep_rd_sx[entry] &
+                    ~mshr_rdnosnp_s1_q[entry] & ~mshr_retry_s1_q[entry]);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
                    (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
@@ -2925,7 +3031,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry]);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
-                   (mshr_seq_snp_s1[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   ((mshr_seq_snp_s1[entry] | mshr_snpq_snp_s1[entry]) & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_txsnp_rdy_clr_sx[entry]      = (mshr_txsnp_entry_vec_sx1[entry] & ~txsnp_mshr_busy_sx1);
         end
     endgenerate
@@ -3936,7 +4042,7 @@ module hnf_mshr_ctl `HNF_PARAM
                                       : (mshr_txreq_fwd_sx1?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
     // Sec 2.10.3 (p.2-135, MUST): a WriteNoSnpFull must assert every byte enable, so
     // a write-back whose only source was a partial Snoop response is Ptl.
-    assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?chie_pkg::REQ_CLEANSHAREDPERSIST:(mshr_txreq_is_rd_sx1?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
+    assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?chie_pkg::REQ_CLEANSHAREDPERSIST:(mshr_txreq_is_rd_sx1?(mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
     assign mshr_txreq_size_sx1        = mshr_txreq_is_cmo_sx1 ? chie_pkg::SIZE_64B :
                                         (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1 |
                                           (mshr_txreq_is_rd_sx1 & mshr_tagfetch_issued_sx_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
@@ -3951,7 +4057,10 @@ module hnf_mshr_ctl `HNF_PARAM
                 mshr_snp_outstanding_sx = mshr_snp_outstanding_sx | mshr_snp_bit_sx8_q[e];
     end
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
+    // Table 2-6 (SS2.3.1 p.2-48): Request Accepted where CompAck cannot be relied on to
+    // show the Subordinate took the request -- no CompAck, or a ReadNoSnpSep's.
+    assign mshr_txreq_order_sx1       = (((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] | mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]) &
+                                          mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:'0);
     // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
     // interconnect due to a Prefetch from Home or an eviction from the System
@@ -4066,7 +4175,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_persist_rsp_sx1 = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q] & mshr_persist_rsp_s1_q[mshr_txrsp_idx_sx1_q];
     assign mshr_txrsp_opcode_sx1   = mshr_txrsp_persist_rsp_sx1?chie_pkg::RSP_COMPPERSIST:
                                      mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?
-                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:chie_pkg::RSP_DBIDRESP));
+                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_sep_rd_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:chie_pkg::RSP_DBIDRESP));
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.
@@ -4443,13 +4552,14 @@ module hnf_mshr_ctl `HNF_PARAM
                               mshr_atomicrd_s1_q[mshr_dbf_rd_idx_sx1_q];
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
             mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
-        mshr_dbf_rd_atm_pe_sx1 = mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01;
+        mshr_dbf_rd_atm_pe_sx1 = opennoc_hnf_pkg::hnf_pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
+                                                               chie_pkg::SIZE_1B);
     end
 
     // Sec 2.10.4 (p.2-136): the packets a read owes follow its Size and the data
     // bus width, and DataID follows Addr[5:4] -- not what the buffer happens to
     // hold. A line read out of the L3 fills it whole, so a sub-line read served
-    // from one would otherwise emit two packets for a one-packet transfer.
+    // from one would otherwise emit every packet of the line for a sub-line transfer.
     //
     // Keyed on the request opcode, not on Size alone: Table 4-1 (Sec 4.2.1 p.4-165)
     // pins every other read at Size=64, and a Stash Data Pull's completion is a
@@ -4504,11 +4614,10 @@ module hnf_mshr_ctl `HNF_PARAM
     always_comb begin : mshr_dbf_rd_pe_comb
         if ((mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNP) ||
             (mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNPSEP))
-            mshr_dbf_rd_pe_sx1 = (mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::SIZE_64B)
-                               ? 2'b11
-                               : (mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1] ? 2'b10 : 2'b01);
+            mshr_dbf_rd_pe_sx1 = opennoc_hnf_pkg::hnf_pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
+                                                           mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q]);
         else
-            mshr_dbf_rd_pe_sx1 = 2'b11;
+            mshr_dbf_rd_pe_sx1 = '1;
     end
 
     // The record hnf_data_buffer executes the operation from, written with the entry.
@@ -4527,7 +4636,7 @@ module hnf_mshr_ctl `HNF_PARAM
             mshr_dbf_home_fill_valid_sx1_q <= 1'b0;
             mshr_dbf_home_fill_idx_sx1_q   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             mshr_dbf_home_fill_be_sx1_q    <= '0;
-            mshr_dbf_home_fill_pe_sx1_q    <= 2'b00;
+            mshr_dbf_home_fill_pe_sx1_q    <= '0;
         end
         else begin
             mshr_dbf_home_fill_valid_sx1_q <= mshr_home_fill_pick_valid_sx;
@@ -4536,7 +4645,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // Home-sourced fills, and both are whole lines. An Atomic's return extent
             // is shaped on the read instead (mshr_dbf_rd_atm_be_sx1).
             mshr_dbf_home_fill_be_sx1_q    <= {`CACHE_BE_WIDTH{1'b1}};
-            mshr_dbf_home_fill_pe_sx1_q    <= 2'b11;
+            mshr_dbf_home_fill_pe_sx1_q    <= '1;
         end
     end
 

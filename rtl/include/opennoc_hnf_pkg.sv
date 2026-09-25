@@ -172,6 +172,23 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_CLEANSHAREDPERSIST || hnf_persist_response(op);
   endfunction
 
+  // Table 2-9 (SS2.8.5 p.2-119): Request Order and Endpoint Order, the two a Requester
+  // may ask of this Home.
+  function automatic logic hnf_ordered(chie_pkg::order_e order);
+    return order inside {chie_pkg::ORDER_REQ_WR_OBS, chie_pkg::ORDER_END_POINT};
+  endfunction
+
+  // SS2.8.5 (p.2-119, MUST): an ordered ReadNoSnp or ReadOnce* is owed a ReadReceipt.
+  function automatic logic hnf_receipt_read(chie_pkg::req_opcode_e op);
+    return op inside {chie_pkg::REQ_READNOSNP, chie_pkg::REQ_READONCE,
+                      chie_pkg::REQ_READONCECLEANINVALID, chie_pkg::REQ_READONCEMAKEINVALID};
+  endfunction
+
+  // Table 2-6 (SS2.3.1 p.2-48): DMT is not permitted for an ordered read without CompAck.
+  function automatic logic hnf_dmt_permitted(chie_pkg::order_e order, logic expcompack);
+    return !(hnf_ordered(order) && !expcompack);
+  endfunction
+
   // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
   // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
   // range, the gaps inside that range being RESERVED. The six persistent forms fold
@@ -347,12 +364,47 @@ package opennoc_hnf_pkg;
            ? chie_pkg::TAGOP_MATCH : chie_pkg::TAGOP_TRANSFER;
   endfunction
 
+  // SS2.10.4 (p.2-136), Table 2-15: a 64-byte line is 512/Data_Width packets, and
+  // packet p carries DataID p x (Data_Width/128), Addr[5:4] of its lowest byte.
+  localparam int HNF_PKTS            = 512 / chie_pkg::DATA_WIDTH;
+  localparam int HNF_PKT_BYTES       = chie_pkg::DATA_WIDTH / 8;
+  localparam int HNF_PKT_CHUNKS_LOG2 = $clog2(chie_pkg::DATA_WIDTH / 128);
+  localparam int HNF_LINE_TU         = chie_pkg::TU_WIDTH * HNF_PKTS;
+  localparam int HNF_LINE_TAG        = chie_pkg::TAG_WIDTH * HNF_PKTS;
+  localparam int HNF_PKT_CNT_W       = $clog2(HNF_PKTS + 1);
+
+  function automatic int unsigned hnf_pkt_of_dataid(logic [1:0] dataid);
+    return int'(dataid) >> HNF_PKT_CHUNKS_LOG2;
+  endfunction
+
+  function automatic logic [1:0] hnf_dataid_of_pkt(int unsigned pkt);
+    return 2'(pkt << HNF_PKT_CHUNKS_LOG2);
+  endfunction
+
+  // "The number of data packets required is determined only by the Size field and
+  // the data bus width" (SS2.10.4 p.2-136): the packets holding the Size-aligned
+  // container of a transfer of up to 64 bytes.
+  function automatic int unsigned hnf_pkts_of_size(chie_pkg::size_e size);
+    int unsigned bytes = 1 << int'(size);
+    return (bytes > HNF_PKT_BYTES) ? bytes / HNF_PKT_BYTES : 1;
+  endfunction
+
+  function automatic logic [HNF_PKTS-1:0] hnf_pkt_mask(logic [5:0] off, chie_pkg::size_e size);
+    int unsigned bytes = 1 << int'(size);
+    int unsigned first = (32'(off) & ~(bytes - 1)) / HNF_PKT_BYTES;
+    logic [HNF_PKTS-1:0] m = '0;
+    for (int unsigned p = 0; p < HNF_PKTS; p++)
+      if ((p >= first) && (p < first + hnf_pkts_of_size(size)))
+        m[p] = 1'b1;
+    return m;
+  endfunction
+
   // SS12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes of the line, a
   // valid bit per tag, and whether an Update left them Dirty (SS12.3 p.12-374).
   typedef struct packed {
     logic                              dirty;
-    logic [2*chie_pkg::TU_WIDTH-1:0]   valid;
-    logic [2*chie_pkg::TAG_WIDTH-1:0]  tag;
+    logic [HNF_LINE_TU-1:0]            valid;
+    logic [HNF_LINE_TAG-1:0]           tag;
   } hnf_tagv_s;
 
   function automatic logic hnf_tagv_full(hnf_tagv_s t);

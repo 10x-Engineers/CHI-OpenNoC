@@ -50,9 +50,8 @@ module chie_flit_opt_check #(
         // Section 16.1 (p.16-471) gives Data_Width three legal values and section 2.10.4
         // (p.2-136) makes the packets per 64-byte line follow it. A node that sets
         // ANY_DATA_WIDTH packetises by it; every other node is written against "a line is
-        // exactly two data packets", which holds only at 256 -- hnf_mshr_ctl, for one,
-        // counts a snoop response's packets that way -- and is refused at elaboration
-        // rather than silently mis-serving data.
+        // exactly two data packets", which holds only at 256, and is refused at
+        // elaboration rather than silently mis-serving data.
         if (!(chie_pkg::DATA_WIDTH inside {128, 256, 512}))
             $fatal(1, "%m: CHIE_DATA_WIDTH=%0d -- section 16.1 (p.16-471) permits 128, 256 and 512.",
                    chie_pkg::DATA_WIDTH);

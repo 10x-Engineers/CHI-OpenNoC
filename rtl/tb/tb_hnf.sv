@@ -797,7 +797,9 @@ module tb_hnf;
       .dbg_lru_wr_en_q    (dbg_lru_wr_en_q),
       .dbg_lru_wr_data_q  (dbg_lru_wr_data_q),
       .dbg_lru_rd_data_q  (dbg_lru_rd_data_q),
-      .notify_reg         (notify_reg)
+      .notify_reg         (notify_reg),
+      .SNPQ_REQ_VALID(1'b0), .SNPQ_REQ_READY(), .SNPQ_REQ_ADDR('0), .SNPQ_REQ_NS(1'b0),
+      .SNPQ_REQ_RN('0), .SNPQ_RSP_VALID(), .SNPQ_RSP_SENT(), .SNPQ_RSP_RESP(), .SNPQ_RSP_RESPERR()
   );
 
   tb_snf #(
