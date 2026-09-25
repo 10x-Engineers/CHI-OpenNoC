@@ -4436,7 +4436,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // for exactly those bytes, in the one packet that holds the address.
     always_comb begin : mshr_atm_rd_shape
         int unsigned atm_len, atm_off;
-        atm_len = opennoc_hnf_pkg::hnf_atomic_elem_bytes(mshr_atomic_op_s1_q[mshr_dbf_rd_idx_sx1_q],
+        atm_len = chie_pkg::atomic_elem_bytes(mshr_atomic_op_s1_q[mshr_dbf_rd_idx_sx1_q],
                                                          mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q]);
         atm_off = {26'd0, mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0]};
         mshr_dbf_rd_atm_sx1 = mshr_dbf_rd_valid_sx1_q & mshr_dbf_rd_to_rn_sx1_q &
@@ -4517,7 +4517,7 @@ module hnf_mshr_ctl `HNF_PARAM
         mshr_dbf_atm_idx_s0 = mshr_entry_idx_alloc_s0;
         mshr_dbf_atm_op_s0  = li_mshr_rxreq_atomic_op_s0;
         mshr_dbf_atm_off_s0 = li_mshr_rxreq_addr_s0[`CACHE_BLOCK_OFFSET-1:0];
-        mshr_dbf_atm_len_s0 = 7'(opennoc_hnf_pkg::hnf_atomic_elem_bytes(li_mshr_rxreq_atomic_op_s0,
+        mshr_dbf_atm_len_s0 = 7'(chie_pkg::atomic_elem_bytes(li_mshr_rxreq_atomic_op_s0,
                                                                        li_mshr_rxreq_size_s0));
         mshr_dbf_atm_end_s0 = li_mshr_rxreq_endian_s0;
     end

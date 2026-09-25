@@ -31,11 +31,11 @@ package {{ module }}_pkg;
 {% endfor %}
   };
   // SS16.1 (p.16-470): "If a property is not declared, it is considered False."
-  // Every RNF port here is OpenNoC's own rnf, which declares neither
-  // Direct_Cache_Transfer nor Cache_Stash_Transactions, so the Home this fabric
-  // serves must elect no forwarding snoop, and no stash target, among them.
-  localparam logic [RNF_NUM-1:0] RNF_DCT_LIST   = {RNF_NUM{1'b0}};
-  localparam logic [RNF_NUM-1:0] RNF_STASH_LIST = {RNF_NUM{1'b0}};
+  // Every RNF port here is OpenNoC's own rnf, which declares Direct_Cache_Transfer
+  // and Cache_Stash_Transactions True, so the Home this fabric serves may elect a
+  // forwarding snoop to any of them and name any of them a stash target.
+  localparam logic [RNF_NUM-1:0] RNF_DCT_LIST   = {RNF_NUM{1'b1}};
+  localparam logic [RNF_NUM-1:0] RNF_STASH_LIST = {RNF_NUM{1'b1}};
 endpackage
 
 module {{ module }}
@@ -68,6 +68,8 @@ module {{ module }}
   ,input  [`AXI4_ARADDR_WIDTH-1:0] {{ p.name }}_ARADDR
   ,input  [`AXI4_ARLEN_WIDTH-1:0]  {{ p.name }}_ARLEN
   ,input  [`AXI4_ARSIZE_WIDTH-1:0] {{ p.name }}_ARSIZE
+  ,input  [`AXI4_ARCACHE_WIDTH-1:0] {{ p.name }}_ARCACHE
+  ,input  [`AXI4_ARQOS_WIDTH-1:0]  {{ p.name }}_ARQOS
   ,input  [`AXI4_ARLOCK_WIDTH-1:0] {{ p.name }}_ARLOCK
   ,input  [`AXI4_ARUSER_WIDTH-1:0] {{ p.name }}_ARUSER
   ,input  {{ p.name }}_ARVALID
@@ -83,6 +85,8 @@ module {{ module }}
   ,input  [`AXI4_AWADDR_WIDTH-1:0] {{ p.name }}_AWADDR
   ,input  [`AXI4_AWLEN_WIDTH-1:0]  {{ p.name }}_AWLEN
   ,input  [`AXI4_AWSIZE_WIDTH-1:0] {{ p.name }}_AWSIZE
+  ,input  [`AXI4_AWCACHE_WIDTH-1:0] {{ p.name }}_AWCACHE
+  ,input  [`AXI4_AWQOS_WIDTH-1:0]  {{ p.name }}_AWQOS
   ,input  [`AXI4_AWLOCK_WIDTH-1:0] {{ p.name }}_AWLOCK
   ,input  [`AXI4_AWUSER_WIDTH-1:0] {{ p.name }}_AWUSER
   ,input  {{ p.name }}_AWVALID
@@ -97,11 +101,19 @@ module {{ module }}
   ,output [`AXI4_BRESP_WIDTH-1:0]  {{ p.name }}_BRESP
   ,output {{ p.name }}_BVALID
   ,input  {{ p.name }}_BREADY
-  // The core's intent, a ReadOnce*'s Order and cache maintenance, beside its AXI4
-  // port (rnf_defines.svh).
+  ,output [`AXI4_BUSER_WIDTH-1:0]  {{ p.name }}_BUSER
+  // The core's intent, a ReadOnce*'s Order, an atomic operation and cache
+  // maintenance, beside its AXI4 port (rnf_defines.svh).
   ,input  [`RNF_AR_COH_W-1:0]      {{ p.name }}_ARCOH
   ,input  [`RNF_AR_ORD_W-1:0]      {{ p.name }}_ARORD
   ,input  [`RNF_AW_COH_W-1:0]      {{ p.name }}_AWCOH
+  ,input  [`RNF_ATOP_W-1:0]        {{ p.name }}_AWATOP
+  ,input  [`RNF_ATM_W-1:0]         {{ p.name }}_AWATM
+  ,output [`AXI4_RDATA_WIDTH-1:0]  {{ p.name }}_BATDATA
+  ,input  {{ p.name }}_BROADCASTATOMIC
+  ,input  {{ p.name }}_BROADCASTMTE
+  ,input  [chie_pkg::NID_WIDTH-1:0] {{ p.name }}_STASHNID
+  ,input  {{ p.name }}_STASHNIDVALID
   ,input  {{ p.name }}_CMVALID
   ,output {{ p.name }}_CMREADY
   ,input  [`RNF_CM_OP_W-1:0]       {{ p.name }}_CMOP
@@ -135,12 +147,14 @@ module {{ module }}
 {% for dir, width, sig in chi_signals('RNF') %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})
 {% endfor %}
-{% for sig in ['ARID', 'ARADDR', 'ARLEN', 'ARSIZE', 'ARLOCK', 'ARUSER', 'ARVALID', 'ARREADY',
+{% for sig in ['ARID', 'ARADDR', 'ARLEN', 'ARSIZE', 'ARCACHE', 'ARQOS', 'ARLOCK', 'ARUSER', 'ARVALID', 'ARREADY',
                'RID', 'RDATA', 'RRESP', 'RUSER', 'RLAST', 'RVALID', 'RREADY',
-               'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
+               'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWCACHE', 'AWQOS', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
                'WDATA', 'WSTRB', 'WUSER', 'WLAST', 'WVALID', 'WREADY',
-               'BID', 'BRESP', 'BVALID', 'BREADY',
-               'ARCOH', 'ARORD', 'AWCOH', 'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
+               'BID', 'BRESP', 'BVALID', 'BREADY', 'BUSER',
+               'ARCOH', 'ARORD', 'AWCOH', 'AWATOP', 'AWATM', 'BATDATA', 'BROADCASTATOMIC', 'BROADCASTMTE',
+               'STASHNID', 'STASHNIDVALID',
+               'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})
 {% endfor %}
   );

@@ -74,13 +74,18 @@ module rnf `RNF_PARAM
 
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
     // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
-    // core's intent for the access, and ARORD asks a ReadOnce* for Request Order
-    // (rnf_defines.svh); AxLOCK makes it exclusive, AxUSER carries its MPAM label
-    // and W/RUSER its Poison (axi4_defines.svh).
+    // core's intent for the access, ARORD asks a ReadOnce* for Request Order, and
+    // AWATOP/AWATM make a write an atomic operation whose original value returns on
+    // BATDATA (rnf_defines.svh); AxCACHE names its memory type, AxQOS its QoS, AxLOCK
+    // makes it exclusive, AxUSER carries its MPAM label, W/RUSER its Poison, and
+    // AxUSER, W/RUSER and BUSER its MTE fields (rnf_defines.svh)
+    // (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE,
+    input  wire [`AXI4_ARCACHE_WIDTH-1:0] ARCACHE,
+    input  wire [`AXI4_ARQOS_WIDTH-1:0]  ARQOS,
     input  wire [`RNF_AR_COH_W-1:0]      ARCOH,
     input  wire [`RNF_AR_ORD_W-1:0]      ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK,
@@ -98,7 +103,11 @@ module rnf `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]  AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0] AWCACHE,
+    input  wire [`AXI4_AWQOS_WIDTH-1:0]  AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]      AWCOH,
+    input  wire [`RNF_ATOP_W-1:0]        AWATOP,
+    input  wire [`RNF_ATM_W-1:0]         AWATM,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0] AWUSER,
     input  wire                          AWVALID,
@@ -113,6 +122,17 @@ module rnf `RNF_PARAM
     output wire [`AXI4_BRESP_WIDTH-1:0]  BRESP,
     output wire                          BVALID,
     input  wire                          BREADY,
+    output wire [`AXI4_RDATA_WIDTH-1:0]  BATDATA,
+    output wire [`AXI4_BUSER_WIDTH-1:0]  BUSER,
+
+    // SS16.2.4 (p.16-476): Atomic transactions are generated only while asserted.
+    input  wire                          BROADCASTATOMIC,
+    // SS16.2.6 (p.16-476): requests and responses carry MTE only while asserted.
+    input  wire                          BROADCASTMTE,
+
+    // The Stash target of a stash write or maintenance operation (rnf_defines.svh).
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0] STASHNID,
+    input  wire                          STASHNIDVALID,
 
     // Core-side cache maintenance: one operation on one line (rnf_defines.svh).
     input  wire                                 CMVALID,
@@ -171,6 +191,14 @@ module rnf `RNF_PARAM
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_cb_hold_addr;
     wire                                 snp_line_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr;
+    wire [`RNF_WAY_W-1:0]                snp_vic_way;
+    wire [`RNF_CS_WIDTH-1:0]             snp_vic_state;
+    wire                                 pull_ready;
+    wire [11:0]                          pull_txnid;
+    wire                                 pull_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr;
+    wire [`RNF_WAY_W-1:0]                pull_way;
+    chie_pkg::req_opcode_e               pull_op;
 
     // A snoop response takes TXDAT ahead of a CopyBack, for the same reason it
     // takes TXRSP: SS4.11.1 (p.4-242, MUST) has the RN-F answer a snoop without
@@ -241,6 +269,8 @@ module rnf `RNF_PARAM
                      ,.snp_way_o    ( snp_lu_way       )
                      ,.snp_data_o   ( snp_lu_data      )
                      ,.snp_meta_o   ( snp_lu_meta       )
+                     ,.snp_vic_way_o  ( snp_vic_way     )
+                     ,.snp_vic_state_o( snp_vic_state   )
                      ,.upd_v_i      ( snp_upd_v        )
                      ,.upd_addr_i   ( snp_upd_addr     )
                      ,.upd_way_i    ( snp_upd_way      )
@@ -256,6 +286,7 @@ module rnf `RNF_PARAM
                      ,.rst_i                 ( RST              )
                      ,.prot_rxsnpflitv_i     ( prot_rxsnpflitv  )
                      ,.prot_rxsnpflit_i      ( prot_rxsnpflit   )
+                     ,.mte_en_i              ( BROADCASTMTE     )
                      ,.snp_pop_o             ( snp_pop          )
                      ,.defer_v_i             ( ctl_defer_v      )
                      ,.defer_addr_i          ( ctl_defer_addr   )
@@ -280,6 +311,14 @@ module rnf `RNF_PARAM
                      ,.snp_busy_o            ( snp_busy         )
                      ,.snp_line_v_o          ( snp_line_v       )
                      ,.snp_line_addr_o       ( snp_line_addr    )
+                     ,.cache_vic_way_i       ( snp_vic_way      )
+                     ,.cache_vic_state_i     ( snp_vic_state    )
+                     ,.pull_ready_i          ( pull_ready       )
+                     ,.pull_txnid_i          ( pull_txnid       )
+                     ,.pull_v_o              ( pull_v           )
+                     ,.pull_addr_o           ( pull_addr        )
+                     ,.pull_way_o            ( pull_way         )
+                     ,.pull_op_o             ( pull_op          )
                  );
 
     // A snoop response takes the channel first: it is what releases the Home's
@@ -294,6 +333,8 @@ module rnf `RNF_PARAM
                      ,.ARADDR                ( ARADDR               )
                      ,.ARLEN                 ( ARLEN                )
                      ,.ARSIZE                ( ARSIZE               )
+                     ,.ARCACHE               ( ARCACHE              )
+                     ,.ARQOS                 ( ARQOS                )
                      ,.ARCOH                 ( ARCOH                )
                      ,.ARORD                 ( ARORD                )
                      ,.ARLOCK                ( ARLOCK               )
@@ -311,7 +352,11 @@ module rnf `RNF_PARAM
                      ,.AWADDR                ( AWADDR               )
                      ,.AWLEN                 ( AWLEN                )
                      ,.AWSIZE                ( AWSIZE               )
+                     ,.AWCACHE               ( AWCACHE              )
+                     ,.AWQOS                 ( AWQOS                )
                      ,.AWCOH                 ( AWCOH                )
+                     ,.AWATOP                ( AWATOP               )
+                     ,.AWATM                 ( AWATM                )
                      ,.AWLOCK                ( AWLOCK               )
                      ,.AWUSER                ( AWUSER               )
                      ,.AWVALID               ( AWVALID              )
@@ -326,6 +371,12 @@ module rnf `RNF_PARAM
                      ,.BRESP                 ( BRESP                )
                      ,.BVALID                ( BVALID               )
                      ,.BREADY                ( BREADY               )
+                     ,.BATDATA               ( BATDATA              )
+                     ,.BUSER                 ( BUSER                )
+                     ,.BROADCASTATOMIC       ( BROADCASTATOMIC      )
+                     ,.BROADCASTMTE          ( BROADCASTMTE         )
+                     ,.STASHNID              ( STASHNID             )
+                     ,.STASHNIDVALID         ( STASHNIDVALID        )
                      ,.CMVALID               ( CMVALID              )
                      ,.CMREADY               ( CMREADY              )
                      ,.CMOP                  ( CMOP                 )
@@ -387,6 +438,12 @@ module rnf `RNF_PARAM
                      ,.cb_hold_addr_o        ( ctl_cb_hold_addr     )
                      ,.snp_line_v_i          ( snp_line_v           )
                      ,.snp_line_addr_i       ( snp_line_addr        )
+                     ,.pull_ready_o          ( pull_ready           )
+                     ,.pull_txnid_o          ( pull_txnid           )
+                     ,.pull_v_i              ( pull_v               )
+                     ,.pull_addr_i           ( pull_addr            )
+                     ,.pull_way_i            ( pull_way             )
+                     ,.pull_op_i             ( pull_op              )
                      ,.txn_active_o          ( txn_active           )
                  );
 
@@ -467,10 +524,12 @@ module rnf `RNF_PARAM
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
+    // The RN-F packetises by Data_Width (SS2.10.4 p.2-136), so it takes all three.
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM),
+        .ANY_DATA_WIDTH  (1'b1)
     ) u_chie_flit_opt_check ();
 
 endmodule
