@@ -2121,7 +2121,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_data_state_s0      = li_mshr_rxdat_valid_s0? li_mshr_rxdat_resp_s0:chie_pkg::RESP_I;
     assign mshr_rn_dat_get_i_s0    = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_I);
     assign mshr_rn_dat_get_uc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_UD);
-    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_UC_PD)) | ((mshr_ncb_dat_s0 | mshr_wrzero_inject_sx) & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_l3_alloc_s1_q[mshr_dat_entry_idx_s0]);
+    // Table 4-27 (p.4-200): CopyBackWrData_UD_PD and _SD_PD both pass responsibility for memory.
+    assign mshr_rn_dat_get_d_s0    = (mshr_rn_dat_s0 & (mshr_data_state_s0 inside {chie_pkg::RESP_UC_PD, chie_pkg::RESP_SD_PD})) | ((mshr_ncb_dat_s0 | mshr_wrzero_inject_sx) & mshr_wu_s1_q[mshr_dat_entry_idx_s0] & mshr_l3_alloc_s1_q[mshr_dat_entry_idx_s0]);
     assign mshr_rn_dat_get_sc_s0   = mshr_rn_dat_s0 & (mshr_data_state_s0 == chie_pkg::RESP_SC);
     assign mshr_rn_dat_get_i_sc_s0 = mshr_rn_dat_get_i_s0 | mshr_rn_dat_get_sc_s0;
 
