@@ -551,7 +551,8 @@ module hni `HNI_PARAM
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM),
+        .ANY_DATA_WIDTH  (1'b1)
     ) u_chie_flit_opt_check ();
 
 endmodule

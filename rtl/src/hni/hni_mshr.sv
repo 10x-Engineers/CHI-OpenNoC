@@ -203,8 +203,10 @@ module hni_mshr `HNI_PARAM
 
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxrsp_compack_s1_q;
 
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_data1_valid_s1_q;
-    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_data2_valid_s1_q;
+    logic [`HNI_PKTS-1:0]                   rxdat_pkts_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_PKTS-1:0]                   rxreq_rxpkts_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_PKTS-1:0]                   rxreq_txpkts_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [3:0]                             rxreq_rdchunks_s1_q[`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       dbf_rxdat_ok_s2_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxdat_compack_s1_q;
 
@@ -216,7 +218,7 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txrsp_entry_idx_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       txrsp_sent_q;
 
-    logic [1:0]                             txdat_fifo_rdy_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_PKTS-1:0]                   txdat_fifo_rdy_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [2*`HNI_MSHR_ENTRIES_NUM-1:0]     txdat_fifo_valid_s1_q;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_fifo_entry_idx_sx_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
     logic [1:0]                             txdat_fifo_dataid_s1_q[2*`HNI_MSHR_ENTRIES_NUM-1:0];
@@ -224,7 +226,7 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_WIDTH:0]       txdat_fifo_cnt_sx_q;
     logic                                   txdat_en_sx_q;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     txdat_entry_idx_sx_q;
-    logic [1:0]                             txdat_sent_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`HNI_PKTS-1:0]                   txdat_sent_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
 
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       arvalid_fifo_s1_q;
     logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]     arvalid_fifo_idx_sx_q[`HNI_MSHR_ENTRIES_NUM-1:0];
@@ -287,6 +289,7 @@ module hni_mshr `HNI_PARAM
     wire [11:0]                            rxreq_txnid_s0;
     chie_pkg::req_opcode_e                 rxreq_opcode_s0;
     chie_pkg::size_e                       rxreq_size_s0;
+    chie_pkg::size_e                       rxreq_ret_size_s0;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]    rxreq_addr_s0;
     wire                                   rxreq_ns_s0;
     wire                                   rxreq_allowretry_s0;
@@ -338,8 +341,7 @@ module hni_mshr `HNI_PARAM
     wire [11:0]                            rxdat_entry_idx_s0;
     chie_pkg::dat_opcode_e                 rxdat_opcode_s0;
     wire [1:0]                             rxdat_dataid_s0;
-    wire                                   rxdat_data1_valid_s0;
-    wire                                   rxdat_data2_valid_s0;
+    wire [`HNI_PKT_IDX_W-1:0]              rxdat_pkt_s0;
     wire                                   rxdat_ok_real_s1;
     wire                                   dbf_rxdat_ok_s1;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]     rxdat_ok_idx_s1;
@@ -358,10 +360,10 @@ module hni_mshr `HNI_PARAM
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat_done_sx;
     chie_pkg::size_e                       atomic_ret_size_sx;
     wire [chie_pkg::BE_WIDTH:0]            atomic_ret_bytes_sx;
-    wire [4:0]                             atomic_ret_off_sx;
+    wire [5:0]                             atomic_ret_off_sx;
     wire                                   txdat_en_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat1_en_sx;
-    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat2_en_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]       txdat_ready_sx;
+    logic [`HNI_PKT_IDX_W-1:0]             txdat_en_pkt_sx;
     wire [`HNI_MSHR_ENTRIES_NUM-1:0]       rdat_allrcvd_sx;
     wire                                   arvalid_en_s1;
     wire                                   arvalid_en2_s1;
@@ -541,6 +543,31 @@ module hni_mshr `HNI_PARAM
             assign mshr_entry_alloc_sx[entry] = (rxreq_alloc_en_s0 == 1'b1) && (mshr_entry_idx_alloc_s0 == entry);
         end
     endgenerate
+
+    // Sec 2.10.4 (p.2-136): "the number of data packets required is determined only
+    // by the Size field and the data bus width" -- the packets the Size-aligned window
+    // around Addr covers, each Data_Width/8 bytes.
+    function automatic logic [`HNI_PKTS-1:0] size_window_pkts(logic [5:0] a, chie_pkg::size_e sz);
+        int unsigned nb, lo;
+        nb = 32'd1 << sz;
+        lo = {26'd0, a} & ~(nb - 32'd1);
+        for (int unsigned p = 0; p < `HNI_PKTS; p = p + 1)
+            size_window_pkts[p] = ((p + 1) * chie_pkg::BE_WIDTH > lo) && (p * chie_pkg::BE_WIDTH < lo + nb);
+    endfunction
+
+    // The 16-byte chunks the AXI read returns: the Size window, and for Device only
+    // the bytes from Addr on (Sec 2.10.2 p.2-134).
+    function automatic logic [3:0] read_chunks(logic [5:0] a, chie_pkg::size_e sz, logic dev);
+        int unsigned nb, lo;
+        nb = 32'd1 << sz;
+        lo = {26'd0, a} & ~(nb - 32'd1);
+        for (int unsigned c = 0; c < 4; c = c + 1)
+            read_chunks[c] = ((c + 1) * 16 > lo) && (c * 16 < lo + nb) && ((!dev) || (c >= {30'd0, a[5:4]}));
+    endfunction
+
+    // Sec 4.2.5 (p.4-187, MUST): an AtomicCompare's inbound data is half its outbound.
+    assign rxreq_ret_size_s0 = ((rxreq_opcode_s0 == chie_pkg::REQ_ATOMICCOMPARE) && (rxreq_size_s0 != chie_pkg::SIZE_1B))
+                             ? chie_pkg::size_e'(rxreq_size_s0 - 3'b001) : rxreq_size_s0;
 
     //ax channel signal
     assign rxreq_axsize_s0  = ((rxreq_size_s0 == 3'b110) | (rxreq_size_s0 == 3'b101)) ? 3'b100 : rxreq_size_s0;
@@ -840,6 +867,19 @@ module hni_mshr `HNI_PARAM
                     rxreq_ccid_s1_q[entry] <= rxreq_addr_s0[5:4];
             end
 
+            always_ff @(posedge clk or posedge rst)begin : mshr_window_s1_q_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1) begin
+                    rxreq_rxpkts_s1_q[entry]   <= '0;
+                    rxreq_txpkts_s1_q[entry]   <= '0;
+                    rxreq_rdchunks_s1_q[entry] <= 4'b0000;
+                end
+                else if(mshr_entry_alloc_sx[entry] == 1'b1) begin
+                    rxreq_rxpkts_s1_q[entry]   <= size_window_pkts(rxreq_addr_s0[5:0], rxreq_size_s0);
+                    rxreq_txpkts_s1_q[entry]   <= size_window_pkts(rxreq_addr_s0[5:0], rxreq_ret_size_s0);
+                    rxreq_rdchunks_s1_q[entry] <= read_chunks(rxreq_addr_s0[5:0], rxreq_size_s0, rxreq_device_s0);
+                end
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_excl_pass_s_q_logic
                 if(rst == 1'b1)begin
                     rxreq_excl_pass_s2_q[entry] <= 1'b0;
@@ -935,8 +975,7 @@ module hni_mshr `HNI_PARAM
     assign rxdat_opcode_s0          = dbf_rxdat_opcode_s0;
     assign rxdat_dataid_s0          = dbf_rxdat_dataid_s0;
 
-    assign rxdat_data1_valid_s0     = (rxdat_valid_s0 == 1'b1) ? (rxdat_dataid_s0 == 2'b00) : 1'b0;
-    assign rxdat_data2_valid_s0     = (rxdat_valid_s0 == 1'b1) ? (rxdat_dataid_s0 == 2'b10) : 1'b0;
+    assign rxdat_pkt_s0             = `HNI_PKT_IDX_W'(rxdat_dataid_s0 >> `HNI_PKT_CHUNKS_LOG2);
 
     always_ff @(posedge clk or posedge rst) begin: rxdat_logic
         if(rst == 1'b1) begin
@@ -951,26 +990,13 @@ module hni_mshr `HNI_PARAM
 
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin : mshr_dat_entry_vec_s0_logic
-            always_ff @(posedge clk or posedge rst)begin : rxdat_data1_valid_s1_q_logic
+            always_ff @(posedge clk or posedge rst)begin : rxdat_pkts_s1_q_logic
                 if(rst == 1'b1)
-                    rxdat_data1_valid_s1_q[entry] <= 0;
+                    rxdat_pkts_s1_q[entry] <= '0;
                 else if(retired_entry_sx[entry] == 1'b1)
-                    rxdat_data1_valid_s1_q[entry] <= 1'b0;
-                else if((rxdat_data1_valid_s0 == 1'b1) && (entry == rxdat_entry_idx_s0))
-                    rxdat_data1_valid_s1_q[entry] <= 1'b1;
-                else
-                    ;
-            end
-
-            always_ff @(posedge clk or posedge rst)begin : rxdat_data2_valid_s1_q_logic
-                if(rst == 1'b1)
-                    rxdat_data2_valid_s1_q[entry] <= 0;
-                else if(retired_entry_sx[entry] == 1'b1)
-                    rxdat_data2_valid_s1_q[entry] <= 1'b0;
-                else if((rxdat_data2_valid_s0 == 1'b1) && (entry == rxdat_entry_idx_s0))
-                    rxdat_data2_valid_s1_q[entry] <= 1'b1;
-                else
-                    ;
+                    rxdat_pkts_s1_q[entry] <= '0;
+                else if(rxdat_valid_s0 && (entry == rxdat_entry_idx_s0))
+                    rxdat_pkts_s1_q[entry][rxdat_pkt_s0] <= 1'b1;
             end
 
             always_ff @(posedge clk or posedge rst)begin : rxdat_data_ok_logic
@@ -997,9 +1023,14 @@ module hni_mshr `HNI_PARAM
         end
     endgenerate
 
-    assign rxdat_ok_real_s1 = dbf_rxdat_valid_s1_q ? (rxreq_size_s1_q[dbf_rxdat_txnid_s1_q] == 3'b110 ? 
-                            (rxdat_data1_valid_s1_q[dbf_rxdat_txnid_s1_q] & rxdat_data2_valid_s1_q[dbf_rxdat_txnid_s1_q]) : 
-                            (rxdat_data1_valid_s1_q[dbf_rxdat_txnid_s1_q] | rxdat_data2_valid_s1_q[dbf_rxdat_txnid_s1_q])) : 1'b0;
+    // Sec 2.10.4 (p.2-136): the write data is complete once every packet of the
+    // request's Size window is in. A DVMOp's payload is not addressed, so any packet
+    // completes it.
+    assign rxdat_ok_real_s1 = dbf_rxdat_valid_s1_q
+                            && ((rxreq_opcode_s1_q[dbf_rxdat_txnid_s1_q] == chie_pkg::REQ_DVMOP)
+                                ? (|rxdat_pkts_s1_q[dbf_rxdat_txnid_s1_q])
+                                : ((rxdat_pkts_s1_q[dbf_rxdat_txnid_s1_q] & rxreq_rxpkts_s1_q[dbf_rxdat_txnid_s1_q])
+                                   == rxreq_rxpkts_s1_q[dbf_rxdat_txnid_s1_q]));
 
     // A sleeping entry has not reached the head of its same-address chain, so its
     // write must not be issued yet: the Home withholds the DBID grant until wakeup,
@@ -1271,38 +1302,46 @@ module hni_mshr `HNI_PARAM
             // SS9.4.1 (p.9-337, MUST) rule this expresses is over the beats the burst
             // actually asked for, which SS2.10.4 (p.2-136) then still owes two data
             // packets for -- "it is required that these data packets are transferred".
-            wire [3:0] rdat_expect_mask_sx = rxreq_device_s1_q[entry] ?
-                                        (4'b1111 << rxreq_ccid_s1_q[entry]) : 4'b1111;
-            assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == 3'b110) ?
-                                        ((rdat_pdmask_q[entry] & rdat_expect_mask_sx) == rdat_expect_mask_sx) : 1'b1;
+            // The chunks the AXI read asked for (read_chunks above) are what gate the
+            // first packet, however few of the line they are.
+            assign rdat_allrcvd_sx[entry] = ((rdat_pdmask_q[entry] & rxreq_rdchunks_s1_q[entry]) == rxreq_rdchunks_s1_q[entry]);
 
             // Sec 9.4.4 (p.9-342): an executed Atomic's CompData is the delayed form that
             // can still report its write -- sent once that access is done. An AtomicStore
             // read memory too, but returns none of it (Table 4-40 p.4-220).
-            assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0]) & rdat_allrcvd_sx[entry]
-                                          & ((~rxreq_atm_s1_q[entry])
-                                             | (atm_access_done_sx[entry] & chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[entry])))) ? 
-                                        (rxreq_device_s1_q[entry] ? (rxreq_ccid_s1_q[entry]==2'b11 ? (rdat_pdmask_q[entry][3]==1'b1) : 
-                                        (rxreq_ccid_s1_q[entry]==2'b10 ? ((rdat_pdmask_q[entry][3:2]==2'b11) | ((rdat_pdmask_q[entry][2]==1'b1) && (rxreq_size_s1_q[entry]<=3'b100))) : 
-                                        (rxreq_ccid_s1_q[entry]==2'b01 ? (rdat_pdmask_q[entry][1]==1'b1) :
-                                        ((rdat_pdmask_q[entry][1:0]==2'b11) | ((rdat_pdmask_q[entry][0]==1'b1) && (rxreq_size_s1_q[entry]<=3'b100)))))) : 
-                                        (rxreq_size_s1_q[entry]<=3'b100) ? rdat_pdmask_q[entry][rxreq_ccid_s1_q[entry]]==1'b1 : 
-                                        (rxreq_ccid_s1_q[entry][1]==1'b1 ? rdat_pdmask_q[entry][3:2]==2'b11 :
-                                        ((rxreq_ccid_s1_q[entry][1]==1'b0) & (rdat_pdmask_q[entry][1:0]==2'b11)))) : 1'b0;
-            assign txdat2_en_sx[entry] = (rdat_valid_q[entry] & (rxreq_size_s1_q[entry]==3'b110) & (txdat_fifo_rdy_sx_q[entry][0]) & (~txdat_fifo_rdy_sx_q[entry][1])) ? 
-                                        (rxreq_ccid_s1_q[entry][1] ? (rxreq_device_s1_q[entry] ? 1'b1 : rdat_pdmask_q[entry][1:0]==2'b11) : 
-                                        rdat_pdmask_q[entry][3:2]==2'b11) : 1'b0;
+            assign txdat_ready_sx[entry] = rdat_valid_q[entry] & rdat_allrcvd_sx[entry]
+                                         & (|(rxreq_txpkts_s1_q[entry] & ~txdat_fifo_rdy_sx_q[entry]))
+                                         & ((~rxreq_atm_s1_q[entry])
+                                            | (atm_access_done_sx[entry] & chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[entry])));
         end
     endgenerate
-    assign txdat_en_sx = ((|txdat1_en_sx) || (|txdat2_en_sx));
+    assign txdat_en_sx = |txdat_ready_sx;
 
     // One packet is enqueued per cycle, so the enqueue must name the entry that won it
     // rather than whichever entry last took AXI read data.
     always_comb begin: txdat_en_idx_comb_logic
         txdat_en_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
-            if (txdat1_en_sx[m] | txdat2_en_sx[m])
+            if (txdat_ready_sx[m])
                 txdat_en_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
+        end
+    end
+
+    // The packets go critical chunk first and wrap (Sec 2.10.6 p.2-139).
+    always_comb begin: txdat_en_pkt_comb_logic
+        logic [`HNI_PKT_IDX_W-1:0] crit, p;
+        logic [`HNI_PKTS-1:0]      pend;
+        logic                      found;
+        crit  = `HNI_PKT_IDX_W'(rxreq_ccid_s1_q[txdat_en_idx_sx] >> `HNI_PKT_CHUNKS_LOG2);
+        pend  = rxreq_txpkts_s1_q[txdat_en_idx_sx] & ~txdat_fifo_rdy_sx_q[txdat_en_idx_sx];
+        found = 1'b0;
+        txdat_en_pkt_sx = crit;
+        for (int unsigned r = 0; r < `HNI_PKTS; r = r + 1) begin
+            p = `HNI_PKT_IDX_W'((32'(crit) + r) % `HNI_PKTS);
+            if (!found && pend[p]) begin
+                txdat_en_pkt_sx = p;
+                found = 1'b1;
+            end
         end
     end
 
@@ -1323,8 +1362,7 @@ module hni_mshr `HNI_PARAM
                 else if (txdat_en_sx && (txdat_fifo_set_s1_q == entry)) begin
                     txdat_fifo_valid_s1_q[entry]        <= 1'b1;
                     txdat_fifo_entry_idx_sx_q[entry]    <= txdat_en_idx_sx;
-                    txdat_fifo_dataid_s1_q[entry]       <= (txdat1_en_sx[txdat_en_idx_sx]) ? ((rxreq_ccid_s1_q[txdat_en_idx_sx][1]) ? 2'b10 : 2'b00) 
-                                                            : ((rxreq_ccid_s1_q[txdat_en_idx_sx][1]) ? 2'b00 : 2'b10);
+                    txdat_fifo_dataid_s1_q[entry]       <= 2'({txdat_en_pkt_sx, 2'b00} >> (2 - `HNI_PKT_CHUNKS_LOG2));
                 end
             end
         end
@@ -1334,26 +1372,22 @@ module hni_mshr `HNI_PARAM
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             always_ff @(posedge clk or posedge rst)begin: txdat_fifo_rdy_logic
                 if (rst)begin
-                    txdat_fifo_rdy_sx_q[entry]      <= 2'b00;
+                    txdat_fifo_rdy_sx_q[entry]      <= '0;
                 end
-                else if (txdat1_en_sx[entry] && (txdat_en_idx_sx == entry))
-                    txdat_fifo_rdy_sx_q[entry][0]   <= 1'b1;
-                else if (txdat2_en_sx[entry] && (txdat_en_idx_sx == entry))
-                    txdat_fifo_rdy_sx_q[entry][1]   <= 1'b1;
+                else if (txdat_en_sx && (txdat_en_idx_sx == entry))
+                    txdat_fifo_rdy_sx_q[entry][txdat_en_pkt_sx] <= 1'b1;
                 else if (retired_entry_sx[entry])
-                    txdat_fifo_rdy_sx_q[entry]      <= 2'b00;
+                    txdat_fifo_rdy_sx_q[entry]      <= '0;
             end
 
             always_ff @(posedge clk or posedge rst)begin: txdat_sent_logic
                 if (rst)begin
-                    txdat_sent_sx_q[entry]      <= 2'b00;
+                    txdat_sent_sx_q[entry]      <= '0;
                 end
-                else if (mshr_txdat_won_sx && (txdat_entry_idx_sx_q == entry) && (mshr_txdat_dataid_sx == 2'b00))
-                    txdat_sent_sx_q[entry][0]   <= 1'b1;
-                else if (mshr_txdat_won_sx && (txdat_entry_idx_sx_q == entry) && (mshr_txdat_dataid_sx == 2'b10))
-                    txdat_sent_sx_q[entry][1]   <= 1'b1;
+                else if (mshr_txdat_won_sx && (txdat_entry_idx_sx_q == entry))
+                    txdat_sent_sx_q[entry][`HNI_PKT_IDX_W'(mshr_txdat_dataid_sx >> `HNI_PKT_CHUNKS_LOG2)] <= 1'b1;
                 else if (retired_entry_sx[entry])
-                    txdat_sent_sx_q[entry]      <= 2'b00;
+                    txdat_sent_sx_q[entry]      <= '0;
             end
         end
     endgenerate
@@ -1423,13 +1457,13 @@ module hni_mshr `HNI_PARAM
     assign atomic_ret_bytes_sx = {{chie_pkg::BE_WIDTH{1'b0}},1'b1} << atomic_ret_size_sx;
     // Sec 2.10.4 (p.2-136): "all bytes are located at their natural byte positions",
     // and Sec 2.10.5 (p.2-137) puts the returned value at the addressed byte.
-    assign atomic_ret_off_sx   = rxreq_addr_s1_q[txdat_entry_idx_sx_q][4:0];
+    assign atomic_ret_off_sx   = rxreq_addr_s1_q[txdat_entry_idx_sx_q][5:0] & 6'(chie_pkg::BE_WIDTH - 1);
     assign mshr_txdat_be_ovr_en_sx = chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[txdat_entry_idx_sx_q]);
 
     always_comb begin: mshr_txdat_be_ovr_comb_logic
         integer lo, hi;
-        lo = {27'b0, atomic_ret_off_sx};
-        hi = lo + atomic_ret_bytes_sx[31:0];
+        lo = {26'b0, atomic_ret_off_sx};
+        hi = lo + 32'(atomic_ret_bytes_sx);
         mshr_txdat_be_ovr_sx = '0;
         for(int m=0; m<chie_pkg::BE_WIDTH; m=m+1)begin
             if ((m >= lo) && (m < hi))
@@ -1820,7 +1854,7 @@ module hni_mshr `HNI_PARAM
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign compack_ok_sx[entry]     = rxrsp_compack_s1_q[entry]|rxdat_compack_s1_q[entry];
-            assign txdat_done_sx[entry]     = (txdat_sent_sx_q[entry] == 2'b11) | ((rxreq_size_s1_q[entry] <= 3'b101) & (|txdat_sent_sx_q[entry]));
+            assign txdat_done_sx[entry]     = ((txdat_sent_sx_q[entry] & rxreq_txpkts_s1_q[entry]) == rxreq_txpkts_s1_q[entry]);
             assign txrsp_all_sent_sx[entry] = txrsp_sent_q[entry]
                                             & (~(rxreq_cw_s1_q[entry] & (~txrsp_second_sent_q[entry])))
                                             & (~(rxreq_comp_owed_s1_q[entry] & (~txrsp_comp_sent_q[entry])))
