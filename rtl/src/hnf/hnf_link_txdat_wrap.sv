@@ -46,10 +46,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
 
     //inputs from hnf_data_buffer
     input  wire                              dbf_txdat_valid_sx1,
-    input  wire [chie_pkg::DATA_WIDTH*2-1:0] dbf_txdat_data_sx1,
+    input  wire [`CACHE_LINE_WIDTH-1:0]      dbf_txdat_data_sx1,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]    dbf_txdat_idx_sx1,
-    input  wire [chie_pkg::BE_WIDTH*2-1:0]   dbf_txdat_be_sx1,
-    input  wire [1:0]                        dbf_txdat_pe_sx1,
+    input  wire [`CACHE_BE_WIDTH-1:0]        dbf_txdat_be_sx1,
+    input  wire [`HNF_PKTS-1:0]              dbf_txdat_pe_sx1,
     input  wire [`CACHE_POISON_WIDTH-1:0]    dbf_txdat_poison_sx1,
     input  wire [`CACHE_TAGV_WIDTH-1:0]      dbf_txdat_tagv_sx1,
     input  wire [1:0]                        mshr_dbf_rd_tagop_sx1,
@@ -73,16 +73,16 @@ module hnf_link_txdat_wrap `HNF_PARAM
     //internal reg signals
     chie_pkg::dat_flit_s                txdatflit_mshr_s0;
     logic                               dbf_txdat_valid_entry1_sx;
-    logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry1_sx;
+    logic [`CACHE_LINE_WIDTH-1:0]       dbf_txdat_data_entry1_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry1_sx;
-    logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry1_sx;
-    logic [1:0]                         dbf_txdat_pe_entry1_sx;
+    logic [`CACHE_BE_WIDTH-1:0]         dbf_txdat_be_entry1_sx;
+    logic [`HNF_PKTS-1:0]               dbf_txdat_pe_entry1_sx;
     logic                               dbf_txdat_to_rn_entry1_sx;
     logic                               dbf_txdat_valid_entry2_sx;
-    logic [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_entry2_sx;
+    logic [`CACHE_LINE_WIDTH-1:0]       dbf_txdat_data_entry2_sx;
     logic [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_entry2_sx;
-    logic [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_entry2_sx;
-    logic [1:0]                         dbf_txdat_pe_entry2_sx;
+    logic [`CACHE_BE_WIDTH-1:0]         dbf_txdat_be_entry2_sx;
+    logic [`HNF_PKTS-1:0]               dbf_txdat_pe_entry2_sx;
     logic                               dbf_txdat_to_rn_entry2_sx;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] txdat_crd_cnt_q;
     logic [`HNF_LCRD_DAT_CNT_WIDTH-1:0] dat_crd_cnt_ns_s0;
@@ -138,38 +138,30 @@ module hnf_link_txdat_wrap `HNF_PARAM
     assign txdat_crd_cnt_inc_sx    = txdatcrdv_s0;
     assign txdat_req_s0            = (dbf_txdat_valid_entry1_sx | dbf_txdat_valid_entry2_sx_ns);
 
-    //determine dataid
-    assign mshr_txdat_dataid_sx_ns =    ({2{dbf_txdat_valid_entry2_sx_ns & dbf_txdat_pe_entry2_sx[0]}}    & 2'b00) |
-           ({2{dbf_txdat_valid_entry2_sx_ns & (~dbf_txdat_pe_entry2_sx[0])}} & 2'b10) |
-           ({2{(~dbf_txdat_valid_entry2_sx_ns) & dbf_txdat_pe_entry1_sx[0]}} & 2'b00) |
-           ({2{(~dbf_txdat_valid_entry2_sx_ns) & (~dbf_txdat_pe_entry1_sx[0])}} & 2'b10);
+    // The lowest packet an entry still owes goes next; its DataID follows Table 2-15
+    // (SS2.10.4 p.2-136).
+    function automatic int unsigned first_pkt(logic [`HNF_PKTS-1:0] pe);
+        first_pkt = `HNF_PKTS - 1;
+        for (int p = `HNF_PKTS - 1; p >= 0; p--)
+            if (pe[p]) first_pkt = p;
+    endfunction
 
-    always_comb begin: txdat_be_sel_comb_logic
-        mshr_txdat_be_sx_ns = '0;
-        if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[chie_pkg::BE_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry2_sx[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
-        else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[chie_pkg::BE_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_be_sx_ns = dbf_txdat_be_entry1_sx[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
-        else
-            ;
-    end
+    wire [`HNF_PKTS-1:0] txdat_pe_sx_ns  = dbf_txdat_valid_entry2_sx_ns ? dbf_txdat_pe_entry2_sx : dbf_txdat_pe_entry1_sx;
+    int unsigned         txdat_pkt_sx_ns;
+    assign txdat_pkt_sx_ns = first_pkt(txdat_pe_sx_ns);
+    assign mshr_txdat_dataid_sx_ns = opennoc_hnf_pkg::hnf_dataid_of_pkt(txdat_pkt_sx_ns);
 
     always_comb begin: txdat_data_sel_comb_logic
+        mshr_txdat_be_sx_ns   = '0;
         mshr_txdat_data_sx_ns = '0;
-        if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[chie_pkg::DATA_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry2_sx_ns)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
-        else if(mshr_txdat_dataid_sx_ns == 2'b00 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[chie_pkg::DATA_WIDTH-1:0];
-        else if(mshr_txdat_dataid_sx_ns == 2'b10 & dbf_txdat_valid_entry1_sx)
-            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
-        else
-            ;
+        if(dbf_txdat_valid_entry2_sx_ns) begin
+            mshr_txdat_be_sx_ns   = dbf_txdat_be_entry2_sx[txdat_pkt_sx_ns*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry2_sx[txdat_pkt_sx_ns*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH];
+        end
+        else if(dbf_txdat_valid_entry1_sx) begin
+            mshr_txdat_be_sx_ns   = dbf_txdat_be_entry1_sx[txdat_pkt_sx_ns*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH];
+            mshr_txdat_data_sx_ns = dbf_txdat_data_entry1_sx[txdat_pkt_sx_ns*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH];
+        end
     end
 
     assign dbf_txdat_sb_sx1 = '{poison: dbf_txdat_poison_sx1, tagv: dbf_txdat_tagv_sx1, rd_tagop: mshr_dbf_rd_tagop_sx1,
@@ -183,18 +175,14 @@ module hnf_link_txdat_wrap `HNF_PARAM
             mshr_txdat_sb_sx_ns = dbf_txdat_sb_entry1_sx;
     end
 
-    assign mshr_txdat_poison_sx_ns = (mshr_txdat_dataid_sx_ns == 2'b10)
-                                   ? mshr_txdat_sb_sx_ns.poison[chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH]
-                                   : mshr_txdat_sb_sx_ns.poison[0 +: chie_pkg::POISON_WIDTH];
+    assign mshr_txdat_poison_sx_ns = mshr_txdat_sb_sx_ns.poison[txdat_pkt_sx_ns*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH];
 
     // SS13.10.38 (p.13-435): a packet carries the tags of the granules its DataID names.
     always_comb begin: txdat_tagop_sel_comb_logic
-        logic                            upper;
         logic [chie_pkg::TAG_WIDTH-1:0]  pkt_tag;
         logic [chie_pkg::TU_WIDTH-1:0]   pkt_valid;
-        upper      = (mshr_txdat_dataid_sx_ns == 2'b10);
-        pkt_tag   = mshr_txdat_sb_sx_ns.tagv.tag[(upper ? chie_pkg::TAG_WIDTH : 0) +: chie_pkg::TAG_WIDTH];
-        pkt_valid = mshr_txdat_sb_sx_ns.tagv.valid[(upper ? chie_pkg::TU_WIDTH : 0) +: chie_pkg::TU_WIDTH];
+        pkt_tag   = mshr_txdat_sb_sx_ns.tagv.tag[txdat_pkt_sx_ns*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH];
+        pkt_valid = mshr_txdat_sb_sx_ns.tagv.valid[txdat_pkt_sx_ns*chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH];
         mshr_txdat_rsp_tagop_sx_ns = chie_pkg::TAGOP_INVALID;
         mshr_txdat_tag_sx_ns       = '0;
         mshr_txdat_tu_sx_ns        = '0;
@@ -207,7 +195,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
                     mshr_txdat_tu_sx_ns  = pkt_valid;
                 end
                 chie_pkg::TAGOP_TRANSFER: mshr_txdat_tag_sx_ns = pkt_tag;
-                chie_pkg::TAGOP_MATCH:    mshr_txdat_tag_sx_ns = mshr_txdat_sb_sx_ns.match_tag[(upper ? chie_pkg::TAG_WIDTH : 0) +: chie_pkg::TAG_WIDTH];
+                chie_pkg::TAGOP_MATCH:    mshr_txdat_tag_sx_ns = mshr_txdat_sb_sx_ns.match_tag[txdat_pkt_sx_ns*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH];
                 default: ;
             endcase
         end
@@ -281,12 +269,12 @@ module hnf_link_txdat_wrap `HNF_PARAM
     end
 
 
-    //deallocate entry if flit sent
+    //deallocate entry once its last packet is sent
     assign dbf_txdat_entry1_dealloc_sx = (txdatflitv_s0 & txdat_crd_avail_s1) & dbf_txdat_valid_entry1_sx &(~dbf_txdat_valid_entry2_sx_ns) & ~dbf_txdat_entry2_dealloc_sx &
-           (dbf_txdat_pe_entry1_sx[0] ^ dbf_txdat_pe_entry1_sx[1]);
+           $onehot(dbf_txdat_pe_entry1_sx);
 
     assign dbf_txdat_entry2_dealloc_sx = (txdatflitv_s0 & txdat_crd_avail_s1) & dbf_txdat_valid_entry2_sx_ns &
-           (dbf_txdat_pe_entry2_sx[0] ^ dbf_txdat_pe_entry2_sx[1]);
+           $onehot(dbf_txdat_pe_entry2_sx);
 
     assign txdat_mshr_busy_sx = (dbf_txdat_valid_entry1_sx && dbf_txdat_valid_entry2_sx);
 
@@ -365,7 +353,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     end
 
     //the read's direction rides the same two slots as its index, so it survives
-    //both packets of a 64B CompData and cannot be re-derived from entry state
+    //every packet of a 64B CompData and cannot be re-derived from entry state
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_to_rn_entry1_sx_logic_t
         if(rst == 1'b1)
             dbf_txdat_to_rn_entry1_sx <= 1'b0;
@@ -444,25 +432,25 @@ module hnf_link_txdat_wrap `HNF_PARAM
     //receive dbf_txdat_valid_sx1, pass pe
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_pe_entry1_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_pe_entry1_sx <= 2'b00;
+            dbf_txdat_pe_entry1_sx <= '0;
         else if(dbf_txdat_valid_sx1 && !dbf_txdat_valid_entry1_sx)
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_sx1;
         // Table 14-2 ACTIVATE (p.14-450, MUST): a credit must not be used until the
         // link is in RUN. Advancing the packet-enable pointer outside it drops the
         // beat it selects and leaves the entry undeallocatable.
         else if(dbf_txdat_valid_entry1_sx & (~dbf_txdat_valid_entry2_sx_ns) & (~txdat_busy_sx))
-            dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_entry1_sx[0]?{dbf_txdat_pe_entry1_sx[1],1'b0}:2'b00;
+            dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_entry1_sx & (dbf_txdat_pe_entry1_sx - 1'b1);
         else
             dbf_txdat_pe_entry1_sx <= dbf_txdat_pe_entry1_sx;
     end
 
     always_ff @(posedge clk or posedge rst) begin: dbf_txdat_pe_entry2_sx_logic_t
         if(rst == 1'b1)
-            dbf_txdat_pe_entry2_sx <= 2'b00;
+            dbf_txdat_pe_entry2_sx <= '0;
         else if(dbf_txdat_valid_sx1 && dbf_txdat_valid_entry1_sx && !dbf_txdat_valid_entry2_sx)
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_sx1;
         else if( dbf_txdat_valid_entry2_sx_ns & (~txdat_busy_sx))
-            dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_entry2_sx[0]?{dbf_txdat_pe_entry2_sx[1],1'b0}:2'b00;
+            dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_entry2_sx & (dbf_txdat_pe_entry2_sx - 1'b1);
         else
             dbf_txdat_pe_entry2_sx <= dbf_txdat_pe_entry2_sx;
     end

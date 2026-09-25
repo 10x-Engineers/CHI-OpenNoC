@@ -215,10 +215,10 @@ module hnf `HNF_PARAM
     wire [1:0]                               mshr_dbf_rd_tagop_sx1;
     wire [1:0]                               mshr_dbf_rd_dn_tagop_sx1;
     wire [`CACHE_TAG_WIDTH-1:0]              dbf_txdat_match_tag_sx1;
-    wire [chie_pkg::DATA_WIDTH*2-1:0]        dbf_txdat_data_sx1;
+    wire [`CACHE_LINE_WIDTH-1:0]             dbf_txdat_data_sx1;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           dbf_txdat_idx_sx1;
-    wire [chie_pkg::BE_WIDTH*2-1:0]          dbf_txdat_be_sx1;
-    wire [1:0]                               dbf_txdat_pe_sx1;
+    wire [`CACHE_BE_WIDTH-1:0]               dbf_txdat_be_sx1;
+    wire [`HNF_PKTS-1:0]                     dbf_txdat_pe_sx1;
     wire [`CACHE_POISON_WIDTH-1:0]           dbf_txdat_poison_sx1;
     wire [`CACHE_TAGV_WIDTH-1:0]             dbf_txdat_tagv_sx1;
     wire                                     dbf_txdat_valid_sx1;
@@ -330,13 +330,13 @@ module hnf `HNF_PARAM
     wire [6:0]                               mshr_dbf_atm_len_s0;
     wire                                     mshr_dbf_atm_end_s0;
     wire                                     mshr_dbf_rd_atm_sx1;
-    wire [chie_pkg::BE_WIDTH*2-1:0]          mshr_dbf_rd_atm_be_sx1;
-    wire [1:0]                               mshr_dbf_rd_atm_pe_sx1;
-    wire [1:0]                               mshr_dbf_rd_pe_sx1    ;
+    wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_rd_atm_be_sx1;
+    wire [`HNF_PKTS-1:0]                     mshr_dbf_rd_atm_pe_sx1;
+    wire [`HNF_PKTS-1:0]                     mshr_dbf_rd_pe_sx1    ;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_home_fill_idx_sx1_q;
     wire                                     mshr_dbf_home_fill_valid_sx1_q;
     wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_home_fill_be_sx1_q;
-    wire [1:0]                               mshr_dbf_home_fill_pe_sx1_q;
+    wire [`HNF_PKTS-1:0]                     mshr_dbf_home_fill_pe_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_dbf_retired_idx_sx1_q;
     wire                                     mshr_dbf_retired_valid_sx1_q;
     wire                                     mshr_l3_req_en_sx1_q;
@@ -1199,7 +1199,8 @@ module hnf `HNF_PARAM
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM),
+        .ANY_DATA_WIDTH  (1'b1)
     ) u_chie_flit_opt_check ();
 
 endmodule
