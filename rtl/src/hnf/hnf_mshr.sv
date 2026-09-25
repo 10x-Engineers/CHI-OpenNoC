@@ -292,8 +292,8 @@ module hnf_mshr `HNF_PARAM
     assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
-    assign req_atomic_s0          = opennoc_hnf_pkg::hnf_atomic(li_mshr_rxreq_opcode_s0);
-    assign req_atomic_rd_s0       = opennoc_hnf_pkg::hnf_atomic_returns_data(li_mshr_rxreq_opcode_s0);
+    assign req_atomic_s0          = chie_pkg::atomic_req(li_mshr_rxreq_opcode_s0);
+    assign req_atomic_rd_s0       = chie_pkg::atomic_returns_data(li_mshr_rxreq_opcode_s0);
     // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 (p.13-410)
     // has it displace Excl on the shared REQ bit. Split here so no consumer downstream
     // reads one as the other: SS6.3 (p.6-286) names no Atomic as an Exclusive access,

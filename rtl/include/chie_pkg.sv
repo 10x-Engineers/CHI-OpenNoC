@@ -502,6 +502,120 @@ package chie_pkg;
 `endif
   endfunction
 
+  // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 has it
+  // displace Excl on the shared REQ bit -- so the Excl bit of an Atomic is not an
+  // Exclusive request and must not be read as one.
+  function automatic logic atomic_req(req_opcode_e op);
+    return (op >= REQ_ATOMICSTORE_ADD) && (op <= REQ_ATOMICCOMPARE);
+  endfunction
+
+  // Table 4-40 (SS4.7.4 p.4-219): an AtomicStore completes with Comp, the other three
+  // with CompData carrying SS4.2.5's (p.4-187, MUST) "original value at the addressed
+  // location".
+  function automatic logic atomic_returns_data(req_opcode_e op);
+    return (op >= REQ_ATOMICLOAD_ADD) && (op <= REQ_ATOMICCOMPARE);
+  endfunction
+
+  // SS2.10.5 (p.2-137): Size is the whole outbound payload, and an AtomicCompare
+  // concatenates equal Compare and Swap halves -- so the element the operation reads,
+  // writes and returns is half of it (Table 2-16 p.2-137).
+  function automatic int unsigned atomic_elem_bytes(req_opcode_e op,
+                                                    size_e       size);
+    int unsigned n;
+    n = 32'd1 << size;
+    return (op == REQ_ATOMICCOMPARE) ? (n >> 1) : n;
+  endfunction
+
+  // SS2.10.5 (p.2-137): "the Swap data address can be determined by inverting bit[n]
+  // in the Compare data address where n = log2(Compare data size in bytes)" -- which
+  // for a power-of-two element size is the offset XOR that size.
+  function automatic logic [5:0] atomic_swap_off(logic [5:0]  cmp_off,
+                                                int unsigned elem_bytes);
+    return cmp_off ^ elem_bytes[5:0];
+  endfunction
+
+  function automatic logic [63:0] atomic_mask(int unsigned nbytes);
+    logic [63:0] m;
+    m = 64'd0;
+    for (int unsigned b = 0; b < 8; b = b + 1)
+      if (b < nbytes)
+        m[b*8 +: 8] = 8'hff;
+    return m;
+  endfunction
+
+  function automatic logic [63:0] atomic_bswap(logic [63:0] v, int unsigned nbytes);
+    logic [63:0] r;
+    int unsigned src;
+    r = 64'd0;
+    for (int unsigned b = 0; b < 8; b = b + 1)
+      if (b < nbytes) begin
+        src = nbytes - 1 - b;
+        r[b*8 +: 8] = v[src*8 +: 8];
+      end
+    return r;
+  endfunction
+
+  // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186) give the eight AtomicStore
+  // and eight AtomicLoad operations, and p.4-186 AtomicSwap's. SS2.10.5 (p.2-138):
+  // "for arithmetic operations, such as ADD, MAX, and MIN the component performing
+  // the operation needs to know the format of the data" -- so both operands are
+  // brought to a common order first. The bitwise rows are byte-invariant, which is
+  // why the same swap in and out serves them unchanged.
+  function automatic logic [63:0] atomic_alu(req_opcode_e op,
+                                             int unsigned nbytes,
+                                             logic        big_endian,
+                                             logic [63:0] initial_data,
+                                             logic [63:0] txn_data);
+    logic [63:0]        m, a, b, res;
+    logic signed [63:0] sa, sb;
+    int unsigned        sh;
+
+    m  = atomic_mask(nbytes);
+    a  = (big_endian ? atomic_bswap(initial_data, nbytes) : initial_data) & m;
+    b  = (big_endian ? atomic_bswap(txn_data,     nbytes) : txn_data)     & m;
+    sh = 32'd64 - nbytes * 32'd8;
+    sa = $signed(a << sh) >>> sh;
+    sb = $signed(b << sh) >>> sh;
+
+    case (op)
+      REQ_ATOMICSTORE_ADD,
+      REQ_ATOMICLOAD_ADD  : res = a + b;
+      REQ_ATOMICSTORE_CLR,
+      REQ_ATOMICLOAD_CLR  : res = a & ~b;
+      REQ_ATOMICSTORE_EOR,
+      REQ_ATOMICLOAD_EOR  : res = a ^ b;
+      REQ_ATOMICSTORE_SET,
+      REQ_ATOMICLOAD_SET  : res = a | b;
+      REQ_ATOMICSTORE_SMAX,
+      REQ_ATOMICLOAD_SMAX : res = (sb > sa) ? b : a;
+      REQ_ATOMICSTORE_SMIN,
+      REQ_ATOMICLOAD_SMIN : res = (sb < sa) ? b : a;
+      REQ_ATOMICSTORE_UMAX,
+      REQ_ATOMICLOAD_UMAX : res = (b > a) ? b : a;
+      REQ_ATOMICSTORE_UMIN,
+      REQ_ATOMICLOAD_UMIN : res = (b < a) ? b : a;
+      REQ_ATOMICSWAP      : res = b;
+      default             : res = a;
+    endcase
+
+    res = res & m;
+    return big_endian ? atomic_bswap(res, nbytes) : res;
+  endfunction
+
+  // SS4.2.5 (p.4-186): AtomicCompare writes the Swap value only "if the values
+  // match", which is a byte equality against the addressed location -- no arithmetic,
+  // so SS2.10.5's Endian bit does not reach it.
+  function automatic logic atomic_compare_eq(logic [127:0] initial_data,
+                                             logic [127:0] compare_data,
+                                             int unsigned  nbytes);
+    logic eq;
+    eq = 1'b1;
+    for (int unsigned b = 0; b < 16; b = b + 1)
+      if ((b < nbytes) && (initial_data[b*8 +: 8] != compare_data[b*8 +: 8]))
+        eq = 1'b0;
+    return eq;
+  endfunction
+
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);
   parameter int RSP_FLIT_WIDTH = $bits(rsp_flit_s);
   parameter int DAT_FLIT_WIDTH = $bits(dat_flit_s);
