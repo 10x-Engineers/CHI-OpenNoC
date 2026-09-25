@@ -81,7 +81,7 @@ The **Issue** column tracks the work to reach 🟢.
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
 | `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
-| `StashOnceSep*` | — | 🟡 `CompStashDone` | 🟢 | Table B-3 names no HN-I source for it |
+| `StashOnceSep*` | — | 🟢 `CompStashDone` | 🟢 | ¹ |
 | Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
 | Combined Writes, others (9) | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
@@ -89,6 +89,8 @@ The **Issue** column tracks the work to reach 🟢.
 | Atomics (18) | ⚪ | ⚪ | 🟢 executed at the Home | [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322) |
 | `DVMOp` | ⚪ | ⚪ | ⚪ | serviced only by an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
+
+¹ Table B-3 (p.B-495) lists only ICN(HN-F) as a source of `StashDone`/`CompStashDone` and of a Home's `TagMatch`, yet Table B-1 routes these requests to an HN-I, and Sections 2.3.4 (p.2-72) and 12.11.3 (p.12-387, MUST) still owe those responses. The HN-I sends them; the section text is taken to govern.
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
@@ -127,7 +129,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
-| MTE / `TagOp` | 🟡 | 🔴 | 🟡 | ⬜ | 🟡 | a Match to the HN-I [#319](https://github.com/10x-Engineers/CHI-OpenNoC/issues/319); RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
+| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | ⬜ | 🟡 | HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹; RN-F [#326](https://github.com/10x-Engineers/CHI-OpenNoC/issues/326) |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
