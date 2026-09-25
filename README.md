@@ -135,7 +135,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
 | Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
 | `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `Data_Width` 128 / 512 | 🟢 | ⬜ | ⬜ | ⬜ | ⬜ | SN-F packetises by `Data_Width`; the other nodes are 256 only, so a whole system is too [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+| `Data_Width` 128 / 512 | 🟢 | ⬜ | ⬜ | 🟢 | ⬜ | SN-F and RN-F packetise by `Data_Width`; the other nodes are 256 only, so a whole system is too [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 
 ### RN-F interface declarations (section 16.1)
 
@@ -149,7 +149,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `Data_Poison` | True | |
 | `Data_Check` / `Check_Type` | `Odd_Parity` / `Odd_Parity_Byte_Data` | |
 | `MPAM_Support` | `MPAM_9_1` with `CHIE_MPAM_PRESENT`, else False | |
-| `Req_Addr_Width` / `NodeID_Width` / `Data_Width` | 44 / 7 / 256 | [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+| `Req_Addr_Width` / `NodeID_Width` / `Data_Width` | 44 / 7 / 256 (128 and 512 build too) | |
 
 ### What the RN-I generates
 
@@ -238,7 +238,7 @@ and are overridden at instantiation.
 | :-- | --: | :-- |
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | 44..52 build; only 44 exercised |
 | `CHIE_NID_WIDTH_PARAM` | 7 | 7..11 build; only 7 exercised |
-| `CHIE_DATA_WIDTH_PARAM` | 256 | 128 / 256 / 512 on the SN-F; every other node refuses anything but 256 [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+| `CHIE_DATA_WIDTH_PARAM` | 256 | 128 / 256 / 512 on the SN-F and RN-F; every other node refuses anything but 256 [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F |
 | `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F) | |
 | `HNF_MSHR_RNF_NUM_PARAM`, `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Coherent Requesters served by the HN-F |

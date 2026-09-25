@@ -524,10 +524,12 @@ module rnf `RNF_PARAM
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
+    // The RN-F packetises by Data_Width (SS2.10.4 p.2-136), so it takes all three.
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM),
+        .ANY_DATA_WIDTH  (1'b1)
     ) u_chie_flit_opt_check ();
 
 endmodule

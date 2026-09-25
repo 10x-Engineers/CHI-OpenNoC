@@ -590,7 +590,7 @@ module rnf_ctl `RNF_PARAM
     endfunction
 
     function automatic logic [PKT_W-1:0] pkt_of_dataid(logic [1:0] dataid);
-        return PKT_W'(dataid / 2'(DID_STEP));
+        return PKT_W'(int'(dataid) / DID_STEP);
     endfunction
 
     function automatic logic [PKT_W-1:0] first_pkt(logic [NPKT-1:0] m);
