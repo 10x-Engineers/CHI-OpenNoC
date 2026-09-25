@@ -72,9 +72,9 @@ The **Issue** column tracks the work to reach 🟢.
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 | |
 | `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ | Home-to-SN only: received from an RN it stays ⚪; HN-F issuing it [#332](https://github.com/10x-Engineers/CHI-OpenNoC/issues/332) |
 | `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 | |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
-| `ReadShared` | — | ⚪ | 🟢 as `ReadNotSharedDirty` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
-| `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 as `ReadUnique` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | 🟢 | 🟢 | |
+| `ReadShared` | — | 🟢 `CompData_SC` | 🟢 as `ReadNotSharedDirty` | |
+| `ReadPreferUnique`, `MakeReadUnique` | — | 🟢 `CompData_UC` | 🟢 as `ReadUnique` | |
 | `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 | |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 | |
 | `WriteUniqueZero` | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |

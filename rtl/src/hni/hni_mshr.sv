@@ -383,7 +383,14 @@ module hni_mshr `HNI_PARAM
     assign rxreq_tracetag_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.tracetag      :'0;
     assign rxreq_mpam_s0       = (rxreq_alloc_en_s0 == 1'b1)? chie_pkg::req_mpam_of(rxreq_alloc_flit_s0)
                                                             : chie_pkg::mpam_default(1'b0);
-    assign rxreq_rd_s0         = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)|(rxreq_opcode_s0 == chie_pkg::REQ_READONCE)|(rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN)|(rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)|(rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)) :1'b0;
+    // Sec 3.3.1 (p.3-152): "It is legal for a Snoopable transaction to be targeted at
+    // an HN-I ... coherency is not guaranteed", so the Snoopable reads are served from
+    // memory as ReadNoSnp is.
+    assign rxreq_rd_s0         = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 inside {chie_pkg::REQ_READNOSNP, chie_pkg::REQ_READONCE,
+                                                                                    chie_pkg::REQ_READONCECLEANINVALID, chie_pkg::REQ_READONCEMAKEINVALID,
+                                                                                    chie_pkg::REQ_READCLEAN, chie_pkg::REQ_READNOTSHAREDDIRTY,
+                                                                                    chie_pkg::REQ_READSHARED, chie_pkg::REQ_READUNIQUE,
+                                                                                    chie_pkg::REQ_READPREFERUNIQUE, chie_pkg::REQ_MAKEREADUNIQUE}) :1'b0;
     assign rxreq_wrf_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)|rxreq_cwf_s0|rxreq_wrzero_s0):1'b0;
     assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)|rxreq_cwp_s0):1'b0;
 
@@ -450,12 +457,8 @@ module hni_mshr `HNI_PARAM
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCEUNIQUE)
                                                              | rxreq_stashsep_s0) :1'b0;
     assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_stashonce_s0 | rxreq_drop_s0);
-    assign rxreq_errrd_s0      = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_READSHARED)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_READONCECLEANINVALID)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_READONCEMAKEINVALID)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE)
-                                                | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEREADUNIQUE));
+    // Table B-1 (p.B-492): ReadNoSnpSep is sent only by a Home to a Subordinate.
+    assign rxreq_errrd_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
     // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
     // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
     assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
@@ -1328,11 +1331,18 @@ module hni_mshr `HNI_PARAM
     // states. RESP_I is one of them only for the non-allocating rows; Sec 9.3
     // (p.9-336, MUST) makes it legal elsewhere solely alongside a Non-data Error,
     // which the error class below carries and a served read does not.
+    // MakeReadUnique takes Table 4-34's (p.4-213) CompData_UC: with no snoop filter
+    // the Home "must assume the cache line is lost at the Requester and provide data"
+    // (p.4-215), and it is never Shared, which would fail an Excl store (Sec 6.3.1
+    // p.6-288) this Home has no PoC monitor to judge.
     always_comb begin
         case (rxreq_opcode_s1_q[txdat_entry_idx_sx_q])
             chie_pkg::REQ_READCLEAN,
-            chie_pkg::REQ_READNOTSHAREDDIRTY: mshr_txdat_resp_sx = chie_pkg::RESP_SC;
-            chie_pkg::REQ_READUNIQUE:         mshr_txdat_resp_sx = chie_pkg::RESP_UC_UD;
+            chie_pkg::REQ_READNOTSHAREDDIRTY,
+            chie_pkg::REQ_READSHARED:         mshr_txdat_resp_sx = chie_pkg::RESP_SC;
+            chie_pkg::REQ_READUNIQUE,
+            chie_pkg::REQ_READPREFERUNIQUE,
+            chie_pkg::REQ_MAKEREADUNIQUE:     mshr_txdat_resp_sx = chie_pkg::RESP_UC_UD;
             default:                          mshr_txdat_resp_sx = chie_pkg::RESP_I;
         endcase
     end
