@@ -101,11 +101,15 @@ module {{ module }}
   ,output [`AXI4_BRESP_WIDTH-1:0]  {{ p.name }}_BRESP
   ,output {{ p.name }}_BVALID
   ,input  {{ p.name }}_BREADY
-  // The core's intent, a ReadOnce*'s Order and cache maintenance, beside its AXI4
-  // port (rnf_defines.svh).
+  // The core's intent, a ReadOnce*'s Order, an atomic operation and cache
+  // maintenance, beside its AXI4 port (rnf_defines.svh).
   ,input  [`RNF_AR_COH_W-1:0]      {{ p.name }}_ARCOH
   ,input  [`RNF_AR_ORD_W-1:0]      {{ p.name }}_ARORD
   ,input  [`RNF_AW_COH_W-1:0]      {{ p.name }}_AWCOH
+  ,input  [`RNF_ATOP_W-1:0]        {{ p.name }}_AWATOP
+  ,input  [`RNF_ATM_W-1:0]         {{ p.name }}_AWATM
+  ,output [`AXI4_RDATA_WIDTH-1:0]  {{ p.name }}_BATDATA
+  ,input  {{ p.name }}_BROADCASTATOMIC
   ,input  {{ p.name }}_CMVALID
   ,output {{ p.name }}_CMREADY
   ,input  [`RNF_CM_OP_W-1:0]       {{ p.name }}_CMOP
@@ -144,7 +148,8 @@ module {{ module }}
                'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWCACHE', 'AWQOS', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
                'WDATA', 'WSTRB', 'WUSER', 'WLAST', 'WVALID', 'WREADY',
                'BID', 'BRESP', 'BVALID', 'BREADY',
-               'ARCOH', 'ARORD', 'AWCOH', 'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
+               'ARCOH', 'ARORD', 'AWCOH', 'AWATOP', 'AWATM', 'BATDATA', 'BROADCASTATOMIC',
+               'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})
 {% endfor %}
   );

@@ -88,4 +88,24 @@
 `define RNF_CM_CLEAN_INVALID      4'd7
 `define RNF_CM_MAKE_INVALID       4'd8
 
+// AWATOP qualifies AWVALID with an atomic operation, in AMBA AXI5's AWATOP encoding:
+// [5:4] 01 AtomicStore and 10 AtomicLoad, [3] the Endian bit and [2:0] the Table
+// 4-19/4-20 operation (SS4.2.5 p.4-185); 6'b110000 AtomicSwap, 6'b110001
+// AtomicCompare; 0 a plain write. The write data carries the operands, and the
+// original value of a Load, Swap or Compare is returned on BATDATA with BVALID.
+`define RNF_ATOP_W            6
+`define RNF_ATOP_NONE         6'b000000
+`define RNF_ATOP_SWAP         6'b110000
+`define RNF_ATOP_COMPARE      6'b110001
+
+// AWATM says where the operation executes, IMPLEMENTATION DEFINED (SS4.2.5 p.4-187
+// lists the options). NEAR takes the line Unique as a store would and executes in
+// the cache; FAR invalidates any copy and sends the Atomic with SnoopMe=0; FAR_SNOOPME
+// keeps the copy and sends it with SnoopMe=1. With BROADCASTATOMIC deasserted a far
+// request executes near, or, for a location that is not cached, is refused.
+`define RNF_ATM_W             2
+`define RNF_ATM_NEAR          2'd0
+`define RNF_ATM_FAR           2'd1
+`define RNF_ATM_FAR_SNOOPME   2'd2
+
 `endif

@@ -74,9 +74,10 @@ module rnf `RNF_PARAM
 
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
     // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
-    // core's intent for the access, and ARORD asks a ReadOnce* for Request Order
-    // (rnf_defines.svh); AxCACHE names its memory type, AxQOS its QoS, AxLOCK makes
-    // it exclusive, AxUSER carries its MPAM label and W/RUSER its Poison
+    // core's intent for the access, ARORD asks a ReadOnce* for Request Order, and
+    // AWATOP/AWATM make a write an atomic operation whose original value returns on
+    // BATDATA (rnf_defines.svh); AxCACHE names its memory type, AxQOS its QoS, AxLOCK
+    // makes it exclusive, AxUSER carries its MPAM label and W/RUSER its Poison
     // (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
@@ -104,6 +105,8 @@ module rnf `RNF_PARAM
     input  wire [`AXI4_AWCACHE_WIDTH-1:0] AWCACHE,
     input  wire [`AXI4_AWQOS_WIDTH-1:0]  AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]      AWCOH,
+    input  wire [`RNF_ATOP_W-1:0]        AWATOP,
+    input  wire [`RNF_ATM_W-1:0]         AWATM,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0] AWUSER,
     input  wire                          AWVALID,
@@ -118,6 +121,10 @@ module rnf `RNF_PARAM
     output wire [`AXI4_BRESP_WIDTH-1:0]  BRESP,
     output wire                          BVALID,
     input  wire                          BREADY,
+    output wire [`AXI4_RDATA_WIDTH-1:0]  BATDATA,
+
+    // SS16.2.4 (p.16-476): Atomic transactions are generated only while asserted.
+    input  wire                          BROADCASTATOMIC,
 
     // Core-side cache maintenance: one operation on one line (rnf_defines.svh).
     input  wire                                 CMVALID,
@@ -321,6 +328,8 @@ module rnf `RNF_PARAM
                      ,.AWCACHE               ( AWCACHE              )
                      ,.AWQOS                 ( AWQOS                )
                      ,.AWCOH                 ( AWCOH                )
+                     ,.AWATOP                ( AWATOP               )
+                     ,.AWATM                 ( AWATM                )
                      ,.AWLOCK                ( AWLOCK               )
                      ,.AWUSER                ( AWUSER               )
                      ,.AWVALID               ( AWVALID              )
@@ -335,6 +344,8 @@ module rnf `RNF_PARAM
                      ,.BRESP                 ( BRESP                )
                      ,.BVALID                ( BVALID               )
                      ,.BREADY                ( BREADY               )
+                     ,.BATDATA               ( BATDATA              )
+                     ,.BROADCASTATOMIC       ( BROADCASTATOMIC      )
                      ,.CMVALID               ( CMVALID              )
                      ,.CMREADY               ( CMREADY              )
                      ,.CMOP                  ( CMOP                 )

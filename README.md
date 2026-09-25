@@ -125,7 +125,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Write Zero | 🟡 | 🟢 | — | 🟢 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333) |
-| Atomics | ⚪ | ⚪ | — | ⬜ | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
+| Atomics | ⚪ | ⚪ | — | 🟢 | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322); RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
@@ -141,7 +141,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 
 | Property | Value | Issue |
 | :-- | :-- | :-- |
-| `Atomic_Transactions` | False | [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
+| `Atomic_Transactions` | True | |
 | `Cache_Stash_Transactions` | False | [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | `Direct_Cache_Transfer`, `Enhanced_Features`, `CleanSharedPersistSep_Request` | False | [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | `DVM_Support` | False | [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
@@ -175,12 +175,13 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `ARCOH` | `SHARED`, `CLEAN`, `PREFER_UNIQUE`, `UNIQUE`, `ONCE`, `ONCE_CLEAN_INV`, `ONCE_MAKE_INV` | `ReadShared`, `ReadClean`, `ReadPreferUnique`, `ReadUnique`, `ReadOnce*` |
 | `ARORD` (with `ARCOH`) | `0`, `1` | `1`: a `ReadOnce*` miss carries Request Order (`Order = 0b10`, Table 4-1) and completes on its `ReadReceipt` ([#360](https://github.com/10x-Engineers/CHI-OpenNoC/issues/360)) |
 | `AWCOH` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL` | `CleanUnique`, `MakeReadUnique`, `MakeUnique`, `ReadUnique`, `WriteUnique{Full,Ptl,Zero}` and their `CleanSh` forms |
+| `AWATOP`, `AWATM` (with `AWVALID`) | AXI5 `AWATOP`; `NEAR`, `FAR`, `FAR_SNOOPME` | `NEAR`: the store's own acquire, then the operation in the cache. `FAR`: a Dirty line written back or a Clean one dropped, then `Atomic*` with `SnoopMe = 0`. `FAR_SNOOPME`: `Atomic*` with `SnoopMe = 1`. The original value returns on `BATDATA` with `BVALID`. With `BROADCASTATOMIC` low a far request executes near, and a Device/Non-cacheable one is refused `SLVERR` |
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. Every request carries the
 access's `AxQOS`. The HN-F sends a
 `ReadReceipt` for an ordered `ReadOnce` only, so set `ARORD` with `ARCOH = ONCE` alone for now. The RN-F issues
-no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)), Atomic ([#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324)),
+no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)),
 or `DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)).
 
 ---

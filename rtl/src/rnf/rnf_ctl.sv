@@ -35,6 +35,11 @@
 //                               (SS4.2.4 p.4-182) combinations of them
 //   Device / Non-cacheable   -> ReadNoSnp, WriteNoSnp{Full,Ptl,Zero}, the cache
 //                               bypassed (Table 2-11 SS2.9.4 p.2-129)
+//   atomic, near             -> the store's own acquire, then the operation on
+//                               the line in the cache (SS16.3.1 p.16-478)
+//   atomic, far              -> Atomic{Store,Load,Swap,Compare}, the line first
+//                               written back or dropped, or kept with SnoopMe
+//                               (SS4.2.5 p.4-187)
 //
 // A line is UCE when a CleanUnique ends from Invalid (Table 4-38 p.4-218): owned,
 // with no valid bytes. A partial store into it makes it UDP (Table 4-32 p.4-209),
@@ -100,6 +105,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_AWCACHE_WIDTH-1:0]       AWCACHE,
     input  wire [`AXI4_AWQOS_WIDTH-1:0]         AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]             AWCOH,
+    input  wire [`RNF_ATOP_W-1:0]               AWATOP,
+    input  wire [`RNF_ATM_W-1:0]                AWATM,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0]        AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0]        AWUSER,
     input  wire                                 AWVALID,
@@ -114,6 +121,10 @@ module rnf_ctl `RNF_PARAM
     output wire [`AXI4_BRESP_WIDTH-1:0]         BRESP,
     output wire                                 BVALID,
     input  wire                                 BREADY,
+    // The original value an AtomicLoad, Swap or Compare returns, with BVALID.
+    output wire [`AXI4_RDATA_WIDTH-1:0]         BATDATA,
+    // SS16.2.4 (p.16-476, MUST): deasserted, the interface generates no Atomic.
+    input  wire                                 BROADCASTATOMIC,
 
     // Cache maintenance
     input  wire                                 CMVALID,
@@ -293,6 +304,14 @@ module rnf_ctl `RNF_PARAM
     chie_pkg::size_e                            sz_q;
     logic [`RNF_LINE_OFFSET_W-1:0]              off_q;
     logic [`RNF_LINE_OFFSET_W-1:0]              aw_lo_q, aw_hi_q;
+    // The write is an atomic operation: its AWATOP and AWATM, whether it executes
+    // in the cache, and whether the Atomic sent for it returns data.
+    logic [`RNF_ATOP_W-1:0]                     atop_q;
+    logic [`RNF_ATM_W-1:0]                      atm_mode_q;
+    logic [5:0]                                 atm_nb_q;   // outbound bytes, 1..32
+    logic [`RNF_LINE_OFFSET_W-1:0]              aw_off_q;
+    logic                                       atm_ret_q;
+    logic                                       snoopme_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -521,6 +540,74 @@ module rnf_ctl `RNF_PARAM
         return !cache[1] || (cache[3:2] == 2'b00);
     endfunction
 
+    // AMBA AXI5's AWATOP: [5:4] names the class and [2:0] the operation, which
+    // Table 13-13 (SS13.10.17 p.13-423) makes Opcode[2:0] of AtomicStore (Opcode[5:3]
+    // 101) and AtomicLoad (110).
+    function automatic chie_pkg::req_opcode_e atop_opcode(logic [`RNF_ATOP_W-1:0] atop);
+        case (atop[5:4])
+            2'b01:   return chie_pkg::req_opcode_e'({4'b0101, atop[2:0]});
+            2'b10:   return chie_pkg::req_opcode_e'({4'b0110, atop[2:0]});
+            default: return (atop == `RNF_ATOP_COMPARE) ? chie_pkg::REQ_ATOMICCOMPARE
+                                                        : chie_pkg::REQ_ATOMICSWAP;
+        endcase
+    endfunction
+
+    // Table 2-16 (SS2.10.5 p.2-137): Store, Load and Swap carry 1, 2, 4 or 8 bytes,
+    // Compare 2 to 32, each at an address aligned to the value it operates on.
+    function automatic bit atop_legal(logic [`RNF_ATOP_W-1:0] atop, logic [5:0] nb,
+                                      logic [`RNF_LINE_OFFSET_W-1:0] off);
+        automatic int unsigned elem = (atop == `RNF_ATOP_COMPARE) ? int'(nb) / 2 : int'(nb);
+        if ((atop[5:4] == 2'b11) && (atop[3:1] != 3'b000)) return 1'b0;
+        if (atop == `RNF_ATOP_COMPARE) begin
+            if (!(nb inside {6'd2, 6'd4, 6'd8, 6'd16, 6'd32})) return 1'b0;
+        end
+        else if (!(nb inside {6'd1, 6'd2, 6'd4, 6'd8})) return 1'b0;
+        return (int'(off) % elem) == 0;
+    endfunction
+
+    // The operation performed on the line in the cache: SS4.2.5's (p.4-185)
+    // TxnData against InitialData at the addressed bytes, or for AtomicCompare the
+    // Swap half written over the addressed bytes when they equal the Compare half
+    // (SS2.10.5 p.2-137 places the Swap half at the address with bit[log2(n)] inverted).
+    function automatic logic [`RNF_LINE_BITS-1:0]
+        atomic_apply(logic [`RNF_LINE_BITS-1:0] line, logic [`RNF_LINE_BITS-1:0] wdat,
+                     chie_pkg::req_opcode_e op, logic [`RNF_LINE_OFFSET_W-1:0] off,
+                     logic [5:0] nb, logic big_endian);
+        automatic int unsigned elem = (op == chie_pkg::REQ_ATOMICCOMPARE) ? int'(nb) / 2 : int'(nb);
+        automatic logic [`RNF_LINE_OFFSET_W-1:0] soff = chie_pkg::atomic_swap_off(off, elem);
+        logic [127:0] init128, arg128, swp128;
+        logic [63:0]  res;
+        atomic_apply = line;
+        init128 = '0;
+        arg128  = '0;
+        swp128  = '0;
+        for (int unsigned b = 0; b < 16; b++)
+            if (b < elem) begin
+                init128[b*8 +: 8] = line[(int'(off) + b)*8 +: 8];
+                arg128[b*8 +: 8]  = wdat[(int'(off) + b)*8 +: 8];
+                swp128[b*8 +: 8]  = wdat[(int'(soff) + b)*8 +: 8];
+            end
+        if (op == chie_pkg::REQ_ATOMICCOMPARE) begin
+            if (chie_pkg::atomic_compare_eq(init128, arg128, elem))
+                for (int unsigned b = 0; b < 16; b++)
+                    if (b < elem) atomic_apply[(int'(off) + b)*8 +: 8] = swp128[b*8 +: 8];
+        end
+        else begin
+            res = chie_pkg::atomic_alu(op, elem, big_endian, init128[63:0], arg128[63:0]);
+            for (int unsigned b = 0; b < 8; b++)
+                if (b < elem) atomic_apply[(int'(off) + b)*8 +: 8] = res[b*8 +: 8];
+        end
+    endfunction
+
+    function automatic chie_pkg::size_e size_of_bytes(logic [5:0] nb);
+        size_of_bytes = chie_pkg::SIZE_1B;
+        for (int k = 0; k < 6; k++) if (nb == 6'(1 << k)) size_of_bytes = chie_pkg::size_e'(k);
+    endfunction
+
+    function automatic bit is_atomic_op(chie_pkg::req_opcode_e op);
+        return (op >= chie_pkg::REQ_ATOMICSTORE_ADD) && (op <= chie_pkg::REQ_ATOMICCOMPARE);
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ar_line =
         {ARADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] aw_line =
@@ -533,6 +620,10 @@ module rnf_ctl `RNF_PARAM
     // other read may be ordered at all.
     wire chie_pkg::order_e ar_ord = (is_read_once(ar_op) && ARORD[0]) ? chie_pkg::ORDER_REQ_WR_OBS
                                                                       : chie_pkg::ORDER_NONE;
+    // The write in hand is an atomic, and whether it executes in the cache: a far
+    // one does unless BROADCASTATOMIC forbids the Atomic (SS16.3.1 p.16-478).
+    wire atm_q    = is_wr_q && (atop_q != `RNF_ATOP_NONE);
+    wire atm_near = !nc_q && ((atm_mode_q == `RNF_ATM_NEAR) || !BROADCASTATOMIC);
     wire ar_nc = axcache_nc(ARCACHE);
     wire aw_nc = axcache_nc(AWCACHE);
     // The bytes of the line an AXI write burst addresses: one beat of 2^AWSIZE
@@ -717,6 +808,12 @@ module rnf_ctl `RNF_PARAM
             // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
             prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
                                                 (acq_op_q != chie_pkg::REQ_READONCEMAKEINVALID);
+            // SS13.10.31 (p.13-433) and SS13.10.28 (p.13-432): an Atomic's shared REQ
+            // bits are SnoopMe and Endian.
+            if (is_atomic_op(acq_op_q)) begin
+                prot_txreqflit_o.excl.snoopme        = snoopme_q;
+                prot_txreqflit_o.stashnidvalid.endian = (atop_q[5:4] != 2'b11) && atop_q[3];
+            end
             // Tables 4-1 (p.4-165) and 4-13 (SS4.2.3 p.4-178): a Device access is
             // MemAttr 001x and a Normal Non-cacheable one 000x, SnpAttr 0, with EWA
             // from AxCACHE[0] (Table 2-11 SS2.9.4 p.2-129).
@@ -908,8 +1005,10 @@ module rnf_ctl `RNF_PARAM
 
     // The line the transaction installs: the store merged over whatever the
     // acquire brought back, or over the copy already resident.
-    wire [`RNF_LINE_BITS-1:0] fill_line = (is_wr_q && apply_q) ? merge_line(line_q, wbuf_q, wbe_q)
-                                                               : line_q;
+    wire [`RNF_LINE_BITS-1:0] fill_line =
+        !(is_wr_q && apply_q) ? line_q :
+        atm_q                 ? atomic_apply(line_q, wbuf_q, atop_opcode(atop_q), aw_off_q, atm_nb_q, atop_q[3])
+                              : merge_line(line_q, wbuf_q, wbe_q);
 
     // The acquire's line as it stands this cycle, including a snoop writing it on
     // the very edge its completion arrives -- acq_cs_q alone would miss that one.
@@ -936,7 +1035,13 @@ module rnf_ctl `RNF_PARAM
                       !(got_rcpt_q || rx_rcpt || got_rsp_q || rx_sep);
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
-    wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
+    // SS2.3.3 (p.2-69): an AtomicLoad, Swap or Compare completes with CompData of
+    // its inbound size, half the outbound one for AtomicCompare (Table 2-16 p.2-137).
+    wire atm_ret_now = is_atomic_op(acq_op_q) && atm_ret_q;
+    wire chie_pkg::size_e atm_in_sz = (acq_op_q == chie_pkg::REQ_ATOMICCOMPARE)
+                                      ? chie_pkg::size_e'(sz_q - 3'd1) : sz_q;
+    wire atm_in_done = &(got_now | ~pkt_mask(off_q, atm_in_sz));
+    wire wu_comp_now = atm_ret_now ? atm_in_done : (got_rsp_q || rx_comp || rx_compdbid);
 
     // SS2.11 (p.2-146): a transaction is outstanding until every response it is owed
     // has arrived, CompCMO among them, and SS2.3.2 (p.2-58, p.2-66) orders the CompCMO
@@ -1046,6 +1151,12 @@ module rnf_ctl `RNF_PARAM
             off_q         <= '0;
             aw_lo_q       <= '0;
             aw_hi_q       <= '0;
+            atop_q        <= `RNF_ATOP_NONE;
+            atm_mode_q    <= `RNF_ATM_NEAR;
+            atm_nb_q      <= '0;
+            aw_off_q      <= '0;
+            atm_ret_q     <= 1'b0;
+            snoopme_q     <= 1'b0;
             for (int i = 0; i < MON; i++) begin
                 mon_v_q[i]    <= 1'b0;
                 mon_lp_q[i]   <= 8'd0;
@@ -1136,6 +1247,27 @@ module rnf_ctl `RNF_PARAM
             if (vic_snp_now)
                 vic_state_q <= snp_upd_state_i;
 
+            // SS2.10.4 (p.2-136): packet p carries line bytes [p*PKT_B +: PKT_B].
+            // Table 4-33 fn c (p.4-212): returned bytes fill only those the line
+            // does not already hold valid. SS2.3.3 (p.2-69) lets an Atomic's CompData
+            // arrive while its own WriteData is still going out.
+            if (rx_dat_mine && (((st_q == S_DATA) && !rx_retryack) || (st_q == S_WU_DAT))) begin
+                // Unsigned: a size cast keeps its operand's signedness, so a
+                // signed offset of 32+ would index below zero.
+                automatic int unsigned base = int'(rx_pkt) * PSN_PKT;
+                if (take_data) begin
+                    for (int unsigned b = 0; b < PKT_B; b++)
+                        if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
+                            line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
+                    for (int unsigned c = 0; c < PSN_PKT; c++)
+                        line_poison_q[3'(base + c)] <=
+                            (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
+                            (prot_rxdatflit_i.poison[c] |
+                             (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
+                end
+                got_q[rx_pkt] <= 1'b1;
+            end
+
             case (st_q)
                 S_IDLE: begin
                     got_q      <= '0;
@@ -1154,6 +1286,7 @@ module rnf_ctl `RNF_PARAM
                     nc_q       <= 1'b0;
                     sz_q       <= chie_pkg::SIZE_64B;
                     off_q      <= '0;
+                    snoopme_q  <= 1'b0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
@@ -1265,12 +1398,21 @@ module rnf_ctl `RNF_PARAM
                         addr_q   <= aw_line;
                         is_wr_q  <= 1'b1;
                         rsp_ch_q <= CH_B;
-                        aw_coh_q <= AWCOH;
+                        // A near atomic takes the line Unique as a plain store does.
+                        aw_coh_q <= (AWATOP == `RNF_ATOP_NONE) ? AWCOH : `RNF_AW_CACHED;
                         core_q   <= 1'b1;
                         lpid_q   <= AWID[7:0];
-                        excl_q   <= aw_excl;
+                        // AMBA AXI5: an atomic write is never also exclusive.
+                        excl_q   <= aw_excl && (AWATOP == `RNF_ATOP_NONE);
                         mpam_q   <= AWUSER[`AXI4_USER_MPAM_RANGE];
                         qos_q    <= AWQOS;
+                        atop_q   <= AWATOP;
+                        atm_mode_q <= AWATM;
+                        atm_ret_q  <= AWATOP[5];
+                        atm_nb_q <= ((AWLEN == '0) && (AWSIZE <= `AXI4_AWSIZE_WIDTH'(4))) ? 6'(1 << AWSIZE) :
+                                    ((AWLEN == `AXI4_AWLEN_WIDTH'(1)) && (AWSIZE == `AXI4_AWSIZE_WIDTH'(4))) ? 6'd32 : 6'd0;
+                        aw_off_q <= AWADDR[5:0];
+                        rchunk_q <= AWADDR[5:4];
                         nc_q     <= aw_nc;
                         dev_q    <= !AWCACHE[1];
                         ewa_q    <= AWCACHE[0];
@@ -1423,7 +1565,11 @@ module rnf_ctl `RNF_PARAM
                             2'd2: begin wbuf_q[383:256] <= WDATA; wbe_q[47:32] <= WSTRB; end
                             default: begin wbuf_q[511:384] <= WDATA; wbe_q[63:48] <= WSTRB; end
                         endcase
-                        wchunk_q  <= wchunk_q + 2'd1;
+                        // SS2.10.5 (p.2-137): a 32-byte AtomicCompare's window is the
+                        // aligned 32 bytes around its Compare half, so its second beat
+                        // wraps within them.
+                        wchunk_q  <= (atm_q && (atm_nb_q == 6'd32)) ? {wchunk_q[1], ~wchunk_q[0]}
+                                                                    : (wchunk_q + 2'd1);
                         wpoison_q <= wpoison_now;
                         if (WLAST) begin
                             way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
@@ -1437,7 +1583,52 @@ module rnf_ctl `RNF_PARAM
                             // Full only for a whole line, and Table 4-13 (SS4.2.3
                             // p.4-178) gives Device nRnE Order 11. SS4.2.3 (p.4-176)
                             // makes a line of zeros WriteNoSnpZero's.
-                            if (nc_q) begin
+                            // Table 2-16 (SS2.10.5 p.2-137) bounds an atomic's size and
+                            // alignment, and SS16.2.4 (p.16-476, MUST) forbids an Atomic
+                            // with BROADCASTATOMIC deasserted -- which leaves a location
+                            // this node cannot cache no way to execute the operation.
+                            if (atm_q && (!atop_legal(atop_q, atm_nb_q, aw_off_q) ||
+                                          (nc_q && !BROADCASTATOMIC))) begin
+                                hit_q   <= 1'b1;
+                                apply_q <= 1'b0;
+                                err_q   <= 1'b1;
+                                st_q    <= S_BRESP;
+                            end
+                            // SS4.2.5 (p.4-187): the far atomic. Its Requester state must
+                            // read Invalid at issue for SnoopMe=0, so FAR writes a Dirty
+                            // line back or drops a Clean one first; FAR_SNOOPME keeps it
+                            // and "must set the value of SnoopMe in the Atomic request to 1".
+                            else if (atm_q && !atm_near) begin
+                                hit_q        <= 1'b0;
+                                alloc_q      <= 1'b0;
+                                ack_q        <= 1'b0;
+                                kind_q       <= K_WU;
+                                acq_op_q     <= atop_opcode(atop_q);
+                                sz_q         <= size_of_bytes(atm_nb_q);
+                                off_q        <= aw_off_q;
+                                line_vmask_q <= '0;
+                                acq_cs_q     <= `RNF_CS_I;
+                                ord_q        <= (nc_q && dev_q) ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
+                                snoopme_q    <= !nc_q && (atm_mode_q == `RNF_ATM_FAR_SNOOPME);
+                                if (!nc_q && (atm_mode_q == `RNF_ATM_FAR) && lu_hit_now) begin
+                                    vic_addr_q  <= addr_q;
+                                    vic_way_q   <= cache_lu_way_i;
+                                    vic_state_q <= lu_state;
+                                    vic_data_q  <= cache_lu_data_i;
+                                    vic_meta_q  <= cache_lu_meta_i;
+                                    if (is_dirty(lu_state)) begin
+                                        cb_op_q       <= back_op(lu_state);
+                                        cb_then_req_q <= 1'b1;
+                                        st_q          <= S_CB_REQ;
+                                    end
+                                    else begin
+                                        drop_q <= 1'b1;
+                                        st_q   <= S_REQ;
+                                    end
+                                end
+                                else st_q <= S_REQ;
+                            end
+                            else if (nc_q) begin
                                 hit_q    <= 1'b0;
                                 alloc_q  <= 1'b0;
                                 ack_q    <= 1'b0;
@@ -1465,7 +1656,7 @@ module rnf_ctl `RNF_PARAM
                             // 4-32 (SS4.6 p.4-209) makes the store silent, UD once every
                             // byte is valid and UDP until then. SS6.3.3 (p.6-290) passes
                             // an Exclusive Store from it without a transaction.
-                            else if (lu_hit_now && is_unique(lu_state)) begin
+                            else if (lu_hit_now && is_unique(lu_state) && !(atm_q && is_short(lu_state))) begin
                                 line_q       <= cache_lu_data_i;
                                 fill_state_q <= `RNF_CS_UC;
                                 hit_q        <= 1'b1;
@@ -1475,7 +1666,18 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 hit_q <= 1'b0;
-                                if (lu_hit_now) begin
+                                // SS16.3.1 (p.16-478): a near atomic reads the bytes it
+                                // operates on, so a line short of valid bytes is completed
+                                // by ReadUnique first, as a read of it is (Table 4-33 p.4-212).
+                                if (lu_hit_now && is_short(lu_state)) begin
+                                    line_q     <= cache_lu_data_i;
+                                    acq_cs_q   <= lu_state;
+                                    base_udp_q <= (lu_state == `RNF_CS_UDP);
+                                    acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                                    kind_q     <= K_READ;
+                                    st_q       <= S_REQ;
+                                end
+                                else if (lu_hit_now) begin
                                     // SC or SD: Table 4-38 (p.4-218) and Table 4-36
                                     // (SS4.7.1 p.4-216) end both Unique, and the node
                                     // keeps its own bytes.
@@ -1629,26 +1831,6 @@ module rnf_ctl `RNF_PARAM
                     if (rx_dat_mine) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
                     if (rx_comp)     fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
 
-                    // SS2.10.4 (p.2-136): packet p carries line bytes [p*PKT_B +: PKT_B].
-                    // Table 4-33 fn c (p.4-212): returned bytes fill only those the
-                    // line does not already hold valid.
-                    if (rx_dat_mine) begin
-                        // Unsigned: a size cast keeps its operand's signedness, so a
-                        // signed offset of 32+ would index below zero.
-                        automatic int unsigned base = int'(rx_pkt) * PSN_PKT;
-                        if (take_data) begin
-                            for (int unsigned b = 0; b < PKT_B; b++)
-                                if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
-                                    line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
-                            for (int unsigned c = 0; c < PSN_PKT; c++)
-                                line_poison_q[3'(base + c)] <=
-                                    (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
-                                    (prot_rxdatflit_i.poison[c] |
-                                     (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
-                        end
-                        got_q[rx_pkt] <= 1'b1;
-                    end
-
                     case (kind_q)
                         K_READ, K_MRU: begin
                             // The line takes its granted state on the completion,
@@ -1765,7 +1947,7 @@ module rnf_ctl `RNF_PARAM
                     if (prot_txdatflit_sent_i) begin
                         if (wr_last_pkt) begin
                             wr_sent_q <= 1'b1;
-                            if (!(got_rsp_q || rx_comp))
+                            if (!wu_comp_now)
                                 st_q <= S_DATA;
                             else if (wu_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
@@ -1934,6 +2116,7 @@ module rnf_ctl `RNF_PARAM
     assign RLAST  = 1'b1;
 
     assign BVALID = (st_q == S_BRESP);
+    assign BATDATA = rdata_c;
     assign BID    = `AXI4_BID_WIDTH'(id_q);
     assign BRESP  = axi_resp;
 
