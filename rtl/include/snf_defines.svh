@@ -21,6 +21,7 @@
 `define SNF_DEFINES
 
 `include "axi4_defines.svh"
+`include "display_fatal.svh"
 
 //////////////////////////////////////////////////////////////////////////S
 // CHIE size constants

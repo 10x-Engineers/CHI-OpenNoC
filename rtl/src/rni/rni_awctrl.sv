@@ -120,9 +120,7 @@ module rni_awctrl `RNI_PARAM
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_v_ns_w;
     wire                                 awctrl_entry_dealloc_v_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_dealloc_vec_w;
-    wire                                 txdat_packet_0_s2_w;
-    wire                                 txdat_packet_1_s2_w;
-    wire                                 txdat_two_packets_s2_w;
+    wire [3:0]                           txdat_pkts_s2_w;
     wire                                 aw_txreq_expcompack_w;
     logic [`AXI4_AWCACHE_WIDTH-1:0]      aw_axcache_r;
     wire                                 aw_device_w;
@@ -194,11 +192,9 @@ module rni_awctrl `RNI_PARAM
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_full_pending_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_entry_full_write_w;
     logic                                aw_full_write_r;
-    wire                                 txdat_select_entry_two_packets_w;
+    wire                                 txdat_select_more_w;
     wire                                 txdat_select_new_entry_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_vec_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_two_packets_current_ns_w;
-    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  awctrl_entry_two_packets_flag_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_send_vec_ns_w;
     wire                                 txdat_select_success_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_vec_w;
@@ -291,8 +287,9 @@ module rni_awctrl `RNI_PARAM
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] wdata_recv_done_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_select_ptr_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_select_vec_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_two_packets_current_q;
-    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_two_packets_flag_q;
+    // The chunks of the data packets each entry still owes the Completer.
+    logic [3:0]                          txdat_pend_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [3:0]                          txdat_pend_sel_r;
     logic                                txdat_rdy_v_d2_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_rdy_entry_d2_q;
     logic [`RNI_DMASK_CT_WIDTH-1:0]      txdat_ctmask_d2_q;
@@ -469,9 +466,10 @@ module rni_awctrl `RNI_PARAM
     assign awctrl_ctmask_s2_o[`RNI_DMASK_CT_WIDTH-1:0] = awlink_dmask_s2_w[`RNI_DMASK_CT_WIDTH-1:0];
     assign awctrl_pdmask_s2_o[`RNI_DMASK_PD_WIDTH-1:0] = awlink_dmask_s2_w[`RNI_DMASK_PD_RANGE];
     assign awctrl_bc_vec_s2_o[`RNI_BCVEC_WIDTH-1:0] = awlink_bc_vec_s2_w[`RNI_BCVEC_WIDTH-1:0];
-    assign txdat_packet_0_s2_w = awlink_valid_s2_q & |awlink_dmask_s2_w[`RNI_DMASK_PD_LSB + 1:`RNI_DMASK_PD_LSB];
-    assign txdat_packet_1_s2_w = awlink_valid_s2_q & |awlink_dmask_s2_w[`RNI_DMASK_PD_LSB + 3:`RNI_DMASK_PD_LSB + 2];
-    assign txdat_two_packets_s2_w = txdat_packet_0_s2_w & txdat_packet_1_s2_w;
+    // SS2.10.4 (p.2-136): a write's data is every packet of its Size-aligned container.
+    assign txdat_pkts_s2_w = opennoc_rni_pkg::size_pkts(awlink_size_s2_w,
+                                                        {awctrl_ctmask_s2_o[3] | awctrl_ctmask_s2_o[2],
+                                                         awctrl_ctmask_s2_o[3] | awctrl_ctmask_s2_o[1]});
     // CHI E.b Table 2-9 fn a (SS2.8 p.2-119) makes Ordered Write Observation the
     // Order=0b10/ExpCompAck=1 pair alone, and Table 2-11 (SS2.9.4 p.2-129) gives
     // every Device row Order=EndpointOrder -- under which SS2.8.5 (p.2-119) names
@@ -999,7 +997,7 @@ module rni_awctrl `RNI_PARAM
     generate
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:aw_entry_tagop
             assign awctrl_entry_tagop_o[entry] =
-                (awctrl_entry_info_q[entry].cache[1] & (|awctrl_entry_info_q[entry].cache[3:2]) &
+                (opennoc_rni_pkg::axi_cacheable(awctrl_entry_info_q[entry].cache) &
                  awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_LSB+1]) ?
                 awctrl_entry_info_q[entry].user[`AXI4_USER_TAGOP_RANGE] : 2'b00;
         end
@@ -1009,7 +1007,7 @@ module rni_awctrl `RNI_PARAM
     assign aw_tagop_match_w = (aw_tagop_w == 2'b11);
 
     assign aw_device_w    = ~aw_axcache_r[1];
-    assign aw_cacheable_w = aw_axcache_r[1] & (|aw_axcache_r[3:2]);
+    assign aw_cacheable_w = opennoc_rni_pkg::axi_cacheable(aw_axcache_r);
     // "This entry's request is ordered", per entry so the gate narrows if the
     // Order election below ever does. It gives a Device row EndpointOrder and
     // every other row RequestOrder/OWO (Table 2-11, Sec 2.9.4 p.2-129), so every
@@ -1481,20 +1479,16 @@ module rni_awctrl `RNI_PARAM
     //req is sent in two beats and txdat is sent in three beats
     assign txdat_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = rxrsp_dbid_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign wdata_recv_done_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{wb_req_done_d3_i}} & wb_req_entry_d3_i[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign txdat_select_entry_two_packets_w = wb_not_busy_d1_i & txdat_select_success_w & (|(txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_two_packets_current_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]));
-    assign txdat_select_new_entry_w = wb_not_busy_d1_i & txdat_select_success_w & ~txdat_select_entry_two_packets_w;
+    // An entry with packets left after this one stays selectable, so it is sent again next.
+    assign txdat_select_more_w = wb_not_busy_d1_i & txdat_select_success_w & (|(txdat_pend_sel_r & ~txdat_ctmask_d1_r));
+    assign txdat_select_new_entry_w = wb_not_busy_d1_i & txdat_select_success_w & ~txdat_select_more_w;
     assign txdat_select_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{txdat_select_new_entry_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    //When alloc the entry, if there are two dat packets, awctrl_entry_two_packets_current_q is assert, and when the entry is successfully selected, awctrl_entry_two_packets_current_q is deassert
-    assign awctrl_entry_two_packets_current_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_two_packets_current_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | (awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_two_packets_s2_w}})) &
-           ~(txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_select_entry_two_packets_w}});
-    //When alloc the entry, if there are two dat packets,awctrl_entry_two_packets_flag_q is assert, and when the entry is dealloc, awctrl_entry_two_packets_flag_q is deassert
-    assign awctrl_entry_two_packets_flag_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_two_packets_flag_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | (awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{txdat_two_packets_s2_w}})) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txdat_not_busy_d2_i}} & txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];//txdat_select_vec_d3_q prevents a second packet
     assign awctrl_txdat_compack_d2_o = 1'b0;
     assign awctrl_txdat_rdy_v_d2_o = txdat_rdy_v_d2_q;
     assign awctrl_txdat_rdy_entry_d2_o[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_rdy_entry_d2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_txdat_ctmask_d2_o[`RNI_DMASK_CT_WIDTH-1:0] = txdat_ctmask_d2_q[`RNI_DMASK_CT_WIDTH-1:0];
-    //If an entry needs to send two packets, entry_vec and upd are the same as the last selection.
+    //If an entry needs to send more packets, entry_vec and upd are the same as the last selection.
     poll_with_start_entry
         #(
             .ENTRIES_NUM(RNI_AW_ENTRIES_NUM_PARAM)
@@ -1508,11 +1502,27 @@ module rni_awctrl `RNI_PARAM
 
     always_comb begin
         txdat_ctmask_d1_r[`RNI_DMASK_CT_WIDTH-1:0] = {`RNI_DMASK_CT_WIDTH{1'b0}};
+        txdat_pend_sel_r = 4'b0000;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
-            if(txdat_select_vec_w[i])
-                txdat_ctmask_d1_r[`RNI_DMASK_CT_WIDTH-1:0] = (awctrl_entry_two_packets_flag_q[i] & ~awctrl_entry_two_packets_current_q[i]) ? {awctrl_entry_ctmask_q[i][1:0],awctrl_entry_ctmask_q[i][3:2]} : awctrl_entry_ctmask_q[i][`RNI_DMASK_CT_WIDTH-1:0];
+            if(txdat_select_vec_w[i]) begin
+                txdat_pend_sel_r = txdat_pend_q[i];
+                txdat_ctmask_d1_r[`RNI_DMASK_CT_WIDTH-1:0] = opennoc_rni_pkg::next_pkt(txdat_pend_q[i], awctrl_entry_addr_q[i][5:4]);
+            end
         end
     end
+
+    generate
+        for (genvar e = 0; e < RNI_AW_ENTRIES_NUM_PARAM; e = e + 1) begin: txdat_pend
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i == 1'b1 || awctrl_entry_dealloc_vec_w[e])
+                    txdat_pend_q[e] <= 4'b0000;
+                else if (awlink_valid_s2_q && awctrl_alloc_ptr_s2_q[e])
+                    txdat_pend_q[e] <= txdat_pkts_s2_w;
+                else if (wb_not_busy_d1_i && txdat_select_success_w && txdat_select_vec_w[e])
+                    txdat_pend_q[e] <= txdat_pend_q[e] & ~txdat_ctmask_d1_r;
+            end
+        end
+    endgenerate
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
@@ -1543,28 +1553,6 @@ module rni_awctrl `RNI_PARAM
         else begin
             if(txdat_select_new_entry_w | awctrl_entry_dealloc_v_w)begin
                 txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= txdat_select_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-            end
-        end
-    end
-
-    always_ff @(posedge clk_i or posedge rst_i) begin
-        if (rst_i == 1'b1)begin
-            awctrl_entry_two_packets_current_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
-        end
-        else begin
-            if(awlink_valid_s2_q | txdat_select_entry_two_packets_w)begin
-                awctrl_entry_two_packets_current_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <=awctrl_entry_two_packets_current_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-            end
-        end
-    end
-
-    always_ff @(posedge clk_i or posedge rst_i) begin
-        if (rst_i == 1'b1)begin
-            awctrl_entry_two_packets_flag_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
-        end
-        else begin
-            if(awlink_valid_s2_q | awctrl_entry_dealloc_v_w)begin
-                awctrl_entry_two_packets_flag_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <=awctrl_entry_two_packets_flag_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
         end
     end

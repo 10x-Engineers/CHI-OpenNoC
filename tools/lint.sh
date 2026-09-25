@@ -150,10 +150,11 @@ for n in "${NODES[@]}"; do
     lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
     bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
   fi
-  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F packetises by it
-  # (snf_defines.svh SNF_PKTS), so it is elaborated at the other two widths as well;
-  # every other node still refuses anything but 256 (chie_flit_opt_check).
-  if [ "$n" = snf ]; then
+  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F and RN-I packetise
+  # by it (snf_defines.svh SNF_PKTS, opennoc_rni_pkg PKT_CHUNKS), so they are
+  # elaborated at the other two widths as well; every other node still refuses
+  # anything but 256 (chie_flit_opt_check).
+  if [ "$n" = snf ] || [ "$n" = rni ]; then
     for w in 128 512; do
       lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
       bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1

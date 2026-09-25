@@ -266,7 +266,7 @@ module hnf_mshr_global_monitor `HNF_PARAM
 `ifdef DISPLAY_FATAL
     `display_fatal_arm
 
-    `display_fatal_sva((!li_mshr_rxreq_valid_s0) || (!li_mshr_rxreq_excl_s0) || opennoc_hnf_pkg::hnf_atomic(li_mshr_rxreq_opcode_s0) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOSNP) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOTSHAREDDIRTY) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READCLEAN) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPFULL) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_CLEANUNIQUE) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPPTL) || opennoc_hnf_pkg::hnf_excl_load_as(li_mshr_rxreq_opcode_s0) || opennoc_hnf_pkg::hnf_excl_store_as(li_mshr_rxreq_opcode_s0),$sformatf("Fatal info: RXREQ received a unsupported excl flit with opcode: %h",li_mshr_rxreq_opcode_s0))
+    `display_fatal_sva((!li_mshr_rxreq_valid_s0) || (!li_mshr_rxreq_excl_s0) || chie_pkg::atomic_req(li_mshr_rxreq_opcode_s0) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOSNP) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READNOTSHAREDDIRTY) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_READCLEAN) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPFULL) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_CLEANUNIQUE) || (li_mshr_rxreq_opcode_s0==chie_pkg::REQ_WRITENOSNPPTL) || opennoc_hnf_pkg::hnf_excl_load_as(li_mshr_rxreq_opcode_s0) || opennoc_hnf_pkg::hnf_excl_store_as(li_mshr_rxreq_opcode_s0),$sformatf("Fatal info: RXREQ received a unsupported excl flit with opcode: %h",li_mshr_rxreq_opcode_s0))
 
     logic gm_full;
     always_comb begin
