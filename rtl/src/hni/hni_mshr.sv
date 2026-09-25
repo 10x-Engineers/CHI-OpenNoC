@@ -74,6 +74,11 @@ module hni_mshr `HNI_PARAM
     input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  dbf_rvalid_entry_idx_sx,
     input  wire [3:0]                          dbf_cdmask_sx,
     input  wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_wr_nobyte_sx,
+    input  wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_rd_done_sx,
+    input  wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_rd_err_sx,
+    output wire                                rxreq_dbf_atm_s0,
+    output chie_pkg::req_opcode_e              rxreq_dbf_opcode_s0,
+    output wire                                rxreq_dbf_endian_s0,
 
     output wire                                mshr_txdat_en_sx,  //mshr allow dbf send data to chi xp
     output wire [1:0]                          mshr_txdat_dataid_sx,
@@ -169,6 +174,8 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_drop_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cw_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cb_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_atm_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       atm_wr_issued_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cwpersist_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_rsp1_owed_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_comp_owed_s1_q;
@@ -250,6 +257,12 @@ module hni_mshr `HNI_PARAM
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      comp_access_done_sx;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      wr_access_done_sx;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      wr_withheld_sx;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      atm_wr_ready_sx;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      atm_access_done_sx;
+    wire                                   atm_wr_inject_sx;
+    logic [`HNI_MSHR_ENTRIES_WIDTH-1:0]    atm_wr_inject_idx_sx;
+    wire                                   aw_push_sx;
+    wire  [`HNI_MSHR_ENTRIES_WIDTH-1:0]    aw_push_idx_sx;
     wire                                   txrsp_third_is_comp_sx;
     wire                                   rxreq_ewa_s0;
     wire                                   rxreq_wrgrant_s0;
@@ -300,6 +313,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_drop_s0;
     wire                                   rxreq_atomic_s0;
     wire                                   rxreq_atomicdat_s0;
+    wire                                   rxreq_atm_s0;
     wire                                   rxreq_err_s0;
     wire                                   rxreq_errrd_s0;
     wire                                   rxreq_dvm_s0;
@@ -455,13 +469,18 @@ module hni_mshr `HNI_PARAM
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN)) :1'b0;
     assign rxreq_atomic_s0     = (rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD) && (rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE);
     assign rxreq_atomicdat_s0  = rxreq_atomic_s0 && (rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD);
+    // Sec 16.3.2 (p.16-479): a Non-snoopable Atomic is performed "at a point ... where
+    // the transaction is visible to all other agents", which this Home is for its
+    // AXI space -- so it executes one to Normal memory as an AXI read-modify-write,
+    // held against every other access on the AXI ID until the write is acknowledged.
+    // A Device Atomic "must be passed to the appropriate endpoint Subordinate", and an
+    // AXI4 endpoint takes none, so that one is still errored below.
+    assign rxreq_atm_s0        = rxreq_alloc_en_s0 && rxreq_atomic_s0 && (~rxreq_device_s0);
     // Everything not in a serviced class above. Sec 9.1 (p.9-334) gives NDERR for "an
-    // attempt to use a transaction type that is not supported"; for the Atomics that is
-    // Sec 16.1's (p.16-470) undeclared Atomic_Transactions property -- "if a property is
-    // not declared, it is considered False" -- which Sec 16.3.2 (p.16-479) scopes to an
-    // interconnect and Sec 16.3.3 (p.16-479, MUST) answers with an Error response.
-    // Sec 9.4.4 (p.9-342, MUST) then keeps the transaction structure intact, so the
-    // class carries its shape -- grant, write data, read data -- as well as its error.
+    // attempt to use a transaction type that is not supported"; for a Device Atomic
+    // Sec 16.3.2 (p.16-479) owes it, the endpoint taking none. Sec 9.4.4 (p.9-342,
+    // MUST) then keeps the transaction structure intact, so the class carries its
+    // shape -- grant, write data, read data -- as well as its error.
     // Sec 9.4.6 (p.9-344, MUST): a Home that does not stash completes a Stash request
     // "without signaling an error". Sec 7.2 (p.7-296) serves the Stash writes as
     // their WriteUnique twins above; a StashOnce* has nothing to do but complete.
@@ -469,7 +488,7 @@ module hni_mshr `HNI_PARAM
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCEUNIQUE)
                                                              | rxreq_stashsep_s0) :1'b0;
     assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_dataless_s0
-                                                       | rxreq_stashonce_s0 | rxreq_drop_s0);
+                                                       | rxreq_atm_s0 | rxreq_stashonce_s0 | rxreq_drop_s0);
     // Table B-1 (p.B-492): ReadNoSnpSep is sent only by a Home to a Subordinate.
     assign rxreq_errrd_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
     // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
@@ -504,10 +523,13 @@ module hni_mshr `HNI_PARAM
                                    | (rxreq_opcode_s0 inside {chie_pkg::REQ_WRITENOSNPFULL, chie_pkg::REQ_WRITENOSNPPTL,
                                                               chie_pkg::REQ_WRITEUNIQUEFULL, chie_pkg::REQ_WRITEUNIQUEPTL,
                                                               chie_pkg::REQ_WRITEUNIQUEFULLSTASH, chie_pkg::REQ_WRITEUNIQUEPTLSTASH}));
-    assign rxreq_comp_owed_s0   = rxreq_rsp1_owed_s0 && (~rxreq_rdshape_s0) && (~rxreq_errdat_s0)
-                               && rxreq_wrgrant_s0 && ((~rxreq_ewa_s0) | rxreq_dvm_s0);
+    // Table 9-9 (p.9-342): an executed AtomicStore is granted DBIDResp and completed
+    // by a Comp, sent once the endpoint has acknowledged the write.
+    assign rxreq_comp_owed_s0   = rxreq_rsp1_owed_s0 && (~rxreq_rdshape_s0)
+                               && ((~rxreq_errdat_s0 && rxreq_wrgrant_s0 && ((~rxreq_ewa_s0) | rxreq_dvm_s0))
+                                   | (rxreq_atm_s0 & ~rxreq_atomicdat_s0));
     assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? chie_pkg::RSP_READRECEIPT
-                                : rxreq_errdat_s0  ? chie_pkg::RSP_DBIDRESP
+                                : (rxreq_errdat_s0 | rxreq_atm_s0) ? chie_pkg::RSP_DBIDRESP
                                 : rxreq_wrgrant_s0 ? ((rxreq_ewa_s0 & ~rxreq_dvm_s0) ? chie_pkg::RSP_COMPDBIDRESP
                                                                   : chie_pkg::RSP_DBIDRESP)
                                 : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMPPERSIST
@@ -530,11 +552,14 @@ module hni_mshr `HNI_PARAM
     assign rxreq_dbf_device_s0    = rxreq_device_s0;
     // Sec 9.4.4 (p.9-342, MUST): an errored write still transfers its write data, so
     // the buffer is armed for it even though the write never reaches memory.
-    assign rxreq_dbf_wr_s0        = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0;
+    assign rxreq_dbf_wr_s0        = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0 | rxreq_atm_s0;
+    assign rxreq_dbf_atm_s0       = rxreq_atm_s0;
+    assign rxreq_dbf_opcode_s0    = rxreq_opcode_s0;
+    assign rxreq_dbf_endian_s0    = rxreq_alloc_flit_s0.stashnidvalid.endian;
     assign rxreq_dbf_wrzero_s0    = rxreq_wrzero_s0;
     // Sec 6.2.4 (p.6-285): the System monitor is reset "by an update to the
     // location", so it is told of exactly the requests this node writes memory for.
-    assign rxreq_mem_update_s0    = rxreq_wrf_s0 | rxreq_wrp_s0;
+    assign rxreq_mem_update_s0    = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_atm_s0;
     assign rxreq_dbf_size_s0      = rxreq_size_s0;
     assign rxreq_dbf_axlen_s0     = rxreq_axlen_s0;
     assign rxreq_dbf_entry_idx_s0 = mshr_entry_idx_alloc_s0;
@@ -587,6 +612,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_drop_s1_q[entry]       <= 1'b0;
                     rxreq_cw_s1_q[entry]         <= 1'b0;
                     rxreq_cb_s1_q[entry]         <= 1'b0;
+                    rxreq_atm_s1_q[entry]        <= 1'b0;
                     rxreq_cwpersist_s1_q[entry]  <= 1'b0;
                     rxreq_rsp1_owed_s1_q[entry]  <= 1'b0;
                     rxreq_comp_owed_s1_q[entry]  <= 1'b0;
@@ -601,6 +627,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_drop_s1_q[entry]       <= rxreq_drop_s0;
                     rxreq_cw_s1_q[entry]         <= rxreq_cw_s0;
                     rxreq_cb_s1_q[entry]         <= rxreq_cb_s0;
+                    rxreq_atm_s1_q[entry]        <= rxreq_atm_s0;
                     rxreq_cwpersist_s1_q[entry]  <= rxreq_cwpersist_s0;
                     rxreq_rsp1_owed_s1_q[entry]  <= rxreq_rsp1_owed_s0;
                     rxreq_comp_owed_s1_q[entry]  <= rxreq_comp_owed_s0;
@@ -1044,7 +1071,12 @@ module hni_mshr `HNI_PARAM
             assign wr_access_done_sx[entry]   = (rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry])
                                               & (bresp_rcvd_q[entry]
                                                  | (dbf_rxdat_ok_s2_q[entry] & (rxreq_excl_fail_s2_q[entry] | wr_withheld_sx[entry])));
-            assign comp_access_done_sx[entry] = wr_access_done_sx[entry]
+            // The executed Atomic's access: its write acknowledged, or -- where the read
+            // it depends on errored, so no write is made -- that read and its operand in.
+            assign atm_access_done_sx[entry]  = rxreq_atm_s1_q[entry]
+                                              & (bresp_rcvd_q[entry]
+                                                 | (dbf_rxdat_ok_s2_q[entry] & dbf_rd_done_sx[entry] & dbf_rd_err_sx[entry]));
+            assign comp_access_done_sx[entry] = wr_access_done_sx[entry] | atm_access_done_sx[entry]
                                               | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry]);
             assign txrsp_comp_rdy_sx[entry] = rxreq_comp_owed_s1_q[entry] & txrsp_sent_q[entry]
                                             & comp_access_done_sx[entry] & (~txrsp_comp_enq_q[entry]);
@@ -1204,7 +1236,9 @@ module hni_mshr `HNI_PARAM
     // Table 9-9 (p.9-342) pins DBIDResp to OK and Sec 4.5.4 (p.4-207) pins the
     // ReadReceipt's Resp/RespErr to zero, so only the completion carries the error.
     assign txrsp_resperr_sx  = ((rxreq_err_s1_q[txrsp_entry_idx_s1_q]
-                              | (bresp_err_q[txrsp_entry_idx_s1_q] && (txrsp_opcode_sx == chie_pkg::RSP_COMP)))
+                              | ((bresp_err_q[txrsp_entry_idx_s1_q]
+                                  | (rxreq_atm_s1_q[txrsp_entry_idx_s1_q] & dbf_rd_err_sx[txrsp_entry_idx_s1_q]))
+                                 && (txrsp_opcode_sx == chie_pkg::RSP_COMP)))
                              && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
                              && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                              && (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RESP_ERR_NON_DATA
@@ -1242,7 +1276,12 @@ module hni_mshr `HNI_PARAM
             assign rdat_allrcvd_sx[entry] = (rxreq_size_s1_q[entry] == 3'b110) ?
                                         ((rdat_pdmask_q[entry] & rdat_expect_mask_sx) == rdat_expect_mask_sx) : 1'b1;
 
-            assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0]) & rdat_allrcvd_sx[entry]) ? 
+            // Sec 9.4.4 (p.9-342): an executed Atomic's CompData is the delayed form that
+            // can still report its write -- sent once that access is done. An AtomicStore
+            // read memory too, but returns none of it (Table 4-40 p.4-220).
+            assign txdat1_en_sx[entry] = (rdat_valid_q[entry] & (~txdat_fifo_rdy_sx_q[entry][0]) & rdat_allrcvd_sx[entry]
+                                          & ((~rxreq_atm_s1_q[entry])
+                                             | (atm_access_done_sx[entry] & chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[entry])))) ? 
                                         (rxreq_device_s1_q[entry] ? (rxreq_ccid_s1_q[entry]==2'b11 ? (rdat_pdmask_q[entry][3]==1'b1) : 
                                         (rxreq_ccid_s1_q[entry]==2'b10 ? ((rdat_pdmask_q[entry][3:2]==2'b11) | ((rdat_pdmask_q[entry][2]==1'b1) && (rxreq_size_s1_q[entry]<=3'b100))) : 
                                         (rxreq_ccid_s1_q[entry]==2'b01 ? (rdat_pdmask_q[entry][1]==1'b1) :
@@ -1369,7 +1408,8 @@ module hni_mshr `HNI_PARAM
     end
     // Sec 9.4.4 (p.9-342, MUST) / Table 9-10 (p.9-343): the errored read still returns
     // its packets, carrying the Non-data Error.
-    assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[txdat_entry_idx_sx_q] ? chie_pkg::RESP_ERR_NON_DATA
+    assign mshr_txdat_resperr_sx    = (rxreq_err_s1_q[txdat_entry_idx_sx_q]
+                                       | (rxreq_atm_s1_q[txdat_entry_idx_sx_q] & bresp_err_q[txdat_entry_idx_sx_q])) ? chie_pkg::RESP_ERR_NON_DATA
                                     : ((rxreq_rd_s1_q[txdat_entry_idx_sx_q] & rxreq_excl_s1_q[txdat_entry_idx_sx_q] & (rxreq_excl_pass_s2_q[txdat_entry_idx_sx_q]))? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK);
     // Sec 4.2.5 (p.4-187, MUST): an Atomic's "inbound data size must be the same as
     // the outbound data size, except for in AtomicCompare ... half of the outbound",
@@ -1384,7 +1424,7 @@ module hni_mshr `HNI_PARAM
     // Sec 2.10.4 (p.2-136): "all bytes are located at their natural byte positions",
     // and Sec 2.10.5 (p.2-137) puts the returned value at the addressed byte.
     assign atomic_ret_off_sx   = rxreq_addr_s1_q[txdat_entry_idx_sx_q][4:0];
-    assign mshr_txdat_be_ovr_en_sx = rxreq_errdat_s1_q[txdat_entry_idx_sx_q];
+    assign mshr_txdat_be_ovr_en_sx = chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[txdat_entry_idx_sx_q]);
 
     always_comb begin: mshr_txdat_be_ovr_comb_logic
         integer lo, hi;
@@ -1406,8 +1446,9 @@ module hni_mshr `HNI_PARAM
     //                       mshr AR channel logic
 
     //************************************************************************//
-    assign arvalid_en_s1 = rxreq_alloc_en_s1_q ? ((~sleep_sx_q[mshr_entry_idx_alloc_s1_q]) && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q]) : 1'b0;
-    assign arvalid_en2_s1 = wakeup_valid ? rxreq_rd_s1_q[wakeup_idx_sx] : 1'b0;
+    assign arvalid_en_s1 = rxreq_alloc_en_s1_q ? ((~sleep_sx_q[mshr_entry_idx_alloc_s1_q])
+                                                  && (rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q])) : 1'b0;
+    assign arvalid_en2_s1 = wakeup_valid ? (rxreq_rd_s1_q[wakeup_idx_sx] | rxreq_atm_s1_q[wakeup_idx_sx]) : 1'b0;
 
     always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_logic
         if(rst == 1'b1) begin
@@ -1553,13 +1594,43 @@ module hni_mshr `HNI_PARAM
     // Sec 9.4.4 (p.9-342, MUST): the write data transfer still takes place, but the
     // operation the error reports did not, so the write is withheld from memory.
     assign awvalid_en_s1 = dbf_rxdat_ok_s1 && (~rxreq_excl_fail_s2_q[rxdat_ok_idx_s1]) && (~rxreq_errwr_s1_q[rxdat_ok_idx_s1])
-                        && (~wr_withheld_sx[rxdat_ok_idx_s1]);
+                        && (~wr_withheld_sx[rxdat_ok_idx_s1]) && (~rxreq_atm_s1_q[rxdat_ok_idx_s1]);
+
+    // An executed Atomic writes once both its operand and the value it operates on are
+    // in, and not at all where that read errored (Sec 9.4.4 p.9-342: an Atomic that
+    // cannot complete takes a Non-data Error). It takes the push slot a write's data
+    // arrival is not using.
+    generate
+        for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign atm_wr_ready_sx[entry] = rxreq_atm_s1_q[entry] & (~sleep_sx_q[entry]) & dbf_rxdat_ok_s2_q[entry]
+                                          & dbf_rd_done_sx[entry] & (~dbf_rd_err_sx[entry]) & (~atm_wr_issued_q[entry]);
+
+            always_ff @(posedge clk or posedge rst) begin: atm_wr_issued_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    atm_wr_issued_q[entry] <= 1'b0;
+                else if (atm_wr_inject_sx && (atm_wr_inject_idx_sx == entry))
+                    atm_wr_issued_q[entry] <= 1'b1;
+            end
+        end
+    endgenerate
+
+    always_comb begin: atm_wr_inject_idx_comb_logic
+        atm_wr_inject_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for(int m=`HNI_MSHR_ENTRIES_NUM-1; m>=0; m=m-1)begin
+            if (atm_wr_ready_sx[m])
+                atm_wr_inject_idx_sx = m[`HNI_MSHR_ENTRIES_WIDTH-1:0];
+        end
+    end
+
+    assign atm_wr_inject_sx = (|atm_wr_ready_sx) & (~awvalid_en_s1);
+    assign aw_push_sx       = awvalid_en_s1 | atm_wr_inject_sx;
+    assign aw_push_idx_sx   = awvalid_en_s1 ? rxdat_ok_idx_s1 : atm_wr_inject_idx_sx;
 
     always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_set_cnt_logic
         if(rst == 1'b1) begin
             awvalid_fifo_set_s2_q   <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
         end
-        else if(awvalid_en_s1 == 1'b1) begin
+        else if(aw_push_sx == 1'b1) begin
             awvalid_fifo_set_s2_q   <= awvalid_fifo_set_s2_q + 1'b1;
         end
     end
@@ -1571,9 +1642,9 @@ module hni_mshr `HNI_PARAM
                     awvalid_fifo_s2_q[entry]        <= 1'b0;
                 else if ((awvalid_sx == 1'b1) && (awready_sx == 1'b1) && (awvalid_fifo_cnt_sx_q == entry))
                     awvalid_fifo_s2_q[entry]        <= 1'b0;
-                else if (awvalid_en_s1 && (awvalid_fifo_set_s2_q == entry)) begin
+                else if (aw_push_sx && (awvalid_fifo_set_s2_q == entry)) begin
                     awvalid_fifo_s2_q[entry]        <= 1'b1;
-                    awvalid_fifo_idx_s2_q[entry]    <= rxdat_ok_idx_s1;
+                    awvalid_fifo_idx_s2_q[entry]    <= aw_push_idx_sx;
                 end
             end
         end
@@ -1762,7 +1833,9 @@ module hni_mshr `HNI_PARAM
                                                 & ( wr_access_done_sx[entry]
                                                   | ((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) & txdat_done_sx[entry])
                                                   | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry] & ((~rxreq_errdat_s1_q[entry]) | txdat_done_sx[entry]))
-                                                  | (~(rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry] | rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry] | rxreq_errwr_s1_q[entry]))
+                                                  | (atm_access_done_sx[entry] & ((~chie_pkg::atomic_returns_data(rxreq_opcode_s1_q[entry])) | txdat_done_sx[entry]))
+                                                  | (~(rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry] | rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry] | rxreq_errwr_s1_q[entry]
+                                                       | rxreq_atm_s1_q[entry]))
                                                   )
                                                 )
                                               );
