@@ -35,6 +35,13 @@
 // every snoop not yet serviced beyond it. SnpDVMOp is not decoded: DVM_Support is
 // False.
 //
+// A Stash snoop is answered with a Data Pull (SS7.1.1 p.7-295) where Tables
+// 4-46..4-48 (SS4.8.2 p.4-227) permit one -- SnpStashUnique on a line not held or
+// held SC, SnpStashShared on one not held, SnpUniqueStash and SnpMakeInvalidStash
+// on any -- when the core side has no transaction of its own to hazard with it
+// (SS7.2 p.7-296) and the line has a way it can take without a write-back. The
+// DBID names the TxnID the core side then completes the implied read under.
+//
 // Snoops are answered in every coherency state: Table 15-1 (p.15-468) requires it
 // in all but Coherency Disabled, and does not forbid it there.
 module rnf_snp `RNF_PARAM
@@ -85,7 +92,18 @@ module rnf_snp `RNF_PARAM
     // The line of the snoop being answered, from the cycle it is taken until its
     // response has gone.
     output wire                                 snp_line_v_o,
-    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o,
+
+    // The Data Pull handed to the core side: its line, the way it fills, and the
+    // read Table 7-2 (SS7.1.1 p.7-295) makes of it.
+    input  wire [`RNF_WAY_W-1:0]                cache_vic_way_i,
+    input  wire [`RNF_CS_WIDTH-1:0]             cache_vic_state_i,
+    input  wire                                 pull_ready_i,
+    input  wire [11:0]                          pull_txnid_i,
+    output wire                                 pull_v_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr_o,
+    output wire [`RNF_WAY_W-1:0]                pull_way_o,
+    output chie_pkg::req_opcode_e               pull_op_o
     );
 
     localparam logic [1:0] S_IDLE = 2'd0;
@@ -114,6 +132,9 @@ module rnf_snp `RNF_PARAM
     // The line goes to the Requester too (SS4.8.3 p.4-229), in state fwd_resp_q.
     logic                                 fwd_q;
     chie_pkg::resp_state_e                fwd_resp_q;
+    // The response carries a Data Pull under DBID pull_dbid_q.
+    logic                                 pull_q;
+    logic [11:0]                          pull_dbid_q;
 
     // SS4.8.3 (p.4-229): the Snoopee "is permitted, but not expected, to convert
     // the Snoop to its corresponding Non-forwarding type". SS4.8.2 (p.4-227):
@@ -148,8 +169,7 @@ module rnf_snp `RNF_PARAM
                is_stash_hint(op);
     endfunction
 
-    // Tables 4-47/4-48 (p.4-228/4-229): answered with the precise state and no
-    // Data Pull, which SS7.1.1 (p.7-295) lets a Snoopee decline.
+    // Tables 4-47/4-48 (p.4-228/4-229): answered with the precise state.
     function automatic bit is_stash_hint(chie_pkg::snp_opcode_e op);
         return (op == chie_pkg::SNP_SNPSTASHUNIQUE) || (op == chie_pkg::SNP_SNPSTASHSHARED);
     endfunction
@@ -302,6 +322,26 @@ module rnf_snp `RNF_PARAM
     wire [`RNF_CS_WIDTH-1:0] nxt_state = head_fwd ? fwd_final(head.opcode, cur_state)
                                                   : final_state(head_op, cur_state);
 
+    // SS4.8.2 (p.4-228): SnpStashUnique pulls only "if the cache-data is not present,
+    // or present in a Shared state", SnpStashShared only if not present; Table 4-46
+    // (p.4-227) permits a pull with any response to the other two. The pulled line
+    // takes the snooped line's own way, or a victim that leaves silently (Table 4-32
+    // SS4.6 p.4-209) -- a Dirty one would need a CopyBack in the pull's way.
+    wire head_stash_pull_ok =
+        ((head.opcode == chie_pkg::SNP_SNPSTASHUNIQUE) &&
+         ((cur_state == `RNF_CS_I) || (cur_state == `RNF_CS_SC))) ||
+        ((head.opcode == chie_pkg::SNP_SNPSTASHSHARED) && (cur_state == `RNF_CS_I)) ||
+        (head.opcode == chie_pkg::SNP_SNPUNIQUESTASH) ||
+        (head.opcode == chie_pkg::SNP_SNPMAKEINVALIDSTASH);
+    wire pull_way_ok = cache_lu_hit_i || !is_dirty(cache_vic_state_i);
+    wire head_pull   = head_stash_pull_ok && pull_way_ok && pull_ready_i;
+
+    assign pull_v_o    = take && head_pull;
+    assign pull_addr_o = {snp_addr[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
+    assign pull_way_o  = cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+    assign pull_op_o   = (head.opcode == chie_pkg::SNP_SNPSTASHSHARED) ? chie_pkg::REQ_READNOTSHAREDDIRTY
+                                                                       : chie_pkg::REQ_READUNIQUE;
+
     // SS4.9 (p.4-240): a Dirty line goes back whatever RetToSrc says, a Shared
     // Clean one only when RetToSrc is asserted, and a Unique Clean one is that
     // section's "optionally", which this node declines. SnpMakeInvalid is
@@ -338,8 +378,13 @@ module rnf_snp `RNF_PARAM
         snp_txrspflit_o.txnid  = snp_q.txnid;
         snp_txrspflit_o.opcode = fwd_q ? chie_pkg::RSP_SNPRESPFWDED : chie_pkg::RSP_SNPRESP;
         snp_txrspflit_o.resp   = resp_of(final_q, pass_dirty_q);
-        // SS13.10.45 (p.13-438): the state the line was forwarded to the Requester in.
+        // SS13.10.45 (p.13-438): the state the line was forwarded to the Requester in,
+        // and on a Stash snoop's answer the same bits are DataPull (SS13.10.33 p.13-433).
         snp_txrspflit_o.fwdstate.fwdstate = fwd_q ? fwd_resp_q : chie_pkg::RESP_I;
+        if (pull_q) begin
+            snp_txrspflit_o.fwdstate.datapull = 3'b001;
+            snp_txrspflit_o.dbid              = pull_dbid_q;
+        end
         // SS11.5.1 (p.11-368, MUST): the snoop's TraceTag is reflected.
         snp_txrspflit_o.tracetag = snp_q.tracetag;
     end
@@ -380,6 +425,12 @@ module rnf_snp `RNF_PARAM
         snp_txdatflit_o.resp    = resp_of(final_q, pass_dirty_q);
         // SS13.10.45 (p.13-438): FwdState rides in the DataSource bits.
         snp_txdatflit_o.datasource.fwdstate = {1'b0, (fwd_q ? fwd_resp_q : chie_pkg::RESP_I)};
+        // SS7.2 (p.7-296): "If the Snoop response with Data Pull includes data, then
+        // the DBID field value in all data packets must be the same."
+        if (pull_q) begin
+            snp_txdatflit_o.datasource.datapull = 4'b0001;
+            snp_txdatflit_o.dbid                = pull_dbid_q;
+        end
         snp_txdatflit_o.dataid  = 2'(int'(pkt_q) * DID_STEP);
         snp_txdatflit_o.tracetag = snp_q.tracetag;
         // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the snoop, whose Addr field
@@ -443,6 +494,8 @@ module rnf_snp `RNF_PARAM
             started_q     <= 1'b0;
             fwd_q         <= 1'b0;
             fwd_resp_q    <= chie_pkg::RESP_I;
+            pull_q        <= 1'b0;
+            pull_dbid_q   <= '0;
         end
         else begin
             case (st_q)
@@ -457,6 +510,8 @@ module rnf_snp `RNF_PARAM
                         pass_dirty_q  <= pass_dirty;
                         fwd_q         <= head_fwd;
                         fwd_resp_q    <= fwd_state(head.opcode, cur_state);
+                        pull_q        <= head_pull;
+                        pull_dbid_q   <= pull_txnid_i;
                         pkt_q         <= '0;
                         started_q     <= 1'b0;
                         st_q          <= head_fwd  ? S_FWD :

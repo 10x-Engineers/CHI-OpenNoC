@@ -42,6 +42,10 @@ module rnf_cache `RNF_PARAM
     output wire [`RNF_WAY_W-1:0]               snp_way_o,
     output wire [`RNF_LINE_BITS-1:0]           snp_data_o,
     output wire [`RNF_META_W-1:0]             snp_meta_o,
+    // The way a fill of the snoop's line would take and what it holds: a Data
+    // Pull (SS7.1.1 p.7-295) allocates there.
+    output wire [`RNF_WAY_W-1:0]               snp_vic_way_o,
+    output wire [`RNF_CS_WIDTH-1:0]            snp_vic_state_o,
 
     // The way a fill for this address would take, and what it would displace.
     // vic_data_o is what a CopyBack of a Dirty victim sends.
@@ -140,6 +144,21 @@ module rnf_cache `RNF_PARAM
     assign snp_state_o = snp_hit_c ? state_q[snp_set][snp_way_c] : `RNF_CS_I;
     assign snp_data_o  = data_q[snp_set][snp_way_c];
     assign snp_meta_o  = meta_q[snp_set][snp_way_c];
+
+    logic                  snp_free_v_c;
+    logic [`RNF_WAY_W-1:0] snp_free_way_c;
+    always_comb begin
+        snp_free_v_c   = 1'b0;
+        snp_free_way_c = '0;
+        for (int w = 0; w < WAYS; w++) begin
+            if (!snp_free_v_c && (state_q[snp_set][w] == `RNF_CS_I)) begin
+                snp_free_v_c   = 1'b1;
+                snp_free_way_c = `RNF_WAY_W'(w);
+            end
+        end
+    end
+    assign snp_vic_way_o   = snp_free_v_c ? snp_free_way_c : rr_q[snp_set];
+    assign snp_vic_state_o = state_q[snp_set][snp_vic_way_o];
 
     // An invalid way is taken before the round-robin victim, so a cold cache
     // fills before it ever evicts.

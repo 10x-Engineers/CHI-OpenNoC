@@ -70,9 +70,10 @@
 // PARTIAL keeps a partial store of an uncached line as the bytes written: a
 // CleanUnique from I ends UCE (Table 4-38 p.4-218) and the store makes it UDP
 // (Table 4-32 p.4-209). IMMEDIATE_PERSEP combines the WriteUnique with
-// CleanSharedPersistSep (SS2.3.2 p.2-61). On a Device or Non-cacheable write
-// IMMEDIATE_CLSH and IMMEDIATE_PERSEP give the WriteNoSnp forms. 3'd6..3'd7 are
-// reserved and read as CACHED.
+// CleanSharedPersistSep (SS2.3.2 p.2-61), and IMMEDIATE_STASH is its
+// WriteUnique{Full,Ptl}Stash (SS7.2 p.7-296) to STASHNID. On a Device or
+// Non-cacheable write IMMEDIATE_CLSH and IMMEDIATE_PERSEP give the WriteNoSnp
+// forms. 3'd7 is reserved and reads as CACHED.
 `define RNF_AW_COH_W          3
 `define RNF_AW_CACHED         3'd0
 `define RNF_AW_READ_UNIQUE    3'd1
@@ -80,6 +81,7 @@
 `define RNF_AW_IMMEDIATE_CLSH 3'd3
 `define RNF_AW_PARTIAL        3'd4
 `define RNF_AW_IMMEDIATE_PERSEP 3'd5
+`define RNF_AW_IMMEDIATE_STASH  3'd6
 
 // Cache maintenance port: one operation on one line, answered on CMDONE/CMRESP.
 `define RNF_CM_OP_W               4
@@ -98,6 +100,10 @@
 `define RNF_CM_CLEAN_SHARED_PERSIST           4'd9
 `define RNF_CM_CLEAN_SHARED_PERSIST_SEP       4'd10
 `define RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT 4'd11
+// SS7.3 (p.7-297): StashOnceShared / StashOnceUnique to STASHNID. Table 4-10
+// (SS4.2.2 p.4-174) issues them from I only, so a held line leaves first.
+`define RNF_CM_STASH_ONCE_SHARED              4'd12
+`define RNF_CM_STASH_ONCE_UNIQUE              4'd13
 
 // AWATOP qualifies AWVALID with an atomic operation, in AMBA AXI5's AWATOP encoding:
 // [5:4] 01 AtomicStore and 10 AtomicLoad, [3] the Endian bit and [2:0] the Table

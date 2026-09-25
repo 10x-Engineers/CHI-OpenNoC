@@ -126,6 +126,10 @@ module rnf `RNF_PARAM
     // SS16.2.4 (p.16-476): Atomic transactions are generated only while asserted.
     input  wire                          BROADCASTATOMIC,
 
+    // The Stash target of a stash write or maintenance operation (rnf_defines.svh).
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0] STASHNID,
+    input  wire                          STASHNIDVALID,
+
     // Core-side cache maintenance: one operation on one line (rnf_defines.svh).
     input  wire                                 CMVALID,
     output wire                                 CMREADY,
@@ -183,6 +187,14 @@ module rnf `RNF_PARAM
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_cb_hold_addr;
     wire                                 snp_line_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr;
+    wire [`RNF_WAY_W-1:0]                snp_vic_way;
+    wire [`RNF_CS_WIDTH-1:0]             snp_vic_state;
+    wire                                 pull_ready;
+    wire [11:0]                          pull_txnid;
+    wire                                 pull_v;
+    wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr;
+    wire [`RNF_WAY_W-1:0]                pull_way;
+    chie_pkg::req_opcode_e               pull_op;
 
     // A snoop response takes TXDAT ahead of a CopyBack, for the same reason it
     // takes TXRSP: SS4.11.1 (p.4-242, MUST) has the RN-F answer a snoop without
@@ -253,6 +265,8 @@ module rnf `RNF_PARAM
                      ,.snp_way_o    ( snp_lu_way       )
                      ,.snp_data_o   ( snp_lu_data      )
                      ,.snp_meta_o   ( snp_lu_meta       )
+                     ,.snp_vic_way_o  ( snp_vic_way     )
+                     ,.snp_vic_state_o( snp_vic_state   )
                      ,.upd_v_i      ( snp_upd_v        )
                      ,.upd_addr_i   ( snp_upd_addr     )
                      ,.upd_way_i    ( snp_upd_way      )
@@ -292,6 +306,14 @@ module rnf `RNF_PARAM
                      ,.snp_busy_o            ( snp_busy         )
                      ,.snp_line_v_o          ( snp_line_v       )
                      ,.snp_line_addr_o       ( snp_line_addr    )
+                     ,.cache_vic_way_i       ( snp_vic_way      )
+                     ,.cache_vic_state_i     ( snp_vic_state    )
+                     ,.pull_ready_i          ( pull_ready       )
+                     ,.pull_txnid_i          ( pull_txnid       )
+                     ,.pull_v_o              ( pull_v           )
+                     ,.pull_addr_o           ( pull_addr        )
+                     ,.pull_way_o            ( pull_way         )
+                     ,.pull_op_o             ( pull_op          )
                  );
 
     // A snoop response takes the channel first: it is what releases the Home's
@@ -346,6 +368,8 @@ module rnf `RNF_PARAM
                      ,.BREADY                ( BREADY               )
                      ,.BATDATA               ( BATDATA              )
                      ,.BROADCASTATOMIC       ( BROADCASTATOMIC      )
+                     ,.STASHNID              ( STASHNID             )
+                     ,.STASHNIDVALID         ( STASHNIDVALID        )
                      ,.CMVALID               ( CMVALID              )
                      ,.CMREADY               ( CMREADY              )
                      ,.CMOP                  ( CMOP                 )
@@ -407,6 +431,12 @@ module rnf `RNF_PARAM
                      ,.cb_hold_addr_o        ( ctl_cb_hold_addr     )
                      ,.snp_line_v_i          ( snp_line_v           )
                      ,.snp_line_addr_i       ( snp_line_addr        )
+                     ,.pull_ready_o          ( pull_ready           )
+                     ,.pull_txnid_o          ( pull_txnid           )
+                     ,.pull_v_i              ( pull_v               )
+                     ,.pull_addr_i           ( pull_addr            )
+                     ,.pull_way_i            ( pull_way             )
+                     ,.pull_op_i             ( pull_op              )
                      ,.txn_active_o          ( txn_active           )
                  );
 

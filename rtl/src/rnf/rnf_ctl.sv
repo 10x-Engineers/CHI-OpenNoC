@@ -37,6 +37,10 @@
 //                               bypassed (Table 2-11 SS2.9.4 p.2-129)
 //   atomic, near             -> the store's own acquire, then the operation on
 //                               the line in the cache (SS16.3.1 p.16-478)
+//   stash                    -> WriteUnique{Full,Ptl}Stash, StashOnce{Shared,Unique}
+//                               to STASHNID (SS7.2 p.7-296, SS7.3 p.7-297)
+//   Data Pull                -> the snoop port's implied read, completed as an
+//                               allocating read the core did not make (SS7.1.1 p.7-295)
 //   atomic, far              -> Atomic{Store,Load,Swap,Compare}, the line first
 //                               written back or dropped, or kept with SnoopMe
 //                               (SS4.2.5 p.4-187)
@@ -126,6 +130,11 @@ module rnf_ctl `RNF_PARAM
     // SS16.2.4 (p.16-476, MUST): deasserted, the interface generates no Atomic.
     input  wire                                 BROADCASTATOMIC,
 
+    // The Stash target a stash request names (SS13.10.8 p.13-419), sampled with
+    // AWVALID or CMVALID.
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0]      STASHNID,
+    input  wire                                 STASHNIDVALID,
+
     // Cache maintenance
     input  wire                                 CMVALID,
     output wire                                 CMREADY,
@@ -210,6 +219,14 @@ module rnf_ctl `RNF_PARAM
     // The line the snoop port is answering.
     input  wire                                 snp_line_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_i,
+
+    // A Data Pull the snoop port has put in its response, taken only while idle.
+    output wire                                 pull_ready_o,
+    output wire [11:0]                          pull_txnid_o,
+    input  wire                                 pull_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr_i,
+    input  wire [`RNF_WAY_W-1:0]                pull_way_i,
+    input  chie_pkg::req_opcode_e               pull_op_i,
 
     output wire                                 txn_active_o
     );
@@ -312,6 +329,8 @@ module rnf_ctl `RNF_PARAM
     logic [`RNF_LINE_OFFSET_W-1:0]              aw_off_q;
     logic                                       atm_ret_q;
     logic                                       snoopme_q;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]            stash_nid_q;
+    logic                                       stash_nid_v_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -494,6 +513,11 @@ module rnf_ctl `RNF_PARAM
     // beside their completion, which a CompPersist combines with it.
     function automatic bit owes_persist(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP) || is_persep_write(op);
+    endfunction
+
+    function automatic bit is_stash_req(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_WRITEUNIQUEFULLSTASH) || (op == chie_pkg::REQ_WRITEUNIQUEPTLSTASH) ||
+               (op == chie_pkg::REQ_STASHONCESHARED)      || (op == chie_pkg::REQ_STASHONCEUNIQUE);
     endfunction
 
     function automatic bit is_write_zero(chie_pkg::req_opcode_e op);
@@ -710,7 +734,8 @@ module rnf_ctl `RNF_PARAM
     // A surplus P-Credit goes back before new work is taken: offering READY in
     // the same cycle the FSM leaves to return it would complete an AXI handshake
     // for a request nothing then serves.
-    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i;
+    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i &&
+                     !pull_v_i;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
     assign CMREADY = accept_ok && !ARVALID && !AWVALID;
@@ -857,6 +882,12 @@ module rnf_ctl `RNF_PARAM
             // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
             prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
                                                 (acq_op_q != chie_pkg::REQ_READONCEMAKEINVALID);
+            // SS13.10.8/SS13.10.9 (p.13-419): a stash request's target, with no
+            // StashLPID.
+            if (is_stash_req(acq_op_q)) begin
+                prot_txreqflit_o.stashnidvalid.stashnidvalid = stash_nid_v_q;
+                prot_txreqflit_o.returnnid                   = stash_nid_v_q ? stash_nid_q : '0;
+            end
             // SS13.10.31 (p.13-433) and SS13.10.28 (p.13-432): an Atomic's shared REQ
             // bits are SnoopMe and Endian.
             if (is_atomic_op(acq_op_q)) begin
@@ -1215,6 +1246,8 @@ module rnf_ctl `RNF_PARAM
             aw_off_q      <= '0;
             atm_ret_q     <= 1'b0;
             snoopme_q     <= 1'b0;
+            stash_nid_q   <= '0;
+            stash_nid_v_q <= 1'b0;
             for (int i = 0; i < MON; i++) begin
                 mon_v_q[i]    <= 1'b0;
                 mon_lp_q[i]   <= 8'd0;
@@ -1373,6 +1406,29 @@ module rnf_ctl `RNF_PARAM
                         end
                         else drop_q <= 1'b1;
                     end
+                    // SS7.1.1 (p.7-295): a Data Pull is a read this node completes as
+                    // it would its own allocating one, under the TxnID its response
+                    // gave (SS7.2 p.7-296), and owes a CompAck (SS2.3.4 p.2-71).
+                    else if (pull_v_i) begin
+                        addr_q        <= pull_addr_i;
+                        way_q         <= pull_way_i;
+                        is_wr_q       <= 1'b0;
+                        rsp_ch_q      <= CH_NONE;
+                        core_q        <= 1'b0;
+                        excl_q        <= 1'b0;
+                        excl_pass_q   <= 1'b0;
+                        qos_q         <= 4'd0;
+                        hit_q         <= 1'b0;
+                        line_err_q    <= 1'b0;
+                        line_poison_q <= 8'h00;
+                        line_vmask_q  <= '0;
+                        acq_cs_q      <= `RNF_CS_I;
+                        acq_op_q      <= pull_op_i;
+                        kind_q        <= K_READ;
+                        alloc_q       <= 1'b1;
+                        ack_q         <= 1'b1;
+                        st_q          <= S_DATA;
+                    end
                     else if (ARVALID && ARREADY) begin
                         id_q          <= ARID;
                         addr_q        <= ar_line;
@@ -1476,6 +1532,8 @@ module rnf_ctl `RNF_PARAM
                                     ((AWLEN == `AXI4_AWLEN_WIDTH'(1)) && (AWSIZE == `AXI4_AWSIZE_WIDTH'(4))) ? 6'd32 : 6'd0;
                         aw_off_q <= AWADDR[5:0];
                         rchunk_q <= AWADDR[5:4];
+                        stash_nid_q   <= STASHNID;
+                        stash_nid_v_q <= STASHNIDVALID;
                         nc_q     <= aw_nc;
                         dev_q    <= !AWCACHE[1];
                         ewa_q    <= AWCACHE[0];
@@ -1492,6 +1550,8 @@ module rnf_ctl `RNF_PARAM
                     else if (CMVALID && CMREADY) begin
                         qos_q       <= 4'd0;
                         addr_q      <= cm_line;
+                        stash_nid_q   <= STASHNID;
+                        stash_nid_v_q <= STASHNIDVALID;
                         is_wr_q     <= 1'b0;
                         rsp_ch_q    <= CH_CM;
                         alloc_q     <= 1'b0;
@@ -1584,6 +1644,21 @@ module rnf_ctl `RNF_PARAM
                                 // persistent CMOs from UC, SC or I only.
                                 else begin
                                     drop_q <= lu_hit_now && (!cm_keeps(CMOP) || (lu_state == `RNF_CS_UCE));
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            // Table 4-10 (SS4.2.2 p.4-174): StashOnce from I only, so a
+                            // Dirty line goes back and a Clean one is dropped first.
+                            `RNF_CM_STASH_ONCE_SHARED, `RNF_CM_STASH_ONCE_UNIQUE: begin
+                                acq_op_q <= (CMOP == `RNF_CM_STASH_ONCE_SHARED) ? chie_pkg::REQ_STASHONCESHARED
+                                                                                : chie_pkg::REQ_STASHONCEUNIQUE;
+                                if (is_dirty(lu_state)) begin
+                                    cb_op_q       <= back_op(lu_state);
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
+                                else begin
+                                    drop_q <= lu_hit_now;
                                     st_q   <= S_REQ;
                                 end
                             end
@@ -1770,7 +1845,8 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else if ((aw_coh_q == `RNF_AW_IMMEDIATE) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
-                                         (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)) begin
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)) begin
                                     // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
                                     // line that is Invalid here, and leaves it so.
                                     alloc_q <= 1'b0;
@@ -1782,6 +1858,9 @@ module rnf_ctl `RNF_PARAM
                                     else if (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
                                         acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP
                                                             : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP;
+                                    else if (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)
+                                        acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLSTASH
+                                                            : chie_pkg::REQ_WRITEUNIQUEPTLSTASH;
                                     else
                                         acq_op_q <= wr_zero ? chie_pkg::REQ_WRITEUNIQUEZERO :
                                                     wr_full ? chie_pkg::REQ_WRITEUNIQUEFULL
@@ -2224,6 +2303,11 @@ module rnf_ctl `RNF_PARAM
     // SS14.7.1 (p.14-460): a held surplus P-Credit is a PCrdReturn this node still
     // owes, so it counts as work in progress even from idle.
     assign txn_active_o = (st_q != S_IDLE) || surplus_v;
+
+    // Idle and about to stay so: the S_IDLE arms above take a surplus P-Credit and
+    // the leaving-coherency flush ahead of a pull.
+    assign pull_ready_o = (st_q == S_IDLE) && !surplus_v && !flush_v;
+    assign pull_txnid_o = txnid_q;
 
     // A single-outstanding Requester draws at most one RetryAck at a time, so a
     // conformant Completer never grants it more than a few credits of one type
