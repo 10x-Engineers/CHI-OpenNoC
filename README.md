@@ -101,13 +101,13 @@ Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.
 | :--- | :---: | :--- |
 | `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 | |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | |
-| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM` |
+| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpSharedFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM`; `SnpSharedFwd` for a `ReadShared`, whose Snoopee may forward `SD_PD` |
 | `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | only to a target set in `RNF_STASH_LIST_PARAM` |
-| `SnpSharedFwd`, `SnpQuery` | ⬜ | [#334](https://github.com/10x-Engineers/CHI-OpenNoC/issues/334) |
+| `SnpQuery` | 🟢 | from the `SNPQ_*` port when `HNF_SNPQUERY_EN_PARAM` is set, which reports the Snoopee's state |
 | `SnpDVMOp` | ⬜ | MN only [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | All snoop responses, incl. `SnpRespDataPtl` | 🟢 | |
 
-Every snoop is sent with `DoNotGoToSD = 1`.
+Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 makes it zero there.
 
 ### Features
 
@@ -238,6 +238,7 @@ and are overridden at instantiation.
 | `RNF_STASH_LIST_PARAM` | all False | Per-Requester: receives Stash snoops (section 9.4.6) |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | 64 B lines |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
+| `HNF_SNPQUERY_EN_PARAM` | 0 | 1: `SNPQ_REQ_*` sends a `SnpQuery` for one line to one `RNF_NID_LIST_PARAM` entry and `SNPQ_RSP_*` reports its state, or `SENT=0` where that interface is out of the coherency domain |
 | `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` | 8 / 0 | |

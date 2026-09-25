@@ -39,6 +39,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //inputs related to request handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxreq_valid_s0,
     input  wire                                li_mshr_rxreq_seq_s0,
+    input  wire                                li_mshr_rxreq_snpq_s0,
+    input  wire [`RNF_WIDTH-1:0]               snpq_req_rn_s0,
     input  wire [3:0]                          li_mshr_rxreq_qos_s0,
     input  wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
     input  wire [11:0]                         li_mshr_rxreq_txnid_s0,
@@ -266,6 +268,12 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic                               mshr_l3_fill_sx1_q,
     output logic [CHIE_NID_WIDTH_PARAM-1:0]    mshr_l3_rnf_sx1_q,
     output logic                               mshr_l3_seq_retire_sx1_q,
+
+    // SS4.3 (p.4-192, MUST): the Snoopee's precise state, from the SnpQuery port's snoop.
+    output wire                                snpq_rsp_valid,
+    output wire                                snpq_rsp_sent,
+    output chie_pkg::resp_state_e              snpq_rsp_resp,
+    output chie_pkg::resp_err_e                snpq_rsp_resperr,
     output chie_pkg::req_opcode_e              mshr_l3_opcode_sx1_q,
     output logic                               mshr_l3_snoopme_sx1_q,
     output logic [chie_pkg::NID_WIDTH-1:0]     mshr_l3_stash_nid_sx1_q,
@@ -634,6 +642,14 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_upd_sx;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_ci_s0_w;
     wire                                 op_seq;
+    wire                                 op_snpq;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpq_s1_q;
+    logic [`RNF_WIDTH-1:0]               mshr_snpq_rn_q;
+    wire  [`RNF_NUM-1:0]                 mshr_snpq_tgt_s1;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snpq_snp_s1;
+    logic                                mshr_snpq_sent_q;
+    chie_pkg::resp_state_e               mshr_snpq_resp_q;
+    chie_pkg::resp_err_e                 mshr_snpq_resperr_q;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_set_s0;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_seq_upd_sx;
@@ -1272,6 +1288,33 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // A SnpQuery from the port takes the same internally generated slot, one at a
+    // time, and names one Requester interface to snoop.
+    assign op_snpq = li_mshr_rxreq_snpq_s0;
+    generate
+        for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_snpq_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_snpq_s1_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_snpq_s1_q[entry] <= 1'b0;
+                else if(mshr_can_alloc_entry_s0[entry])
+                    mshr_snpq_s1_q[entry] <= op_snpq;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    always_ff @(posedge clk or posedge rst)begin : mshr_snpq_rn_q_timing_logic
+        if(rst == 1'b1)
+            mshr_snpq_rn_q <= {`RNF_WIDTH{1'b0}};
+        else if(op_snpq)
+            mshr_snpq_rn_q <= snpq_req_rn_s0;
+        else
+            ;
+    end
+
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt." Every request the link admits
     // is therefore classified here; anything outside the serviced set above owes the
@@ -1284,7 +1327,7 @@ module hnf_mshr_ctl `HNF_PARAM
                         | (li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN);
     assign op_serviced  = op_rdnosnp | op_ro | op_roinv | op_rdnosd | op_ru | op_rc
                         | op_wrnosnp | op_wu | op_wb | op_wc | op_we
-                        | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq;
+                        | op_mu | op_cu | op_evi | op_cs | op_ci | op_seq | op_snpq;
     assign op_err       = li_mshr_rxreq_valid_s0 & ~(op_serviced | op_drop);
     // Table 4-6 (p.4-168) / Table 4-8 (p.4-171): a read is completed by CompData, so
     // the error rides on the data response (Table 9-2 p.9-337).
@@ -1771,7 +1814,10 @@ module hnf_mshr_ctl `HNF_PARAM
     // back-invalidation's fan-out is empty and it owes no snoop to wait on. SS4.4.2 (p.4-196)
     // only permits the spontaneous snoop, so completing with none is the correct behaviour.
     assign mshr_seq_snp_s1          = mshr_seq_s1_q & {`MSHR_ENTRIES_NUM{|sysco_snp_gen_en}};
-    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1);
+    // The same Table 15-1 (p.15-468, MUST) rule for the one interface a SnpQuery names.
+    assign mshr_snpq_tgt_s1         = (`RNF_NUM'(1) << mshr_snpq_rn_q) & sysco_snp_gen_en;
+    assign mshr_snpq_snp_s1         = mshr_snpq_s1_q & {`MSHR_ENTRIES_NUM{|mshr_snpq_tgt_s1}};
+    assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1 | mshr_snpq_snp_s1);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
     assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
@@ -2506,6 +2552,8 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snpcnt_sx_q[entry] <= l3_snp_cnt;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
                     mshr_snpcnt_sx_q[entry] <= seq_snp_cnt;
+                else if(mshr_snpq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                    mshr_snpcnt_sx_q[entry] <= {{(`MSHR_SNPCNT_WIDTH-1){1'b0}}, |mshr_snpq_tgt_s1};
                 else
                     ;
             end
@@ -2584,6 +2632,8 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snp_bit_sx8_q[entry] <= l3_snp_bit_sx7_q;
                 else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
                     mshr_snp_bit_sx8_q[entry] <= sysco_snp_gen_en;
+                else if(mshr_snpq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                    mshr_snp_bit_sx8_q[entry] <= mshr_snpq_tgt_s1;
                 else
                     ;
             end
@@ -2597,7 +2647,7 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
                 else if(mshr_l3_entry_vec_sx7[entry] && l3_rd_busy_s2_q[entry])
                     mshr_stash_bit_sx8_q[entry] <= l3_stash_bit_sx7_q;
-                else if(mshr_seq_s1_q[entry] && mshr_can_alloc_entry_s1_q[entry])
+                else if((mshr_seq_s1_q[entry] || mshr_snpq_s1_q[entry]) && mshr_can_alloc_entry_s1_q[entry])
                     mshr_stash_bit_sx8_q[entry] <= {`RNF_NUM{1'b0}};
                 else
                     ;
@@ -2610,11 +2660,39 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_snpcode_sx8_q[entry] <= mshr_snpcode_sx7;
                 else if(mshr_seq_s1_q[entry])
                     mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPCLEANINVALID;
+                else if(mshr_snpq_s1_q[entry])
+                    mshr_snpcode_sx8_q[entry] <= chie_pkg::SNP_SNPQUERY;
                 else
                     ;
             end
         end
     endgenerate
+
+    // SS4.3 (p.4-192, MUST): "The Snoop response must include the precise state of
+    // the cache line at the targeted Snoopee", which is what the port reports; an
+    // interface outside the coherency domain is sent none (Table 15-1 p.15-468).
+    always_ff @(posedge clk or posedge rst)begin : mshr_snpq_rsp_timing_logic
+        if(rst == 1'b1) begin
+            mshr_snpq_sent_q    <= 1'b0;
+            mshr_snpq_resp_q    <= chie_pkg::RESP_I;
+            mshr_snpq_resperr_q <= chie_pkg::RESP_ERR_NORM_OK;
+        end
+        else if(|(mshr_snpq_s1_q & mshr_can_alloc_entry_s1_q)) begin
+            mshr_snpq_sent_q    <= |mshr_snpq_tgt_s1;
+            mshr_snpq_resp_q    <= chie_pkg::RESP_I;
+            mshr_snpq_resperr_q <= chie_pkg::RESP_ERR_NORM_OK;
+        end
+        else if(|(mshr_snprsp_entry_vec_s0 & mshr_snpq_s1_q)) begin
+            mshr_snpq_resp_q    <= li_mshr_rxrsp_resp_s0;
+            mshr_snpq_resperr_q <= li_mshr_rxrsp_resperr_s0;
+        end
+        else
+            ;
+    end
+    assign snpq_rsp_valid   = |(mshr_can_retire_entry_sx1 & mshr_snpq_s1_q);
+    assign snpq_rsp_sent    = mshr_snpq_sent_q;
+    assign snpq_rsp_resp    = mshr_snpq_resp_q;
+    assign snpq_rsp_resperr = mshr_snpq_resperr_q;
 
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)
@@ -2937,7 +3015,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_txdat_rn_rdy_set_sx[entry] & mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry]);
             assign mshr_compack_busy_clr_sx[entry]   = (mshr_get_compack_s1_q[entry]);
             assign mshr_txsnp_rdy_set_sx[entry]      = (mshr_needsnp_sx7[entry]) ||
-                   (mshr_seq_snp_s1[entry] & mshr_can_alloc_entry_s1_q[entry]);
+                   ((mshr_seq_snp_s1[entry] | mshr_snpq_snp_s1[entry]) & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_txsnp_rdy_clr_sx[entry]      = (mshr_txsnp_entry_vec_sx1[entry] & ~txsnp_mshr_busy_sx1);
         end
     endgenerate

@@ -66,7 +66,21 @@ module hnf `HNF_PARAM
     output wire                                     TXDATFLITV,
     output chie_pkg::dat_flit_s                     TXDATFLIT,
     output wire                                     TXDATFLITPEND,
-    output wire [2:0]                               notify_reg
+    output wire [2:0]                               notify_reg,
+
+    // SS4.3 (p.4-192): "Home can send a SnpQuery snoop without any corresponding
+    // request". With HNF_SNPQUERY_EN_PARAM set, SNPQ_REQ_* names the line and the
+    // RNF_NID_LIST_PARAM entry to query; SNPQ_RSP_* reports the Snoopee's precise
+    // state, or SENT=0 where that interface is outside the coherency domain.
+    input  wire                                     SNPQ_REQ_VALID,
+    output wire                                     SNPQ_REQ_READY,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]     SNPQ_REQ_ADDR,
+    input  wire                                     SNPQ_REQ_NS,
+    input  wire [`RNF_WIDTH-1:0]                    SNPQ_REQ_RN,
+    output wire                                     SNPQ_RSP_VALID,
+    output wire                                     SNPQ_RSP_SENT,
+    output chie_pkg::resp_state_e                   SNPQ_RSP_RESP,
+    output chie_pkg::resp_err_e                     SNPQ_RSP_RESPERR
 
 `ifdef tb_hnf
     ,
@@ -104,6 +118,10 @@ module hnf `HNF_PARAM
     //wires
     wire                                     biq_req_valid_s0_q;
     wire [chie_pkg::REQ_ADDR_WIDTH-1:0]      biq_req_addr_s0_q;
+    wire                                     li_mshr_rxreq_snpq_s0;
+    wire                                     snpq_req_valid_s0;
+
+    assign snpq_req_valid_s0 = SNPQ_REQ_VALID & (HNF_SNPQUERY_EN_PARAM != 0);
     wire                                     qos_seq_pool_full_s0_q;
     wire                                     rxreq_retry_enable_s0;
     wire                                     mshr_txreq_bypass_valid_s1;
@@ -468,6 +486,11 @@ module hnf `HNF_PARAM
                  .rxreqflitpend                                (RXREQFLITPEND                     ),
                  .biq_req_valid_s0_q                           (biq_req_valid_s0_q                ),
                  .biq_req_addr_s0_q                            (biq_req_addr_s0_q                 ),
+                 .snpq_req_valid_s0                            (snpq_req_valid_s0                 ),
+                 .snpq_req_addr_s0                             (SNPQ_REQ_ADDR[chie_pkg::REQ_ADDR_WIDTH-1:0]),
+                 .snpq_req_ns_s0                               (SNPQ_REQ_NS                       ),
+                 .snpq_req_ready_s0                            (SNPQ_REQ_READY                    ),
+                 .li_mshr_rxreq_snpq_s0                        (li_mshr_rxreq_snpq_s0             ),
                  .qos_seq_pool_full_s0_q                       (qos_seq_pool_full_s0_q            ),
                  .rxreq_retry_enable_s0                        (rxreq_retry_enable_s0             ),
                  .rxrspflitv                                   (RXRSPFLITV                        ),
@@ -673,6 +696,8 @@ module hnf `HNF_PARAM
                  .sysco_snp_gen_en                             (hnf_sysco_snp_gen_en              ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
                  .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
+                 .li_mshr_rxreq_snpq_s0                        (li_mshr_rxreq_snpq_s0             ),
+                 .snpq_req_rn_s0                               (SNPQ_REQ_RN                       ),
                  .li_mshr_rxreq_qos_s0                         (li_mshr_rxreq_qos_s0              ),
                  .li_mshr_rxreq_srcid_s0                       (li_mshr_rxreq_srcid_s0            ),
                  .li_mshr_rxreq_txnid_s0                       (li_mshr_rxreq_txnid_s0            ),
@@ -796,6 +821,10 @@ module hnf `HNF_PARAM
                  .qos_txrsp_pcrdgnt_pcrdtype_s2                (qos_txrsp_pcrdgnt_pcrdtype_s2     ),
                  .rxreq_retry_enable_s0                        (rxreq_retry_enable_s0             ),
                  .qos_seq_pool_full_s0_q                       (qos_seq_pool_full_s0_q            ),
+                 .snpq_rsp_valid                               (SNPQ_RSP_VALID                    ),
+                 .snpq_rsp_sent                                (SNPQ_RSP_SENT                     ),
+                 .snpq_rsp_resp                                (SNPQ_RSP_RESP                     ),
+                 .snpq_rsp_resperr                             (SNPQ_RSP_RESPERR                  ),
                  .qos_active_sx                                (hnf_qos_active_sx                 ),
                  .mshr_txsnp_addr_sx1                          (mshr_txsnp_addr_sx1               ),
                  .mshr_txreq_addr_sx1                          (mshr_txreq_addr_sx1               ),
