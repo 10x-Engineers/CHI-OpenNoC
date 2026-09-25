@@ -140,10 +140,27 @@ module rnf `RNF_PARAM
     input  wire [`RNF_CM_OP_W-1:0]              CMOP,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] CMADDR,
     output wire                                 CMDONE,
-    output wire [1:0]                           CMRESP
+    output wire [1:0]                           CMRESP,
+
+    // Core-side DVM operation, sent as one DVMOp to MN_NID_PARAM (rnf_dvm.sv).
+    input  wire                                 DVMVALID,
+    output wire                                 DVMREADY,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] DVMADDR,
+    input  wire [63:0]                          DVMDATA,
+    input  wire                                 DVMDOMAIN,
+    output wire                                 DVMDONE,
+    output wire [1:0]                           DVMRESP
     );
 
     chie_pkg::req_flit_s prot_txreqflit;
+    chie_pkg::req_flit_s ctl_txreqflit;
+    wire                 ctl_txreqflitv;
+    chie_pkg::req_flit_s dvm_txreqflit;
+    wire                 dvm_txreqflitv;
+    chie_pkg::dat_flit_s dvm_txdatflit;
+    wire                 dvm_txdatflitv;
+    wire                 dvm_active;
+    wire                 ctl_arready, ctl_awready, ctl_cmready;
     chie_pkg::rsp_flit_s prot_txrspflit;
     chie_pkg::dat_flit_s prot_txdatflit;
     wire                 prot_txreqflitv;
@@ -203,8 +220,17 @@ module rnf `RNF_PARAM
     // A snoop response takes TXDAT ahead of a CopyBack, for the same reason it
     // takes TXRSP: SS4.11.1 (p.4-242, MUST) has the RN-F answer a snoop without
     // making it wait on a request of its own.
-    assign prot_txdatflit  = snp_txdatflitv ? snp_txdatflit  : ctl_txdatflit;
-    assign prot_txdatflitv = snp_txdatflitv | ctl_txdatflitv;
+    assign prot_txdatflit  = snp_txdatflitv ? snp_txdatflit  :
+                             dvm_txdatflitv ? dvm_txdatflit  : ctl_txdatflit;
+    assign prot_txdatflitv = snp_txdatflitv | ctl_txdatflitv | dvm_txdatflitv;
+
+    // A DVMOp owns the request path while it runs, and rnf_ctl is idle then, so the
+    // two never compete for REQ or DAT, and every response is the DVMOp's.
+    assign prot_txreqflit  = dvm_active ? dvm_txreqflit : ctl_txreqflit;
+    assign prot_txreqflitv = dvm_txreqflitv | ctl_txreqflitv;
+    assign ARREADY         = ctl_arready & ~dvm_active;
+    assign AWREADY         = ctl_awready & ~dvm_active;
+    assign CMREADY         = ctl_cmready & ~dvm_active;
 
     wire                                 coh_enabled;
     wire                                 snoop_service_req;
@@ -313,7 +339,7 @@ module rnf `RNF_PARAM
                      ,.snp_line_addr_o       ( snp_line_addr    )
                      ,.cache_vic_way_i       ( snp_vic_way      )
                      ,.cache_vic_state_i     ( snp_vic_state    )
-                     ,.pull_ready_i          ( pull_ready       )
+                     ,.pull_ready_i          ( pull_ready & ~dvm_active )
                      ,.pull_txnid_i          ( pull_txnid       )
                      ,.pull_v_o              ( pull_v           )
                      ,.pull_addr_o           ( pull_addr        )
@@ -339,8 +365,8 @@ module rnf `RNF_PARAM
                      ,.ARORD                 ( ARORD                )
                      ,.ARLOCK                ( ARLOCK               )
                      ,.ARUSER                ( ARUSER               )
-                     ,.ARVALID               ( ARVALID              )
-                     ,.ARREADY               ( ARREADY              )
+                     ,.ARVALID               ( ARVALID & ~dvm_active )
+                     ,.ARREADY               ( ctl_arready          )
                      ,.RID                   ( RID                  )
                      ,.RDATA                 ( RDATA                )
                      ,.RRESP                 ( RRESP                )
@@ -359,8 +385,8 @@ module rnf `RNF_PARAM
                      ,.AWATM                 ( AWATM                )
                      ,.AWLOCK                ( AWLOCK               )
                      ,.AWUSER                ( AWUSER               )
-                     ,.AWVALID               ( AWVALID              )
-                     ,.AWREADY               ( AWREADY              )
+                     ,.AWVALID               ( AWVALID & ~dvm_active )
+                     ,.AWREADY               ( ctl_awready          )
                      ,.WDATA                 ( WDATA                )
                      ,.WSTRB                 ( WSTRB                )
                      ,.WUSER                 ( WUSER                )
@@ -377,8 +403,8 @@ module rnf `RNF_PARAM
                      ,.BROADCASTMTE          ( BROADCASTMTE         )
                      ,.STASHNID              ( STASHNID             )
                      ,.STASHNIDVALID         ( STASHNIDVALID        )
-                     ,.CMVALID               ( CMVALID              )
-                     ,.CMREADY               ( CMREADY              )
+                     ,.CMVALID               ( CMVALID & ~dvm_active )
+                     ,.CMREADY               ( ctl_cmready          )
                      ,.CMOP                  ( CMOP                 )
                      ,.CMADDR                ( CMADDR               )
                      ,.CMDONE                ( CMDONE               )
@@ -408,20 +434,20 @@ module rnf `RNF_PARAM
                      ,.snp_upd_addr_i        ( snp_upd_addr         )
                      ,.snp_upd_way_i         ( snp_upd_way          )
                      ,.snp_upd_state_i       ( snp_upd_state        )
-                     ,.prot_txreqflit_o      ( prot_txreqflit       )
-                     ,.prot_txreqflitv_o     ( prot_txreqflitv      )
-                     ,.prot_txreqflit_sent_i ( prot_txreqflit_sent  )
+                     ,.prot_txreqflit_o      ( ctl_txreqflit        )
+                     ,.prot_txreqflitv_o     ( ctl_txreqflitv       )
+                     ,.prot_txreqflit_sent_i ( prot_txreqflit_sent & ~dvm_active )
                      ,.prot_txrspflit_o      ( ctl_txrspflit        )
                      ,.prot_txrspflitv_o     ( ctl_txrspflitv       )
                      ,.prot_txrspflit_sent_i ( prot_txrspflit_sent & ~snp_txrspflitv )
                      ,.prot_txdatflit_o      ( ctl_txdatflit        )
                      ,.prot_txdatflitv_o     ( ctl_txdatflitv       )
-                     ,.prot_txdatflit_sent_i ( prot_txdatflit_sent & ~snp_txdatflitv )
+                     ,.prot_txdatflit_sent_i ( prot_txdatflit_sent & ~snp_txdatflitv & ~dvm_txdatflitv )
                      ,.prot_rxdatflitv_i     ( prot_rxdatflitv      )
                      ,.prot_rxdatflit_i      ( prot_rxdatflit       )
                      ,.rxdat_arr_v_i         ( rxdat_arr_v          )
                      ,.rxdat_arr_flit_i      ( rxdat_arr_flit       )
-                     ,.prot_rxrspflitv_i     ( prot_rxrspflitv      )
+                     ,.prot_rxrspflitv_i     ( prot_rxrspflitv & ~dvm_active )
                      ,.prot_rxrspflit_i      ( prot_rxrspflit       )
                      ,.coh_enabled_i         ( coh_enabled          )
                      ,.coh_req_i             ( COHERENCY_EN         )
@@ -445,6 +471,30 @@ module rnf `RNF_PARAM
                      ,.pull_way_i            ( pull_way             )
                      ,.pull_op_i             ( pull_op              )
                      ,.txn_active_o          ( txn_active           )
+                 );
+
+    wire ctl_accept = (ARVALID & ctl_arready) | (AWVALID & ctl_awready) | (CMVALID & ctl_cmready);
+
+    rnf_dvm `RNF_PARAM_INST u_rnf_dvm(
+                      .clk_i                 ( CLK                  )
+                     ,.rst_i                 ( RST                  )
+                     ,.DVMVALID              ( DVMVALID             )
+                     ,.DVMREADY              ( DVMREADY             )
+                     ,.DVMADDR               ( DVMADDR              )
+                     ,.DVMDATA               ( DVMDATA              )
+                     ,.DVMDOMAIN             ( DVMDOMAIN            )
+                     ,.DVMDONE               ( DVMDONE              )
+                     ,.DVMRESP               ( DVMRESP              )
+                     ,.start_ok_i            ( coh_enabled & ~txn_active & ~ctl_accept )
+                     ,.active_o              ( dvm_active           )
+                     ,.prot_txreqflit_o      ( dvm_txreqflit        )
+                     ,.prot_txreqflitv_o     ( dvm_txreqflitv       )
+                     ,.prot_txreqflit_sent_i ( prot_txreqflit_sent & dvm_active )
+                     ,.prot_txdatflit_o      ( dvm_txdatflit        )
+                     ,.prot_txdatflitv_o     ( dvm_txdatflitv       )
+                     ,.prot_txdatflit_sent_i ( prot_txdatflit_sent & ~snp_txdatflitv & dvm_txdatflitv )
+                     ,.prot_rxrspflitv_i     ( prot_rxrspflitv & dvm_active )
+                     ,.prot_rxrspflit_i      ( prot_rxrspflit       )
                  );
 
     rnf_link_ctl `RNF_PARAM_INST u_rnf_link_ctl(
@@ -507,7 +557,7 @@ module rnf `RNF_PARAM
                      ,.SYSCOREQ                  ( SYSCOREQ         )
                      ,.SYSCOACK                  ( SYSCOACK         )
                      ,.coh_req_i                 ( COHERENCY_EN     )
-                     ,.caching_txn_outstanding_i ( txn_active | snp_busy )
+                     ,.caching_txn_outstanding_i ( txn_active | snp_busy | dvm_active )
                      ,.holds_coherent_data_i     ( cache_any_valid  )
                      ,.coh_enabled_o             ( coh_enabled      )
                      ,.snoop_service_req_o       ( snoop_service_req )
@@ -519,7 +569,7 @@ module rnf `RNF_PARAM
     // so it is derived from this node's own work, never from the handshake.
     // SS15.2.1 (p.15-467, MUST) adds the coherency transitions: SACTIVE must be
     // asserted across them "to guarantee the SYSCOACK transition occurs".
-    assign TXSACTIVE = (txn_active | snp_busy | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
+    assign TXSACTIVE = (txn_active | snp_busy | dvm_active | prot_txreqflitv | prot_txrspflitv | prot_txdatflitv
                         | prot_txflitv | sysco_transition) & (~RST);
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this

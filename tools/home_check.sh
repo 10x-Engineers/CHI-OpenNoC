@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Directed Home benches (rtl/tb/tb_{hnf,hni}_*.sv, peer in tb_home_peer.svh).
+# Directed Home and MN benches (rtl/tb/tb_{hnf,hni,mn}_*.sv, peer in tb_home_peer.svh).
 #
 #   SIM=verilator ./tools/home_check.sh   # no licence needed
 #   ./tools/home_check.sh                 # Xcelium
@@ -13,6 +13,9 @@
 #                     not Normal WriteBack, and the Home's own TagMatch Fail
 #   tb_hni_mte        Sec 12.11.3 (p.12-387): the HN-I holds no tags, so a Match
 #                     write or Atomic is answered TagMatch Fail
+#   tb_mn_dvm         Chapter 8: the MN's DVMOp flow, its SnpDVMOp pairs to every
+#                     other DVM Requester, Sync after the older Non-syncs, and the
+#                     Sec 8.1.3 (p.8-307) Non-sync entry and per-Requester limits
 set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
 
@@ -35,10 +38,11 @@ declare -A SRCS=(
   [tb_hni_mte]="include/chie_pkg.sv tb/tb_hni_mte.sv src/hni/*.sv misc/assert_checker.sv $MISC"
   [tb_hnf_stash]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_stash.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hni_dvm]="include/chie_pkg.sv tb/tb_hni_dvm.sv src/hni/*.sv misc/assert_checker.sv $MISC"
+  [tb_mn_dvm]="include/chie_pkg.sv include/opennoc_mn_pkg.sv tb/tb_mn_dvm.sv src/mn/*.sv misc/chi_lcrd_hdlr.sv misc/assert_checker.sv $MISC"
 )
 
 rc=0
-for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte tb_hni_mte; do
+for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte tb_hni_mte tb_mn_dvm; do
   OUT=$(mktemp -d)
   case "$SIM" in
     xrun)      CMD=(xrun -sv -incdir include -incdir tb -top "$top" -xmlibdirname "$OUT/xcelium.d") ;;

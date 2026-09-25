@@ -43,6 +43,9 @@ module {{ module }}
 {% for p in rnfs %}
   // The Home this RN-F addresses. Derived from the config's one HNF port.
   parameter int {{ p.name }}_HNF_NID = int'({{ module }}_pkg::{{ home.name }}_NID),
+  // Where its DVMOps go: the config's MN port, else its Home, which error-completes
+  // them (SS2.3.7 p.2-75).
+  parameter int {{ p.name }}_MN_NID = int'({{ module }}_pkg::{{ (mn or home).name }}_NID),
 {% endfor %}
   localparam REQ_FLIT_WIDTH          = $bits(chie_pkg::req_flit_s),
   localparam RSP_FLIT_WIDTH          = $bits(chie_pkg::rsp_flit_s),
@@ -120,6 +123,14 @@ module {{ module }}
   ,input  [chie_pkg::REQ_ADDR_WIDTH-1:0] {{ p.name }}_CMADDR
   ,output {{ p.name }}_CMDONE
   ,output [1:0]                    {{ p.name }}_CMRESP
+  // A DVM operation from the core (rnf_dvm.sv).
+  ,input  {{ p.name }}_DVMVALID
+  ,output {{ p.name }}_DVMREADY
+  ,input  [chie_pkg::REQ_ADDR_WIDTH-1:0] {{ p.name }}_DVMADDR
+  ,input  [63:0]                   {{ p.name }}_DVMDATA
+  ,input  {{ p.name }}_DVMDOMAIN
+  ,output {{ p.name }}_DVMDONE
+  ,output [1:0]                    {{ p.name }}_DVMRESP
 {% else %}
 
   // {{ p.name }}: {{ p.kind }}, brought out as the fabric presents it.
@@ -137,6 +148,7 @@ module {{ module }}
 
   rnf #(
     .HNF_NID_PARAM ({{ p.name }}_HNF_NID),
+    .MN_NID_PARAM  ({{ p.name }}_MN_NID),
     .RNF_NID_PARAM (int'({{ module }}_pkg::{{ p.name }}_NID))
   ) u_{{ p.name | lower }}_rnf (
     .CLK          (clk)
@@ -154,7 +166,8 @@ module {{ module }}
                'BID', 'BRESP', 'BVALID', 'BREADY', 'BUSER',
                'ARCOH', 'ARORD', 'AWCOH', 'AWATOP', 'AWATM', 'BATDATA', 'BROADCASTATOMIC', 'BROADCASTMTE',
                'STASHNID', 'STASHNIDVALID',
-               'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}
+               'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP',
+               'DVMVALID', 'DVMREADY', 'DVMADDR', 'DVMDATA', 'DVMDOMAIN', 'DVMDONE', 'DVMRESP'] %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})
 {% endfor %}
   );

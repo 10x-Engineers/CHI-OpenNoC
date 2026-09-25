@@ -44,7 +44,7 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-ALL_NODES=(hnf hni rni rnf snf)
+ALL_NODES=(hnf hni rni rnf snf mn)
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=("${ALL_NODES[@]}"); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
@@ -100,7 +100,7 @@ OPT_DEFINES="-DCHIE_MPAM_PRESENT -DCHIE_REQ_RSVDC_WIDTH=8 -DCHIE_DAT_RSVDC_WIDTH
 # A node whose top gives chie_flit_opt_check ANY_DATA_WIDTH packetises by Data_Width;
 # every other one refuses anything but 256.
 any_width() {  # $1 node
-  grep -q "ANY_DATA_WIDTH *(1'b1)" "src/$1/$1.sv"
+  grep -q "ANY_DATA_WIDTH *( *1'b1 *)" "src/$1/$1.sv"
 }
 
 node_sources() {  # $1 node -- the file set both gates read
@@ -162,6 +162,15 @@ for n in "${NODES[@]}"; do
     for w in 128 512; do
       lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
       bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
+    done
+  fi
+  # The tracker, the snoopee list and a snoopee's SnpDVMOp count size every MN index;
+  # the smallest legal set and a larger one are both elaborated.
+  if [ "$n" = mn ]; then
+    for g in "-GMN_ENTRIES_NUM_PARAM=2 -GMN_RN_NUM_PARAM=1 -GMN_RN_NID_LIST_PARAM=8" \
+             "-GMN_ENTRIES_NUM_PARAM=8 -GMN_RN_SNPDVM_NUM_PARAM=4"; do
+      lint_node   "$n" "$g" $g || rc=1
+      bounds_node "$n" "$g" $g || rc=1
     done
   fi
 done
