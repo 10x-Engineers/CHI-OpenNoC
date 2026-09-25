@@ -602,6 +602,14 @@ package chie_pkg;
     return big_endian ? atomic_bswap(res, nbytes) : res;
   endfunction
 
+  // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186): the MAX and MIN rows
+  // update the location only "if" their condition holds, where the other rows
+  // always do.
+  function automatic logic atomic_conditional(req_opcode_e op);
+    return op inside {REQ_ATOMICSTORE_SMAX, REQ_ATOMICSTORE_SMIN, REQ_ATOMICSTORE_UMAX, REQ_ATOMICSTORE_UMIN,
+                      REQ_ATOMICLOAD_SMAX,  REQ_ATOMICLOAD_SMIN,  REQ_ATOMICLOAD_UMAX,  REQ_ATOMICLOAD_UMIN};
+  endfunction
+
   // SS4.2.5 (p.4-186): AtomicCompare writes the Swap value only "if the values
   // match", which is a byte equality against the addressed location -- no arithmetic,
   // so SS2.10.5's Endian bit does not reach it.

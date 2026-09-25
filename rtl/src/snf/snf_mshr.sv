@@ -48,6 +48,14 @@ module snf_mshr `SNF_PARAM
         output chie_pkg::size_e                     rxreq_dbf_size_s1,
         output wire [`AXI4_ARLEN_WIDTH-1:0]         rxreq_dbf_axlen_s1,
         output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   rxreq_dbf_entry_idx_s1,
+        output wire                                 rxreq_dbf_atomic_s1,
+        output chie_pkg::req_opcode_e               rxreq_dbf_opcode_s1,
+        output wire                                 rxreq_dbf_endian_s1,
+        input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_atmrd_req_sx,
+        input  wire                                 dbf_mshr_atm_done_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_atm_done_idx_sx,
+        input  wire                                 dbf_mshr_atm_nowr_sx,
+        input  wire                                 dbf_mshr_atm_err_sx,
         input  wire                                 dbf_mshr_rdata_en_sx,
         input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rdata_idx_sx,
         input  wire [`SNF_MASK_CD_WIDTH-1:0]        dbf_mshr_rdata_cdmask_sx,
@@ -87,8 +95,8 @@ module snf_mshr `SNF_PARAM
         output wire [`AXI4_ARUSER_WIDTH-1:0]        aruser_sx,
         output wire [`AXI4_ARREGION_WIDTH-1:0]      arregion_sx,
         input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagfetch_req_sx,
-        output wire                                 mshr_dbf_tagfetch_ack_sx,
-        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_tagfetch_idx_sx,
+        output wire                                 mshr_dbf_rdreq_ack_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_rdreq_idx_sx,
         input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_done_sx,
         input  wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_pass_sx,
         output logic                                arvalid_sx,
@@ -138,6 +146,7 @@ module snf_mshr `SNF_PARAM
         logic [chie_pkg::NID_WIDTH-1:0]      returnnid;
         logic [PGROUPID_W-1:0]               pgroupid;
         logic [1:0]                          ccid;
+        logic                                endian;
         logic [`AXI4_AXID_WIDTH-1:0]         axid;
         logic [`AXI4_ARLEN_WIDTH-1:0]        axlen;
         logic [`AXI4_ARSIZE_WIDTH-1:0]       axsize;
@@ -222,7 +231,6 @@ module snf_mshr `SNF_PARAM
     wire                                 rxreq_errcw_cb_s0;
     wire                                 rxreq_errcw_iw_s0;
     wire                                 rxreq_errstash_s0;
-    wire                                 rxreq_errdat_s0;
     wire                                 rxreq_errdvm_s0;
     wire                                 rxreq_errrd_s0;
     wire                                 rxreq_errrsp_s0;
@@ -234,7 +242,6 @@ module snf_mshr `SNF_PARAM
     wire                                 txrsp_errgrant_en_s1;
     wire                                 txrsp_rsponly_en_sx;
     wire                                 txrsp_errgrant_en_sx;
-    wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_errdat_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     txdat_errrd_rdy_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]     all_rsp_sent_sx;
     wire                                 txrsp_sent_sx;
@@ -283,7 +290,22 @@ module snf_mshr `SNF_PARAM
 
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rdsep_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errwr_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errdat_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_atm_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_atmdat_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_atmcmp_s1_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    atm_wr_pend_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    atm_nowr_q;
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    atm_err_q;
+    wire  [`SNF_MSHR_ENTRIES_NUM-1:0]    atm_mem_done_sx;
+    wire  [`SNF_MSHR_ENTRIES_NUM-1:0]    atm_mem_done_q;
+    wire                                 txrsp_atmgrant_en_s1;
+    wire                                 txrsp_atmgrant_en_sx;
+    wire  [`SNF_MSHR_ENTRIES_NUM-1:0]    dbfrd_req_sx;
+    wire                                 aw_push_wr_sx;
+    wire                                 aw_push_atm_sx;
+    wire                                 aw_push_sx;
+    wire  [`SNF_MSHR_ENTRIES_WIDTH-1:0]  aw_push_idx_sx;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0]  atmwr_idx_sx;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errdvm_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errrd_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_err_s1_q;
@@ -388,19 +410,20 @@ module snf_mshr `SNF_PARAM
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
                                                               | rxreq_cwpersist_ns_s0) :1'b0;
-    assign rxreq_atomic_s0      = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD)
-                                                             && (rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE)) :1'b0;
-    assign rxreq_atomicdat_s0   = rxreq_atomic_s0 && (rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD);
+    // SS16.3.3 (p.16-479): this Subordinate declares Atomic_Transactions and runs all
+    // four classes as an AXI read-modify-write. Table 4-22 (p.4-188) makes SnoopMe
+    // inapplicable on this hop, so the shared Excl/SnoopMe bit is not read.
+    assign rxreq_atomic_s0      = rxreq_alloc_en_s0 & chie_pkg::atomic_req(rxreq_opcode_s0);
+    assign rxreq_atomicdat_s0   = rxreq_atomic_s0 & chie_pkg::atomic_returns_data(rxreq_opcode_s0);
     assign rxreq_wrzero_s0      = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO) :1'b0;
     // Sec 2.3.6 (p.2-74), Sec 4.5.4 (p.4-207): given no response, so no entry.
     assign rxreq_drop_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)) :1'b0;
     // Sec 9.1 (p.9-334): NDERR is what a Completer reports for "an attempt to use a
-    // transaction type that is not supported", and Sec 16.3.3 (p.16-479, MUST) makes
-    // it mandatory for an Atomic. Sec 9.4.4 (p.9-342, MUST) then keeps the whole
-    // transaction structure -- grant, write data, read data -- so the class carries
-    // its shape as well as its error.
-    assign rxreq_err_s0         = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wr_s0 | rxreq_cmo_s0 | rxreq_drop_s0);
+    // transaction type that is not supported", and Sec 9.3 (p.9-336, MUST) keeps the
+    // whole transaction structure -- grant, write data, read data -- so the class
+    // carries its shape as well as its error.
+    assign rxreq_err_s0         = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wr_s0 | rxreq_cmo_s0 | rxreq_drop_s0 | rxreq_atomic_s0);
     // Sec 9.3 (p.9-336, MUST): "All transactions must complete in a protocol-compliant
     // manner, even if they include an error response", and the source of the data
     // packets "is required to send the correct number of packets" -- which a write
@@ -445,8 +468,7 @@ module snf_mshr `SNF_PARAM
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE));
-    assign rxreq_errwr_s0       = (rxreq_err_s0 && rxreq_atomic_s0) | rxreq_errcb_s0 | rxreq_erriw_s0 | rxreq_errdvm_s0;
-    assign rxreq_errdat_s0      = rxreq_err_s0 && rxreq_atomicdat_s0;
+    assign rxreq_errwr_s0       = rxreq_errcb_s0 | rxreq_erriw_s0 | rxreq_errdvm_s0;
     // Table 4-38 (p.4-218) completes StashOnceSep* with "Comp + StashDone or
     // CompStashDone"; a bare Comp leaves the Requester's outstanding-StashDone
     // count (Sec 7.3 p.7-297) never satisfied.
@@ -535,7 +557,9 @@ module snf_mshr `SNF_PARAM
                 if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
                     rxreq_rdsep_s1_q[entry]    <= 1'b0;
                     rxreq_errwr_s1_q[entry]    <= 1'b0;
-                    rxreq_errdat_s1_q[entry]   <= 1'b0;
+                    rxreq_atm_s1_q[entry]      <= 1'b0;
+                    rxreq_atmdat_s1_q[entry]   <= 1'b0;
+                    rxreq_atmcmp_s1_q[entry]   <= 1'b0;
                     rxreq_errdvm_s1_q[entry]   <= 1'b0;
                     rxreq_errrd_s1_q[entry]    <= 1'b0;
                     rxreq_errgrant_s1_q[entry] <= 1'b0;
@@ -547,7 +571,9 @@ module snf_mshr `SNF_PARAM
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
                     rxreq_rdsep_s1_q[entry]    <= rxreq_rd_s0 & rxreq_rdsep_s0;
                     rxreq_errwr_s1_q[entry]    <= rxreq_errwr_s0;
-                    rxreq_errdat_s1_q[entry]   <= rxreq_errdat_s0;
+                    rxreq_atm_s1_q[entry]      <= rxreq_atomic_s0;
+                    rxreq_atmdat_s1_q[entry]   <= rxreq_atomicdat_s0;
+                    rxreq_atmcmp_s1_q[entry]   <= rxreq_opcode_s0 == chie_pkg::REQ_ATOMICCOMPARE;
                     rxreq_errdvm_s1_q[entry]   <= rxreq_errdvm_s0;
                     rxreq_errrd_s1_q[entry]    <= rxreq_errrd_s0;
                     rxreq_errgrant_s1_q[entry] <= rxreq_errgrant_s0;
@@ -571,7 +597,7 @@ module snf_mshr `SNF_PARAM
                     mshr_tagreturn_q[entry]      <= 1'b0;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
-                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdat_s0 & ~rxreq_errdvm_s0
+                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdvm_s0
                                                & ~rxreq_ewa_s0 & ~rxreq_errcb_s0;
                     txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0 | rxreq_errcw_s0;
                     txrsp_cmo_opcode_q[entry] <= (rxreq_cwpersist_s0 & rxreq_persist_fold_s0) ? chie_pkg::RSP_COMPPERSIST
@@ -709,7 +735,9 @@ module snf_mshr `SNF_PARAM
                                               // is set to the request's own.
                                               pgroupid    : rxreq_pgroupid_s0,
                                               ccid        : rxreq_addr_s0[5:4],
-                                              axid        : {{(`AXI4_AXID_WIDTH-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s0},
+                                              // SS13.10.28 (p.13-432): the byte order of an Atomic's data.
+                                              endian      : rxreq_alloc_flit_s0.stashnidvalid.endian,
+                                              axid       : {{(`AXI4_AXID_WIDTH-`SNF_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s0},
                                               axlen       : rxreq_axlen_s0,
                                               axsize      : rxreq_axsize_s0,
                                               axaddr      : rxreq_axaddr_s0 };
@@ -720,7 +748,11 @@ module snf_mshr `SNF_PARAM
     // to databuffer
     assign rxreq_dbf_en_s1         = rxreq_alloc_en_s1_q;
     assign rxreq_dbf_addr_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].addr;
-    assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q]
+                                   | rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_atomic_s1     = rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_opcode_s1     = mshr_entry_q[mshr_entry_idx_alloc_s1_q].opcode;
+    assign rxreq_dbf_endian_s1     = mshr_entry_q[mshr_entry_idx_alloc_s1_q].endian;
     assign rxreq_dbf_wrzero_s1     = rxreq_wrzero_s1_q[mshr_entry_idx_alloc_s1_q];
     assign rxreq_dbf_size_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].size;
     assign rxreq_dbf_axlen_s1      = mshr_entry_q[mshr_entry_idx_alloc_s1_q].axlen;
@@ -780,7 +812,7 @@ module snf_mshr `SNF_PARAM
     //  4. !ewa && ！dwt    :  bresp receive ,return comp to HN
     //*****************************************************************************************//
     assign txrsp_en_s1                 = txrsp_dbidresp_en_s1 | txrsp_readreceipt_en_s1 | txrsp_compdbidresp_en_s1
-                                       | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1;
+                                       | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1 | txrsp_atmgrant_en_s1;
     // Sec 2.8.5 (p.2-120): the ReadReceipt is owed whenever Order is non-zero,
     // whether or not the read data goes back direct to the Requester.
     assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && (rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errrd_s1_q[mshr_entry_idx_alloc_s1_q]) && (mshr_entry_q[mshr_entry_idx_alloc_s1_q].order != 2'b00);
@@ -790,19 +822,24 @@ module snf_mshr `SNF_PARAM
     // (p.9-342) gives AtomicLoad/Swap/Compare no CompDBIDResp, so those always
     // take the split grant.
     assign txrsp_errgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_errgrant_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    // Table 4-40 (SS4.7.4 p.4-220): every Atomic takes DBIDResp for its operand; its
+    // completion waits for the read-modify-write (SS9.4.4 p.9-342's "delayed form").
+    assign txrsp_atmgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    assign txrsp_atmgrant_en_sx        = wakeup_valid ? rxreq_atm_s1_q[wakeup_idx_sx] : 1'b0;
     assign txrsp_compdbidresp_en_s1    = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && ((~rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q]) && rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q])) : 1'b0;
     assign txrsp_dbidresp_en_s1        = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q] | (~rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q]))) : 1'b0;
     assign txrsp_opcode_en_s1          = txrsp_dbidresp_en_s1 ? chie_pkg::RSP_DBIDRESP
                                        : txrsp_readreceipt_en_s1 ? chie_pkg::RSP_READRECEIPT
                                        : txrsp_compdbidresp_en_s1 ? chie_pkg::RSP_COMPDBIDRESP
                                        : txrsp_rsponly_en_s1 ? rxreq_rsponly_opcode_s1_q[mshr_entry_idx_alloc_s1_q]
-                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdat_s1_q[mshr_entry_idx_alloc_s1_q]) && (~rxreq_errdvm_s1_q[mshr_entry_idx_alloc_s1_q])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdvm_s1_q[mshr_entry_idx_alloc_s1_q])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_atmgrant_en_s1 ? chie_pkg::RSP_DBIDRESP
                                        : chie_pkg::RSP_RSPLCRDRETURN;
 
     // A request that hit a same-address hazard was put to sleep before its RSP was
     // armed, so the wakeup path has to arm every class the S1 path does.
     assign txrsp_en_sx                 = txrsp_dbidresp_en_sx | txrsp_compdbidresp_en_sx
-                                       | txrsp_rsponly_en_sx | txrsp_errgrant_en_sx;
+                                       | txrsp_rsponly_en_sx | txrsp_errgrant_en_sx | txrsp_atmgrant_en_sx;
     assign txrsp_dbidresp_en_sx        = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx]&& (rxreq_dodwt_s1_q[wakeup_idx_sx] | (~rxreq_ewa_s1_q[wakeup_idx_sx]))) : 1'b0;
     assign txrsp_compdbidresp_en_sx    = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx] && ((~rxreq_dodwt_s1_q[wakeup_idx_sx]) && rxreq_ewa_s1_q[wakeup_idx_sx])) : 1'b0; //ewa&~dwt
     assign txrsp_rsponly_en_sx         = wakeup_valid ? rxreq_rsponly_s1_q[wakeup_idx_sx]  : 1'b0;
@@ -810,7 +847,8 @@ module snf_mshr `SNF_PARAM
     assign txrsp_opcode_en_sx          = txrsp_dbidresp_en_sx ? chie_pkg::RSP_DBIDRESP
                                        : txrsp_compdbidresp_en_sx ? chie_pkg::RSP_COMPDBIDRESP
                                        : txrsp_rsponly_en_sx ? rxreq_rsponly_opcode_s1_q[wakeup_idx_sx]
-                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdat_s1_q[wakeup_idx_sx]) && (~rxreq_errdvm_s1_q[wakeup_idx_sx])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdvm_s1_q[wakeup_idx_sx])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_atmgrant_en_sx ? chie_pkg::RSP_DBIDRESP
                                        : chie_pkg::RSP_RSPLCRDRETURN;
 
     assign txrsp_ewa_dwt_rdy_sx         = dbf_mshr_rxdat_ok_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_ewa_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_dodwt_s1_q[dbf_mshr_rxdat_ok_idx_sx];
@@ -883,7 +921,8 @@ module snf_mshr `SNF_PARAM
             assign txrsp_comp_rdy_sx[entry] = (txrsp_ewa_dwt_rdy_sx      && (entry == txrsp_ewa_dwt_rdy_entry_sx))
                                             | (txrsp_noewa_rdy_sx        && (entry == txrsp_noewa_rdy_entry_sx))
                                             | (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx))
-                                            | (dbf_mshr_rxdat_ok_sx && rxreq_errdvm_s1_q[entry] && (entry == dbf_mshr_rxdat_ok_idx_sx));
+                                            | (dbf_mshr_rxdat_ok_sx && rxreq_errdvm_s1_q[entry] && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                                            | (atm_mem_done_sx[entry] & ~rxreq_atmdat_s1_q[entry]);
             assign txrsp_comp_queued_sx[entry] = txrsp_q2_valid_q[entry] | txrsp_comp_rdy_sx[entry];
         end
     endgenerate
@@ -923,7 +962,7 @@ module snf_mshr `SNF_PARAM
     // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
     // (p.4-207) pins the ReadReceipt's Resp/RespErr to zero, so only the
     // completion carries it.
-    assign txrsp_resperr_sx             = ((rxreq_err_s1_q[txrsp_entry_idx_sx] | bresp_err_q[txrsp_entry_idx_sx])
+    assign txrsp_resperr_sx             = ((rxreq_err_s1_q[txrsp_entry_idx_sx] | bresp_err_q[txrsp_entry_idx_sx] | atm_err_q[txrsp_entry_idx_sx])
                                         && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
                                         && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                                         && ~txrsp_tagmatch_sx) ? chie_pkg::RESP_ERR_NON_DATA
@@ -959,14 +998,18 @@ module snf_mshr `SNF_PARAM
     // cycle costs a wait and never a fetch. It drains because an entry owing a
     // TagMatch cannot retire, so a Subordinate whose MSHR has filled with them stops
     // allocating and both higher-priority producers go quiet.
+    // An Atomic's own fetch of the original value shares the producer: the data buffer
+    // raises it only once any tag fetch of that entry is answered, so the two never
+    // meet on one entry.
+    assign dbfrd_req_sx = dbf_mshr_tagfetch_req_sx | dbf_mshr_atmrd_req_sx;
     always_comb begin: tagfetch_idx_comb_logic
         tagfetch_idx_sx = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
         for (int i = `SNF_MSHR_ENTRIES_NUM-1; i >= 0; i--)
-            if (dbf_mshr_tagfetch_req_sx[i]) tagfetch_idx_sx = i[`SNF_MSHR_ENTRIES_WIDTH-1:0];
+            if (dbfrd_req_sx[i]) tagfetch_idx_sx = i[`SNF_MSHR_ENTRIES_WIDTH-1:0];
     end
-    assign tagfetch_push_sx         = (|dbf_mshr_tagfetch_req_sx) & (~arvalid_en_s1) & (~arvalid_en2_s1);
-    assign mshr_dbf_tagfetch_ack_sx = tagfetch_push_sx;
-    assign mshr_dbf_tagfetch_idx_sx = tagfetch_idx_sx;
+    assign tagfetch_push_sx      = (|dbfrd_req_sx) & (~arvalid_en_s1) & (~arvalid_en2_s1);
+    assign mshr_dbf_rdreq_ack_sx = tagfetch_push_sx;
+    assign mshr_dbf_rdreq_idx_sx = tagfetch_idx_sx;
 
     always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
         if(rst == 1'b1)
@@ -1007,7 +1050,7 @@ module snf_mshr `SNF_PARAM
                 else if (tagfetch_push_sx && (arvalid_fifo_set_vec == entry)) begin
                     arvalid_fifo_s1_q[entry]        <= 1'b1;
                     arvalid_fifo_idx_sx_q[entry]    <= tagfetch_idx_sx;
-                    arvalid_fifo_tagfetch_q[entry]  <= 1'b1;
+                    arvalid_fifo_tagfetch_q[entry]  <= dbf_mshr_tagfetch_req_sx[tagfetch_idx_sx];
                 end
             end
         end
@@ -1108,7 +1151,10 @@ module snf_mshr `SNF_PARAM
             // SS2.10.4 (p.2-136): a read returns the Size-aligned container of its
             // address in 16-byte chunks, carried by the packets that hold them, the one
             // with Addr[5:4] -- the critical chunk -- among them.
-            assign rdat_chunks_sx[entry] = read_chunks(mshr_entry_q[entry].size, mshr_entry_q[entry].ccid);
+            // Table 2-16 (SS2.10.5 p.2-137): an AtomicCompare returns half its Size.
+            assign rdat_chunks_sx[entry] = read_chunks(rxreq_atmcmp_s1_q[entry] ? chie_pkg::size_e'(mshr_entry_q[entry].size - 3'd1)
+                                                                                : mshr_entry_q[entry].size,
+                                                       mshr_entry_q[entry].ccid);
             assign rdat_pkts_sx[entry]   = chunk_pkts(rdat_chunks_sx[entry]);
             assign crit_pkt_sx[entry]    = chunk_pkts(4'b0001 << mshr_entry_q[entry].ccid);
 
@@ -1116,8 +1162,12 @@ module snf_mshr `SNF_PARAM
             // Error "either in none or in all data response packets", and the AXI
             // error is not final until the last chunk is in. So every packet the read
             // owes is armed together, once all of its chunks have arrived.
+            // An Atomic's fetch is the load half of its operation: an AtomicStore owes no
+            // data, and the other three return it as the completion once the store half
+            // has landed (SS9.4.4 p.9-342, the "delayed form of Comp or CompData").
             assign rdat_ready_sx[entry] = rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry] == '0)
-                                        && ((rdat_pdmask_q[entry] & rdat_chunks_sx[entry]) == rdat_chunks_sx[entry]);
+                                        && ((rdat_pdmask_q[entry] & rdat_chunks_sx[entry]) == rdat_chunks_sx[entry])
+                                        && (~rxreq_atm_s1_q[entry] | (rxreq_atmdat_s1_q[entry] & atm_mem_done_q[entry]));
         end
     endgenerate
 
@@ -1128,8 +1178,6 @@ module snf_mshr `SNF_PARAM
                     txdat_rdy_sx_q[entry]   <= '0;
                 else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
                     txdat_rdy_sx_q[entry]   <= '0;
-                else if (txdat_errdat_rdy_sx[entry])
-                    txdat_rdy_sx_q[entry]   <= txdat_rdy_sx_q[entry] | crit_pkt_sx[entry];
                 else if (txdat_errrd_rdy_sx[entry])
                     txdat_rdy_sx_q[entry]   <= rdat_pkts_sx[entry];
                 else if (rdat_ready_sx[entry])
@@ -1153,12 +1201,6 @@ module snf_mshr `SNF_PARAM
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
-            // Sec 9.4.4 (p.9-342, MUST): AtomicLoad, AtomicSwap and AtomicCompare
-            // carry their Non-data Error on CompData, so the errored entry still
-            // returns one data packet once it has taken the operand.
-            assign txdat_errdat_rdy_sx[entry] = dbf_mshr_rxdat_ok_sx && rxreq_errdat_s1_q[entry]
-                                             && (entry == dbf_mshr_rxdat_ok_idx_sx)
-                                             && (txdat_rdy_sx_q[entry] == '0);
             // Sec 9.4.4 (p.9-342, MUST): an errored read still returns every packet;
             // nothing is fetched, so they are armed as soon as the entry is awake.
             assign txdat_errrd_rdy_sx[entry]  = rxreq_errrd_s1_q[entry] && (~sleep_s2_q[entry])
@@ -1211,9 +1253,12 @@ module snf_mshr `SNF_PARAM
     // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
     assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
     // Sec 9.3 (p.9-336): Resp I is legal on a read only alongside a Non-data Error.
-    assign mshr_txdat_resp_sx       = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_I : chie_pkg::RESP_UC_UD;
-    assign mshr_txdat_resperr_sx    = rxreq_err_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::RESP_ERR_NON_DATA
-                                                                             : chie_pkg::RESP_ERR_NORM_OK;
+    // Table 4-40 (SS4.7.4 p.4-220) completes a Non-store Atomic with CompData_I.
+    assign mshr_txdat_resp_sx       = (rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] | rxreq_atm_s1_q[mshr_txdat_entry_idx_sx])
+                                    ? chie_pkg::RESP_I : chie_pkg::RESP_UC_UD;
+    assign mshr_txdat_resperr_sx    = (rxreq_err_s1_q[mshr_txdat_entry_idx_sx] | bresp_err_q[mshr_txdat_entry_idx_sx]
+                                     | atm_err_q[mshr_txdat_entry_idx_sx]) ? chie_pkg::RESP_ERR_NON_DATA
+                                                                           : chie_pkg::RESP_ERR_NORM_OK;
     assign mshr_txdat_dbid_sx       = mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
     assign mshr_txdat_tgtid_sx      = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? mshr_entry_q[mshr_txdat_entry_idx_sx].srcid
                                                                                : mshr_entry_q[mshr_txdat_entry_idx_sx].returnnid; // Sec 2.5.3, as the TxnID above
@@ -1224,10 +1269,23 @@ module snf_mshr `SNF_PARAM
     //************************************************************************//
     //                       mshr AW channel logic                            //
     //************************************************************************//
+    // Two producers: a write whose data is in, and an Atomic whose result is ready.
+    // The first is a one-cycle event, so it wins; the second is held until pushed.
+    assign aw_push_wr_sx  = dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx
+                          && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx] && !rxreq_atm_s1_q[dbf_mshr_rxdat_ok_idx_sx];
+    always_comb begin: atmwr_idx_comb_logic
+        atmwr_idx_sx = {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int i = `SNF_MSHR_ENTRIES_NUM-1; i >= 0; i--)
+            if (atm_wr_pend_q[i]) atmwr_idx_sx = i[`SNF_MSHR_ENTRIES_WIDTH-1:0];
+    end
+    assign aw_push_atm_sx = (|atm_wr_pend_q) & ~aw_push_wr_sx;
+    assign aw_push_sx     = aw_push_wr_sx | aw_push_atm_sx;
+    assign aw_push_idx_sx = aw_push_wr_sx ? dbf_mshr_rxdat_ok_idx_sx : atmwr_idx_sx;
+
     always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_in_comb_logic
         if(rst == 1'b1)
             awvalid_fifo_cnt_sx_q   <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
-        else if(dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx])
+        else if(aw_push_sx)
             awvalid_fifo_cnt_sx_q   <= (awvalid_fifo_cnt_sx_q == IDX_LAST) ? {`SNF_MSHR_ENTRIES_WIDTH{1'b0}} : (awvalid_fifo_cnt_sx_q + 1'b1);
     end
 
@@ -1245,9 +1303,9 @@ module snf_mshr `SNF_PARAM
                     awvalid_fifo_valid_s2_q[entry]      <= 1'b0;
                     awvalid_fifo_idx_s2_q[entry]        <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
                 end
-                else if (dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx] && (awvalid_fifo_cnt_sx_q == entry)) begin
+                else if (aw_push_sx && (awvalid_fifo_cnt_sx_q == entry)) begin
                     awvalid_fifo_valid_s2_q[entry]      <= 1'b1;
-                    awvalid_fifo_idx_s2_q[entry]        <= dbf_mshr_rxdat_ok_idx_sx;
+                    awvalid_fifo_idx_s2_q[entry]        <= aw_push_idx_sx;
                 end
                 else if ((awvalid_sx == 1'b1) && (awready_sx == 1'b1) && (awvalid_fifo_vec_sx == entry))begin
                     awvalid_fifo_valid_s2_q[entry]      <= 1'b0;
@@ -1301,6 +1359,37 @@ module snf_mshr `SNF_PARAM
 
     assign mshr_wdat_en_sx        = awvalid_sx & (~mshr_wdat_en_rst);
     assign mshr_wdat_entry_idx_sx = awvalid_entry_idx_s2_q;
+
+    //************************************************************************//
+    //                      Atomic read-modify-write                          //
+    //************************************************************************//
+    // What the data buffer reports once it has run the operation: whether the result
+    // is still owed to memory, or the location is left as it was -- Table 4-19/4-20's
+    // MAX/MIN rows update it only "if" their condition holds, and SS4.2.5 (p.4-187)
+    // has a failed AtomicCompare "not write the swap value" -- and whether the
+    // original value could not be read, which SS9.4.4 (p.9-342, MUST) answers NDERR.
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : atm_flags_timing_logic
+                if (rst || retired_entry_sx[entry]) begin
+                    atm_wr_pend_q[entry] <= 1'b0;
+                    atm_nowr_q[entry]    <= 1'b0;
+                    atm_err_q[entry]     <= 1'b0;
+                end
+                else if (dbf_mshr_atm_done_sx && (dbf_mshr_atm_done_idx_sx == entry)) begin
+                    atm_wr_pend_q[entry] <= ~dbf_mshr_atm_nowr_sx;
+                    atm_nowr_q[entry]    <= dbf_mshr_atm_nowr_sx;
+                    atm_err_q[entry]     <= dbf_mshr_atm_err_sx;
+                end
+                else if (aw_push_atm_sx && (atmwr_idx_sx == entry))
+                    atm_wr_pend_q[entry] <= 1'b0;
+            end
+            assign atm_mem_done_sx[entry] = rxreq_atm_s1_q[entry]
+                                          & (bresp_ok_sx[entry]
+                                            | (dbf_mshr_atm_done_sx & dbf_mshr_atm_nowr_sx & (dbf_mshr_atm_done_idx_sx == entry)));
+            assign atm_mem_done_q[entry]  = bresp_ok_q[entry] | atm_nowr_q[entry];
+        end
+    endgenerate
 
     //************************************************************************//
     //                      mshr B channel logic                              //
@@ -1430,8 +1519,11 @@ module snf_mshr `SNF_PARAM
                                                     // entry is freed at once rather than leaked.
                                                     |(rxreq_drop_s1_q[entry])
                                                     |((rxreq_rsponly_s1_q[entry] | rxreq_errgrant_s1_q[entry]) && all_rsp_sent_sx[entry]
-                                                        && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry])
-                                                        && ((~rxreq_errdat_s1_q[entry]) | (|txdat_sent_sx_q[entry]))));
+                                                        && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry]))
+                                                    // SS4.2.5 (p.4-184): nothing reaches the location between the load
+                                                    // and the store, so the entry and its same-line hazard outlive both.
+                                                    |(rxreq_atm_s1_q[entry] && all_rsp_sent_sx[entry] && atm_mem_done_q[entry]
+                                                        && ((~rxreq_atmdat_s1_q[entry]) | (txdat_sent_sx_q[entry] == rdat_pkts_sx[entry]))));
         end
     endgenerate
 
