@@ -116,7 +116,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Link activation (Ch. 14) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| QoS | 🟢 | 🟢 | 🟢 | ⬜ | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F issues QoS 0 [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
+| QoS | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F carries `AxQOS` |
 | DMT / DWT | 🟢 | — | — | — | 🟢 | |
 | DCT | — | — | — | ⬜ | 🟢 | RN-F as a DCT target [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Snoop filter, L3 | — | — | — | — | 🟢 | |
@@ -124,7 +124,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
 | CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
 | Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
-| Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
+| Write Zero | 🟡 | 🟢 | — | 🟢 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333) |
 | Atomics | ⚪ | ⚪ | — | ⬜ | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
@@ -171,15 +171,17 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 
 | Selector | Values | Requests |
 | :--- | :--- | :--- |
+| `AxCACHE` | Device (`[1]=0`), Normal Non-cacheable (`[1]=1`, `[3:2]=00`) | `ReadNoSnp` of the beat, `WriteNoSnp{Full,Ptl,Zero}` of the bytes written; the cache is bypassed. Device is `Order = 0b11`, `AxCACHE[0]` is EWA (Table 2-11). `AxLOCK` sets `Excl` |
 | `ARCOH` | `SHARED`, `CLEAN`, `PREFER_UNIQUE`, `UNIQUE`, `ONCE`, `ONCE_CLEAN_INV`, `ONCE_MAKE_INV` | `ReadShared`, `ReadClean`, `ReadPreferUnique`, `ReadUnique`, `ReadOnce*` |
 | `ARORD` (with `ARCOH`) | `0`, `1` | `1`: a `ReadOnce*` miss carries Request Order (`Order = 0b10`, Table 4-1) and completes on its `ReadReceipt` ([#360](https://github.com/10x-Engineers/CHI-OpenNoC/issues/360)) |
 | `AWCOH` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL` | `CleanUnique`, `MakeReadUnique`, `MakeUnique`, `ReadUnique`, `WriteUnique{Full,Ptl,Zero}` and their `CleanSh` forms |
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
 
-Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. The HN-F sends a
+Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. Every request carries the
+access's `AxQOS`. The HN-F sends a
 `ReadReceipt` for an ordered `ReadOnce` only, so set `ARORD` with `ARCOH = ONCE` alone for now. The RN-F issues
 no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)), Atomic ([#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324)),
-`DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)) or Non-snoopable request ([#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328)).
+or `DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)).
 
 ---
 

@@ -25,7 +25,7 @@
 `define RNF_CS_UCE     3'd5
 `define RNF_CS_UDP     3'd6
 
-// A line is 64 bytes throughout CHI (SS2.10.1 p.2-133).
+// A line is 64 bytes throughout CHI (SS2.10.1 p.2-134).
 `define RNF_LINE_BYTES 64
 `define RNF_LINE_BITS  512
 `define RNF_LINE_OFFSET_W 6

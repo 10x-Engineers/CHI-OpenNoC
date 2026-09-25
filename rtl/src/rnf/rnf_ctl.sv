@@ -33,6 +33,8 @@
 //                               WriteEvictOrEvict, Evict, CleanShared,
 //                               CleanInvalid, MakeInvalid, and the Table 4-17
 //                               (SS4.2.4 p.4-182) combinations of them
+//   Device / Non-cacheable   -> ReadNoSnp, WriteNoSnp{Full,Ptl,Zero}, the cache
+//                               bypassed (Table 2-11 SS2.9.4 p.2-129)
 //
 // A line is UCE when a CleanUnique ends from Invalid (Table 4-38 p.4-218): owned,
 // with no valid bytes. A partial store into it makes it UDP (Table 4-32 p.4-209),
@@ -74,6 +76,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_ARADDR_WIDTH-1:0]        ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE,
+    input  wire [`AXI4_ARCACHE_WIDTH-1:0]       ARCACHE,
+    input  wire [`AXI4_ARQOS_WIDTH-1:0]         ARQOS,
     input  wire [`RNF_AR_COH_W-1:0]             ARCOH,
     input  wire [`RNF_AR_ORD_W-1:0]             ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0]        ARLOCK,
@@ -93,6 +97,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0]        AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]         AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0]        AWSIZE,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0]       AWCACHE,
+    input  wire [`AXI4_AWQOS_WIDTH-1:0]         AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]             AWCOH,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0]        AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0]        AWUSER,
@@ -197,22 +203,31 @@ module rnf_ctl `RNF_PARAM
     output wire                                 txn_active_o
     );
 
-    localparam logic [3:0] S_IDLE    = 4'd0;
-    localparam logic [3:0] S_WDATA   = 4'd1;
-    localparam logic [3:0] S_CB_REQ  = 4'd2;
-    localparam logic [3:0] S_CB_DBID = 4'd3;
-    localparam logic [3:0] S_CB_DAT  = 4'd4;
-    localparam logic [3:0] S_REQ     = 4'd5;
-    localparam logic [3:0] S_DATA    = 4'd6;
-    localparam logic [3:0] S_ACK     = 4'd7;
-    localparam logic [3:0] S_RESP    = 4'd8;
-    localparam logic [3:0] S_BRESP   = 4'd9;
-    localparam logic [3:0] S_PCRD    = 4'd10;
-    localparam logic [3:0] S_PCRD_RET= 4'd11;
-    localparam logic [3:0] S_WU_DAT  = 4'd12;
-    localparam logic [3:0] S_CMRSP   = 4'd13;
-    localparam logic [3:0] S_CMO     = 4'd14;
-    localparam logic [3:0] S_RCPT    = 4'd15;
+    localparam logic [4:0] S_IDLE    = 5'd0;
+    localparam logic [4:0] S_WDATA   = 5'd1;
+    localparam logic [4:0] S_CB_REQ  = 5'd2;
+    localparam logic [4:0] S_CB_DBID = 5'd3;
+    localparam logic [4:0] S_CB_DAT  = 5'd4;
+    localparam logic [4:0] S_REQ     = 5'd5;
+    localparam logic [4:0] S_DATA    = 5'd6;
+    localparam logic [4:0] S_ACK     = 5'd7;
+    localparam logic [4:0] S_RESP    = 5'd8;
+    localparam logic [4:0] S_BRESP   = 5'd9;
+    localparam logic [4:0] S_PCRD    = 5'd10;
+    localparam logic [4:0] S_PCRD_RET= 5'd11;
+    localparam logic [4:0] S_WU_DAT  = 5'd12;
+    localparam logic [4:0] S_CMRSP   = 5'd13;
+    localparam logic [4:0] S_CMO     = 5'd14;
+    localparam logic [4:0] S_RCPT    = 5'd15;
+
+    // SS2.10.4 (p.2-136): a packet carries Data_Width/8 bytes, and Table 2-15 gives
+    // the packet holding line bytes [p*PKT_B +: PKT_B] DataID p*DID_STEP.
+    localparam int DW       = CHIE_DATA_WIDTH_PARAM;
+    localparam int PKT_B    = DW / 8;
+    localparam int NPKT     = `RNF_LINE_BYTES / PKT_B;
+    localparam int DID_STEP = PKT_B / 16;
+    localparam int PKT_W    = (NPKT == 1) ? 1 : $clog2(NPKT);
+    localparam int PSN_PKT  = DW / 64;
 
     // What the request in S_REQ is waiting for.
     localparam logic [2:0] K_READ    = 3'd0;   // a Data response, the line filled from it
@@ -228,13 +243,14 @@ module rnf_ctl `RNF_PARAM
     localparam logic [1:0] CH_B      = 2'd2;
     localparam logic [1:0] CH_CM     = 2'd3;
 
-    logic [3:0]                                 st_q;
+    logic [4:0]                                 st_q;
     logic [`AXI4_ARID_WIDTH-1:0]                id_q;
     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]       addr_q;
     logic [11:0]                                txnid_q;
     logic [`RNF_LINE_BITS-1:0]                  line_q;
     logic [`RNF_CS_WIDTH-1:0]                   fill_state_q;
-    logic                                       got_lo_q, got_hi_q, got_rsp_q;
+    logic [NPKT-1:0]                            got_q;      // Data packets received, by packet
+    logic                                       got_rsp_q;
     logic                                       got_rcpt_q;     // an ordered read's ReadReceipt
     logic [CHIE_NID_WIDTH_PARAM-1:0]            ack_tgt_q;
     logic [11:0]                                ack_txnid_q;
@@ -265,6 +281,18 @@ module rnf_ctl `RNF_PARAM
     logic                                       exok_q;
     logic                                       core_q;
     logic [`AXI4_MPAM_WIDTH-1:0]                mpam_q;
+    // SS10.2 (p.10-357): the QoS the core assigned the access, carried by every
+    // message of the transaction that serves it.
+    logic [3:0]                                 qos_q;
+    // The access is Device or Normal Non-cacheable, served around the cache by
+    // a Non-snoopable request: its Device and EWA memory attributes, and the
+    // bytes of the line it names -- Size and the offset aligned to it.
+    logic                                       nc_q;
+    logic                                       dev_q;
+    logic                                       ewa_q;
+    chie_pkg::size_e                            sz_q;
+    logic [`RNF_LINE_OFFSET_W-1:0]              off_q;
+    logic [`RNF_LINE_OFFSET_W-1:0]              aw_lo_q, aw_hi_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -315,14 +343,14 @@ module rnf_ctl `RNF_PARAM
     logic [CHIE_NID_WIDTH_PARAM-1:0]            wr_tgt_q;
     logic [11:0]                                wr_txnid_q;
     logic                                       wr_tt_q;
-    logic                                       wr_hi_q;
+    logic [PKT_W-1:0]                           wr_pkt_q;
     logic                                       wr_dbid_q;
     logic                                       wr_sent_q;
     logic                                       cb_done_q;
     logic                                       drop_q;
     // The CompCMO of the request in flight, and where S_CMO goes once it lands.
     logic                                       cmo_got_q;
-    logic [3:0]                                 cmo_ret_st_q;
+    logic [4:0]                                 cmo_ret_st_q;
 
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
     localparam int MON = RNF_EXCL_LP_NUM_PARAM;
@@ -428,6 +456,10 @@ module rnf_ctl `RNF_PARAM
                (op == chie_pkg::REQ_WRITECLEANFULLCLEANSH);
     endfunction
 
+    function automatic bit is_write_zero(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_WRITEUNIQUEZERO) || (op == chie_pkg::REQ_WRITENOSNPZERO);
+    endfunction
+
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_READONCE) ||
                (op == chie_pkg::REQ_READONCECLEANINVALID) ||
@@ -448,6 +480,47 @@ module rnf_ctl `RNF_PARAM
                b[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W];
     endfunction
 
+    // SS2.10.4 (p.2-136): the packets of a Size-byte transfer at `off` are those
+    // holding the Size-aligned bytes around it; a line takes all of them.
+    function automatic logic [NPKT-1:0] pkt_mask(logic [`RNF_LINE_OFFSET_W-1:0] off,
+                                                 chie_pkg::size_e              sz);
+        int unsigned nbytes = 32'd1 << sz;
+        int unsigned lo     = int'(off) & ~(nbytes - 1);
+        pkt_mask = '0;
+        for (int p = 0; p < NPKT; p++)
+            if (((p + 1) * PKT_B > lo) && (p * PKT_B < lo + nbytes)) pkt_mask[p] = 1'b1;
+    endfunction
+
+    function automatic logic [PKT_W-1:0] pkt_of_dataid(logic [1:0] dataid);
+        return PKT_W'(dataid / 2'(DID_STEP));
+    endfunction
+
+    function automatic logic [PKT_W-1:0] first_pkt(logic [NPKT-1:0] m);
+        first_pkt = '0;
+        for (int p = NPKT - 1; p >= 0; p--) if (m[p]) first_pkt = PKT_W'(p);
+    endfunction
+
+    function automatic logic [PKT_W-1:0] last_pkt(logic [NPKT-1:0] m);
+        last_pkt = '0;
+        for (int p = 0; p < NPKT; p++) if (m[p]) last_pkt = PKT_W'(p);
+    endfunction
+
+    // Table 2-14 (SS2.10.1 p.2-134): the smallest Size whose aligned window holds
+    // bytes lo..hi of the line.
+    function automatic chie_pkg::size_e size_spanning(logic [`RNF_LINE_OFFSET_W-1:0] lo,
+                                                      logic [`RNF_LINE_OFFSET_W-1:0] hi);
+        size_spanning = chie_pkg::SIZE_64B;
+        for (int k = 6; k >= 0; k--)
+            if ((lo >> k) == (hi >> k)) size_spanning = chie_pkg::size_e'(k);
+    endfunction
+
+    // AMBA AXI4 (IHI 0022) Table A4-5: AxCACHE[1] low is Device, and high with
+    // AxCACHE[3:2] low Normal Non-cacheable. Table 2-11 (SS2.9.4 p.2-129) gives
+    // neither a Snoopable row, so neither is cached.
+    function automatic bit axcache_nc(logic [3:0] cache);
+        return !cache[1] || (cache[3:2] == 2'b00);
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ar_line =
         {ARADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] aw_line =
@@ -460,6 +533,28 @@ module rnf_ctl `RNF_PARAM
     // other read may be ordered at all.
     wire chie_pkg::order_e ar_ord = (is_read_once(ar_op) && ARORD[0]) ? chie_pkg::ORDER_REQ_WR_OBS
                                                                       : chie_pkg::ORDER_NONE;
+    wire ar_nc = axcache_nc(ARCACHE);
+    wire aw_nc = axcache_nc(AWCACHE);
+    // The bytes of the line an AXI write burst addresses: one beat of 2^AWSIZE
+    // bytes, or AWLEN+1 beats of the 16-byte lanes this port steps through.
+    logic [`RNF_LINE_OFFSET_W-1:0] aw_lo, aw_hi;
+    always_comb begin
+        automatic int unsigned nb = 32'd1 << ((AWSIZE > `AXI4_AWSIZE_WIDTH'(4)) ? 4 : int'(AWSIZE));
+        if (AWLEN == '0) begin
+            aw_lo = `RNF_LINE_OFFSET_W'(int'(AWADDR[5:0]) & ~(nb - 1));
+            aw_hi = `RNF_LINE_OFFSET_W'(int'(aw_lo) + nb - 1);
+        end
+        else begin
+            aw_lo = {AWADDR[5:4], 4'h0};
+            aw_hi = `RNF_LINE_OFFSET_W'((int'(AWADDR[5:4]) + int'(AWLEN) >= 3) ? 63
+                                        : (int'(AWADDR[5:4]) + int'(AWLEN)) * 16 + 15);
+        end
+    end
+    // A core read returns one AXI beat, so a Non-snoopable one asks for that beat
+    // alone: SS2.9.3 (p.2-127, MUST) has a Device read "not read more data than
+    // requested".
+    wire chie_pkg::size_e ar_nc_sz =
+        (ARSIZE > `AXI4_ARSIZE_WIDTH'(4)) ? chie_pkg::SIZE_16B : chie_pkg::size_e'(ARSIZE);
     // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
     wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
     wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
@@ -568,6 +663,7 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.memattr.early_wr_ack = 1'b1;
         prot_txreqflit_o.snpattr.snpattr      = 1'b1;
         prot_txreqflit_o.txnid        = txnid_q;
+        prot_txreqflit_o.qos          = qos_q;
         // SS2.7 (p.2-113): the LP the access was made by; the node's own requests (a
         // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
         prot_txreqflit_o.lpid         = core_q ? lpid_q : 8'd0;
@@ -579,7 +675,7 @@ module rnf_ctl `RNF_PARAM
 `endif
         if (st_q == S_PCRD_RET) begin
             // SS2.6.6 (p.2-112): addressed to the credit's source, TxnID zero, and
-            // the PCrdType it was granted under. Table A-2 (p.A-484) leaves every
+            // the PCrdType it was granted under. Table A-2 (p.A-483) leaves every
             // other field inapplicable, so zero.
             prot_txreqflit_o          = '0;
             prot_txreqflit_o.srcid    = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
@@ -605,19 +701,32 @@ module rnf_ctl `RNF_PARAM
         end
         else begin
             prot_txreqflit_o.opcode       = acq_op_q;
-            prot_txreqflit_o.addr         = addr_q;
+            prot_txreqflit_o.addr         = addr_q | CHIE_REQ_ADDR_WIDTH_PARAM'(off_q);
+            prot_txreqflit_o.size         = sz_q;
             prot_txreqflit_o.expcompack   = ack_q;
             // SS2.11 (p.2-145): a resend keeps the first attempt's Order.
             prot_txreqflit_o.order        = ord_q;
-            // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores.
+            // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores,
+            // Snoopable and Non-snoopable (Tables 4-1/4-13 give ReadNoSnp and
+            // WriteNoSnp Excl 0,1).
             prot_txreqflit_o.excl.excl    = excl_q && core_q &&
-                                            (excl_load_op(acq_op_q) ||
+                                            (excl_load_op(acq_op_q) || nc_q ||
                                              (acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
                                              (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE));
             // Table 4-1 (SS4.2.1 p.4-165) and Table 4-7 (SS4.2.2 p.4-172):
             // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
             prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
                                                 (acq_op_q != chie_pkg::REQ_READONCEMAKEINVALID);
+            // Tables 4-1 (p.4-165) and 4-13 (SS4.2.3 p.4-178): a Device access is
+            // MemAttr 001x and a Normal Non-cacheable one 000x, SnpAttr 0, with EWA
+            // from AxCACHE[0] (Table 2-11 SS2.9.4 p.2-129).
+            if (nc_q) begin
+                prot_txreqflit_o.memattr.allocate     = 1'b0;
+                prot_txreqflit_o.memattr.cacheable    = 1'b0;
+                prot_txreqflit_o.memattr.device       = dev_q;
+                prot_txreqflit_o.memattr.early_wr_ack = ewa_q;
+                prot_txreqflit_o.snpattr.snpattr      = 1'b0;
+            end
         end
     end
 
@@ -638,6 +747,7 @@ module rnf_ctl `RNF_PARAM
         prot_txrspflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txrspflit_o.txnid  = ack_txnid_q;
         prot_txrspflit_o.opcode = chie_pkg::RSP_COMPACK;
+        prot_txrspflit_o.qos    = qos_q;
         // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the completion it acknowledges.
         prot_txrspflit_o.tracetag = ack_tt_q;
     end
@@ -665,39 +775,65 @@ module rnf_ctl `RNF_PARAM
         end
     end
 
+    // The WriteData packets, the Non-CopyBack write's and the CopyBack's, one per
+    // Table 2-15 (SS2.10.4 p.2-136) DataID.
+    logic [DW-1:0]      wu_pkt_data [NPKT];
+    logic [PKT_B-1:0]   wu_pkt_be   [NPKT];
+    logic [PSN_PKT-1:0] wu_pkt_psn  [NPKT];
+    logic [DW-1:0]      cb_pkt_data [NPKT];
+    logic [PKT_B-1:0]   cb_pkt_be   [NPKT];
+    logic [PSN_PKT-1:0] cb_pkt_psn  [NPKT];
+    always_comb begin
+        for (int p = 0; p < NPKT; p++) begin
+            wu_pkt_data[p] = wu_line[p*DW +: DW];
+            wu_pkt_be[p]   = wbe_q[p*PKT_B +: PKT_B];
+            wu_pkt_psn[p]  = wu_poison[p*PSN_PKT +: PSN_PKT];
+            cb_pkt_data[p] = cb_line[p*DW +: DW];
+            cb_pkt_be[p]   = cb_be[p*PKT_B +: PKT_B];
+            cb_pkt_psn[p]  = cb_poison[p*PSN_PKT +: PSN_PKT];
+        end
+    end
+
     always_comb begin
         prot_txdatflit_o        = '0;
         prot_txdatflit_o.tgtid  = wr_tgt_q;
         prot_txdatflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txdatflit_o.txnid  = wr_txnid_q;
+        prot_txdatflit_o.qos    = qos_q;
         // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the DBID response that
         // drew the data.
         prot_txdatflit_o.tracetag = wr_tt_q;
-        // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
-        prot_txdatflit_o.dataid = wr_hi_q ? 2'd2 : 2'd0;
+        prot_txdatflit_o.dataid = 2'(int'(wr_pkt_q) * DID_STEP);
         if (st_q == S_WU_DAT) begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
             // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the request.
-            prot_txdatflit_o.ccid   = addr_q[5:4];
-            prot_txdatflit_o.be     = wr_hi_q ? wbe_q[63:32]    : wbe_q[31:0];
-            prot_txdatflit_o.data   = wr_hi_q ? wu_line[511:256] : wu_line[255:0];
-            prot_txdatflit_o.poison = wr_hi_q ? wu_poison[7:4]   : wu_poison[3:0];
+            prot_txdatflit_o.ccid   = off_q[5:4];
+            prot_txdatflit_o.be     = wu_pkt_be[wr_pkt_q];
+            prot_txdatflit_o.data   = wu_pkt_data[wr_pkt_q];
+            prot_txdatflit_o.poison = wu_pkt_psn[wr_pkt_q];
         end
         else begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
             prot_txdatflit_o.ccid   = vic_addr_q[5:4];
             prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
-            prot_txdatflit_o.be     = wr_hi_q ? cb_be[63:32]     : cb_be[31:0];
+            prot_txdatflit_o.be     = cb_pkt_be[wr_pkt_q];
             // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an
             // error indication, and Table 9-7 makes DERR the one WriteData may carry.
             prot_txdatflit_o.resperr = (vic_meta_q[`RNF_META_DERR] && !cb_invalid)
                                        ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
-            prot_txdatflit_o.data   = wr_hi_q ? cb_line[511:256] : cb_line[255:0];
-            prot_txdatflit_o.poison = wr_hi_q ? cb_poison[7:4]   : cb_poison[3:0];
+            prot_txdatflit_o.data   = cb_pkt_data[wr_pkt_q];
+            prot_txdatflit_o.poison = cb_pkt_psn[wr_pkt_q];
         end
         // SS9.6 (p.9-348): odd byte parity over the data sent.
         prot_txdatflit_o.datacheck = chie_pkg::datacheck_of(prot_txdatflit_o.data);
     end
+
+    // The WriteData packets of the transaction in flight: the Size-aligned window a
+    // Non-CopyBack write names, and every packet of a CopyBack's line.
+    wire [NPKT-1:0]  wu_mask     = pkt_mask(off_q, sz_q);
+    wire [PKT_W-1:0] wu_first    = first_pkt(wu_mask);
+    wire             wr_last_pkt = (st_q == S_WU_DAT) ? (wr_pkt_q == last_pkt(wu_mask))
+                                                      : (wr_pkt_q == PKT_W'(NPKT - 1));
 
     assign prot_txdatflitv_o = (st_q == S_CB_DAT) || (st_q == S_WU_DAT);
 
@@ -790,9 +926,10 @@ module rnf_ctl `RNF_PARAM
     // own copy of the cache line, rather than the copy returned".
     wire take_data = (kind_q != K_MRU) || acq_lost;
 
-    wire got_lo_now = got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0));
-    wire got_hi_now = got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0));
-    wire data_done  = got_lo_now && got_hi_now && (got_rsp_q || rx_sep || rx_dat_comb);
+    // SS2.10.4 (p.2-136): the read is whole once every packet its Size names is in.
+    wire [PKT_W-1:0] rx_pkt  = pkt_of_dataid(prot_rxdatflit_i.dataid);
+    wire [NPKT-1:0]  got_now = got_q | ((rx_dat_mine ? NPKT'(1) : NPKT'(0)) << rx_pkt);
+    wire data_done  = (&(got_now | ~pkt_mask(off_q, sz_q))) && (got_rsp_q || rx_sep || rx_dat_comb);
     // SS2.8.5 (p.2-119): an ordered read is released by its ReadReceipt, or by a
     // RespSepData sent in its place, and stays outstanding until then (SS2.11 p.2-146).
     wire rcpt_owed  = (ord_q != chie_pkg::ORDER_NONE) &&
@@ -861,7 +998,7 @@ module rnf_ctl `RNF_PARAM
     // invalidated no other copy and the line is left as the request found it.
     wire own_pass   = exok_now && !acq_lost && mon_ok;
 
-    logic [3:0] fin_st;
+    logic [4:0] fin_st;
     always_comb begin
         case (rsp_ch_q)
             CH_R:    fin_st = S_RESP;
@@ -879,8 +1016,7 @@ module rnf_ctl `RNF_PARAM
             txnid_q       <= '0;
             line_q        <= '0;
             fill_state_q  <= `RNF_CS_I;
-            got_lo_q      <= 1'b0;
-            got_hi_q      <= 1'b0;
+            got_q         <= '0;
             got_rsp_q     <= 1'b0;
             ack_tgt_q     <= '0;
             ack_txnid_q   <= '0;
@@ -902,6 +1038,14 @@ module rnf_ctl `RNF_PARAM
             exok_q        <= 1'b0;
             core_q        <= 1'b0;
             mpam_q        <= '0;
+            qos_q         <= 4'd0;
+            nc_q          <= 1'b0;
+            dev_q         <= 1'b0;
+            ewa_q         <= 1'b0;
+            sz_q          <= chie_pkg::SIZE_64B;
+            off_q         <= '0;
+            aw_lo_q       <= '0;
+            aw_hi_q       <= '0;
             for (int i = 0; i < MON; i++) begin
                 mon_v_q[i]    <= 1'b0;
                 mon_lp_q[i]   <= 8'd0;
@@ -946,7 +1090,7 @@ module rnf_ctl `RNF_PARAM
             wr_tgt_q      <= '0;
             wr_txnid_q    <= '0;
             wr_tt_q       <= 1'b0;
-            wr_hi_q       <= 1'b0;
+            wr_pkt_q      <= '0;
             wr_dbid_q     <= 1'b0;
             wr_sent_q     <= 1'b0;
             cb_done_q     <= 1'b0;
@@ -973,6 +1117,8 @@ module rnf_ctl `RNF_PARAM
 
             if (acq_snp_now && (st_q != S_IDLE))
                 acq_cs_q <= snp_upd_state_i;
+            // SS6.3 (p.6-286): EXOK on any response of the transaction.
+            if (rx_exok) exok_q <= 1'b1;
 
             // Each attempt's CompCMO is its own: a request resent after RetryAck owes
             // a fresh one.
@@ -992,13 +1138,12 @@ module rnf_ctl `RNF_PARAM
 
             case (st_q)
                 S_IDLE: begin
-                    got_lo_q   <= 1'b0;
-                    got_hi_q   <= 1'b0;
+                    got_q      <= '0;
                     got_rsp_q  <= 1'b0;
                     err_q      <= 1'b0;
                     nderr_q    <= 1'b0;
                     data_err_q <= 1'b0;
-                    wr_hi_q    <= 1'b0;
+                    wr_pkt_q   <= '0;
                     wr_dbid_q  <= 1'b0;
                     wr_sent_q  <= 1'b0;
                     cb_keep_q  <= 1'b0;
@@ -1006,11 +1151,15 @@ module rnf_ctl `RNF_PARAM
                     base_udp_q <= 1'b0;
                     got_rcpt_q <= 1'b0;
                     ord_q      <= chie_pkg::ORDER_NONE;
+                    nc_q       <= 1'b0;
+                    sz_q       <= chie_pkg::SIZE_64B;
+                    off_q      <= '0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
                     end
                     else if (flush_v) begin
+                        qos_q       <= 4'd0;
                         vic_addr_q  <= cache_flush_addr_i;
                         vic_way_q   <= cache_flush_way_i;
                         vic_state_q <= flush_sel_state;
@@ -1038,13 +1187,38 @@ module rnf_ctl `RNF_PARAM
                         lpid_q        <= ARID[7:0];
                         excl_q        <= ar_excl;
                         mpam_q        <= ARUSER[`AXI4_USER_MPAM_RANGE];
+                        qos_q         <= ARQOS;
+                        dev_q         <= !ARCACHE[1];
+                        ewa_q         <= ARCACHE[0];
                         excl_pass_q   <= 1'b0;
                         way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
                         line_err_q    <= lu_hit_now && cache_lu_meta_i[`RNF_META_DERR];
                         line_poison_q <= lu_hit_now ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
                         line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
                         acq_cs_q      <= lu_state;
-                        if (lu_hit_now && !is_short(lu_state)) begin
+                        // Table 2-11 (SS2.9.4 p.2-129): a Device or Non-cacheable read
+                        // is a ReadNoSnp of the beat, which the cache neither serves
+                        // nor keeps. Table 4-1 (SS4.2.1 p.4-165) gives Device nRnE
+                        // Order 11 and Normal Non-cacheable 00.
+                        if (ar_nc) begin
+                            nc_q       <= 1'b1;
+                            acq_cs_q   <= `RNF_CS_I;
+                            hit_q      <= 1'b0;
+                            line_err_q <= 1'b0;
+                            line_poison_q <= 8'h00;
+                            line_vmask_q  <= '0;
+                            sz_q       <= ar_nc_sz;
+                            // SS2.10.2 (p.2-134): a Device access reads from its Addr to
+                            // the next Size boundary, so the beat's own address is kept.
+                            off_q      <= ARADDR[5:0];
+                            acq_op_q   <= chie_pkg::REQ_READNOSNP;
+                            ord_q      <= ARCACHE[1] ? chie_pkg::ORDER_NONE : chie_pkg::ORDER_END_POINT;
+                            kind_q     <= K_READ;
+                            alloc_q    <= 1'b0;
+                            ack_q      <= 1'b0;
+                            st_q       <= S_REQ;
+                        end
+                        else if (lu_hit_now && !is_short(lu_state)) begin
                             line_q      <= cache_lu_data_i;
                             hit_q       <= 1'b1;
                             // SS6.3.3 (p.6-290): a Load of a line already held needs
@@ -1096,6 +1270,12 @@ module rnf_ctl `RNF_PARAM
                         lpid_q   <= AWID[7:0];
                         excl_q   <= aw_excl;
                         mpam_q   <= AWUSER[`AXI4_USER_MPAM_RANGE];
+                        qos_q    <= AWQOS;
+                        nc_q     <= aw_nc;
+                        dev_q    <= !AWCACHE[1];
+                        ewa_q    <= AWCACHE[0];
+                        aw_lo_q  <= aw_lo;
+                        aw_hi_q  <= aw_hi;
                         excl_pass_q <= 1'b0;
                         apply_q  <= 1'b1;
                         wpoison_q <= 8'h00;
@@ -1105,6 +1285,7 @@ module rnf_ctl `RNF_PARAM
                         st_q     <= S_WDATA;
                     end
                     else if (CMVALID && CMREADY) begin
+                        qos_q       <= 4'd0;
                         addr_q      <= cm_line;
                         is_wr_q     <= 1'b0;
                         rsp_ch_q    <= CH_CM;
@@ -1251,9 +1432,30 @@ module rnf_ctl `RNF_PARAM
                             line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
                             alloc_q       <= 1'b1;
                             ack_q         <= 1'b1;
+                            // Table 2-11 (SS2.9.4 p.2-129): a Device or Non-cacheable
+                            // write is a WriteNoSnp of the bytes the burst addresses,
+                            // Full only for a whole line, and Table 4-13 (SS4.2.3
+                            // p.4-178) gives Device nRnE Order 11. SS4.2.3 (p.4-176)
+                            // makes a line of zeros WriteNoSnpZero's.
+                            if (nc_q) begin
+                                hit_q    <= 1'b0;
+                                alloc_q  <= 1'b0;
+                                ack_q    <= 1'b0;
+                                acq_cs_q <= `RNF_CS_I;
+                                kind_q   <= K_WU;
+                                sz_q     <= wr_full ? chie_pkg::SIZE_64B : size_spanning(aw_lo_q, aw_hi_q);
+                                off_q    <= wr_full ? '0 :
+                                            `RNF_LINE_OFFSET_W'(int'(aw_lo_q) &
+                                                                ~((32'd1 << size_spanning(aw_lo_q, aw_hi_q)) - 1));
+                                acq_op_q <= wr_zero ? chie_pkg::REQ_WRITENOSNPZERO :
+                                            wr_full ? chie_pkg::REQ_WRITENOSNPFULL
+                                                    : chie_pkg::REQ_WRITENOSNPPTL;
+                                ord_q    <= dev_q ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
+                                st_q     <= S_REQ;
+                            end
                             // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
                             // is reset fails, and issues no transaction.
-                            if (excl_q && !(lu_hit_now && !is_short(lu_state) &&
+                            else if (excl_q && !(lu_hit_now && !is_short(lu_state) &&
                                             mon_set(lpid_q, addr_q))) begin
                                 hit_q   <= 1'b1;
                                 apply_q <= 1'b0;
@@ -1355,7 +1557,7 @@ module rnf_ctl `RNF_PARAM
                         wr_tgt_q   <= prot_rxrspflit_i.srcid;
                         wr_txnid_q <= prot_rxrspflit_i.dbid;
                         wr_tt_q    <= prot_rxrspflit_i.tracetag;
-                        wr_hi_q    <= 1'b0;
+                        wr_pkt_q   <= '0;
                         if (!cb_then_req_q && rx_err) err_q <= 1'b1;
                         st_q       <= S_CB_DAT;
                     end
@@ -1374,11 +1576,11 @@ module rnf_ctl `RNF_PARAM
 
                 S_CB_DAT: begin
                     if (prot_txdatflit_sent_i) begin
-                        if (wr_hi_q) begin
+                        if (wr_last_pkt) begin
                             // The way is free only now; cb_hold_v_o keeps this
                             // line's snoops queued until the retirement lands.
                             cb_done_q <= 1'b1;
-                            wr_hi_q   <= 1'b0;
+                            wr_pkt_q  <= '0;
                             if (cb_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
                                 st_q    <= cb_then_req_q ? S_REQ : fin_st;
@@ -1388,7 +1590,7 @@ module rnf_ctl `RNF_PARAM
                                 st_q         <= S_CMO;
                             end
                         end
-                        else wr_hi_q <= 1'b1;
+                        else wr_pkt_q <= wr_pkt_q + 1'b1;
                     end
                 end
 
@@ -1408,7 +1610,6 @@ module rnf_ctl `RNF_PARAM
                     if (rx_err)      err_q      <= 1'b1;
                     if (rx_nderr)    nderr_q    <= 1'b1;
                     if (rx_derr_dat) data_err_q <= 1'b1;
-                    if (rx_exok)     exok_q     <= 1'b1;
 
                     if (rx_sep || rx_comp) begin
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
@@ -1428,26 +1629,24 @@ module rnf_ctl `RNF_PARAM
                     if (rx_dat_mine) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
                     if (rx_comp)     fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
 
-                    // SS2.10.4 (p.2-136): a 64-byte transfer at Data_Width 256 is
-                    // two packets, DataID 0 then 2.
+                    // SS2.10.4 (p.2-136): packet p carries line bytes [p*PKT_B +: PKT_B].
                     // Table 4-33 fn c (p.4-212): returned bytes fill only those the
                     // line does not already hold valid.
                     if (rx_dat_mine) begin
                         // Unsigned: a size cast keeps its operand's signedness, so a
                         // signed offset of 32+ would index below zero.
-                        automatic int unsigned base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
+                        automatic int unsigned base = int'(rx_pkt) * PSN_PKT;
                         if (take_data) begin
-                            for (int unsigned b = 0; b < 32; b++)
+                            for (int unsigned b = 0; b < PKT_B; b++)
                                 if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
                                     line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
-                            for (int unsigned c = 0; c < 4; c++)
+                            for (int unsigned c = 0; c < PSN_PKT; c++)
                                 line_poison_q[3'(base + c)] <=
                                     (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
                                     (prot_rxdatflit_i.poison[c] |
                                      (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
                         end
-                        if (base == 0) got_lo_q <= 1'b1;
-                        else           got_hi_q <= 1'b1;
+                        got_q[rx_pkt] <= 1'b1;
                     end
 
                     case (kind_q)
@@ -1485,13 +1684,13 @@ module rnf_ctl `RNF_PARAM
                                 // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
                                 // permits the silent eviction to I, so the line can
                                 // never be served or merged into with no data behind it.
-                                if (nderr_now && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
+                                if (nderr_now && !nc_q && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
                                     vic_addr_q <= addr_q;
                                     vic_way_q  <= cache_lu_way_i;
                                     drop_q     <= 1'b1;
                                 end
                             end
-                            else if ((kind_q == K_MRU) && rx_comp && !got_lo_q && !got_hi_q) begin
+                            else if ((kind_q == K_MRU) && rx_comp && (got_q == '0)) begin
                                 fill_v_q    <= !nderr_now && (!excl_q || mru_pass);
                                 apply_q     <= !excl_q || mru_pass;
                                 excl_pass_q <= excl_q && mru_pass;
@@ -1523,8 +1722,10 @@ module rnf_ctl `RNF_PARAM
                             end
                             if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;
                             if (wu_dbid_now) begin
-                                if ((acq_op_q != chie_pkg::REQ_WRITEUNIQUEZERO) && !wr_sent_q)
-                                    st_q <= S_WU_DAT;
+                                if (!is_write_zero(acq_op_q) && !wr_sent_q) begin
+                                    wr_pkt_q <= wu_first;
+                                    st_q     <= S_WU_DAT;
+                                end
                                 else if (wu_comp_now && wu_cmo_now) begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
@@ -1543,7 +1744,7 @@ module rnf_ctl `RNF_PARAM
                     // dataless MakeReadUnique completion to a lost line takes the
                     // same path. A partial store then either keeps its own bytes
                     // (PARTIAL) or follows with the ReadUnique that fills the rest.
-                    if (rx_comp && acq_lost && !nderr_now && !got_lo_q && !got_hi_q && !excl_q &&
+                    if (rx_comp && acq_lost && !nderr_now && (got_q == '0) && !excl_q &&
                         ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
                          (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE))) begin
                         line_q        <= '0;
@@ -1562,7 +1763,7 @@ module rnf_ctl `RNF_PARAM
                     if (rx_err) err_q <= 1'b1;
                     if (rx_comp) got_rsp_q <= 1'b1;
                     if (prot_txdatflit_sent_i) begin
-                        if (wr_hi_q) begin
+                        if (wr_last_pkt) begin
                             wr_sent_q <= 1'b1;
                             if (!(got_rsp_q || rx_comp))
                                 st_q <= S_DATA;
@@ -1575,7 +1776,7 @@ module rnf_ctl `RNF_PARAM
                                 st_q         <= S_CMO;
                             end
                         end
-                        else wr_hi_q <= 1'b1;
+                        else wr_pkt_q <= wr_pkt_q + 1'b1;
                     end
                 end
 
@@ -1616,8 +1817,7 @@ module rnf_ctl `RNF_PARAM
                             // p.4-215: the other transaction the lost line costs.
                             chain_ru_q <= 1'b0;
                             fill_uce_q <= 1'b0;
-                            got_lo_q   <= 1'b0;
-                            got_hi_q   <= 1'b0;
+                            got_q      <= '0;
                             got_rsp_q  <= 1'b0;
                             data_err_q <= 1'b0;
                             line_err_q <= 1'b0;
@@ -1716,7 +1916,10 @@ module rnf_ctl `RNF_PARAM
     // SS9.3 (p.9-336): a non-OK RespErr is the endpoint's, and the core is owed
     // it rather than a silent OKAY.
     // AMBA AXI4 (IHI 0022) A7.2: EXOKAY for an exclusive access that passed.
-    wire [1:0] axi_resp = err_q ? 2'b10 : excl_pass_q ? 2'b01 : 2'b00;
+    // SS6.3.2 (p.6-289): a Non-snoopable Exclusive passes on the EXOK the PoS
+    // returned; a Snoopable one on this node's own monitor.
+    wire       excl_ok  = nc_q ? (excl_q && exok_q) : excl_pass_q;
+    wire [1:0] axi_resp = err_q ? 2'b10 : excl_ok ? 2'b01 : 2'b00;
 
     assign RVALID = (st_q == S_RESP);
     assign RDATA  = rdata_c;
@@ -1740,7 +1943,7 @@ module rnf_ctl `RNF_PARAM
     // From the first Data packet until the fill it completes has been written. SS4.11.1
     // (p.4-242, MUST) is judged at the interface, so a packet counts from its cycle on the pins.
     assign defer_v_o    = ((st_q == S_DATA) &&
-                           (got_lo_q || got_hi_q || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
+                           ((got_q != '0) || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
     assign defer_addr_o = addr_q;
 
     assign cb_hold_v_o    = (st_q == S_CB_DAT) || cb_done_q;

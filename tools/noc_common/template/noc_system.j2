@@ -68,6 +68,8 @@ module {{ module }}
   ,input  [`AXI4_ARADDR_WIDTH-1:0] {{ p.name }}_ARADDR
   ,input  [`AXI4_ARLEN_WIDTH-1:0]  {{ p.name }}_ARLEN
   ,input  [`AXI4_ARSIZE_WIDTH-1:0] {{ p.name }}_ARSIZE
+  ,input  [`AXI4_ARCACHE_WIDTH-1:0] {{ p.name }}_ARCACHE
+  ,input  [`AXI4_ARQOS_WIDTH-1:0]  {{ p.name }}_ARQOS
   ,input  [`AXI4_ARLOCK_WIDTH-1:0] {{ p.name }}_ARLOCK
   ,input  [`AXI4_ARUSER_WIDTH-1:0] {{ p.name }}_ARUSER
   ,input  {{ p.name }}_ARVALID
@@ -83,6 +85,8 @@ module {{ module }}
   ,input  [`AXI4_AWADDR_WIDTH-1:0] {{ p.name }}_AWADDR
   ,input  [`AXI4_AWLEN_WIDTH-1:0]  {{ p.name }}_AWLEN
   ,input  [`AXI4_AWSIZE_WIDTH-1:0] {{ p.name }}_AWSIZE
+  ,input  [`AXI4_AWCACHE_WIDTH-1:0] {{ p.name }}_AWCACHE
+  ,input  [`AXI4_AWQOS_WIDTH-1:0]  {{ p.name }}_AWQOS
   ,input  [`AXI4_AWLOCK_WIDTH-1:0] {{ p.name }}_AWLOCK
   ,input  [`AXI4_AWUSER_WIDTH-1:0] {{ p.name }}_AWUSER
   ,input  {{ p.name }}_AWVALID
@@ -135,9 +139,9 @@ module {{ module }}
 {% for dir, width, sig in chi_signals('RNF') %}
     ,.{{ sig }} ({{ p.name }}_{{ sig }})
 {% endfor %}
-{% for sig in ['ARID', 'ARADDR', 'ARLEN', 'ARSIZE', 'ARLOCK', 'ARUSER', 'ARVALID', 'ARREADY',
+{% for sig in ['ARID', 'ARADDR', 'ARLEN', 'ARSIZE', 'ARCACHE', 'ARQOS', 'ARLOCK', 'ARUSER', 'ARVALID', 'ARREADY',
                'RID', 'RDATA', 'RRESP', 'RUSER', 'RLAST', 'RVALID', 'RREADY',
-               'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
+               'AWID', 'AWADDR', 'AWLEN', 'AWSIZE', 'AWCACHE', 'AWQOS', 'AWLOCK', 'AWUSER', 'AWVALID', 'AWREADY',
                'WDATA', 'WSTRB', 'WUSER', 'WLAST', 'WVALID', 'WREADY',
                'BID', 'BRESP', 'BVALID', 'BREADY',
                'ARCOH', 'ARORD', 'AWCOH', 'CMVALID', 'CMREADY', 'CMOP', 'CMADDR', 'CMDONE', 'CMRESP'] %}

@@ -75,12 +75,15 @@ module rnf `RNF_PARAM
     // Core-side AXI4 subordinate: reads and writes both, the writes being what
     // makes a line Dirty and a CopyBack owed with it. ARCOH and AWCOH carry the
     // core's intent for the access, and ARORD asks a ReadOnce* for Request Order
-    // (rnf_defines.svh); AxLOCK makes it exclusive, AxUSER carries its MPAM label
-    // and W/RUSER its Poison (axi4_defines.svh).
+    // (rnf_defines.svh); AxCACHE names its memory type, AxQOS its QoS, AxLOCK makes
+    // it exclusive, AxUSER carries its MPAM label and W/RUSER its Poison
+    // (axi4_defines.svh).
     input  wire [`AXI4_ARID_WIDTH-1:0]   ARID,
     input  wire [`AXI4_ARADDR_WIDTH-1:0] ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]  ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0] ARSIZE,
+    input  wire [`AXI4_ARCACHE_WIDTH-1:0] ARCACHE,
+    input  wire [`AXI4_ARQOS_WIDTH-1:0]  ARQOS,
     input  wire [`RNF_AR_COH_W-1:0]      ARCOH,
     input  wire [`RNF_AR_ORD_W-1:0]      ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0] ARLOCK,
@@ -98,6 +101,8 @@ module rnf `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0] AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]  AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0] AWSIZE,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0] AWCACHE,
+    input  wire [`AXI4_AWQOS_WIDTH-1:0]  AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]      AWCOH,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0] AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0] AWUSER,
@@ -294,6 +299,8 @@ module rnf `RNF_PARAM
                      ,.ARADDR                ( ARADDR               )
                      ,.ARLEN                 ( ARLEN                )
                      ,.ARSIZE                ( ARSIZE               )
+                     ,.ARCACHE               ( ARCACHE              )
+                     ,.ARQOS                 ( ARQOS                )
                      ,.ARCOH                 ( ARCOH                )
                      ,.ARORD                 ( ARORD                )
                      ,.ARLOCK                ( ARLOCK               )
@@ -311,6 +318,8 @@ module rnf `RNF_PARAM
                      ,.AWADDR                ( AWADDR               )
                      ,.AWLEN                 ( AWLEN                )
                      ,.AWSIZE                ( AWSIZE               )
+                     ,.AWCACHE               ( AWCACHE              )
+                     ,.AWQOS                 ( AWQOS                )
                      ,.AWCOH                 ( AWCOH                )
                      ,.AWLOCK                ( AWLOCK               )
                      ,.AWUSER                ( AWUSER               )
