@@ -118,12 +118,12 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
 | QoS | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F carries `AxQOS` |
 | DMT / DWT | 🟢 | — | — | — | 🟢 | |
-| DCT | — | — | — | ⬜ | 🟢 | RN-F as a DCT target [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| DCT | — | — | — | 🟢 | 🟢 | RN-F as a DCT target: forwards CompData to the Requester |
 | Snoop filter, L3 | — | — | — | — | 🟢 | |
-| Snoop handling | — | — | — | 🟢 | — | Fwd/Stash snoops answered as their Non-forwarding twin; `SnpDVMOp` needs DVM [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
+| Snoop handling | — | — | — | 🟢 | — | Forwarding snoops per Tables 4-51..4-56; Stash snoops answered as their Non-stash twin [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325); `SnpDVMOp` needs DVM [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
-| CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
-| Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| CMOs | 🟢 | 🟢 | — | 🟢 | 🟢 | |
+| Combined Writes | 🟡 | 🟡 | — | 🟢 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
 | Write Zero | 🟡 | 🟢 | — | 🟢 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333) |
 | Atomics | ⚪ | ⚪ | — | 🟢 | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322); RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
@@ -143,7 +143,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | :-- | :-- | :-- |
 | `Atomic_Transactions` | True | |
 | `Cache_Stash_Transactions` | False | [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
-| `Direct_Cache_Transfer`, `Enhanced_Features`, `CleanSharedPersistSep_Request` | False | [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| `Direct_Cache_Transfer`, `Enhanced_Features`, `CleanSharedPersistSep_Request` | True | |
 | `DVM_Support` | False | [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | `CCF_Wrap_Order` | False | |
 | `Data_Poison` | True | |
@@ -172,17 +172,17 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Selector | Values | Requests |
 | :--- | :--- | :--- |
 | `AxCACHE` | Device (`[1]=0`), Normal Non-cacheable (`[1]=1`, `[3:2]=00`) | `ReadNoSnp` of the beat, `WriteNoSnp{Full,Ptl,Zero}` of the bytes written; the cache is bypassed. Device is `Order = 0b11`, `AxCACHE[0]` is EWA (Table 2-11). `AxLOCK` sets `Excl` |
-| `ARCOH` | `SHARED`, `CLEAN`, `PREFER_UNIQUE`, `UNIQUE`, `ONCE`, `ONCE_CLEAN_INV`, `ONCE_MAKE_INV` | `ReadShared`, `ReadClean`, `ReadPreferUnique`, `ReadUnique`, `ReadOnce*` |
+| `ARCOH` | `SHARED`, `CLEAN`, `PREFER_UNIQUE`, `UNIQUE`, `ONCE`, `ONCE_CLEAN_INV`, `ONCE_MAKE_INV`, `NOT_SHARED_DIRTY` | `ReadShared`, `ReadClean`, `ReadPreferUnique`, `ReadUnique`, `ReadOnce*`, `ReadNotSharedDirty` |
 | `ARORD` (with `ARCOH`) | `0`, `1` | `1`: a `ReadOnce*` miss carries Request Order (`Order = 0b10`, Table 4-1) and completes on its `ReadReceipt` ([#360](https://github.com/10x-Engineers/CHI-OpenNoC/issues/360)) |
-| `AWCOH` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL` | `CleanUnique`, `MakeReadUnique`, `MakeUnique`, `ReadUnique`, `WriteUnique{Full,Ptl,Zero}` and their `CleanSh` forms |
+| `AWCOH` | `CACHED`, `READ_UNIQUE`, `IMMEDIATE`, `IMMEDIATE_CLSH`, `PARTIAL`, `IMMEDIATE_PERSEP` | `CleanUnique`, `MakeReadUnique`, `MakeUnique`, `ReadUnique`, `WriteUnique{Full,Ptl,Zero}` and their `CleanSh` and `CleanShPerSep` forms; on a Device/Non-cacheable write, `WriteNoSnp{Full,Ptl}CleanSh{,PerSep}` |
 | `AWATOP`, `AWATM` (with `AWVALID`) | AXI5 `AWATOP`; `NEAR`, `FAR`, `FAR_SNOOPME` | `NEAR`: the store's own acquire, then the operation in the cache. `FAR`: a Dirty line written back or a Clean one dropped, then `Atomic*` with `SnoopMe = 0`. `FAR_SNOOPME`: `Atomic*` with `SnoopMe = 1`. The original value returns on `BATDATA` with `BVALID`. With `BROADCASTATOMIC` low a far request executes near, and a Device/Non-cacheable one is refused `SLVERR` |
-| `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
+| `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID`, `CLEAN_SHARED_PERSIST`, `CLEAN_SHARED_PERSIST_SEP`, `CLEAN_SHARED_PERSIST_SEP_EVICT` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh`, `WriteBackFullCleanShPerSep`, `WriteCleanFullCleanShPerSep` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. Every request carries the
 access's `AxQOS`. The HN-F sends a
 `ReadReceipt` for an ordered `ReadOnce` only, so set `ARORD` with `ARCOH = ONCE` alone for now. The RN-F issues
-no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)),
-or `DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)).
+no Stash request ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)) or `DVMOp`
+([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)).
 
 ---
 
@@ -217,8 +217,9 @@ TOP_TB=tb_rni make com sim             # RN-I bench
 ```
 
 Each run writes `mesh_wrapper_{X}x{Y}.sv` / `ring_wrapper_{N}.sv`. If the config has `RNF` ports, it
-also writes a populated `mesh_system_*.sv` / `ring_system_*.sv` with an `rnf` on each one. The JSON
-schema is in `tools/mesh_generator/README.md`.
+also writes a populated `mesh_system_*.sv` / `ring_system_*.sv` with an `rnf` on each one, and sets
+each one's bit of `RNF_DCT_LIST` in its package, since the `rnf` declares `Direct_Cache_Transfer`. The
+JSON schema is in `tools/mesh_generator/README.md`.
 
 ---
 

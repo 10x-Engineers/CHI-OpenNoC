@@ -370,6 +370,10 @@ module rnf_ctl `RNF_PARAM
     // The CompCMO of the request in flight, and where S_CMO goes once it lands.
     logic                                       cmo_got_q;
     logic [4:0]                                 cmo_ret_st_q;
+    // The Persist of the request in flight, and whether S_CMO waits on the
+    // CopyBack's tail or the request's.
+    logic                                       persist_got_q;
+    logic                                       cmo_cb_q;
 
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
     localparam int MON = RNF_EXCL_LP_NUM_PARAM;
@@ -431,6 +435,7 @@ module rnf_ctl `RNF_PARAM
             `RNF_AR_ONCE:           return chie_pkg::REQ_READONCE;
             `RNF_AR_ONCE_CLEAN_INV: return chie_pkg::REQ_READONCECLEANINVALID;
             `RNF_AR_ONCE_MAKE_INV:  return chie_pkg::REQ_READONCEMAKEINVALID;
+            `RNF_AR_NOT_SHARED_DIRTY: return chie_pkg::REQ_READNOTSHAREDDIRTY;
             default:                return chie_pkg::REQ_READSHARED;
         endcase
     endfunction
@@ -443,7 +448,7 @@ module rnf_ctl `RNF_PARAM
     // SS6.3 (p.6-286): the Snoopable Exclusive Loads this node issues.
     function automatic bit excl_load_op(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_READSHARED) || (op == chie_pkg::REQ_READCLEAN) ||
-               (op == chie_pkg::REQ_READPREFERUNIQUE);
+               (op == chie_pkg::REQ_READNOTSHAREDDIRTY) || (op == chie_pkg::REQ_READPREFERUNIQUE);
     endfunction
 
     // A line whose bytes are not all valid cannot be served, nor kept Clean.
@@ -461,10 +466,11 @@ module rnf_ctl `RNF_PARAM
                                              : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
     endfunction
 
-    // SS2.3.2 (p.2-57, p.2-66): the Combined Writes without Persist, whose CMO leg
-    // completes on a CompCMO of its own.
+    // SS2.3.2 (p.2-57, p.2-66): the Combined Writes, whose CMO leg completes on a
+    // CompCMO of its own -- or on a CompPersist, which also carries the Persist.
     function automatic bit is_cmb_write(chie_pkg::req_opcode_e op);
-        return (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)  ||
+        return is_persep_write(op) ||
+               (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)  ||
                (op == chie_pkg::REQ_WRITENOSNPFULLCLEANINV) ||
                (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)   ||
                (op == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)  ||
@@ -473,6 +479,21 @@ module rnf_ctl `RNF_PARAM
                (op == chie_pkg::REQ_WRITEBACKFULLCLEANSH)   ||
                (op == chie_pkg::REQ_WRITEBACKFULLCLEANINV)  ||
                (op == chie_pkg::REQ_WRITECLEANFULLCLEANSH);
+    endfunction
+
+    function automatic bit is_persep_write(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)  ||
+               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)   ||
+               (op == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP) ||
+               (op == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)  ||
+               (op == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)   ||
+               (op == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
+    endfunction
+
+    // SS2.3.5 (p.2-73) and SS2.3.2 (p.2-61, p.2-66): these owe a Persist response
+    // beside their completion, which a CompPersist combines with it.
+    function automatic bit owes_persist(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP) || is_persep_write(op);
     endfunction
 
     function automatic bit is_write_zero(chie_pkg::req_opcode_e op);
@@ -649,6 +670,32 @@ module rnf_ctl `RNF_PARAM
     // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
     wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
     wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
+    // The CleanShared family on the maintenance port: which CMO, which Table 4-17
+    // (SS4.2.4 p.4-182) Combined Write folds a Dirty line into it, and whether the
+    // line is kept.
+    function automatic chie_pkg::req_opcode_e cm_cmo_op(logic [`RNF_CM_OP_W-1:0] op);
+        case (op)
+            `RNF_CM_CLEAN_SHARED_PERSIST:           return chie_pkg::REQ_CLEANSHAREDPERSIST;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP,
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: return chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+            default:                                return chie_pkg::REQ_CLEANSHARED;
+        endcase
+    endfunction
+
+    function automatic chie_pkg::req_opcode_e cm_cb_op(logic [`RNF_CM_OP_W-1:0] op);
+        case (op)
+            `RNF_CM_CLEAN_SHARED:                   return chie_pkg::REQ_WRITECLEANFULLCLEANSH;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP:       return chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: return chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP;
+            default:                                return chie_pkg::REQ_WRITEBACKFULLCLEANSH;
+        endcase
+    endfunction
+
+    function automatic bit cm_keeps(logic [`RNF_CM_OP_W-1:0] op);
+        return (op == `RNF_CM_CLEAN_SHARED) || (op == `RNF_CM_CLEAN_SHARED_PERSIST) ||
+               (op == `RNF_CM_CLEAN_SHARED_PERSIST_SEP);
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cm_line =
         {CMADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
 
@@ -757,7 +804,9 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.qos          = qos_q;
         // SS2.7 (p.2-113): the LP the access was made by; the node's own requests (a
         // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
-        prot_txreqflit_o.lpid         = core_q ? lpid_q : 8'd0;
+        // SS13.10.16 (p.13-420): a Persist-owing request's LPID bits are its
+        // PGroupID, which this single-outstanding node keeps at 0.
+        prot_txreqflit_o.lpid         = (core_q && !owes_persist(acq_op_q)) ? lpid_q : 8'd0;
 `ifdef CHIE_MPAM_PRESENT
         // SS11.3 (p.11-365, MUST): the core's label from AxUSER, and Table 11-5's
         // (p.11-366) defaults on a request the core did not make.
@@ -950,7 +999,13 @@ module rnf_ctl `RNF_PARAM
                ((f.opcode == chie_pkg::DAT_COMPDATA) || (f.opcode == chie_pkg::DAT_DATASEPRESP));
     endfunction
 
-    wire rx_compcmo      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPCMO);
+    wire rx_comppersist  = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPPERSIST);
+    wire rx_compcmo      = rx_rsp_txn && ((prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPCMO) ||
+                                          rx_comppersist);
+    // Table A-8 (p.A-488): a Persist carries TxnID 0 and names its request by
+    // PGroupID, in the DBID bits.
+    wire rx_persist      = prot_rxrspflitv_i && (prot_rxrspflit_i.opcode == chie_pkg::RSP_PERSIST) &&
+                           (prot_rxrspflit_i.dbid[7:0] == 8'd0);
     wire rx_dat_mine     = prot_rxdatflitv_i && is_read_data(prot_rxdatflit_i, txnid_q);
     wire rx_dat_arriving = rxdat_arr_v_i && is_read_data(rxdat_arr_flit_i, txnid_q);
     wire rx_dat_comb = rx_dat_mine &&
@@ -1046,9 +1101,12 @@ module rnf_ctl `RNF_PARAM
     // SS2.11 (p.2-146): a transaction is outstanding until every response it is owed
     // has arrived, CompCMO among them, and SS2.3.2 (p.2-58, p.2-66) orders the CompCMO
     // against none of the others -- so it is taken in whichever state it lands in.
-    wire cmo_got_now = cmo_got_q || rx_compcmo;
-    wire wu_cmo_now  = !is_cmb_write(acq_op_q) || cmo_got_now;
-    wire cb_cmo_now  = !is_cmb_write(cb_op_q)  || cmo_got_now;
+    wire cmo_got_now     = cmo_got_q || rx_compcmo;
+    wire persist_got_now = persist_got_q || rx_persist || rx_comppersist;
+    wire wu_cmo_now  = (!is_cmb_write(acq_op_q) || cmo_got_now) &&
+                       (!owes_persist(acq_op_q) || persist_got_now);
+    wire cb_cmo_now  = (!is_cmb_write(cb_op_q)  || cmo_got_now) &&
+                       (!owes_persist(cb_op_q)  || persist_got_now);
 
     function automatic bit same_set(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
                                     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
@@ -1208,6 +1266,8 @@ module rnf_ctl `RNF_PARAM
             drop_q        <= 1'b0;
             cmo_got_q     <= 1'b0;
             cmo_ret_st_q  <= S_IDLE;
+            persist_got_q <= 1'b0;
+            cmo_cb_q      <= 1'b0;
         end
         else begin
             automatic logic                                 set_now  = 1'b0;
@@ -1233,8 +1293,11 @@ module rnf_ctl `RNF_PARAM
 
             // Each attempt's CompCMO is its own: a request resent after RetryAck owes
             // a fresh one.
-            if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i)
-                cmo_got_q <= 1'b0;
+            if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i) begin
+                cmo_got_q     <= 1'b0;
+                persist_got_q <= 1'b0;
+            end
+            if (rx_persist || rx_comppersist) persist_got_q <= 1'b1;
             if (rx_compcmo) begin
                 cmo_got_q <= 1'b1;
                 // SS9.4.3 (p.9-341): CompCMO carries the CMO leg's error, which the
@@ -1491,8 +1554,10 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else st_q <= S_CMRSP;
                             end
-                            `RNF_CM_CLEAN_SHARED, `RNF_CM_CLEAN_SHARED_EVICT: begin
-                                acq_op_q <= chie_pkg::REQ_CLEANSHARED;
+                            `RNF_CM_CLEAN_SHARED, `RNF_CM_CLEAN_SHARED_EVICT,
+                            `RNF_CM_CLEAN_SHARED_PERSIST, `RNF_CM_CLEAN_SHARED_PERSIST_SEP,
+                            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: begin
+                                acq_op_q <= cm_cmo_op(CMOP);
                                 // Table 4-17 (SS4.2.4 p.4-182): a Dirty line folds its
                                 // CopyBack into the CMO, keeping a Clean copy or not.
                                 // Table 4-17 (SS4.2.4 p.4-182) combines no CMO with
@@ -1502,19 +1567,23 @@ module rnf_ctl `RNF_PARAM
                                     cb_then_req_q <= 1'b1;
                                     st_q          <= S_CB_REQ;
                                 end
+                                // Table 4-17 combines no CleanSharedPersist, so a Dirty
+                                // line goes back by WriteCleanFull and the CMO follows.
+                                else if (is_dirty(lu_state) && (CMOP == `RNF_CM_CLEAN_SHARED_PERSIST)) begin
+                                    cb_op_q       <= chie_pkg::REQ_WRITECLEANFULL;
+                                    cb_keep_q     <= 1'b1;
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
                                 else if (is_dirty(lu_state)) begin
-                                    cb_op_q   <= (CMOP == `RNF_CM_CLEAN_SHARED)
-                                                 ? chie_pkg::REQ_WRITECLEANFULLCLEANSH
-                                                 : chie_pkg::REQ_WRITEBACKFULLCLEANSH;
-                                    cb_keep_q <= (CMOP == `RNF_CM_CLEAN_SHARED);
+                                    cb_op_q   <= cm_cb_op(CMOP);
+                                    cb_keep_q <= cm_keeps(CMOP);
                                     st_q      <= S_CB_REQ;
                                 end
-                                // Table 4-10 (SS4.2.2 p.4-174): CleanShared from UC,
-                                // SC or I only.
+                                // Table 4-10 (SS4.2.2 p.4-174): CleanShared and the
+                                // persistent CMOs from UC, SC or I only.
                                 else begin
-                                    drop_q <= lu_hit_now &&
-                                              ((CMOP == `RNF_CM_CLEAN_SHARED_EVICT) ||
-                                               (lu_state == `RNF_CS_UCE));
+                                    drop_q <= lu_hit_now && (!cm_keeps(CMOP) || (lu_state == `RNF_CS_UCE));
                                     st_q   <= S_REQ;
                                 end
                             end
@@ -1638,7 +1707,13 @@ module rnf_ctl `RNF_PARAM
                                 off_q    <= wr_full ? '0 :
                                             `RNF_LINE_OFFSET_W'(int'(aw_lo_q) &
                                                                 ~((32'd1 << size_spanning(aw_lo_q, aw_hi_q)) - 1));
-                                acq_op_q <= wr_zero ? chie_pkg::REQ_WRITENOSNPZERO :
+                                acq_op_q <= (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
+                                                ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSH
+                                                           : chie_pkg::REQ_WRITENOSNPPTLCLEANSH) :
+                                            (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
+                                                ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP
+                                                           : chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP) :
+                                            wr_zero ? chie_pkg::REQ_WRITENOSNPZERO :
                                             wr_full ? chie_pkg::REQ_WRITENOSNPFULL
                                                     : chie_pkg::REQ_WRITENOSNPPTL;
                                 ord_q    <= dev_q ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
@@ -1694,7 +1769,8 @@ module rnf_ctl `RNF_PARAM
                                     st_q <= S_REQ;
                                 end
                                 else if ((aw_coh_q == `RNF_AW_IMMEDIATE) ||
-                                         (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)) begin
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)) begin
                                     // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
                                     // line that is Invalid here, and leaves it so.
                                     alloc_q <= 1'b0;
@@ -1703,6 +1779,9 @@ module rnf_ctl `RNF_PARAM
                                     if (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
                                         acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH
                                                             : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH;
+                                    else if (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
+                                        acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP
+                                                            : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP;
                                     else
                                         acq_op_q <= wr_zero ? chie_pkg::REQ_WRITEUNIQUEZERO :
                                                     wr_full ? chie_pkg::REQ_WRITEUNIQUEFULL
@@ -1789,6 +1868,7 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 cmo_ret_st_q <= cb_then_req_q ? S_REQ : fin_st;
+                                cmo_cb_q     <= 1'b1;
                                 st_q         <= S_CMO;
                             end
                         end
@@ -1890,9 +1970,16 @@ module rnf_ctl `RNF_PARAM
                             end
                         end
                         K_NOTE: begin
-                            if (rx_comp) begin
-                                txnid_q <= txnid_q + 12'd1;
-                                st_q    <= fin_st;
+                            if (rx_comp || rx_comppersist) begin
+                                if (wu_cmo_now) begin
+                                    txnid_q <= txnid_q + 12'd1;
+                                    st_q    <= fin_st;
+                                end
+                                else begin
+                                    cmo_ret_st_q <= fin_st;
+                                    cmo_cb_q     <= 1'b0;
+                                    st_q         <= S_CMO;
+                                end
                             end
                         end
                         default: begin
@@ -1914,6 +2001,7 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else if (wu_comp_now) begin
                                     cmo_ret_st_q <= fin_st;
+                                    cmo_cb_q     <= 1'b0;
                                     st_q         <= S_CMO;
                                 end
                             end
@@ -1955,6 +2043,7 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 cmo_ret_st_q <= fin_st;
+                                cmo_cb_q     <= 1'b0;
                                 st_q         <= S_CMO;
                             end
                         end
@@ -1976,7 +2065,7 @@ module rnf_ctl `RNF_PARAM
                 // The write leg is done and the CMO leg still owes its CompCMO; the
                 // core's response and the TxnID both wait for it.
                 S_CMO: begin
-                    if (rx_compcmo) begin
+                    if (cmo_cb_q ? cb_cmo_now : wu_cmo_now) begin
                         txnid_q <= txnid_q + 12'd1;
                         st_q    <= cmo_ret_st_q;
                     end
