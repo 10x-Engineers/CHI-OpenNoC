@@ -667,6 +667,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_datbuf_sn_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dbid_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_rd_receipt_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]         mshr_sep_rd_sx;
+    wire                                 mshr_alloc_sep_rd;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_comp_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dmt_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_alloc_dwt_s1;
@@ -1733,6 +1735,16 @@ module hnf_mshr_ctl `HNF_PARAM
         end
     endgenerate
 
+    // SS2.3.1 (p.2-46) flow 4 in place of DMT: RespSepData from this Home, ReadNoSnpSep
+    // to the Subordinate. Unordered reads only, as the bypass elects it.
+    generate
+        for(entry=0; entry<`MSHR_ENTRIES_NUM; entry=entry+1) begin : mshr_sep_rd_logic
+            assign mshr_sep_rd_sx[entry] = HNF_SEP_RESP_EN_PARAM & mshr_dmt_sx8_q[entry] &
+                                           (mshr_tagop_s1_q[entry] == chie_pkg::TAGOP_INVALID) &
+                                           (mshr_order_s1_q[entry] == chie_pkg::ORDER_NONE);
+        end
+    endgenerate
+
     //************************************************************************//
 
     //                   mshr allocate s1 stage decode logic
@@ -1771,7 +1783,11 @@ module hnf_mshr_ctl `HNF_PARAM
     // completes with "DBIDResp + CompData_I", so it owes no Comp of its own.
     assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & ~mshr_atomicrd_s1_q & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
     assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
-    assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q));
+    // A ReadNoSnp taking separate responses owes its RespSepData at acceptance, as the bypass's.
+    assign mshr_alloc_sep_rd        = HNF_SEP_RESP_EN_PARAM & ~mshr_dmt_closed & ~mshr_request_order &
+                                      (mshr_tagop_s1_q[mshr_entry_idx_alloc_s1_q] == chie_pkg::TAGOP_INVALID);
+    assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & (({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q)) |
+                                                                      ({`MSHR_ENTRIES_NUM{mshr_alloc_sep_rd}} & mshr_rdnosnp_s1_q));
     assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_dmt_closed}}));
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
@@ -2773,7 +2789,7 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_mem_rd_busy_set_sx[entry]    = (mshr_alloc_memrd_s1[entry]) || (mshr_l3_memrd_sx7[entry]) || (mshr_snp_memrd_s1[entry]) ||
                    (mshr_tagfetch_go_sx[entry]);
             assign mshr_mem_rd_busy_clr_sx[entry]    = (mshr_dat_to_rn_s1[entry]) ||
-                   (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry]) ||
+                   (mshr_get_compack_s1_q[entry] & mshr_dmt_sx8_q[entry] & ~mshr_sep_rd_sx[entry]) ||
                    (mshr_get_rd_receipt_s1_q[entry]) ||
                    (mshr_all_dat_alloc_s1[entry]) ||
                    (mshr_tagfetch_issued_sx_q[entry] & mshr_dat_old_get_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
@@ -2888,7 +2904,11 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_dbid_rdy_set_s2[entry]       = (mshr_alloc_dbid_s1[entry] & txrsp_mshr_bypass_lost_s1 & ~mshr_alloc_dwt_s1[entry]) ||
                    (mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]);
             assign mshr_dbid_rdy_clr_s2[entry]       = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
-            assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1);
+            // A read elected DMT after allocation owes its RespSepData when the ReadNoSnpSep
+            // first goes out; a ReadNoSnp's was owed at allocation, as the bypass's.
+            assign mshr_rd_receipt_rdy_set_s2[entry] = (mshr_alloc_rd_receipt_s1[entry] & txrsp_mshr_bypass_lost_s1) ||
+                   (txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry] & mshr_txreq_is_rd_sx1 & mshr_sep_rd_sx[entry] &
+                    ~mshr_rdnosnp_s1_q[entry] & ~mshr_retry_s1_q[entry]);
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
                    (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
@@ -3934,7 +3954,7 @@ module hnf_mshr_ctl `HNF_PARAM
                                       : (mshr_txreq_fwd_sx1?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
     // Sec 2.10.3 (p.2-135, MUST): a WriteNoSnpFull must assert every byte enable, so
     // a write-back whose only source was a partial Snoop response is Ptl.
-    assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?chie_pkg::REQ_CLEANSHAREDPERSIST:(mshr_txreq_is_rd_sx1?chie_pkg::REQ_READNOSNP:(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
+    assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?chie_pkg::REQ_CLEANSHAREDPERSIST:(mshr_txreq_is_rd_sx1?(mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
     assign mshr_txreq_size_sx1        = mshr_txreq_is_cmo_sx1 ? chie_pkg::SIZE_64B :
                                         (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1 |
                                           (mshr_txreq_is_rd_sx1 & mshr_tagfetch_issued_sx_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
@@ -3949,7 +3969,10 @@ module hnf_mshr_ctl `HNF_PARAM
                 mshr_snp_outstanding_sx = mshr_snp_outstanding_sx | mshr_snp_bit_sx8_q[e];
     end
     assign mshr_txreq_allowretry_sx1  = (!mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]);
-    assign mshr_txreq_order_sx1       = ((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] & mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
+    // Table 2-6 (SS2.3.1 p.2-48): Request Accepted where CompAck cannot be relied on to
+    // show the Subordinate took the request -- no CompAck, or a ReadNoSnpSep's.
+    assign mshr_txreq_order_sx1       = (((mshr_sn_order_s1_q[mshr_txreq_entry_idx_sx1] | mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]) &
+                                          mshr_txreq_is_rd_sx1 & mshr_dmt_sx8_q[mshr_txreq_entry_idx_sx1])?chie_pkg::ORDER_RSVD:chie_pkg::ORDER_NONE);
     assign mshr_txreq_pcrdtype_sx1    = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1]?mshr_pcrdtype_s1_q[mshr_txreq_entry_idx_sx1]:'0);
     // Sec 2.9.3 (p.2-129, MUST): a ReadNoSnp or WriteNoSnp "generated within the
     // interconnect due to a Prefetch from Home or an eviction from the System
@@ -4064,7 +4087,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txrsp_persist_rsp_sx1 = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q] & mshr_persist_rsp_s1_q[mshr_txrsp_idx_sx1_q];
     assign mshr_txrsp_opcode_sx1   = mshr_txrsp_persist_rsp_sx1?chie_pkg::RSP_COMPPERSIST:
                                      mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?
-                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_READRECEIPT:(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:chie_pkg::RSP_DBIDRESP));
+                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_sep_rd_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:chie_pkg::RSP_DBIDRESP));
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
     // transaction structure is intact, only its status says it was not serviced.

@@ -149,6 +149,8 @@ for n in "${NODES[@]}"; do
     bounds_node "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
     lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
     bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+    # SS2.3.1 (p.2-46) flow 4 is elected by a parameter, so it is elaborated set.
+    lint_node   "$n" "separate responses" -GHNF_SEP_RESP_EN_PARAM=1 || rc=1
   fi
   # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F packetises by it
   # (snf_defines.svh SNF_PKTS), so it is elaborated at the other two widths as well;

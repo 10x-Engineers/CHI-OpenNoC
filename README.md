@@ -70,7 +70,7 @@ The **Issue** column tracks the work to reach 🟢.
 | Request | SN-F | HN-I | HN-F | Issue |
 | :--- | :---: | :---: | :---: | :--- |
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 | |
-| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ | Home-to-SN only: received from an RN it stays ⚪; HN-F issuing it [#332](https://github.com/10x-Engineers/CHI-OpenNoC/issues/332) |
+| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ received, 🟢 issued | Home-to-SN only, so received from an RN it stays ⚪. The HN-F issues it with `RespSepData` in place of DMT for an unordered read when `HNF_SEP_RESP_EN_PARAM` is set |
 | `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 | |
 | `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
 | `ReadShared` | — | ⚪ | 🟢 as `ReadNotSharedDirty` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
@@ -238,6 +238,7 @@ and are overridden at instantiation.
 | `RNF_STASH_LIST_PARAM` | all False | Per-Requester: receives Stash snoops (section 9.4.6) |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | 64 B lines |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
+| `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` | 8 / 0 | |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | One monitor per LP |

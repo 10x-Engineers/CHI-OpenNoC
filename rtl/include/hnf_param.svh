@@ -44,7 +44,8 @@
      parameter HNF_MSHR_ENTRIES_WIDTH_PARAM = ((HNF_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNF_MSHR_ENTRIES_NUM_PARAM) : 1), \
      parameter HNF_BIQ_ENTRIES_NUM_PARAM    = 8,     \
      parameter HNF_L3_CACHE_SIZE_PARAM      = 4096,  \
-     parameter HNF_L3_WAY_NUM_PARAM         = 16     )
+     parameter HNF_L3_WAY_NUM_PARAM         = 16,    \
+     parameter HNF_SEP_RESP_EN_PARAM        = 0      )
 
 `define HNF_PARAM_INST #( \
     .CHIE_REQ_ADDR_WIDTH_PARAM          (CHIE_REQ_ADDR_WIDTH_PARAM         ), \
@@ -74,6 +75,7 @@
     .HNF_MSHR_ENTRIES_WIDTH_PARAM       (HNF_MSHR_ENTRIES_WIDTH_PARAM      ), \
     .HNF_BIQ_ENTRIES_NUM_PARAM          (HNF_BIQ_ENTRIES_NUM_PARAM         ), \
     .HNF_L3_CACHE_SIZE_PARAM            (HNF_L3_CACHE_SIZE_PARAM           ), \
-    .HNF_L3_WAY_NUM_PARAM               (HNF_L3_WAY_NUM_PARAM              ))
+    .HNF_L3_WAY_NUM_PARAM               (HNF_L3_WAY_NUM_PARAM              ), \
+    .HNF_SEP_RESP_EN_PARAM              (HNF_SEP_RESP_EN_PARAM             ))
 
 `endif /* HNF_PARAM_H */
