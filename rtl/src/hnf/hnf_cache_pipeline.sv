@@ -543,6 +543,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire                                     biq_fifo_full;
     wire                                     biq_hit_raw;
     wire                                     biq_hit;
+    wire                                     biq_hit_snp;
     wire                                     biq_evict_valid_sx5;
     wire                                     biq_find_valid_sx5;
 
@@ -2050,6 +2051,10 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
     //outputs cpl result to mshr
+    // Table 15-1 (p.15-468, MUST): a line queued for back-invalidation is snooped at every
+    // other interface in Coherency Connect or Enabled. With none, no Snoop request may be
+    // generated and there is none to wait on, so the request is served as the miss it is.
+    assign biq_hit_snp = biq_hit & (|pipe_biq_hit_tgt_vec_sx5_q);
     assign pipe_biq_hit_cancel_brd_sx5 = pipe_tag_hit_sx5_q & ((pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN));
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
@@ -2090,7 +2095,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_pipeval_sx7_q    <= pipe_req_valid_sx_q[SX5];
             l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5];
             l3_mshr_entry_sx7_q <= pipe_mshr_idx_sx_q[SX5][`MSHR_ENTRIES_WIDTH-1:0];
-            l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit);
+            l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit_snp);
             l3_hit_sx7_q        <= pipe_tag_hit_sx5_q;
             l3_hit_dirty_sx7_q  <= pipe_tag_dirty_sx5_q;
             // Not "a peer holds the line" but "a snoop on this line is outstanding":
@@ -2101,9 +2106,9 @@ module hnf_cache_pipeline `HNF_PARAM
             // so this reads the pass's whole snoopee vector. With either missing, the
             // no-snoop fast path and the post-snoop path both fire and the entry
             // issues two downstream requests under one TxnID (SS2.5.2 p.2-87, MUST).
-            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit | (|pipe_sf_tgt_vec_sx5_q);
+            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit_snp | (|pipe_sf_tgt_vec_sx5_q);
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
-            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
+            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit_snp & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_stash_bit_sx7_q  <= biq_hit?{`RNF_NUM{1'b0}}                         : pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_replay_sx7_q     <= l3_replay_sx5;

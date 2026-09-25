@@ -149,11 +149,14 @@ for n in "${NODES[@]}"; do
     bounds_node "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
     lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
     bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+    # SS2.3.1 (p.2-46) flow 4 and SS4.3's (p.4-192) SnpQuery port are parameter-enabled.
+    lint_node   "$n" "optional Home features" -GHNF_SEP_RESP_EN_PARAM=1 -GHNF_SNPQUERY_EN_PARAM=1 || rc=1
   fi
-  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F packetises by it
-  # (snf_defines.svh SNF_PKTS), so it is elaborated at the other two widths as well;
-  # every other node still refuses anything but 256 (chie_flit_opt_check).
-  if [ "$n" = snf ]; then
+  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F and HN-F packetise
+  # by it (snf_defines.svh SNF_PKTS, opennoc_hnf_pkg::HNF_PKTS), so they are elaborated
+  # at the other two widths as well; every other node still refuses anything but 256
+  # (chie_flit_opt_check).
+  if [ "$n" = snf ] || [ "$n" = hnf ]; then
     for w in 128 512; do
       lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
       bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1

@@ -70,7 +70,7 @@ The **Issue** column tracks the work to reach 🟢.
 | Request | SN-F | HN-I | HN-F | Issue |
 | :--- | :---: | :---: | :---: | :--- |
 | `ReadNoSnp` | 🟢 | 🟢 | 🟢 | |
-| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ | Home-to-SN only: received from an RN it stays ⚪; HN-F issuing it [#332](https://github.com/10x-Engineers/CHI-OpenNoC/issues/332) |
+| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ received, 🟢 issued | Home-to-SN only, so received from an RN it stays ⚪. The HN-F issues it with `RespSepData` in place of DMT for an unordered read when `HNF_SEP_RESP_EN_PARAM` is set |
 | `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 | |
 | `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | ⚪ | 🟢 | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
 | `ReadShared` | — | ⚪ | 🟢 as `ReadNotSharedDirty` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
@@ -102,12 +102,13 @@ Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.
 | `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 | |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | |
 | `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM` |
+| `SnpSharedFwd` | ⬜ | a Requester it leaves SD loses its write-back [#381](https://github.com/10x-Engineers/CHI-OpenNoC/issues/381) |
 | `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | only to a target set in `RNF_STASH_LIST_PARAM` |
-| `SnpSharedFwd`, `SnpQuery` | ⬜ | [#334](https://github.com/10x-Engineers/CHI-OpenNoC/issues/334) |
+| `SnpQuery` | 🟢 | from the `SNPQ_*` port when `HNF_SNPQUERY_EN_PARAM` is set, which reports the Snoopee's state |
 | `SnpDVMOp` | ⬜ | MN only [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | All snoop responses, incl. `SnpRespDataPtl` | 🟢 | |
 
-Every snoop is sent with `DoNotGoToSD = 1`.
+Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 makes it zero there.
 
 ### Features
 
@@ -135,7 +136,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
 | Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
 | `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `Data_Width` 128 / 512 | 🟢 | ⬜ | ⬜ | ⬜ | ⬜ | SN-F packetises by `Data_Width`; the other nodes are 256 only, so a whole system is too [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+| `Data_Width` 128 / 512 | 🟢 | ⬜ | ⬜ | ⬜ | 🟢 | SN-F and HN-F packetise by `Data_Width`; the other nodes are 256 only, so a whole system is too [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 
 ### RN-F interface declarations (section 16.1)
 
@@ -177,7 +178,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. The HN-F sends a
-`ReadReceipt` for an ordered `ReadOnce` only, so set `ARORD` with `ARCOH = ONCE` alone for now. The RN-F issues
+`ReadReceipt` for every ordered `ReadNoSnp` and `ReadOnce*`. The RN-F issues
 no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)), Atomic ([#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324)),
 `DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)) or Non-snoopable request ([#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328)).
 
@@ -230,7 +231,7 @@ and are overridden at instantiation.
 | :-- | --: | :-- |
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | 44..52 build; only 44 exercised |
 | `CHIE_NID_WIDTH_PARAM` | 7 | 7..11 build; only 7 exercised |
-| `CHIE_DATA_WIDTH_PARAM` | 256 | 128 / 256 / 512 on the SN-F; every other node refuses anything but 256 [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
+| `CHIE_DATA_WIDTH_PARAM` | 256 | 128 / 256 / 512 on the SN-F and HN-F; every other node refuses anything but 256 [#327](https://github.com/10x-Engineers/CHI-OpenNoC/issues/327) |
 | `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F |
 | `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F) | |
 | `HNF_MSHR_RNF_NUM_PARAM`, `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Coherent Requesters served by the HN-F |
@@ -238,6 +239,8 @@ and are overridden at instantiation.
 | `RNF_STASH_LIST_PARAM` | all False | Per-Requester: receives Stash snoops (section 9.4.6) |
 | `HNF_L3_CACHE_SIZE_PARAM` / `HNF_L3_WAY_NUM_PARAM` | 4096 KB / 16 | 64 B lines |
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
+| `HNF_SNPQUERY_EN_PARAM` | 0 | 1: `SNPQ_REQ_*` sends a `SnpQuery` for one line to one `RNF_NID_LIST_PARAM` entry and `SNPQ_RSP_*` reports its state, or `SENT=0` where that interface is out of the coherency domain |
+| `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` | 8 / 0 | |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | One monitor per LP |
