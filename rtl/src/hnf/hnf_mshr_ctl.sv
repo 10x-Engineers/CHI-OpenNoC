@@ -163,6 +163,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                l3_memrd_sx7_q,
     input  wire                                l3_hit_sx7_q,
     input  wire                                l3_sfhit_sx7_q,
+    input  wire                                l3_rn_absent_sx7_q,
     input  wire                                l3_pipeval_sx7_q,
     input  wire                                l3_mshr_wr_op_sx7_q,
     input  wire                                l3_snpdirect_sx7_q,
@@ -475,6 +476,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dct_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        l3_rd_busy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_busy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rd_fill_snp_only_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        l3_rd_rdy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_rdy_s2_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        l3_fill_data_busy_sx_q;
@@ -778,6 +780,8 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_all_dat_alloc_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_new_dat_l3fill_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_old_dat_l3fill_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_old_dat_fill_go_s1;
+    wire [`MSHR_ENTRIES_NUM-1:0]   mshr_rd_fill_drop_s1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_neednosnp_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_needsnp_sx7;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_l3_memrd_sx7;
@@ -2798,6 +2802,11 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_l3_entry_vec_sx7[entry] = mshr_l3_val_sx7 & (l3_mshr_entry_sx7_q == entry);
             assign mshr_clr_l3busy_sx7[entry]   = mshr_l3_entry_vec_sx7[entry];
             assign mshr_l3_rd_l3fill_sx7[entry] = mshr_l3_entry_vec_sx7[entry] & ((!l3_hit_sx7_q & l3_sfhit_sx7_q & (mshr_rdnosd_s1_q[entry] | mshr_rc_s1_q[entry])));
+            assign mshr_old_dat_fill_go_s1[entry] = mshr_old_dat_l3fill_s1[entry] & ~mshr_compack_busy_sx_q[entry] & ~mshr_rn_data_busy_sx_q[entry];
+            // Table 4-33 (SS4.7.1 p.4-212): a ReadClean leaves a Unique Requester Unique and
+            // has one in UD or SD drop memory's data, so that data is not cached for a
+            // Requester the directory cannot place outside the line (SS1.5.1 p.1-26).
+            assign mshr_rd_fill_drop_s1[entry]  = mshr_rd_fill_snp_only_q[entry] & ~(|mshr_snp_getid_s1_q[entry]);
             assign mshr_neednosnp_sx7[entry]    = mshr_l3_entry_vec_sx7[entry] & l3_rd_busy_s2_q[entry] & ((!l3_snpdirect_sx7_q & ~l3_snpbrd_sx7_q) | (l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY)));
             assign mshr_needsnp_sx7[entry]      = mshr_l3_entry_vec_sx7[entry] & (l3_snpdirect_sx7_q | l3_snpbrd_sx7_q) & ~(l3_hit_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_READONCE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY));
             assign mshr_l3_memrd_sx7[entry]     = mshr_l3_entry_vec_sx7[entry] & ((l3_memrd_sx7_q & (l3_opcode_sx7_q != chie_pkg::REQ_WRITEUNIQUEPTL)) | (l3_memrd_sx7_q & (l3_opcode_sx7_q == chie_pkg::REQ_WRITEUNIQUEPTL) & mshr_l3_alloc_s1_q[entry] & (~l3_hit_sx7_q) & (~l3_sfhit_sx7_q)));
@@ -2840,7 +2849,8 @@ module hnf_mshr_ctl `HNF_PARAM
             assign l3_fill_busy_set_sx[entry]        = (mshr_alloc_l3fill_s1[entry]) ||
                    (mshr_l3_rd_l3fill_sx7[entry]);
             assign l3_fill_busy_clr_sx[entry]        = (mshr_clr_l3busy_sx7[entry] & (~l3_rd_busy_s2_q[entry])) ||
-                   (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]);
+                   (mshr_dat_stop_cb_s1_q[entry] & mshr_dat_entry_vec_s1_q[entry]) ||
+                   (l3_fill_data_busy_sx_q[entry] & mshr_old_dat_fill_go_s1[entry] & mshr_rd_fill_drop_s1[entry]);
             assign l3_rd_rdy_set_s2[entry]           = (mshr_alloc_l3rd_s1[entry] & (~excl_fail_s1)) ||
                    (mshr_stash_pull_go_sx[entry]) ||
                    (mshr_l3_replay_sx7[entry] & l3_rd_busy_s2_q[entry]);
@@ -2855,14 +2865,14 @@ module hnf_mshr_ctl `HNF_PARAM
                    ~mshr_pipeline_busy_sx[entry] & ~l3_rd_rdy_s2_q[entry] & ~l3_fill_rdy_s2_q[entry];
             assign l3_rd_rdy_clr_s2[entry]           = (~l3_mshr_wr_op_sx7_q & mshr_l3_entry_vec_sx1[entry]);
             assign l3_fill_rdy_set_s2[entry]         = (l3_fill_data_busy_sx_q[entry] & (mshr_all_dat_alloc_s1[entry] | mshr_new_dat_l3fill_s1[entry]) & ~mshr_dat_stop_cb_s1_q[entry]) ||
-                   (l3_fill_data_busy_sx_q[entry] & mshr_old_dat_l3fill_s1[entry] & ~mshr_compack_busy_sx_q[entry] & ~mshr_rn_data_busy_sx_q[entry]) ||
+                   (l3_fill_data_busy_sx_q[entry] & mshr_old_dat_fill_go_s1[entry] & ~mshr_rd_fill_drop_s1[entry]) ||
                    (mshr_l3_replay_sx7[entry] & ~l3_rd_busy_s2_q[entry]);
             assign l3_fill_rdy_clr_s2[entry]         = (~l3_mshr_wr_op_sx7_q & ~l3_rd_rdy_s2_q[entry] & mshr_l3_entry_vec_sx1[entry]);
             assign l3_fill_data_busy_set_sx[entry]   = (mshr_alloc_l3fill_s1[entry]) ||
                    (mshr_l3_rd_l3fill_sx7[entry]);
             assign l3_fill_data_busy_clr_sx[entry]   = (mshr_all_dat_alloc_s1[entry]) ||
                    (mshr_new_dat_l3fill_s1[entry]) ||
-                   (mshr_old_dat_l3fill_s1[entry] & ~mshr_compack_busy_sx_q[entry] & ~mshr_rn_data_busy_sx_q[entry]);
+                   (mshr_old_dat_fill_go_s1[entry]);
             assign mshr_snp_busy_set_sx[entry]       = (mshr_alloc_snp_s1[entry] & ~excl_fail_s1);
             assign mshr_snp_busy_clr_sx[entry]       = (mshr_neednosnp_sx7[entry]) ||
                    (mshr_snp_getall_s1[entry]);
@@ -3091,6 +3101,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     l3_fill_busy_sx_q[entry] <= 1'b1;
                 else if(l3_fill_busy_clr_sx[entry])
                     l3_fill_busy_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_rd_fill_snp_only_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_rd_fill_snp_only_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_rd_fill_snp_only_q[entry] <= 1'b0;
+                else if(mshr_l3_rd_l3fill_sx7[entry])
+                    mshr_rd_fill_snp_only_q[entry] <= ~l3_rn_absent_sx7_q;
                 else
                     ;
             end
