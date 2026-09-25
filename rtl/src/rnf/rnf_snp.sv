@@ -32,8 +32,13 @@
 // forward it SC and end SC -- SnpPreferUniqueFwd as Table 4-55's Non-invalidating
 // row, which p.4-237 makes "protocol compliant ... always". A UCE or UDP line has
 // nothing to forward and answers the Non-forwarding twin (base_of()), as does
-// every snoop not yet serviced beyond it. SnpDVMOp is not decoded: DVM_Support is
-// False.
+// every snoop not yet serviced beyond it.
+//
+// DVM_Support is DVM_v8.4 (SS16.1.1 p.16-473). A SnpDVMOp pair touches no line:
+// it is answered with one SnpResp_I once both parts are in (SS8.1.3 p.8-308,
+// MUST), and at once, since this node holds no TLB, branch predictor or
+// instruction cache for a DVM operation -- a Sync included (SS8.1.2 p.8-307) -- to
+// wait on. It accepts RNF_SNPDVM_NUM pairs at once, SS8.1.3's two.
 //
 // A Stash snoop is answered with a Data Pull (SS7.1.1 p.7-295) where Tables
 // 4-46..4-48 (SS4.8.2 p.4-227) permit one -- SnpStashUnique on a line not held or
@@ -187,7 +192,8 @@ module rnf_snp `RNF_PARAM
     // SS4.8.1 (p.4-221) lists the Non-forwarding, Non-stash snoops; base_of()
     // folds every other snoop but SnpDVMOp onto one of them.
     function automatic bit is_decoded(chie_pkg::snp_opcode_e op);
-        return is_stash_hint(op) || is_base_decoded(base_of(op));
+        return is_stash_hint(op) || is_base_decoded(base_of(op)) ||
+               (op == chie_pkg::SNP_SNPDVMOP);
     endfunction
 
     function automatic bit is_base_decoded(chie_pkg::snp_opcode_e op);
@@ -304,8 +310,25 @@ module rnf_snp `RNF_PARAM
         return dv && ((addr >> `RNF_LINE_OFFSET_W) == (da >> `RNF_LINE_OFFSET_W));
     endfunction
 
-    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000}) ||
-                              on_defer_line(cb_hold_v_i, cb_hold_addr_i, {head.addr, 3'b000});
+    // SS8.1.3 (p.8-307): a SnpDVMOp is two packets on one TxnID, in either order.
+    // Its Addr is DVM payload, not a line, so no line hazard holds it.
+    localparam int RNF_SNPDVM_NUM = 2;
+    logic [RNF_SNPDVM_NUM-1:0]          dvm_v_q;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]    dvm_src_q [RNF_SNPDVM_NUM];
+    logic [11:0]                        dvm_txn_q [RNF_SNPDVM_NUM];
+    logic                               dvm_q;
+    wire                                head_dvm = (head.opcode == chie_pkg::SNP_SNPDVMOP);
+    logic [RNF_SNPDVM_NUM-1:0]          dvm_hit, dvm_free_first;
+    always_comb begin
+        for (int d = 0; d < RNF_SNPDVM_NUM; d++)
+            dvm_hit[d] = dvm_v_q[d] && (dvm_src_q[d] == head.srcid) && (dvm_txn_q[d] == head.txnid);
+        dvm_free_first = ~dvm_v_q & (dvm_v_q + 1'b1);
+    end
+    wire dvm_pair_whole = |dvm_hit;
+
+    wire head_line_deferred = !head_dvm &&
+                              (on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000}) ||
+                               on_defer_line(cb_hold_v_i, cb_hold_addr_i, {head.addr, 3'b000}));
 
     // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
     // the snoops behind it, but only for as long as the Home takes to send the rest
@@ -332,7 +355,7 @@ module rnf_snp `RNF_PARAM
     assign head_op = base_of(head.opcode);
     // SS4.8.3 (p.4-229): "Expected ... to forward a copy of the cache line to the
     // Requester if the cache line is in one of the following states: UD, UC, SD, SC".
-    wire head_fwd = is_fwd(head.opcode) && cache_lu_hit_i && !head_fwd_as_base &&
+    wire head_fwd = !head_dvm && is_fwd(head.opcode) && cache_lu_hit_i && !head_fwd_as_base &&
                     ((cur_state == `RNF_CS_UC) || (cur_state == `RNF_CS_UD) ||
                      (cur_state == `RNF_CS_SC) || (cur_state == `RNF_CS_SD));
     wire [`RNF_CS_WIDTH-1:0] nxt_state = head_fwd ? fwd_final(head.opcode, cur_state)
@@ -367,7 +390,8 @@ module rnf_snp `RNF_PARAM
     // Snoopee retains a copy", which would exempt SnpUnique from SC -- but
     // Table 4-43 (p.4-224) gives that cell SnpRespData_I as its only response,
     // so the table governs.
-    wire data_eligible = (head_op != chie_pkg::SNP_SNPMAKEINVALID) &&
+    wire data_eligible = !head_dvm &&
+                         (head_op != chie_pkg::SNP_SNPMAKEINVALID) &&
                          (head_op != chie_pkg::SNP_SNPQUERY) &&
                          !is_stash_hint(head_op);
     // A forwarded line goes to Home as well only where Tables 4-51..4-56 have it:
@@ -499,19 +523,19 @@ module rnf_snp `RNF_PARAM
     // before receiving all data packets" -- which also holds a snoop taken before
     // its line's first Data packet arrived, until the response has started.
     logic started_q;
-    wire resp_deferred = on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !started_q;
+    wire resp_deferred = !dvm_q && on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !started_q;
 
     assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q && !resp_deferred;
     assign snp_txdatflitv_o  = ((st_q == S_DAT) || (st_q == S_FWD)) && !resp_deferred;
-    assign cache_upd_v_o     = take &&
+    assign cache_upd_v_o     = take && !head_dvm &&
                                cache_lu_hit_i && (nxt_state != cur_state);
     assign cache_upd_addr_o  = snp_addr;
     assign cache_upd_way_o   = cache_lu_way_i;
     assign cache_upd_state_o = nxt_state;
     // A queued snoop is owed an answer too, so it counts as work in progress: SS15.2.1
     // (p.15-467) holds SYSCOREQ until "All data packets are sent for snoops".
-    assign snp_busy_o        = (st_q != S_IDLE) || !q_empty;
-    assign snp_line_v_o      = (st_q != S_IDLE) || take;
+    assign snp_busy_o        = (st_q != S_IDLE) || !q_empty || (|dvm_v_q);
+    assign snp_line_v_o      = ((st_q != S_IDLE) && !dvm_q) || (take && !head_dvm);
     assign snp_line_addr_o   = cache_lu_addr_o;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
@@ -531,11 +555,40 @@ module rnf_snp `RNF_PARAM
             pull_q        <= 1'b0;
             pull_dbid_q   <= '0;
             tag_dirty_q   <= 1'b0;
+            dvm_q         <= 1'b0;
+            dvm_v_q       <= '0;
+            for (int d = 0; d < RNF_SNPDVM_NUM; d++) begin
+                dvm_src_q[d] <= '0;
+                dvm_txn_q[d] <= '0;
+            end
         end
         else begin
             case (st_q)
                 S_IDLE: begin
-                    if (take) begin
+                    if (take && head_dvm) begin
+                        if (dvm_pair_whole) begin
+                            dvm_v_q      <= dvm_v_q & ~dvm_hit;
+                            snp_q        <= head;
+                            final_q      <= `RNF_CS_I;
+                            with_data_q  <= 1'b0;
+                            pass_dirty_q <= 1'b0;
+                            fwd_q        <= 1'b0;
+                            pull_q       <= 1'b0;
+                            tag_dirty_q  <= 1'b0;
+                            dvm_q        <= 1'b1;
+                            st_q         <= S_RSP;
+                        end
+                        else begin
+                            dvm_v_q <= dvm_v_q | dvm_free_first;
+                            for (int d = 0; d < RNF_SNPDVM_NUM; d++)
+                                if (dvm_free_first[d]) begin
+                                    dvm_src_q[d] <= head.srcid;
+                                    dvm_txn_q[d] <= head.txnid;
+                                end
+                        end
+                    end
+                    else if (take) begin
+                        dvm_q         <= 1'b0;
                         snp_q         <= head;
                         final_q       <= nxt_state;
                         data_q        <= cache_lu_data_i;
@@ -595,15 +648,24 @@ module rnf_snp `RNF_PARAM
                        .cond  ( prot_rxsnpflitv_i && q_full && !take )
                    );
 
-    // SS16.1.1 (p.16-473, MUST): with DVM_Support False the interconnect must
-    // suppress DVM operations, so a SnpDVMOp never reaches this node.
     assert_checker #(
                        3,
-                       "RN-F was sent a snoop opcode it does not decode: a SnpDVMOp at a node declaring DVM_Support False")
+                       "RN-F was sent a snoop opcode it does not decode")
                    SNP_OPCODE_check (
                        .clk   ( clk_i ),
                        .rst   ( rst_i ),
                        .cond  ( prot_rxsnpflitv_i && !is_decoded(prot_rxsnpflit_i.opcode) )
+                   );
+
+    // SS8.1.3 (p.8-307, MUST): the MN sends a SnpDVMOp only when this node has room
+    // for both of its parts.
+    assert_checker #(
+                       3,
+                       "RN-F was sent the first part of a SnpDVMOp beyond the RNF_SNPDVM_NUM it accepts")
+                   SNPDVM_OVERFLOW_check (
+                       .clk   ( clk_i ),
+                       .rst   ( rst_i ),
+                       .cond  ( take && head_dvm && !dvm_pair_whole && (&dvm_v_q) )
                    );
 `endif
 

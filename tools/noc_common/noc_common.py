@@ -116,5 +116,10 @@ def render_system(env, wrapper, system, ports, out_dir):
     if len(homes) != 1:
         raise SystemExit(f"{system}: an RN-F's Home is derived from the config's one HNF "
                          f"port, and this config has {len(homes)}")
+    mns = [p for p in ports if p.kind == "MN"]
+    if len(mns) > 1:
+        raise SystemExit(f"{system}: an RN-F's DVMOps go to the config's one MN port, "
+                         f"and this config has {len(mns)}")
     render(env, "noc_system.j2", Path(out_dir) / f"{system}.sv",
-           module=system, wrapper=wrapper, ports=ports, rnfs=rnfs, home=homes[0])
+           module=system, wrapper=wrapper, ports=ports, rnfs=rnfs, home=homes[0],
+           mn=mns[0] if mns else None)
