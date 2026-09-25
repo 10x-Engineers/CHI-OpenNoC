@@ -531,7 +531,7 @@ module hnf_data_buffer `HNF_PARAM
         a_op               = dbf_atm_op_q[a_idx];
         a_len              = {25'd0, dbf_atm_len_q[a_idx]};
         a_off              = {26'd0, dbf_atm_off_q[a_idx]};
-        a_soff             = {26'd0, opennoc_hnf_pkg::hnf_atomic_swap_off(dbf_atm_off_q[a_idx], a_len)};
+        a_soff             = {26'd0, chie_pkg::atomic_swap_off(dbf_atm_off_q[a_idx], a_len)};
         // The operand is one RXDAT packet, so its bytes are indexed inside that
         // packet rather than inside the line.
         a_poff             = a_off & (DBF_PKT_BYTE_NUM - 1);
@@ -547,9 +547,9 @@ module hnf_data_buffer `HNF_PARAM
                 a_swap128[b*8 +: 8] = dbf_atm_data_q[a_idx][((a_soff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
             end
 
-        a_match = opennoc_hnf_pkg::hnf_atomic_compare_eq(a_init128, a_cmp128, a_len);
-        a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
-                                                  a_init128[63:0], a_cmp128[63:0]);
+        a_match = chie_pkg::atomic_compare_eq(a_init128, a_cmp128, a_len);
+        a_res   = chie_pkg::atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
+                                       a_init128[63:0], a_cmp128[63:0]);
 
         // Table 2-16 (SS2.10.5 p.2-137) bounds AtomicStore/Load/Swap at 8 bytes and
         // only AtomicCompare at 16, so the ALU result is the narrower source, widened
