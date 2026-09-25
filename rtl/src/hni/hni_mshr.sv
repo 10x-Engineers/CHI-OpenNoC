@@ -292,7 +292,6 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_wrzero_s0;
     wire                                   rxreq_cwf_s0;
     wire                                   rxreq_cwp_s0;
-    wire                                   rxreq_errcw_s0;
     wire                                   rxreq_cb_s0;
     wire                                   rxreq_cw_s0;
     wire                                   rxreq_cwpersist_s0;
@@ -401,7 +400,10 @@ module hni_mshr `HNI_PARAM
     // Table 4-39 (p.4-219): the CopyBack writes, whose data may arrive as
     // CopyBackWrData_I, the line having been lost (Sec 4.11.1 p.4-242).
     assign rxreq_cb_s0         = rxreq_opcode_s0 inside {chie_pkg::REQ_WRITEBACKFULL, chie_pkg::REQ_WRITEBACKPTL,
-                                                         chie_pkg::REQ_WRITECLEANFULL, chie_pkg::REQ_WRITEEVICTFULL};
+                                                         chie_pkg::REQ_WRITECLEANFULL, chie_pkg::REQ_WRITEEVICTFULL,
+                                                         chie_pkg::REQ_WRITEBACKFULLCLEANSH, chie_pkg::REQ_WRITEBACKFULLCLEANINV,
+                                                         chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP, chie_pkg::REQ_WRITECLEANFULLCLEANSH,
+                                                         chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP};
 
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt", and Sec 4.2 (p.4-162) requires
@@ -411,25 +413,19 @@ module hni_mshr `HNI_PARAM
     // Table 4-39 (p.4-219): both Write Zero forms owe a DBID and no write data.
     assign rxreq_wrzero_s0     = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)
                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO);
-    // Table B-1 (p.B-493): the six WriteNoSnp Combined Writes are expected at an HN-I.
-    // Their write leg executes as the plain WriteNoSnp* does (Sec 2.3.2 p.2-59) and the
-    // CMO leg owes its own completion.
-    assign rxreq_cwf_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANINV)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP);
-    assign rxreq_cwp_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP);
-    assign rxreq_errcw_s0      = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANINV)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSH)
-                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
-    assign rxreq_cw_s0         = rxreq_cwf_s0 | rxreq_cwp_s0 | rxreq_errcw_s0;
+    // Table 4-17 (p.4-182): with no cache here, the write leg of every Combined Write
+    // is the write its standalone form makes (Sec 2.3.2 p.2-59), and the CMO leg owes
+    // its own completion.
+    assign rxreq_cwf_s0        = rxreq_opcode_s0 inside {chie_pkg::REQ_WRITENOSNPFULLCLEANSH, chie_pkg::REQ_WRITENOSNPFULLCLEANINV,
+                                                         chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
+                                                         chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH, chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+                                                         chie_pkg::REQ_WRITEBACKFULLCLEANSH, chie_pkg::REQ_WRITEBACKFULLCLEANINV,
+                                                         chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
+                                                         chie_pkg::REQ_WRITECLEANFULLCLEANSH, chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP};
+    assign rxreq_cwp_s0        = rxreq_opcode_s0 inside {chie_pkg::REQ_WRITENOSNPPTLCLEANSH, chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+                                                         chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
+                                                         chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH, chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP};
+    assign rxreq_cw_s0         = rxreq_cwf_s0 | rxreq_cwp_s0;
     // Sec 2.3.2 (p.2-62) permits the combined CompPersist for the CMO leg of the
     // *CleanShPerSep forms, and Table 4-38 (p.4-218) for CleanSharedPersistSep itself.
     assign rxreq_cwpersist_s0  = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
@@ -479,7 +475,7 @@ module hni_mshr `HNI_PARAM
     // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
     // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
     assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
-    assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_errcw_s0 | rxreq_dvm_s0);
+    assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_dvm_s0);
     assign rxreq_errdat_s0     = rxreq_err_s0 && rxreq_atomicdat_s0;
     assign rxreq_errgrant_s0   = rxreq_errwr_s0;
     // Table 4-38 (p.4-218): StashOnceSep* is completed by CompStashDone.
