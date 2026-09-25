@@ -153,7 +153,7 @@ module hnf_mshr_bypass `HNF_PARAM
     logic                                do_dmt_s1_q;
     logic                                mshr_alloc_en_s1_q;
 
-    assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
+    assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_receipt_read(li_mshr_rxreq_opcode_s0);
     // Table 4-16 (Sec 4.2.3 p.4-181)'s CopyBack set, which is what hnf_mshr_ctl's
     // op_wb/op_wc/op_we cover -- an opcode missing here never has its CompDBIDResp
     // released, because mshr_dbid_rdy_set_s2 hangs off txrsp_mshr_bypass_lost_s1.
@@ -164,7 +164,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign req_wrnosnpful_s0     = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL);
     assign req_wrnosnpptl_s0     = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
     assign req_wrnosnp_s0        = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
-    assign req_ord_s0            = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_order_s0 == 2'b10);
+    assign req_ord_s0            = (li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_ordered(li_mshr_rxreq_order_s0);
     assign req_memattr_cacheable = li_mshr_rxreq_memattr_s0[2];
 
 
@@ -380,7 +380,7 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     //dmt judgment
-    assign do_dmt_s0 = (!(((li_mshr_rxreq_order_s0 == 2'b10)&&(li_mshr_rxreq_expcompack_s0 == 0))||(li_mshr_rxreq_excl_s0 == 1)))&&((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP));
+    assign do_dmt_s0 = opennoc_hnf_pkg::hnf_dmt_permitted(li_mshr_rxreq_order_s0, li_mshr_rxreq_expcompack_s0)&&(li_mshr_rxreq_excl_s0 == 0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
     always_ff @(posedge clk or posedge rst) begin: pass_do_dmt
         if (rst)
             do_dmt_s1_q <= 'd0;
@@ -424,7 +424,8 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;
     assign mshr_txreq_bypass_ns_s1          = li_mshr_rxreq_ns_s1_q;
     assign mshr_txreq_bypass_allowretry_s1  = 1'b1;
-    assign mshr_txreq_bypass_order_s1       = (tx_rdnosnp_s1_q&&(li_mshr_rxreq_order_s1_q != chie_pkg::ORDER_REQ_WR_OBS)&&(li_mshr_rxreq_expcompack_s1_q == 0)&&(li_mshr_rxreq_excl_s1_q == 0)) ? chie_pkg::ORDER_RSVD : chie_pkg::ORDER_NONE;
+    // Table 2-6 (SS2.3.1 p.2-48): a DMT read without CompAck obtains Request Accepted from the SN.
+    assign mshr_txreq_bypass_order_s1       = (tx_rdnosnp_s1_q&&do_dmt_s1_q&&(li_mshr_rxreq_expcompack_s1_q == 0)) ? chie_pkg::ORDER_RSVD : chie_pkg::ORDER_NONE;
     assign mshr_txreq_bypass_pcrdtype_s1    = li_mshr_rxreq_pcrdtype_s1_q;
     assign mshr_txreq_bypass_memattr_s1     = li_mshr_rxreq_memattr_s1_q;
     assign mshr_txreq_bypass_dodwt_s1       = tx_rdnosnp_s1_q?1'd0:(tx_wrnosnpful_s1?do_dwt_wrnosnpfull_s1_q:(tx_wrnosnpptl_s1?do_dwt_wrnosnpptl_s1_q:1'd0));

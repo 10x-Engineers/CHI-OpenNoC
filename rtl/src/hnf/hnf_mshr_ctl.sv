@@ -654,11 +654,10 @@ module hnf_mshr_ctl `HNF_PARAM
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_req_clr_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_dct_set_sx8;
     wire                                 mshr_sn_order_set_s1;
-    wire                                 mshr_order_reqord;
     wire                                 mshr_order_owo;
     wire                                 mshr_request_excl;
     wire                                 mshr_excl_or_owo;
-    wire                                 mshr_excl_or_reqord;
+    wire                                 mshr_dmt_closed;
     wire                                 mshr_request_order;
     wire [`MSHR_ENTRIES_NUM-1:0]         mshr_memattr_allocate_s1;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3_alloc_s1_q;
@@ -1740,12 +1739,11 @@ module hnf_mshr_ctl `HNF_PARAM
 
     //************************************************************************//
 
-    assign mshr_order_reqord        = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) & (mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b0);
     assign mshr_order_owo           = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) & (mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b1);
     assign mshr_request_excl        = (mshr_excl_s1_q[mshr_entry_idx_alloc_s1_q] == 1'b1);
     assign mshr_excl_or_owo         = (mshr_order_owo) | (mshr_request_excl);
-    assign mshr_excl_or_reqord      = (mshr_order_reqord) | (mshr_request_excl);
-    assign mshr_request_order       = (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b10) | (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == 2'b11);
+    assign mshr_dmt_closed          = !opennoc_hnf_pkg::hnf_dmt_permitted(mshr_order_s1_q[mshr_entry_idx_alloc_s1_q], mshr_compack_s1_q[mshr_entry_idx_alloc_s1_q]) | (mshr_request_excl);
+    assign mshr_request_order       = opennoc_hnf_pkg::hnf_ordered(mshr_order_s1_q[mshr_entry_idx_alloc_s1_q]);
 
     assign mshr_memattr_allocate_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_l3_alloc_s1_q[mshr_entry_idx_alloc_s1_q]}});
     // Table 4-16 (p.4-181) leaves the Requester Invalid after a WriteBackFull, so
@@ -1774,7 +1772,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & ~mshr_atomicrd_s1_q & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
     assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
     assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & ({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q));
-    assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_excl_or_reqord}}));
+    assign mshr_alloc_dmt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_rdnosnp_s1_q | mshr_ro_s1_q) & (~{`MSHR_ENTRIES_NUM{mshr_dmt_closed}}));
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
     // the buffer entry until it has, the way an Exclusive or OWO write does.
@@ -2389,8 +2387,8 @@ module hnf_mshr_ctl `HNF_PARAM
     //************************************************************************//
 
     assign mshr_l3_val_sx7  = l3_pipeval_sx7_q & !l3_replay_sx7_q;
-    assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) & ~((mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b10) | (mshr_order_s1_q[l3_mshr_entry_sx7_q] == 2'b11) &
-            (mshr_compack_s1_q[l3_mshr_entry_sx7_q] == 1'b0)) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) &
+    assign mshr_l3_dmt_sx7  = mshr_l3_val_sx7 & !l3_hit_sx7_q & !l3_sfhit_sx7_q & (mshr_excl_s1_q[l3_mshr_entry_sx7_q] == 1'b0) &
+            opennoc_hnf_pkg::hnf_dmt_permitted(mshr_order_s1_q[l3_mshr_entry_sx7_q], mshr_compack_s1_q[l3_mshr_entry_sx7_q]) & (l3_opcode_sx7_q == chie_pkg::REQ_READUNIQUE | l3_opcode_sx7_q == chie_pkg::REQ_READCLEAN | l3_opcode_sx7_q == chie_pkg::REQ_READNOTSHAREDDIRTY) &
             // SS7.3 (p.7-298) permits DMT to the Stash target for a Data Pull, but the
             // downstream read this pass issues carries the Requester's ReturnNID and
             // ReturnTxnID -- so electing it would have the Subordinate answer the Stash

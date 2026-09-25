@@ -286,6 +286,23 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_CLEANSHAREDPERSIST || hnf_persist_response(op);
   endfunction
 
+  // Table 2-9 (SS2.8.5 p.2-119): Request Order and Endpoint Order, the two a Requester
+  // may ask of this Home.
+  function automatic logic hnf_ordered(chie_pkg::order_e order);
+    return order inside {chie_pkg::ORDER_REQ_WR_OBS, chie_pkg::ORDER_END_POINT};
+  endfunction
+
+  // SS2.8.5 (p.2-119, MUST): an ordered ReadNoSnp or ReadOnce* is owed a ReadReceipt.
+  function automatic logic hnf_receipt_read(chie_pkg::req_opcode_e op);
+    return op inside {chie_pkg::REQ_READNOSNP, chie_pkg::REQ_READONCE,
+                      chie_pkg::REQ_READONCECLEANINVALID, chie_pkg::REQ_READONCEMAKEINVALID};
+  endfunction
+
+  // Table 2-6 (SS2.3.1 p.2-48): DMT is not permitted for an ordered read without CompAck.
+  function automatic logic hnf_dmt_permitted(chie_pkg::order_e order, logic expcompack);
+    return !(hnf_ordered(order) && !expcompack);
+  endfunction
+
   // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
   // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
   // range, the gaps inside that range being RESERVED. The six persistent forms fold

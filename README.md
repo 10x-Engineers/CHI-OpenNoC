@@ -177,7 +177,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | `CMOP` (on `CMVALID`) | `EVICT_*`, `CLEAN`, `CLEAN_SHARED`, `CLEAN_SHARED_EVICT`, `CLEAN_INVALID`, `MAKE_INVALID` | `Evict`, `WriteBack{Full,Ptl}`, `WriteEvictFull`, `WriteEvictOrEvict`, `WriteCleanFull`, `CleanShared`, `CleanInvalid`, `MakeInvalid`, `WriteBackFullCleanSh`, `WriteBackFullCleanInv`, `WriteCleanFullCleanSh` |
 
 Encodings are in `rnf_defines.svh`; all-zero selectors give a plain cache. The HN-F sends a
-`ReadReceipt` for an ordered `ReadOnce` only, so set `ARORD` with `ARCOH = ONCE` alone for now. The RN-F issues
+`ReadReceipt` for every ordered `ReadNoSnp` and `ReadOnce*`. The RN-F issues
 no `ReadNotSharedDirty`, `CleanSharedPersist*` ([#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323)), Stash ([#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325)), Atomic ([#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324)),
 `DVMOp` ([#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321)) or Non-snoopable request ([#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328)).
 
