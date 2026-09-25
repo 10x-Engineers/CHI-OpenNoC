@@ -155,12 +155,10 @@ module mn `MN_PARAM
         $fatal(1, "mn: MN_RN_SNPDVM_NUM_PARAM=%0d; every RN-F and RN-D accepts at least two SnpDVMOps.",
                MN_RN_SNPDVM_NUM_PARAM);
 
-    // The MN reads Data[63:0] of one NCBWrData packet, which exists at every Data_Width.
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM     ),
-        .ANY_DATA_WIDTH  (1'b1                      )
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM     )
     ) u_chie_flit_opt_check ();
 
 endmodule
