@@ -1829,7 +1829,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_comp_s1       = (mshr_can_alloc_entry_s1_q) & ~mshr_atomicrd_s1_q & (mshr_wrnosnp_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_cu_s1_q | mshr_cs_comp_s1 | mshr_ci_s1_q | mshr_mu_s1_q | mshr_evi_s1_q | mshr_wu_s1_q | (mshr_err_s1_q & ~mshr_errrd_s1_q));
     assign mshr_alloc_dbid_s1       = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | mshr_wu_s1_q | mshr_wb_s1_q | mshr_wc_s1_q | mshr_we_s1_q | mshr_errwrdat_s1_q);
     // A ReadNoSnp taking separate responses owes its RespSepData at acceptance, as the bypass's.
-    assign mshr_alloc_sep_rd        = HNF_SEP_RESP_EN_PARAM & ~mshr_dmt_closed & ~mshr_request_order &
+    assign mshr_alloc_sep_rd        = HNF_SEP_RESP_EN_PARAM & ~mshr_dmt_closed &
+                                      (mshr_order_s1_q[mshr_entry_idx_alloc_s1_q] == chie_pkg::ORDER_NONE) &
                                       (mshr_tagop_s1_q[mshr_entry_idx_alloc_s1_q] == chie_pkg::TAGOP_INVALID);
     assign mshr_alloc_rd_receipt_s1 = (mshr_can_alloc_entry_s1_q) & (({`MSHR_ENTRIES_NUM{mshr_request_order}} & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosnp_s1_q)) |
                                                                       ({`MSHR_ENTRIES_NUM{mshr_alloc_sep_rd}} & mshr_rdnosnp_s1_q));
