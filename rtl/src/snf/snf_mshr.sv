@@ -223,13 +223,13 @@ module snf_mshr `SNF_PARAM
     wire                                 rxreq_atomicdat_s0;
     wire                                 rxreq_wrzero_s0;
     wire                                 rxreq_drop_s0;
-    wire                                 rxreq_cwpersist_ns_s0;
     wire                                 rxreq_errwr_s0;
     wire                                 rxreq_errcb_s0;
     wire                                 rxreq_erriw_s0;
-    wire                                 rxreq_errcw_s0;
-    wire                                 rxreq_errcw_cb_s0;
-    wire                                 rxreq_errcw_iw_s0;
+    wire                                 rxreq_cw_cb_s0;
+    wire                                 rxreq_cw_iw_s0;
+    wire                                 rxreq_offtab_svc_s0;
+    wire                                 rxreq_offtab_wr_s0;
     wire                                 rxreq_errstash_s0;
     wire                                 rxreq_errdvm_s0;
     wire                                 rxreq_errrd_s0;
@@ -237,7 +237,6 @@ module snf_mshr `SNF_PARAM
     wire                                 rxreq_err_s0;
     wire                                 rxreq_rsponly_s0;
     chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s0;
-    wire                                 rxreq_errgrant_s0;
     wire                                 txrsp_rsponly_en_s1;
     wire                                 txrsp_errgrant_en_s1;
     wire                                 txrsp_rsponly_en_sx;
@@ -310,7 +309,6 @@ module snf_mshr `SNF_PARAM
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errrd_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_err_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_rsponly_s1_q;
-    logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_errgrant_s1_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    errwr_data_done_q;
     logic [`SNF_MSHR_ENTRIES_NUM-1:0]    rxreq_drop_s1_q;
     chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s1_q [`SNF_MSHR_ENTRIES_NUM-1:0];
@@ -360,8 +358,10 @@ module snf_mshr `SNF_PARAM
     // bits of the Persist and CompPersist that reflect it.
     assign rxreq_pgroupid_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.lpid         : '0;
     // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
-    // in WriteNoSnpZero and WriteUniqueZero is never permitted."
-    assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (rxreq_alloc_flit_s0.snpattr.dodwt)      :1'b0;
+    // in WriteNoSnpZero and WriteUniqueZero is never permitted." Sec 2.9.6 (p.2-132)
+    // gives the bit to DoDWT only on the writes Table 4-14 lists; elsewhere it is SnpAttr.
+    assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (~rxreq_offtab_svc_s0)
+                                                             && (rxreq_alloc_flit_s0.snpattr.dodwt) :1'b0;
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt." Every inbound request is
     // therefore classified here, and every class below owns a response programme.
@@ -395,12 +395,26 @@ module snf_mshr `SNF_PARAM
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEINVALID)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST)
                                                               | rxreq_cmopersist_s0) :1'b0;
-    // The two this Subordinate services as writes, which is what rxreq_cw_s0 admits.
-    assign rxreq_cwpersist_ns_s0 = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
-                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP);
-    // Every Combined Write with a persistent CMO leg, the errored forms included: what
-    // Sec 2.6.2 step 7's fold and the Persist it otherwise owes are decided over.
-    assign rxreq_cwpersist_s0   = rxreq_cwpersist_ns_s0
+    // Table 4-14 (p.4-179) and Table 4-18 (p.4-182) give a Home WriteNoSnp{Full,Ptl,Zero}
+    // and the six WriteNoSnp Combined Writes to send an SN-F. The other ten writes a
+    // Home might send are serviced as their WriteNoSnp equivalents: a Subordinate has
+    // no coherence to preserve, SS4.2.4 (p.4-183) makes a Combined Write's behaviour
+    // that of its write and CMO sent separately, and Table 4-39 (p.4-219) keeps a
+    // CopyBack base's CompDBIDResp. The DISPLAY_FATAL below still flags the Home.
+    assign rxreq_cw_cb_s0       = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANINV)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
+    assign rxreq_cw_iw_s0       = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP);
+    assign rxreq_offtab_svc_s0  = rxreq_cw_cb_s0 | rxreq_cw_iw_s0 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO);
+    // Every Combined Write with a persistent CMO leg: what Sec 2.6.2 step 7's fold
+    // and the Persist it otherwise owes are decided over.
+    assign rxreq_cwpersist_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
@@ -409,13 +423,14 @@ module snf_mshr `SNF_PARAM
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANINV)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
-                                                              | rxreq_cwpersist_ns_s0) :1'b0;
+                                                              | rxreq_cwpersist_s0 | rxreq_cw_cb_s0 | rxreq_cw_iw_s0) :1'b0;
     // SS16.3.3 (p.16-479): this Subordinate declares Atomic_Transactions and runs all
     // four classes as an AXI read-modify-write. Table 4-22 (p.4-188) makes SnoopMe
     // inapplicable on this hop, so the shared Excl/SnoopMe bit is not read.
     assign rxreq_atomic_s0      = rxreq_alloc_en_s0 & chie_pkg::atomic_req(rxreq_opcode_s0);
     assign rxreq_atomicdat_s0   = rxreq_atomic_s0 & chie_pkg::atomic_returns_data(rxreq_opcode_s0);
-    assign rxreq_wrzero_s0      = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO) :1'b0;
+    assign rxreq_wrzero_s0      = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO)) :1'b0;
     // Sec 2.3.6 (p.2-74), Sec 4.5.4 (p.4-207): given no response, so no entry.
     assign rxreq_drop_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)) :1'b0;
@@ -429,33 +444,18 @@ module snf_mshr `SNF_PARAM
     // packets "is required to send the correct number of packets" -- which a write
     // given no DBID has no buffer identifier to send against. Table 4-39 (p.4-219)
     // fixes the shape per class, so each errored write carries its own.
-    //
-    // The Combined Writes whose base write is not a WriteNoSnp, split by the
-    // completion Table 4-39 gives that base; either way the CMO leg owes its own.
-    assign rxreq_errcw_cb_s0    = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSH)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANINV)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSH)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
-    assign rxreq_errcw_iw_s0    = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)
-                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP);
-    assign rxreq_errcw_s0       = rxreq_err_s0 && (rxreq_errcw_cb_s0 | rxreq_errcw_iw_s0);
     // Table 4-39 gives the CopyBack writes CompDBIDResp and no split form.
     // WriteEvictOrEvict is not here: footnote c gives it a data-less arm completed
     // by a bare Comp, which is what this Subordinate elects.
     assign rxreq_errcb_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)
-                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)
-                                                 | rxreq_errcw_cb_s0);
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL));
     // The Immediate Writes, which take DBIDResp + Comp or, under EWA, CompDBIDResp.
     assign rxreq_erriw_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
-                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)
-                                                 | rxreq_errcw_iw_s0);
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH));
     // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
     // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
     assign rxreq_errdvm_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
@@ -474,7 +474,7 @@ module snf_mshr `SNF_PARAM
     // count (Sec 7.3 p.7-297) never satisfied.
     assign rxreq_errstash_s0    = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
                                                  | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE));
-    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errgrant_s0 && ~rxreq_errrd_s0;
+    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errwr_s0 && ~rxreq_errrd_s0;
     assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
     // Sec 2.6.2 step 7 (p.2-102): the Subordinate may fold Comp and Persist into a
     // combined CompPersist "if the ReturnNID and SrcID of the request are the same
@@ -486,11 +486,18 @@ module snf_mshr `SNF_PARAM
     assign rxreq_rsponly_opcode_s0 = rxreq_persist_fold_s0 ? chie_pkg::RSP_COMPPERSIST
                                    : rxreq_errstash_s0     ? chie_pkg::RSP_COMPSTASHDONE
                                                            : chie_pkg::RSP_COMP;
-    // Table 4-39 gives a Write Zero no write data response but still a DBID-bearing
-    // completion, so it owes the grant without owing data.
-    assign rxreq_errgrant_s0    = rxreq_errwr_s0
-                                | (rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO));
-    assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.memattr.early_wr_ack  : 1'b0;
+    // Table 4-39 (p.4-219) completes a CopyBack write with CompDBIDResp alone, so the
+    // CopyBack Combined Writes take it whatever their EWA.
+    assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_alloc_flit_s0.memattr.early_wr_ack | rxreq_cw_cb_s0) : 1'b0;
+
+    // Every write outside Table 4-14 (p.4-179) and Table 4-18 (p.4-182).
+    assign rxreq_offtab_wr_s0   = rxreq_offtab_svc_s0 | rxreq_errcb_s0 | rxreq_erriw_s0
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
+`ifdef DISPLAY_FATAL
+    `display_fatal_arm
+    `display_fatal_sva(!(rxreq_alloc_en_s0 && rxreq_offtab_wr_s0),
+        $sformatf("Fatal info: [SNF_OFF_TABLE_WRITE] RXREQ received write opcode %h, which Tables 4-14/4-18 do not give a Home to send a Subordinate", $sampled(rxreq_opcode_s0)))
+`endif
 
     generate
         for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin
@@ -562,7 +569,6 @@ module snf_mshr `SNF_PARAM
                     rxreq_atmcmp_s1_q[entry]   <= 1'b0;
                     rxreq_errdvm_s1_q[entry]   <= 1'b0;
                     rxreq_errrd_s1_q[entry]    <= 1'b0;
-                    rxreq_errgrant_s1_q[entry] <= 1'b0;
                     rxreq_err_s1_q[entry]      <= 1'b0;
                     rxreq_rsponly_s1_q[entry]  <= 1'b0;
                     rxreq_drop_s1_q[entry]     <= 1'b0;
@@ -576,7 +582,6 @@ module snf_mshr `SNF_PARAM
                     rxreq_atmcmp_s1_q[entry]   <= rxreq_opcode_s0 == chie_pkg::REQ_ATOMICCOMPARE;
                     rxreq_errdvm_s1_q[entry]   <= rxreq_errdvm_s0;
                     rxreq_errrd_s1_q[entry]    <= rxreq_errrd_s0;
-                    rxreq_errgrant_s1_q[entry] <= rxreq_errgrant_s0;
                     rxreq_err_s1_q[entry]      <= rxreq_err_s0;
                     rxreq_rsponly_s1_q[entry]  <= rxreq_rsponly_s0;
                     rxreq_drop_s1_q[entry]     <= rxreq_drop_s0;
@@ -597,9 +602,9 @@ module snf_mshr `SNF_PARAM
                     mshr_tagreturn_q[entry]      <= 1'b0;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
-                    txrsp_q2_valid_q[entry]   <= rxreq_errgrant_s0 & ~rxreq_errdvm_s0
+                    txrsp_q2_valid_q[entry]   <= rxreq_errwr_s0 & ~rxreq_errdvm_s0
                                                & ~rxreq_ewa_s0 & ~rxreq_errcb_s0;
-                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0 | rxreq_errcw_s0;
+                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0;
                     txrsp_cmo_opcode_q[entry] <= (rxreq_cwpersist_s0 & rxreq_persist_fold_s0) ? chie_pkg::RSP_COMPPERSIST
                                                                                              : chie_pkg::RSP_COMPCMO;
                     // Sec 2.6.2 step 6 (p.2-102): an unfolded persistent CMO owes a
@@ -821,7 +826,7 @@ module snf_mshr `SNF_PARAM
     // normally and carries its NDERR on the completion that follows. Table 9-9
     // (p.9-342) gives AtomicLoad/Swap/Compare no CompDBIDResp, so those always
     // take the split grant.
-    assign txrsp_errgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_errgrant_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    assign txrsp_errgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
     // Table 4-40 (SS4.7.4 p.4-220): every Atomic takes DBIDResp for its operand; its
     // completion waits for the read-modify-write (SS9.4.4 p.9-342's "delayed form").
     assign txrsp_atmgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
@@ -843,7 +848,7 @@ module snf_mshr `SNF_PARAM
     assign txrsp_dbidresp_en_sx        = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx]&& (rxreq_dodwt_s1_q[wakeup_idx_sx] | (~rxreq_ewa_s1_q[wakeup_idx_sx]))) : 1'b0;
     assign txrsp_compdbidresp_en_sx    = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx] && ((~rxreq_dodwt_s1_q[wakeup_idx_sx]) && rxreq_ewa_s1_q[wakeup_idx_sx])) : 1'b0; //ewa&~dwt
     assign txrsp_rsponly_en_sx         = wakeup_valid ? rxreq_rsponly_s1_q[wakeup_idx_sx]  : 1'b0;
-    assign txrsp_errgrant_en_sx        = wakeup_valid ? rxreq_errgrant_s1_q[wakeup_idx_sx] : 1'b0;
+    assign txrsp_errgrant_en_sx        = wakeup_valid ? rxreq_errwr_s1_q[wakeup_idx_sx] : 1'b0;
     assign txrsp_opcode_en_sx          = txrsp_dbidresp_en_sx ? chie_pkg::RSP_DBIDRESP
                                        : txrsp_compdbidresp_en_sx ? chie_pkg::RSP_COMPDBIDRESP
                                        : txrsp_rsponly_en_sx ? rxreq_rsponly_opcode_s1_q[wakeup_idx_sx]
@@ -1518,7 +1523,7 @@ module snf_mshr `SNF_PARAM
                                                     // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
                                                     // entry is freed at once rather than leaked.
                                                     |(rxreq_drop_s1_q[entry])
-                                                    |((rxreq_rsponly_s1_q[entry] | rxreq_errgrant_s1_q[entry]) && all_rsp_sent_sx[entry]
+                                                    |((rxreq_rsponly_s1_q[entry] | rxreq_errwr_s1_q[entry]) && all_rsp_sent_sx[entry]
                                                         && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry]))
                                                     // SS4.2.5 (p.4-184): nothing reaches the location between the load
                                                     // and the store, so the entry and its same-line hazard outlive both.

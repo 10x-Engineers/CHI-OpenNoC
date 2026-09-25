@@ -77,13 +77,13 @@ The **Issue** column tracks the work to reach 🟢.
 | `ReadPreferUnique`, `MakeReadUnique` | — | ⚪ | 🟢 as `ReadUnique` | [#329](https://github.com/10x-Engineers/CHI-OpenNoC/issues/329) |
 | `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 | |
 | `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 | |
-| `WriteUniqueZero` | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
+| `WriteUniqueZero` | 🟢 as `WriteNoSnpZero` ² | ⚪ | 🟢 | HN-I [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
 | `WriteBackPtl`, `WriteEvictOrEvict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
 | `StashOnceSep*` | — | 🟢 `CompStashDone` | 🟢 | ¹ |
 | Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
-| Combined Writes, others (9) | ⚪ | ⚪ | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
+| Combined Writes, others (9) | 🟢 as the `WriteNoSnp` form ² | ⚪ | 🟢 | HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331) |
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | ⚪ | 🟢 | [#330](https://github.com/10x-Engineers/CHI-OpenNoC/issues/330) |
 | Atomics (18) | 🟢 AXI read-modify-write | ⚪ | 🟢 executed at the Home | HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322) |
@@ -91,6 +91,8 @@ The **Issue** column tracks the work to reach 🟢.
 | `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
 
 ¹ Table B-3 (p.B-495) lists only ICN(HN-F) as a source of `StashDone`/`CompStashDone` and of a Home's `TagMatch`, yet Table B-1 routes these requests to an HN-I, and Sections 2.3.4 (p.2-72) and 12.11.3 (p.12-387, MUST) still owe those responses. The HN-I sends them; the section text is taken to govern.
+
+² Tables 4-14 (p.4-179) and 4-18 (p.4-182) give a Home only `WriteNoSnp{Full,Ptl,Zero}` and the six `WriteNoSnp` Combined Writes to send an SN-F. A Subordinate has no coherence to preserve, so the SN-F services the other ten as their `WriteNoSnp` equivalents, `RespErr` OK: `WriteUniqueZero` as `WriteNoSnpZero`, `WriteUnique{Full,Ptl}CleanSh[PerSep]` as `WriteNoSnp{Full,Ptl}CleanSh[PerSep]`, and `WriteBackFull*` / `WriteCleanFull*` as `WriteNoSnpFull` plus the same CMO leg, completed `CompDBIDResp` as Table 4-39 gives a CopyBack. Built with `DISPLAY_FATAL`, the SN-F still stops on any write outside the two tables (`SNF_OFF_TABLE_WRITE`), since only a misbehaving Home sends one.
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
@@ -123,8 +125,8 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Snoop handling | — | — | — | 🟢 | — | Fwd/Stash snoops answered as their Non-forwarding twin; `SnpDVMOp` needs DVM [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
 | CMOs | 🟢 | 🟢 | — | 🟡 | 🟢 | RN-F: no persistent CMOs [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
-| Combined Writes | 🟡 | 🟡 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
-| Write Zero | 🟡 | 🟢 | — | 🟡 | 🟢 | SN-F [#333](https://github.com/10x-Engineers/CHI-OpenNoC/issues/333), RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
+| Combined Writes | 🟢 | 🟡 | — | 🟡 | 🟢 | SN-F ², HN-I [#331](https://github.com/10x-Engineers/CHI-OpenNoC/issues/331), RN-F [#323](https://github.com/10x-Engineers/CHI-OpenNoC/issues/323) |
+| Write Zero | 🟢 | 🟢 | — | 🟡 | 🟢 | SN-F ², RN-F `WriteNoSnpZero` [#328](https://github.com/10x-Engineers/CHI-OpenNoC/issues/328) |
 | Atomics | 🟢 | ⚪ | — | ⬜ | 🟢 | SN-F declares `Atomic_Transactions` (section 16.3.3) for its whole space; HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322), RN-F [#324](https://github.com/10x-Engineers/CHI-OpenNoC/issues/324) |
 | Stash | — | 🟢 | — | ⬜ | 🟢 | HN-I completes without stashing; RN-F [#325](https://github.com/10x-Engineers/CHI-OpenNoC/issues/325) |
 | DVM | — | — | — | ⬜ | — | needs an MN [#321](https://github.com/10x-Engineers/CHI-OpenNoC/issues/321) |
