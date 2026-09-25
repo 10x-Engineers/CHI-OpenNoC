@@ -182,6 +182,8 @@ module hni `HNI_PARAM
     wire                                dbf_rvalid_sx;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  dbf_rvalid_entry_idx_sx;
     wire [3:0]                          dbf_cdmask_sx;
+    wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_wr_nobyte_sx;
+    wire                                rxreq_mem_update_s0;
 
     wire                                hni_rxcrd_en;
     wire                                hni_lcrd_return_en;
@@ -368,6 +370,7 @@ module hni `HNI_PARAM
             .rst(RST),
             .rxreq_alloc_en_s0(rxreq_alloc_en_s0),
             .rxreq_alloc_flit_s0(rxreq_alloc_flit_s0),
+            .rxreq_mem_update_s0(rxreq_mem_update_s0),
             .excl_pass_s1(excl_pass_s1),
             .excl_fail_s1(excl_fail_s1)
         );
@@ -416,6 +419,7 @@ module hni `HNI_PARAM
             .dbf_rvalid_sx(dbf_rvalid_sx),
             .dbf_rvalid_entry_idx_sx(dbf_rvalid_entry_idx_sx),
             .dbf_cdmask_sx(dbf_cdmask_sx),
+            .dbf_wr_nobyte_sx(dbf_wr_nobyte_sx),
             .w_last(dbf_wdat_last), 
             .rid(RID),
             .rdata(RDATA),
@@ -440,7 +444,8 @@ module hni `HNI_PARAM
             .rxreq_alloc_flit_s0(rxreq_alloc_flit_s0),
             .mshr_entry_idx_alloc_s0(mshr_entry_idx_alloc_s0),        
             .excl_pass_s1(excl_pass_s1),
-            .excl_fail_s1(excl_fail_s1),       
+            .excl_fail_s1(excl_fail_s1),
+            .rxreq_mem_update_s0(rxreq_mem_update_s0),       
             .rxrsp_valid_s0(rxrsp_valid_s0),
             .rxrspflit_s0(rxrspflit_s0),       
             .mshr_entry_sleep_s1(mshr_entry_sleep_s1),
@@ -473,6 +478,7 @@ module hni `HNI_PARAM
             .dbf_rvalid_sx(dbf_rvalid_sx),
             .dbf_rvalid_entry_idx_sx(dbf_rvalid_entry_idx_sx),
             .dbf_cdmask_sx(dbf_cdmask_sx),
+            .dbf_wr_nobyte_sx(dbf_wr_nobyte_sx),
             .mshr_txdat_en_sx(mshr_txdat_en_sx),
             .mshr_txdat_tgtid_sx(mshr_txdat_tgtid_sx),
             .mshr_txdat_txnid_sx(mshr_txdat_txnid_sx),

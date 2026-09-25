@@ -75,6 +75,7 @@ module hni_data_buffer `HNI_PARAM
     output wire                                dbf_rvalid_sx,
     output logic [`HNI_MSHR_ENTRIES_WIDTH-1:0] dbf_rvalid_entry_idx_sx,
     output wire [3:0]                          dbf_cdmask_sx,
+    output wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_wr_nobyte_sx,
     output wire                                mshr_txdat_won_sx,
     output wire                                w_last,
 
@@ -139,6 +140,7 @@ module hni_data_buffer `HNI_PARAM
     wire [11:0]                        rxdat_txnid_s0;
     chie_pkg::dat_opcode_e             rxdat_opcode_s0;
     wire [chie_pkg::BE_WIDTH-1:0]      rxdat_be_s0;
+    wire                               rxdat_cbinv_s0;
     wire [1:0]                         rxdat_dataid_s0;
     wire [chie_pkg::DATA_WIDTH-1:0]    rxdat_data_s0;
     wire [`HNI_MSHR_ENTRIES_WIDTH-1:0] rxdat_entry_idx_s0;
@@ -155,7 +157,10 @@ module hni_data_buffer `HNI_PARAM
     assign rxdatflit_valid_s0  = rxdat_valid_s0;
     assign rxdat_txnid_s0  = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.txnid  : '0;
     assign rxdat_opcode_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.opcode : chie_pkg::DAT_DATLCRDRETURN;//NONCOPYBACKWRDATA/NCBWRDATACOMPACK
-    assign rxdat_be_s0     = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.be     : '0;
+    // Sec 4.11.1 (p.4-242): a CopyBackWrData_I's data is not valid, so it names no
+    // byte to write whatever its BE carry.
+    assign rxdat_cbinv_s0  = (rxdatflit_s0.opcode == chie_pkg::DAT_COPYBACKWRDATA) && (rxdatflit_s0.resp == chie_pkg::RESP_I);
+    assign rxdat_be_s0     = ((rxdat_valid_s0 == 1'b1) && !rxdat_cbinv_s0) ? rxdatflit_s0.be : '0;
     assign rxdat_dataid_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.dataid : '0;
     assign rxdat_data_s0   = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.data   : '0;
     assign rxdat_poison_s0 = (rxdat_valid_s0 == 1'b1) ? rxdatflit_s0.poison : '0;
@@ -542,6 +547,12 @@ module hni_data_buffer `HNI_PARAM
     endgenerate
 
     assign rready_rst    = |rready_rst_q;
+
+    generate
+        for(i = 0;i<`HNI_MSHR_ENTRIES_NUM;i = i+1) begin:wr_nobyte_logic
+            assign dbf_wr_nobyte_sx[i] = ~(|dbf_be_q[i]);
+        end
+    endgenerate
     
     always_comb begin: dbf_rvalid_comb_logic
         dbf_rvalid_entry_idx_sx = {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};

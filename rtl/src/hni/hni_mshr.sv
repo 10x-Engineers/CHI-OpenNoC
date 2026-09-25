@@ -34,6 +34,7 @@ module hni_mshr `HNI_PARAM
     //inouts with hni_global_monitor
     input  wire                                excl_pass_s1,
     input  wire                                excl_fail_s1,
+    output wire                                rxreq_mem_update_s0,
 
     //inouts with hni_rxrsp
     input  wire                                rxrsp_valid_s0,
@@ -72,6 +73,7 @@ module hni_mshr `HNI_PARAM
     input  wire                                dbf_rvalid_sx,  //dbf receive rdata
     input  wire [`HNI_MSHR_ENTRIES_WIDTH-1:0]  dbf_rvalid_entry_idx_sx,
     input  wire [3:0]                          dbf_cdmask_sx,
+    input  wire [`HNI_MSHR_ENTRIES_NUM-1:0]    dbf_wr_nobyte_sx,
 
     output wire                                mshr_txdat_en_sx,  //mshr allow dbf send data to chi xp
     output wire [1:0]                          mshr_txdat_dataid_sx,
@@ -166,6 +168,7 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_errdat_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_drop_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cw_s1_q;
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cb_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cwpersist_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_rsp1_owed_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_comp_owed_s1_q;
@@ -246,6 +249,7 @@ module hni_mshr `HNI_PARAM
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      txrsp_comp_rdy_sx;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      comp_access_done_sx;
     wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      wr_access_done_sx;
+    wire  [`HNI_MSHR_ENTRIES_NUM-1:0]      wr_withheld_sx;
     wire                                   txrsp_third_is_comp_sx;
     wire                                   rxreq_ewa_s0;
     wire                                   rxreq_wrgrant_s0;
@@ -289,6 +293,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_cwf_s0;
     wire                                   rxreq_cwp_s0;
     wire                                   rxreq_errcw_s0;
+    wire                                   rxreq_cb_s0;
     wire                                   rxreq_cw_s0;
     wire                                   rxreq_cwpersist_s0;
     wire                                   rxreq_cmo_s0;
@@ -299,7 +304,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_err_s0;
     wire                                   rxreq_errrd_s0;
     wire                                   rxreq_dvm_s0;
-    wire                                   rxreq_errwrdat_s0;
+    wire                                   rxreq_dataless_s0;
     wire                                   rxreq_errwr_s0;
     wire                                   rxreq_errdat_s0;
     wire                                   rxreq_errgrant_s0;
@@ -392,14 +397,20 @@ module hni_mshr `HNI_PARAM
                                                                                     chie_pkg::REQ_READSHARED, chie_pkg::REQ_READUNIQUE,
                                                                                     chie_pkg::REQ_READPREFERUNIQUE, chie_pkg::REQ_MAKEREADUNIQUE}) :1'b0;
     assign rxreq_wrf_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)|rxreq_cwf_s0|rxreq_wrzero_s0):1'b0;
-    assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)|rxreq_cwp_s0):1'b0;
+    assign rxreq_wrp_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)|rxreq_cwp_s0):1'b0;
+    // Table 4-39 (p.4-219): the CopyBack writes, whose data may arrive as
+    // CopyBackWrData_I, the line having been lost (Sec 4.11.1 p.4-242).
+    assign rxreq_cb_s0         = rxreq_opcode_s0 inside {chie_pkg::REQ_WRITEBACKFULL, chie_pkg::REQ_WRITEBACKPTL,
+                                                         chie_pkg::REQ_WRITECLEANFULL, chie_pkg::REQ_WRITEEVICTFULL};
 
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
     // transactions except PCrdReturn and PrefetchTgt", and Sec 4.2 (p.4-162) requires
     // an HN-I to answer "in a protocol-compliant manner" even a transaction it is only
     // a permitted target for. Every inbound request is therefore classified here, and
     // every class below owns a response programme.
-    assign rxreq_wrzero_s0     = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO);
+    // Table 4-39 (p.4-219): both Write Zero forms owe a DBID and no write data.
+    assign rxreq_wrzero_s0     = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)
+                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO);
     // Table B-1 (p.B-493): the six WriteNoSnp Combined Writes are expected at an HN-I.
     // Their write leg executes as the plain WriteNoSnp* does (Sec 2.3.2 p.2-59) and the
     // CMO leg owes its own completion.
@@ -435,6 +446,11 @@ module hni_mshr `HNI_PARAM
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEINVALID)
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST)
                                                              | rxreq_cmopersist_s0) :1'b0;
+    // With no other cached copy to snoop (Sec 3.3.1 p.3-152), these owe only a Comp:
+    // Evict Comp_I and CleanUnique/MakeUnique Comp_UC (Table 4-38 p.4-218), and
+    // WriteEvictOrEvict the Comp that asks for no data (Sec 2.3.2 p.2-55).
+    assign rxreq_dataless_s0   = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_opcode_s0 inside {chie_pkg::REQ_EVICT, chie_pkg::REQ_CLEANUNIQUE,
+                                                                                    chie_pkg::REQ_MAKEUNIQUE, chie_pkg::REQ_WRITEEVICTOREVICT}) :1'b0;
     // Sec 4.5.1's two exceptions, plus the Link-layer credit return of Table 13-12
     // (p.13-421), which is not a transaction at all: given no response, so no tracker
     // entry is held.
@@ -456,19 +472,16 @@ module hni_mshr `HNI_PARAM
     assign rxreq_stashonce_s0  = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESHARED)
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCEUNIQUE)
                                                              | rxreq_stashsep_s0) :1'b0;
-    assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_stashonce_s0 | rxreq_drop_s0);
+    assign rxreq_err_s0        = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_cmo_s0 | rxreq_dataless_s0
+                                                       | rxreq_stashonce_s0 | rxreq_drop_s0);
     // Table B-1 (p.B-492): ReadNoSnpSep is sent only by a Home to a Subordinate.
     assign rxreq_errrd_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
     // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
     // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
     assign rxreq_dvm_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
-    assign rxreq_errwrdat_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
-                               | rxreq_dvm_s0;
-    assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_errcw_s0 | rxreq_errwrdat_s0);
+    assign rxreq_errwr_s0      = rxreq_err_s0 && (rxreq_atomic_s0 | rxreq_errcw_s0 | rxreq_dvm_s0);
     assign rxreq_errdat_s0     = rxreq_err_s0 && rxreq_atomicdat_s0;
-    // Table 4-39 (p.4-219) gives a Write Zero no WriteData response but still a DBID,
-    // so it joins the errored writes in owing a CompDBIDResp without owing data.
-    assign rxreq_errgrant_s0   = rxreq_errwr_s0 | (rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO));
+    assign rxreq_errgrant_s0   = rxreq_errwr_s0;
     // Table 4-38 (p.4-218): StashOnceSep* is completed by CompStashDone.
     assign rxreq_stashsep_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
                                | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE);
@@ -523,6 +536,9 @@ module hni_mshr `HNI_PARAM
     // the buffer is armed for it even though the write never reaches memory.
     assign rxreq_dbf_wr_s0        = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0;
     assign rxreq_dbf_wrzero_s0    = rxreq_wrzero_s0;
+    // Sec 6.2.4 (p.6-285): the System monitor is reset "by an update to the
+    // location", so it is told of exactly the requests this node writes memory for.
+    assign rxreq_mem_update_s0    = rxreq_wrf_s0 | rxreq_wrp_s0;
     assign rxreq_dbf_size_s0      = rxreq_size_s0;
     assign rxreq_dbf_axlen_s0     = rxreq_axlen_s0;
     assign rxreq_dbf_entry_idx_s0 = mshr_entry_idx_alloc_s0;
@@ -574,6 +590,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_errdat_s1_q[entry]     <= 1'b0;
                     rxreq_drop_s1_q[entry]       <= 1'b0;
                     rxreq_cw_s1_q[entry]         <= 1'b0;
+                    rxreq_cb_s1_q[entry]         <= 1'b0;
                     rxreq_cwpersist_s1_q[entry]  <= 1'b0;
                     rxreq_rsp1_owed_s1_q[entry]  <= 1'b0;
                     rxreq_comp_owed_s1_q[entry]  <= 1'b0;
@@ -587,6 +604,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_errdat_s1_q[entry]     <= rxreq_errdat_s0;
                     rxreq_drop_s1_q[entry]       <= rxreq_drop_s0;
                     rxreq_cw_s1_q[entry]         <= rxreq_cw_s0;
+                    rxreq_cb_s1_q[entry]         <= rxreq_cb_s0;
                     rxreq_cwpersist_s1_q[entry]  <= rxreq_cwpersist_s0;
                     rxreq_rsp1_owed_s1_q[entry]  <= rxreq_rsp1_owed_s0;
                     rxreq_comp_owed_s1_q[entry]  <= rxreq_comp_owed_s0;
@@ -1020,12 +1038,16 @@ module hni_mshr `HNI_PARAM
 
     generate
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // Sec 4.11.1 (p.4-242): a CopyBackWrData_I carries no valid byte, so a
+            // CopyBack whose data left none has nothing to write.
+            assign wr_withheld_sx[entry]      = rxreq_cb_s1_q[entry] & dbf_wr_nobyte_sx[entry];
             // The endpoint access this Comp reports on is done: the AXI B response for
-            // a real write, or -- for a write Sec 9.4.4 (p.9-342) withholds from memory
-            // -- the arrival of its write data, since no AW is ever issued for those.
+            // a real write, or -- for a write Sec 9.4.4 (p.9-342) withholds from memory,
+            // or one with nothing to write -- the arrival of its write data, since no AW
+            // is ever issued for those.
             assign wr_access_done_sx[entry]   = (rxreq_wrf_s1_q[entry] | rxreq_wrp_s1_q[entry])
                                               & (bresp_rcvd_q[entry]
-                                                 | (dbf_rxdat_ok_s2_q[entry] & rxreq_excl_fail_s2_q[entry]));
+                                                 | (dbf_rxdat_ok_s2_q[entry] & (rxreq_excl_fail_s2_q[entry] | wr_withheld_sx[entry])));
             assign comp_access_done_sx[entry] = wr_access_done_sx[entry]
                                               | (rxreq_errwr_s1_q[entry] & dbf_rxdat_ok_s2_q[entry]);
             assign txrsp_comp_rdy_sx[entry] = rxreq_comp_owed_s1_q[entry] & txrsp_sent_q[entry]
@@ -1191,7 +1213,10 @@ module hni_mshr `HNI_PARAM
                              && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                              && (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RESP_ERR_NON_DATA
                              : ((txrsp_opcode_sx inside {chie_pkg::RSP_COMPDBIDRESP, chie_pkg::RSP_COMP}) & rxreq_excl_s1_q[txrsp_entry_idx_s1_q] & ((rxreq_excl_pass_s2_q[txrsp_entry_idx_s1_q]) | (excl_pass_s1 & (mshr_entry_idx_alloc_s1_q == txrsp_entry_idx_s1_q))))? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;
-    assign txrsp_resp_sx     = chie_pkg::RESP_I;
+    // Table 4-38 (p.4-218): CleanUnique and MakeUnique complete Comp_UC.
+    assign txrsp_resp_sx     = ((txrsp_opcode_sx == chie_pkg::RSP_COMP)
+                                && (rxreq_opcode_s1_q[txrsp_entry_idx_s1_q] inside {chie_pkg::REQ_CLEANUNIQUE, chie_pkg::REQ_MAKEUNIQUE}))
+                             ? chie_pkg::RESP_UC_UD : chie_pkg::RESP_I;
     assign txrsp_dbid_sx     = (txrsp_opcode_sx inside {chie_pkg::RSP_COMPPERSIST, chie_pkg::RSP_TAGMATCH})
                              ? {{(12-8){1'b0}}, rxreq_lpid_s1_q[txrsp_entry_idx_s1_q]}
                              : {{(12-`HNI_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_s1_q};
@@ -1531,7 +1556,8 @@ module hni_mshr `HNI_PARAM
     //************************************************************************//
     // Sec 9.4.4 (p.9-342, MUST): the write data transfer still takes place, but the
     // operation the error reports did not, so the write is withheld from memory.
-    assign awvalid_en_s1 = dbf_rxdat_ok_s1 && (~rxreq_excl_fail_s2_q[rxdat_ok_idx_s1]) && (~rxreq_errwr_s1_q[rxdat_ok_idx_s1]);
+    assign awvalid_en_s1 = dbf_rxdat_ok_s1 && (~rxreq_excl_fail_s2_q[rxdat_ok_idx_s1]) && (~rxreq_errwr_s1_q[rxdat_ok_idx_s1])
+                        && (~wr_withheld_sx[rxdat_ok_idx_s1]);
 
     always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_set_cnt_logic
         if(rst == 1'b1) begin
