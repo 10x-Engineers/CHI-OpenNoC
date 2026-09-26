@@ -50,6 +50,13 @@ package chie_pkg;
   parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
+  // SS2.10.4 (p.2-136), Table 2-15: a 64-byte line is 512/Data_Width packets of
+  // Data_Width/128 sixteen-byte chunks, and packet p carries DataID p x PKT_CHUNKS.
+  parameter int LINE_PKTS       = 512 / DATA_WIDTH;
+  parameter int PKT_BYTES       = DATA_WIDTH / 8;
+  parameter int PKT_CHUNKS      = DATA_WIDTH / 128;
+  parameter int PKT_CHUNKS_LOG2 = $clog2(PKT_CHUNKS);
+  parameter int PKT_IDX_W       = (LINE_PKTS > 1) ? $clog2(LINE_PKTS) : 1;
   // Table 13-32 (SS13.10.37 p.13-435).
   localparam logic [1:0] TAGOP_INVALID  = 2'b00;
   localparam logic [1:0] TAGOP_TRANSFER = 2'b01;
@@ -272,6 +279,31 @@ package chie_pkg;
     SIZE_32B = 3'h5,
     SIZE_64B = 3'h6
   } size_e;
+
+  function automatic int unsigned pkt_of_dataid(logic [1:0] dataid);
+    return int'(dataid) >> PKT_CHUNKS_LOG2;
+  endfunction
+
+  function automatic logic [1:0] dataid_of_pkt(int unsigned pkt);
+    return 2'(pkt << PKT_CHUNKS_LOG2);
+  endfunction
+
+  // SS2.10.4 (p.2-136): "The number of data packets required is determined only by
+  // the Size field and the data bus width" -- those of the Size-aligned container.
+  function automatic int unsigned pkts_of_size(size_e size);
+    int unsigned bytes = 1 << int'(size);
+    return (bytes > PKT_BYTES) ? bytes / PKT_BYTES : 1;
+  endfunction
+
+  function automatic logic [LINE_PKTS-1:0] pkt_mask(logic [5:0] off, size_e size);
+    int unsigned bytes = 1 << int'(size);
+    int unsigned first = (32'(off) & ~(bytes - 1)) / PKT_BYTES;
+    logic [LINE_PKTS-1:0] m = '0;
+    for (int unsigned p = 0; p < LINE_PKTS; p++)
+      if ((p >= first) && (p < first + pkts_of_size(size)))
+        m[p] = 1'b1;
+    return m;
+  endfunction
 
   // Table 2-11 (SS2.9.4 p.2-129). Named bits rather than four indices into a
   // 4-bit field.

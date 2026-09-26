@@ -542,17 +542,6 @@ module hni_mshr `HNI_PARAM
         end
     endgenerate
 
-    // Sec 2.10.4 (p.2-136): "the number of data packets required is determined only
-    // by the Size field and the data bus width" -- the packets the Size-aligned window
-    // around Addr covers, each Data_Width/8 bytes.
-    function automatic logic [`HNI_PKTS-1:0] size_window_pkts(logic [5:0] a, chie_pkg::size_e sz);
-        int unsigned nb, lo;
-        nb = 32'd1 << sz;
-        lo = {26'd0, a} & ~(nb - 32'd1);
-        for (int unsigned p = 0; p < `HNI_PKTS; p = p + 1)
-            size_window_pkts[p] = ((p + 1) * chie_pkg::BE_WIDTH > lo) && (p * chie_pkg::BE_WIDTH < lo + nb);
-    endfunction
-
     // The 16-byte chunks the AXI read returns: the Size window, and for Device only
     // the bytes from Addr on (Sec 2.10.2 p.2-134).
     function automatic logic [3:0] read_chunks(logic [5:0] a, chie_pkg::size_e sz, logic dev);
@@ -870,8 +859,8 @@ module hni_mshr `HNI_PARAM
                     rxreq_rdchunks_s1_q[entry] <= 4'b0000;
                 end
                 else if(mshr_entry_alloc_sx[entry] == 1'b1) begin
-                    rxreq_rxpkts_s1_q[entry]   <= size_window_pkts(rxreq_addr_s0[5:0], rxreq_size_s0);
-                    rxreq_txpkts_s1_q[entry]   <= size_window_pkts(rxreq_addr_s0[5:0], rxreq_ret_size_s0);
+                    rxreq_rxpkts_s1_q[entry]   <= chie_pkg::pkt_mask(rxreq_addr_s0[5:0], rxreq_size_s0);
+                    rxreq_txpkts_s1_q[entry]   <= chie_pkg::pkt_mask(rxreq_addr_s0[5:0], rxreq_ret_size_s0);
                     rxreq_rdchunks_s1_q[entry] <= read_chunks(rxreq_addr_s0[5:0], rxreq_size_s0, rxreq_device_s0);
                 end
             end

@@ -149,7 +149,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
     wire [`HNF_PKTS-1:0] txdat_pe_sx_ns  = dbf_txdat_valid_entry2_sx_ns ? dbf_txdat_pe_entry2_sx : dbf_txdat_pe_entry1_sx;
     int unsigned         txdat_pkt_sx_ns;
     assign txdat_pkt_sx_ns = first_pkt(txdat_pe_sx_ns);
-    assign mshr_txdat_dataid_sx_ns = opennoc_hnf_pkg::hnf_dataid_of_pkt(txdat_pkt_sx_ns);
+    assign mshr_txdat_dataid_sx_ns = chie_pkg::dataid_of_pkt(txdat_pkt_sx_ns);
 
     always_comb begin: txdat_data_sel_comb_logic
         mshr_txdat_be_sx_ns   = '0;

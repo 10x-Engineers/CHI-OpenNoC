@@ -357,40 +357,10 @@ package opennoc_hnf_pkg;
            ? chie_pkg::TAGOP_MATCH : chie_pkg::TAGOP_TRANSFER;
   endfunction
 
-  // SS2.10.4 (p.2-136), Table 2-15: a 64-byte line is 512/Data_Width packets, and
-  // packet p carries DataID p x (Data_Width/128), Addr[5:4] of its lowest byte.
-  localparam int HNF_PKTS            = 512 / chie_pkg::DATA_WIDTH;
-  localparam int HNF_PKT_BYTES       = chie_pkg::DATA_WIDTH / 8;
-  localparam int HNF_PKT_CHUNKS_LOG2 = $clog2(chie_pkg::DATA_WIDTH / 128);
-  localparam int HNF_LINE_TU         = chie_pkg::TU_WIDTH * HNF_PKTS;
-  localparam int HNF_LINE_TAG        = chie_pkg::TAG_WIDTH * HNF_PKTS;
-  localparam int HNF_PKT_CNT_W       = $clog2(HNF_PKTS + 1);
-
-  function automatic int unsigned hnf_pkt_of_dataid(logic [1:0] dataid);
-    return int'(dataid) >> HNF_PKT_CHUNKS_LOG2;
-  endfunction
-
-  function automatic logic [1:0] hnf_dataid_of_pkt(int unsigned pkt);
-    return 2'(pkt << HNF_PKT_CHUNKS_LOG2);
-  endfunction
-
-  // "The number of data packets required is determined only by the Size field and
-  // the data bus width" (SS2.10.4 p.2-136): the packets holding the Size-aligned
-  // container of a transfer of up to 64 bytes.
-  function automatic int unsigned hnf_pkts_of_size(chie_pkg::size_e size);
-    int unsigned bytes = 1 << int'(size);
-    return (bytes > HNF_PKT_BYTES) ? bytes / HNF_PKT_BYTES : 1;
-  endfunction
-
-  function automatic logic [HNF_PKTS-1:0] hnf_pkt_mask(logic [5:0] off, chie_pkg::size_e size);
-    int unsigned bytes = 1 << int'(size);
-    int unsigned first = (32'(off) & ~(bytes - 1)) / HNF_PKT_BYTES;
-    logic [HNF_PKTS-1:0] m = '0;
-    for (int unsigned p = 0; p < HNF_PKTS; p++)
-      if ((p >= first) && (p < first + hnf_pkts_of_size(size)))
-        m[p] = 1'b1;
-    return m;
-  endfunction
+  localparam int HNF_PKTS      = chie_pkg::LINE_PKTS;
+  localparam int HNF_LINE_TU   = chie_pkg::TU_WIDTH * HNF_PKTS;
+  localparam int HNF_LINE_TAG  = chie_pkg::TAG_WIDTH * HNF_PKTS;
+  localparam int HNF_PKT_CNT_W = $clog2(HNF_PKTS + 1);
 
   // SS12.2 (p.12-373): one 4-bit Allocation Tag per aligned 16 bytes of the line, a
   // valid bit per tag, and whether an Update left them Dirty (SS12.3 p.12-374).

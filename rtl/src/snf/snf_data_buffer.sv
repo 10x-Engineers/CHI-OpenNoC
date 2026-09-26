@@ -921,10 +921,9 @@ module snf_data_buffer `SNF_PARAM
 
     // SS2.10.4 (p.2-136): a write of Size bytes arrives in max(1, Size/packet bytes)
     // packets, one per DataID; a Write Zero's injected line holds all of them.
-    localparam int PKT_BYTES_LOG2 = $clog2(chie_pkg::DATA_WIDTH / 8);
     wire [2:0] rxdat_ok_size = rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q];
-    wire [3:0] rxdat_ok_pkts = (int'(rxdat_ok_size) > PKT_BYTES_LOG2) ? (4'd1 << (int'(rxdat_ok_size) - PKT_BYTES_LOG2)) : 4'd1;
-    assign dbf_mshr_rxdat_ok_sx = ($countones(wdata_recv_cnt_q[wdata_rec_idx_sx_q]) >= int'(rxdat_ok_pkts));
+    assign dbf_mshr_rxdat_ok_sx = ($countones(wdata_recv_cnt_q[wdata_rec_idx_sx_q])
+                                   >= int'(chie_pkg::pkts_of_size(chie_pkg::size_e'(rxdat_ok_size))));
     assign dbf_mshr_rxdat_ok_idx_sx = wdata_rec_idx_sx_q;
     assign dbf_mshr_rxdat_cancel_sx = dbf_mshr_rxdat_ok_sx && wdata_cancel_q[dbf_mshr_rxdat_ok_idx_sx];
     assign dbf_mshr_rxdat_cancel_idx_sx = dbf_mshr_rxdat_ok_idx_sx;

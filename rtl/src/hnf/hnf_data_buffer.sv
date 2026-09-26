@@ -167,7 +167,7 @@ module hnf_data_buffer `HNF_PARAM
 
     // Element idx of a line-wide vector of w per packet lies in the packet DataID names.
     function automatic logic in_pkt(logic [1:0] dataid, int idx, int w);
-        return (idx / w) == opennoc_hnf_pkg::hnf_pkt_of_dataid(dataid);
+        return (idx / w) == chie_pkg::pkt_of_dataid(dataid);
     endfunction
 
     localparam DBF_PKT_BYTE_NUM  = chie_pkg::DATA_WIDTH/8;
@@ -431,7 +431,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_data_q[i]   <= temp_li_data;
                         dbf_be_q[i]     <= temp_li_be;
                         dbf_fill_q[i]   <= temp_li_fill;
-                        dbf_pe_q[i]     <= dbf_pe_q[i] | (`HNF_PKTS'(1) << opennoc_hnf_pkg::hnf_pkt_of_dataid(li_dbf_rxdat_dataid_s0));
+                        dbf_pe_q[i]     <= dbf_pe_q[i] | (`HNF_PKTS'(1) << chie_pkg::pkt_of_dataid(li_dbf_rxdat_dataid_s0));
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;

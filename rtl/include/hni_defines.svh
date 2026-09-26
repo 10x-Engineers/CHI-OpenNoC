@@ -29,12 +29,10 @@
 `define HNI_AXI4_AXADDR_WIDTH              AXI4_PA_WIDTH_PARAM
 
 //hni_dbf
-// Sec 2.10.4 (p.2-136): a 64-byte line is 512/Data_Width packets, and Table 2-15
-// gives packet p DataID p x HNI_PKT_CHUNKS.
 `define HNI_LINE_BITS                      512
-`define HNI_PKTS                           (512 / chie_pkg::DATA_WIDTH)
-`define HNI_PKT_CHUNKS_LOG2                ($clog2(chie_pkg::DATA_WIDTH / 128))
-`define HNI_PKT_IDX_W                      ((512 / chie_pkg::DATA_WIDTH > 1) ? $clog2(512 / chie_pkg::DATA_WIDTH) : 1)
+`define HNI_PKTS                           (chie_pkg::LINE_PKTS)
+`define HNI_PKT_CHUNKS_LOG2                (chie_pkg::PKT_CHUNKS_LOG2)
+`define HNI_PKT_IDX_W                      (chie_pkg::PKT_IDX_W)
 `define HNI_MASK_CD_WIDTH                  4
 `define HNI_MASK_CD_LSB                    0
 `define HNI_MASK_CD_MSB                    3

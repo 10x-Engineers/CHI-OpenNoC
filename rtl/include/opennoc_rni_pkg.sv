@@ -98,9 +98,7 @@ package opennoc_rni_pkg;
     return cache[1] & (|cache[3:2]);
   endfunction
 
-  // SS2.10.4 (p.2-136), Table 2-15: a CHI data packet carries Data_Width/128 of the
-  // line's 16-byte chunks, and its DataID is the first of them.
-  parameter int PKT_CHUNKS = chie_pkg::DATA_WIDTH / 128;
+  parameter int PKT_CHUNKS = chie_pkg::PKT_CHUNKS;
 
   function automatic logic [3:0] dat_chunks(logic [1:0] dataid);
     return 4'(((5'd1 << PKT_CHUNKS) - 5'd1) << dataid);

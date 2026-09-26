@@ -1905,7 +1905,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_snp_d_s0        = li_mshr_rxdat_resp_s0[3-1];
     assign mshr_snpdat_entry_s0 = li_mshr_rxdat_txnid_s0;
     assign mshr_snpdatid_s0     = li_mshr_rxdat_dataid_s0;
-    assign mshr_snpdat_pkt_s0   = `HNF_PKTS'(1) << opennoc_hnf_pkg::hnf_pkt_of_dataid(mshr_snpdatid_s0);
+    assign mshr_snpdat_pkt_s0   = `HNF_PKTS'(1) << chie_pkg::pkt_of_dataid(mshr_snpdatid_s0);
     assign mshr_snp_get_64B_s0  = mshr_snpdat_v_s0 & (&(mshr_snp_getid_s1_q[mshr_snpdat_entry_idx_s0] | mshr_snpdat_pkt_s0));
 
     generate
@@ -2118,7 +2118,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_rn_wrdat_s0        = mshr_cb_dat_s0 | mshr_ncb_dat_s0 | mshr_datcancel_s0;
     assign mshr_rn_dat_s0          = mshr_rn_wrdat_s0 | mshr_wrzero_inject_sx;
     assign mshr_rn_dat_getall_s0   = (((int'(mshr_dat_rn_pkts_s1_q[mshr_dat_entry_idx_s0]) + 1) >=
-                                        opennoc_hnf_pkg::hnf_pkts_of_size(mshr_size_s1_q[mshr_dat_entry_idx_s0])) & mshr_rn_wrdat_s0)
+                                        chie_pkg::pkts_of_size(mshr_size_s1_q[mshr_dat_entry_idx_s0])) & mshr_rn_wrdat_s0)
                                    | mshr_wrzero_inject_sx;
     assign mshr_datcancel_s0       = mshr_dat_v_s0 & (li_mshr_rxdat_opcode_s0 == chie_pkg::DAT_WRITEDATACANCEL);
     assign mshr_set_stop_cb_s0     = mshr_rn_dat_s0 & ((mshr_rn_dat_get_i_sc_s0 & (mshr_wb_s1_q[mshr_dat_entry_idx_s0] | mshr_we_s1_q[mshr_dat_entry_idx_s0])) |
@@ -2140,7 +2140,7 @@ module hnf_mshr_ctl `HNF_PARAM
                    (mshr_dat_old_get_s1_q[entry] | (mshr_l3hit_sx8_q[entry] & ~mshr_tagfetch_pend_sx_q[entry] & ~mshr_l3_tagfetch_sx7[entry])) &
                    mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry];
             assign mshr_dat_to_rn_s1[entry]      = ((mshr_dat_old_get_s1_q[entry] |
-                                                     ((int'(mshr_dat_mem_pkts_s1_q[entry]) >= opennoc_hnf_pkg::hnf_pkts_of_size(mshr_size_s1_q[entry])) &
+                                                     ((int'(mshr_dat_mem_pkts_s1_q[entry]) >= chie_pkg::pkts_of_size(mshr_size_s1_q[entry])) &
                                                       (mshr_size_s1_q[entry] != chie_pkg::SIZE_64B))) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
                                                     (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & !mshr_dct_s1_q[entry] &
                                                     (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
@@ -4573,8 +4573,8 @@ module hnf_mshr_ctl `HNF_PARAM
                               mshr_atomicrd_s1_q[mshr_dbf_rd_idx_sx1_q];
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
             mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
-        mshr_dbf_rd_atm_pe_sx1 = opennoc_hnf_pkg::hnf_pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
-                                                               chie_pkg::SIZE_1B);
+        mshr_dbf_rd_atm_pe_sx1 = chie_pkg::pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
+                                                    chie_pkg::SIZE_1B);
     end
 
     // Sec 2.10.4 (p.2-136): the packets a read owes follow its Size and the data
@@ -4635,8 +4635,8 @@ module hnf_mshr_ctl `HNF_PARAM
     always_comb begin : mshr_dbf_rd_pe_comb
         if ((mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNP) ||
             (mshr_opcode_s1_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::REQ_READNOSNPSEP))
-            mshr_dbf_rd_pe_sx1 = opennoc_hnf_pkg::hnf_pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
-                                                           mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q]);
+            mshr_dbf_rd_pe_sx1 = chie_pkg::pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
+                                                    mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q]);
         else
             mshr_dbf_rd_pe_sx1 = '1;
     end
