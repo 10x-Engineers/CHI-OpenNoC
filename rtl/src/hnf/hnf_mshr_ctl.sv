@@ -368,7 +368,6 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_persist_rsp_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_rdshared_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_prefunq_s1_q;
-    wire                                 mshr_snp_will_fwd_sx7;
     wire                                 l3_snp_dct_ok_sx7;
     logic [7:0]                          mshr_pgroupid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_busy_sx_q;
@@ -2705,10 +2704,6 @@ module hnf_mshr_ctl `HNF_PARAM
     assign snpq_rsp_resp    = mshr_snpq_resp_q;
     assign snpq_rsp_resperr = mshr_snpq_resperr_q;
 
-    // The same election mshr_dct_set_sx8 makes one stage later, needed here because
-    // which snoop is legal depends on whether it will be a forwarding one.
-    assign mshr_snp_will_fwd_sx7 = l3_snpdirect_sx7_q & ~l3_hit_sx7_q & l3_snp_dct_ok_sx7 & ~mshr_excl_s1_q[l3_mshr_entry_sx7_q];
-
     always_comb begin : l3_opcode_decode_comb_logic
         case(l3_opcode_sx7_q)
             chie_pkg::REQ_READONCE           :
@@ -2728,15 +2723,14 @@ module hnf_mshr_ctl `HNF_PARAM
             // Sec 4.4.2 (p.4-196) permits "SnpNotSharedDirty or SnpShared or SnpClean
             // for ReadNotSharedDirty, ReadShared, and ReadClean" -- Table 4-42
             // (Sec 4.8.1 p.4-223) gives the three one row set at the Snoopee, so a
-            // ReadShared takes SnpShared. Its forwarding twin is not interchangeable
-            // and is not elected: Table 4-53 (Sec 4.8.3 p.4-234) lets SnpSharedFwd
-            // forward SD_PD, passing dirtiness to the Requester rather than to this
-            // Home, and Sec 4.4.2 permits SnpNotSharedDirtyFwd for a ReadShared, so
-            // the DCT path keeps that. A ReadPreferUnique this Home serves Shared
+            // ReadShared takes SnpShared, and under DCT SnpSharedFwd. Table 4-53
+            // (Sec 4.8.3 p.4-234) lets that forward SD_PD, passing dirtiness to the
+            // Requester: the directory already records it a holder, which a later
+            // request snoops for its data. A ReadPreferUnique this Home serves Shared
             // takes SnpPreferUnique, Table 4-24's (p.4-194) own row for it.
             chie_pkg::REQ_READNOTSHAREDDIRTY :
                 mshr_snpcode_sx7 = mshr_prefunq_s1_q[l3_mshr_entry_sx7_q]  ? chie_pkg::SNP_SNPPREFERUNIQUE :
-                                   (mshr_rdshared_s1_q[l3_mshr_entry_sx7_q] & ~mshr_snp_will_fwd_sx7) ? chie_pkg::SNP_SNPSHARED
+                                   mshr_rdshared_s1_q[l3_mshr_entry_sx7_q] ? chie_pkg::SNP_SNPSHARED
                                                                            : chie_pkg::SNP_SNPNOTSHAREDDIRTY;
             chie_pkg::REQ_READCLEAN          :
                 mshr_snpcode_sx7 = chie_pkg::SNP_SNPCLEAN;
