@@ -451,7 +451,6 @@ module rnf_snp `RNF_PARAM
                               (pass_dirty_q && tag_dirty_q)                ? chie_pkg::TAGOP_UPDATE
                                                                            : chie_pkg::TAGOP_TRANSFER;
     localparam int TAG_PKT = DW / 32;
-    localparam int TU_PKT  = DW / 128;
     wire [15:0] tags_out = meta_q[`RNF_META_TAGS];
 
     logic [DW-1:0]      pkt_data [NPKT];

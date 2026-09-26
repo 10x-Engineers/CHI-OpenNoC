@@ -125,8 +125,8 @@ module hni_data_buffer `HNI_PARAM
     logic [`HNI_MASK_CD_WIDTH-1:0]     rd_cdmask_current;
     logic [`HNI_LINE_BITS-1:0] dbf_data_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`HNI_LINE_BITS/8-1:0]   dbf_be_q[0:`HNI_MSHR_ENTRIES_NUM-1];
-    // Section 9.5 (p.9-347): one Poison bit per 64 bits, so one line's worth is
-    // POISON_WIDTH*2 -- the tag that has to travel with the data, both ways.
+    // Section 9.5 (p.9-347): one Poison bit per 64 bits of the line -- the tag that
+    // has to travel with the data, both ways.
     logic [`HNI_LINE_BITS/64-1:0] dbf_poison_q[0:`HNI_MSHR_ENTRIES_NUM-1];
     logic [`AXI4_RDATA_WIDTH*4/64-1:0]   rdata_poison_receive;
     logic                              dbf_rvalid_q;
@@ -748,7 +748,7 @@ module hni_data_buffer `HNI_PARAM
     // AtomicCompare's Swap half at that offset with bit[log2(len)] inverted. The
     // operand is held at its line position, whichever packets carried it.
     always_comb begin: atm_rmw_comb_logic
-        int unsigned                    a_len, a_off, a_poff, a_soff;
+        int unsigned                    a_len, a_off, a_soff;
         chie_pkg::req_opcode_e          a_op;
         logic [127:0]                   a_init128, a_cmp128, a_swap128, a_wr128;
         logic [63:0]                    a_res;
@@ -757,7 +757,6 @@ module hni_data_buffer `HNI_PARAM
         a_op    = dbf_atm_op_q[wr_entry_current];
         a_len   = {27'd0, dbf_atm_len_q[wr_entry_current]};
         a_off   = {26'd0, dbf_atm_off_q[wr_entry_current]};
-        a_poff  = a_off;
         a_soff  = {26'd0, chie_pkg::atomic_swap_off(dbf_atm_off_q[wr_entry_current], a_len)};
 
         a_init128     = 128'd0;
@@ -767,10 +766,10 @@ module hni_data_buffer `HNI_PARAM
         for (int unsigned b = 0; b < 16; b = b + 1)
             if (b < a_len) begin
                 a_init128[b*8 +: 8] = dbf_data_q[wr_entry_current][((a_off + b) & 63)*8 +: 8];
-                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[wr_entry_current][((a_poff + b) & 63)*8 +: 8];
+                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[wr_entry_current][((a_off + b) & 63)*8 +: 8];
                 a_swap128[b*8 +: 8] = dbf_atm_data_q[wr_entry_current][((a_soff + b) & 63)*8 +: 8];
                 a_opnd_poison = a_opnd_poison
-                              | dbf_atm_poison_q[wr_entry_current][((a_poff + b) & 63) / 8]
+                              | dbf_atm_poison_q[wr_entry_current][((a_off + b) & 63) / 8]
                               | ((a_op == chie_pkg::REQ_ATOMICCOMPARE)
                                  & dbf_atm_poison_q[wr_entry_current][((a_soff + b) & 63) / 8]);
             end
