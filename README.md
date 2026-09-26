@@ -129,7 +129,7 @@ Every snoop is sent with `DoNotGoToSD = 1`.
 | Atomics | ⚪ | ⚪ | — | 🟢 | 🟢 | SN-F / HN-I [#322](https://github.com/10x-Engineers/CHI-OpenNoC/issues/322); RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
 | Stash | — | 🟢 | — | 🟢 | 🟢 | HN-I completes without stashing; RN-F is a source and a Data Pull target |
 | DVM | — | — | — | 🟢 | — | serviced by the MN (below); the RN-F issues `DVMOp` from its DVM port and answers `SnpDVMOp` |
-| System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F |
+| System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F; the HN-F's `SYSCOACK` also waits on `SYSCO_SNP_PEND`, another node's snoop to that RN-F |
 | MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹; RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE` |
 | MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
 | RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | HN-F propagates REQ, drops DAT |
@@ -144,7 +144,8 @@ section 8.1.3 (p.8-307) reserves for a Non-sync -- and every `Data_Width`. It fo
 DVM_v8.4 payload unexamined, sends no early Comp, carries the DVMOp's QoS without classes,
 and consolidates a DERR write or a snoop error into the Comp (section 9.4.5). It snoops a
 Requester only while that Requester's `SYSCO_SNP_EN` (its `SYSCOREQ`) is HIGH, and holds
-`SYSCO_SNP_PEND` HIGH while a `SnpDVMOp` to it is unanswered, for whoever owns its `SYSCOACK`.
+`SYSCO_SNP_PEND` HIGH while a `SnpDVMOp` to it is unanswered, for whoever owns its `SYSCOACK` --
+the HN-F's `SYSCO_SNP_PEND` input, in the same Requester order.
 
 ### RN-F interface declarations (section 16.1)
 

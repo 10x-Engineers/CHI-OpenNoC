@@ -16,6 +16,8 @@
 #   tb_mn_dvm         Chapter 8: the MN's DVMOp flow, its SnpDVMOp pairs to every
 #                     other DVM Requester, Sync after the older Non-syncs, and the
 #                     Sec 8.1.3 (p.8-307) Non-sync entry and per-Requester limits
+#   tb_hnf_mn_sysco   Sec 15.2.2 (p.15-468): the HN-F holds a Requester's SYSCOACK
+#                     HIGH while the MN's SnpDVMOp pair to it is unanswered
 set -uo pipefail
 cd "$(dirname "$0")/../rtl" || exit 2
 
@@ -39,10 +41,11 @@ declare -A SRCS=(
   [tb_hnf_stash]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv tb/tb_hnf_stash.sv src/hnf/*.sv misc/hnf_biq.sv $MISC"
   [tb_hni_dvm]="include/chie_pkg.sv tb/tb_hni_dvm.sv src/hni/*.sv misc/assert_checker.sv $MISC"
   [tb_mn_dvm]="include/chie_pkg.sv include/opennoc_mn_pkg.sv tb/tb_mn_dvm.sv src/mn/*.sv misc/chi_lcrd_hdlr.sv misc/assert_checker.sv $MISC"
+  [tb_hnf_mn_sysco]="include/chie_pkg.sv include/opennoc_hnf_pkg.sv include/opennoc_mn_pkg.sv tb/tb_hnf_mn_sysco.sv src/hnf/*.sv src/mn/*.sv misc/hnf_biq.sv misc/chi_lcrd_hdlr.sv misc/assert_checker.sv $MISC"
 )
 
 rc=0
-for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte tb_hni_mte tb_mn_dvm; do
+for top in tb_hnf_dvm tb_hni_dvm tb_hnf_stash tb_hnf_mte tb_hni_mte tb_mn_dvm tb_hnf_mn_sysco; do
   OUT=$(mktemp -d)
   case "$SIM" in
     xrun)      CMD=(xrun -sv -incdir include -incdir tb -top "$top" -xmlibdirname "$OUT/xcelium.d") ;;

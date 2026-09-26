@@ -739,6 +739,7 @@ module tb_hnf;
       .RXLINKACTIVEACK(RXLINKACTIVEACK),
       .SYSCOREQ       (SYSCOREQ),
       .SYSCOACK       (SYSCOACK),
+      .SYSCO_SNP_PEND ('0),
       .RXSACTIVE      (RXLINKACTIVEREQ),
       .TXSACTIVE      (),
       .RXREQFLITV   (RXREQFLITV),
