@@ -451,6 +451,13 @@ package chie_pkg;
     logic [3:0]                 qos;
   } snp_flit_s;
 
+  // Table 13-8 (p.13-413) gives the SNP channel no TgtID, so the snoopee a Home or MN
+  // addresses travels beside the flit as the fabric's routing envelope.
+  typedef struct packed {
+    logic [NID_WIDTH-1:0] tgtid;
+    snp_flit_s            flit;
+  } snp_routed_s;
+
   // CHI E.b section 9.6 (p.9-348): "The DAT packet carries eight Data Check bits per
   // 64 bits of data. The Data Check bit is a parity bit that generates Odd Byte
   // parity." One bit per data byte, so DATACHECK_WIDTH == BE_WIDTH.

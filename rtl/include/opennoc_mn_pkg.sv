@@ -15,12 +15,7 @@
 
 package opennoc_mn_pkg;
 
-  // Table 13-8 (p.13-413) gives the SNP channel no TgtID, so the snoopee travels
-  // beside the flit as the fabric's routing envelope, laid out as the HN-F's is.
-  typedef struct packed {
-    logic [chie_pkg::NID_WIDTH-1:0] tgtid;
-    chie_pkg::snp_flit_s            flit;
-  } snp_routed_s;
+  typedef chie_pkg::snp_routed_s snp_routed_s;
 
   // Table 8-7 (p.8-315): the DVMOp type, which Table 8-8 (p.8-317) puts in Req.Addr[13:11].
   localparam logic [2:0] DVM_TYPE_PICI = 3'b010;

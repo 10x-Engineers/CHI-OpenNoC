@@ -18,14 +18,7 @@
 // hnf_pkg is one an integrator is likely to have already.
 package opennoc_hnf_pkg;
 
-  // The SNP flit together with the snoopee it is addressed to. Table 13-8
-  // (SS13.6 p.13-421) gives the SNP channel no TgtID -- the interconnect routes
-  // the snoop -- so this NodeID is HN-F's own routing envelope and travels
-  // beside the flit rather than in it.
-  typedef struct packed {
-    logic [chie_pkg::NID_WIDTH-1:0] tgtid;
-    chie_pkg::snp_flit_s            flit;
-  } snp_routed_s;
+  typedef chie_pkg::snp_routed_s snp_routed_s;
 
   // The request this Home services a received one as. Each row is a permission
   // the spec gives the Home outright, so the MSHR decodes one opcode per class:
