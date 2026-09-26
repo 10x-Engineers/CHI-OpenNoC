@@ -34,6 +34,9 @@ module hnf `HNF_PARAM
     // Home serving RNF_NID_LIST_PARAM takes one bit per entry, in that bit order.
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCOREQ,
     output wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCOACK,
+    // A Snoop another node sent to that Requester is unanswered, e.g. the MN's
+    // SYSCO_SNP_PEND; tie LOW where no other node snoops it.
+    input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCO_SNP_PEND,
     output wire                                     TXSACTIVE,
     input  wire                                     RXSACTIVE,
     input  wire                                     RXREQFLITV,
@@ -442,7 +445,8 @@ module hnf `HNF_PARAM
     // has sent after SYSCOREQ goes HIGH" -- so the rise is unconditional. On SYSCOREQ
     // LOW it must "complete all snoop accesses to the interface before it sets
     // SYSCOACK LOW", and "the interface" is one Requester's, which is the scope
-    // mshr_snp_outstanding_sx reports per bit.
+    // mshr_snp_outstanding_sx reports per bit -- and SYSCO_SNP_PEND for the snoops of
+    // the interconnect's other nodes.
     logic [`RNF_NUM-1:0] syscoreq_q, syscoack_q;
     always_ff @(posedge CLK or posedge RST) begin
         if (RST) syscoreq_q <= {`RNF_NUM{1'b0}};
@@ -456,7 +460,8 @@ module hnf `HNF_PARAM
             for (int i = 0; i < `RNF_NUM; i = i + 1) begin
                 if (syscoreq_q[i])                          syscoack_q[i] <= 1'b1;
                 else if (!hnf_mshr_snp_outstanding_sx[i] &&
-                         !hnf_pipe_snp_chosen_vec_sx[i])   syscoack_q[i] <= 1'b0;
+                         !hnf_pipe_snp_chosen_vec_sx[i] &&
+                         !SYSCO_SNP_PEND[i])               syscoack_q[i] <= 1'b0;
             end
     end
 

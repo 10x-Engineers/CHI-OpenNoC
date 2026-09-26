@@ -430,8 +430,11 @@ module mn_ctl `MN_PARAM
                     E_SNP: begin
                         logic [R-1:0] todo_n, pend_n;
                         // Table 15-1 (p.15-468, MUST): no new snoop to a Requester
-                        // that has left the coherency domain.
+                        // that has left the coherency domain. A pair already on the
+                        // wire is not new: SS15.2.2 (p.15-468, MUST) completes it.
                         todo_n = todo_q[e] & sysco_snp_en_i;
+                        if (iss_v_q && (iss_e_q == IW'(e)))
+                            todo_n[iss_t_q] = todo_q[e][iss_t_q];
                         pend_n = pend_q[e];
                         if (iss_done && (iss_e_q == IW'(e))) begin
                             todo_n[iss_t_q] = 1'b0;
