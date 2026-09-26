@@ -526,6 +526,12 @@ package chie_pkg;
     return (op == REQ_ATOMICCOMPARE) ? (n >> 1) : n;
   endfunction
 
+  // SS4.2.5 (p.4-187, MUST): an Atomic's inbound data is its outbound size, and half
+  // of it for AtomicCompare.
+  function automatic size_e atomic_in_size(req_opcode_e op, size_e size);
+    return ((op == REQ_ATOMICCOMPARE) && (size != SIZE_1B)) ? size_e'(size - 3'd1) : size;
+  endfunction
+
   // SS2.10.5 (p.2-137): "the Swap data address can be determined by inverting bit[n]
   // in the Compare data address where n = log2(Compare data size in bytes)" -- which
   // for a power-of-two element size is the offset XOR that size.

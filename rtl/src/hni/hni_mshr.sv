@@ -468,7 +468,7 @@ module hni_mshr `HNI_PARAM
     assign rxreq_drop_s0       = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT)
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)
                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_REQLCRDRETURN)) :1'b0;
-    assign rxreq_atomic_s0     = (rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICSTORE_ADD) && (rxreq_opcode_s0 <= chie_pkg::REQ_ATOMICCOMPARE);
+    assign rxreq_atomic_s0     = chie_pkg::atomic_req(rxreq_opcode_s0);
     assign rxreq_atomicdat_s0  = rxreq_atomic_s0 && (rxreq_opcode_s0 >= chie_pkg::REQ_ATOMICLOAD_ADD);
     // Sec 16.3.2 (p.16-479): a Non-snoopable Atomic is performed "at a point ... where
     // the transaction is visible to all other agents", which this Home is for its
@@ -563,9 +563,7 @@ module hni_mshr `HNI_PARAM
             read_chunks[c] = ((c + 1) * 16 > lo) && (c * 16 < lo + nb) && ((!dev) || (c >= {30'd0, a[5:4]}));
     endfunction
 
-    // Sec 4.2.5 (p.4-187, MUST): an AtomicCompare's inbound data is half its outbound.
-    assign rxreq_ret_size_s0 = ((rxreq_opcode_s0 == chie_pkg::REQ_ATOMICCOMPARE) && (rxreq_size_s0 != chie_pkg::SIZE_1B))
-                             ? chie_pkg::size_e'(rxreq_size_s0 - 3'b001) : rxreq_size_s0;
+    assign rxreq_ret_size_s0 = chie_pkg::atomic_in_size(rxreq_opcode_s0, rxreq_size_s0);
 
     //ax channel signal
     assign rxreq_axsize_s0  = ((rxreq_size_s0 == 3'b110) | (rxreq_size_s0 == 3'b101)) ? 3'b100 : rxreq_size_s0;
@@ -1448,10 +1446,8 @@ module hni_mshr `HNI_PARAM
     // and "Byte enables must be asserted for all valid data". Sec 9.4.4 (p.9-342)
     // keeps that structure on an errored return, so the extent is driven from the
     // request even though Sec 9.3 (p.9-336) leaves the data values invalid.
-    assign atomic_ret_size_sx  = ((rxreq_opcode_s1_q[txdat_entry_idx_sx_q] == chie_pkg::REQ_ATOMICCOMPARE)
-                               && (rxreq_size_s1_q[txdat_entry_idx_sx_q] != chie_pkg::SIZE_1B))
-                               ? chie_pkg::size_e'(rxreq_size_s1_q[txdat_entry_idx_sx_q] - 3'b001)
-                               : rxreq_size_s1_q[txdat_entry_idx_sx_q];
+    assign atomic_ret_size_sx  = chie_pkg::atomic_in_size(rxreq_opcode_s1_q[txdat_entry_idx_sx_q],
+                                                          rxreq_size_s1_q[txdat_entry_idx_sx_q]);
     assign atomic_ret_bytes_sx = {{chie_pkg::BE_WIDTH{1'b0}},1'b1} << atomic_ret_size_sx;
     // Sec 2.10.4 (p.2-136): "all bytes are located at their natural byte positions",
     // and Sec 2.10.5 (p.2-137) puts the returned value at the addressed byte.

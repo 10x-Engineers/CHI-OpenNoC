@@ -683,10 +683,6 @@ module rnf_ctl `RNF_PARAM
         for (int k = 0; k < 6; k++) if (nb == 6'(1 << k)) size_of_bytes = chie_pkg::size_e'(k);
     endfunction
 
-    function automatic bit is_atomic_op(chie_pkg::req_opcode_e op);
-        return (op >= chie_pkg::REQ_ATOMICSTORE_ADD) && (op <= chie_pkg::REQ_ATOMICCOMPARE);
-    endfunction
-
     // Table 12-2 (SS12.12 p.12-388): every read this node issues may carry Transfer
     // but ReadOnceCleanInvalid and ReadOnceMakeInvalid. An allocating one always
     // asks, so the line is cached with its tags; a ReadOnce when the core wants them.
@@ -983,7 +979,7 @@ module rnf_ctl `RNF_PARAM
             end
             // SS13.10.31 (p.13-433) and SS13.10.28 (p.13-432): an Atomic's shared REQ
             // bits are SnoopMe and Endian.
-            if (is_atomic_op(acq_op_q)) begin
+            if (chie_pkg::atomic_req(acq_op_q)) begin
                 prot_txreqflit_o.excl.snoopme        = snoopme_q;
                 prot_txreqflit_o.stashnidvalid.endian = (atop_q[5:4] != 2'b11) && atop_q[3];
             end
@@ -1263,9 +1259,8 @@ module rnf_ctl `RNF_PARAM
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
     // SS2.3.3 (p.2-69): an AtomicLoad, Swap or Compare completes with CompData of
     // its inbound size, half the outbound one for AtomicCompare (Table 2-16 p.2-137).
-    wire atm_ret_now = is_atomic_op(acq_op_q) && atm_ret_q;
-    wire chie_pkg::size_e atm_in_sz = (acq_op_q == chie_pkg::REQ_ATOMICCOMPARE)
-                                      ? chie_pkg::size_e'(sz_q - 3'd1) : sz_q;
+    wire atm_ret_now = chie_pkg::atomic_req(acq_op_q) && atm_ret_q;
+    wire chie_pkg::size_e atm_in_sz = chie_pkg::atomic_in_size(acq_op_q, sz_q);
     wire atm_in_done = &(got_now | ~pkt_mask(off_q, atm_in_sz));
     wire wu_comp_now = atm_ret_now ? atm_in_done : (got_rsp_q || rx_comp || rx_compdbid);
 
