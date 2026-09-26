@@ -308,6 +308,7 @@ module hnf `HNF_PARAM
     wire                                     l3_hit_sx7_q;
     wire                                     l3_hit_d_sx7_q;
     wire                                     l3_sfhit_sx7_q;
+    wire                                     l3_rn_absent_sx7_q;
     wire                                     l3_snpdirect_sx7_q;
     wire                                     l3_snpbrd_sx7_q;
     wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        l3_snp_bit_sx7_q;
@@ -772,6 +773,7 @@ module hnf `HNF_PARAM
                  .l3_memrd_sx7_q                               (l3_memrd_sx7_q                    ),
                  .l3_hit_sx7_q                                 (l3_hit_sx7_q                      ),
                  .l3_sfhit_sx7_q                               (l3_sfhit_sx7_q                    ),
+                 .l3_rn_absent_sx7_q                           (l3_rn_absent_sx7_q                ),
                  .l3_pipeval_sx7_q                             (l3_pipeval_sx7_q                  ),
                  .l3_mshr_wr_op_sx7_q                          (l3_mshr_wr_op_sx7_q | ~(&notify_reg)),
                  .l3_snpdirect_sx7_q                           (l3_snpdirect_sx7_q                ),
@@ -976,6 +978,7 @@ module hnf `HNF_PARAM
                            .l3_hit_sx7_q                                 (l3_hit_sx7_q                      ),
                            .l3_hit_dirty_sx7_q                           (l3_hit_d_sx7_q                    ),
                            .l3_sfhit_sx7_q                               (l3_sfhit_sx7_q                    ),
+                           .l3_rn_absent_sx7_q                           (l3_rn_absent_sx7_q                ),
                            .l3_snpdirect_sx7_q                           (l3_snpdirect_sx7_q                ),
                            .l3_snpbrd_sx7_q                              (l3_snpbrd_sx7_q                   ),
                            .l3_snp_bit_sx7_q                             (l3_snp_bit_sx7_q                  ),
