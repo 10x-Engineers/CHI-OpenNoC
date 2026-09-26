@@ -106,8 +106,7 @@ Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.
 | :--- | :---: | :--- |
 | `SnpOnce`, `SnpClean`, `SnpShared`, `SnpNotSharedDirty`, `SnpUnique`, `SnpPreferUnique` | 🟢 | |
 | `SnpCleanShared`, `SnpCleanInvalid`, `SnpMakeInvalid` | 🟢 | |
-| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM` |
-| `SnpSharedFwd` | ⬜ | a Requester it leaves SD loses its write-back [#381](https://github.com/10x-Engineers/CHI-OpenNoC/issues/381) |
+| `SnpOnceFwd`, `SnpCleanFwd`, `SnpNotSharedDirtyFwd`, `SnpSharedFwd`, `SnpUniqueFwd`, `SnpPreferUniqueFwd` (DCT) | 🟢 | only to a Requester set in `RNF_DCT_LIST_PARAM`; `SnpSharedFwd` for a `ReadShared`, whose Snoopee may forward `SD_PD` |
 | `SnpStashUnique`, `SnpStashShared`, `SnpUniqueStash`, `SnpMakeInvalidStash` | 🟢 | only to a target set in `RNF_STASH_LIST_PARAM` |
 | `SnpQuery` | 🟢 | from the `SNPQ_*` port when `HNF_SNPQUERY_EN_PARAM` is set, which reports the Snoopee's state |
 | `SnpDVMOp` | — | sent by the MN (Table B-2 p.B-494) |

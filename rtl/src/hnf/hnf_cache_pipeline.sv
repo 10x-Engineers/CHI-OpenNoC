@@ -1305,7 +1305,10 @@ module hnf_cache_pipeline `HNF_PARAM
 
     //clean or dirty tag needs to be updated
     assign pipe_update_slc_nofill_sx4 = pipe_tag_match_dirty_sx4_q & (op_cmo_cs_sx4_q);
-    assign pipe_update_slc_fill_sx4 = 1'b0;//pipe_tag_match_sx4_q & (op_wufull_sx4_q | op_wbfull_sx4_q);
+    // Table 4-27 (p.4-200): a WriteBackFull's data passes responsibility for memory, so it
+    // updates a line the SLC already holds -- the copy a SnpSharedFwd's SD_PD forward
+    // (Table 4-53 p.4-234) left here -- rather than being dropped.
+    assign pipe_update_slc_fill_sx4 = pipe_tag_match_sx4_q & op_wbfull_sx4_q;
     assign pipe_update_slc_sx4 = (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)|(pipe_fill_sx4 & pipe_update_slc_fill_sx4);
 
     //clean or dirty tag needs to be invalidated
@@ -1350,9 +1353,9 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
 
-    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_invalid_slc_sx4 | (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
+    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_invalid_slc_sx4 | pipe_update_slc_sx4) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
 
-    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:0] = pipe_read_slc_sx4 ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
+    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_read_slc_sx4 | pipe_update_slc_sx4) ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
 
     assign pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:
                                    `CACHE_BLOCK_OFFSET] = {
