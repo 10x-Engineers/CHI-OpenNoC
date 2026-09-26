@@ -109,6 +109,7 @@ module hnf_cache_pipeline `HNF_PARAM
     output logic                                    l3_hit_sx7_q,
     output logic                                    l3_hit_dirty_sx7_q,
     output logic                                    l3_sfhit_sx7_q,
+    output logic                                    l3_rn_absent_sx7_q,
     output logic                                    l3_snpdirect_sx7_q,
     output logic                                    l3_snpbrd_sx7_q,
     output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]       l3_snp_bit_sx7_q,
@@ -470,6 +471,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // SF hit vec for snp
     logic                                    pipe_sf_other_hit_sx5_q;
     logic                                    pipe_sf_hit_sx5_q;
+    logic                                    pipe_sf_self_hit_sx5_q;
     logic [`RNF_NUM-1:0]                     pipe_sf_tgt_vec_sx5_q;
     logic [`RNF_NUM-1:0]                     pipe_stash_tgt_vec_sx5_q;
     wire                                     pipe_biq_hit_cancel_brd_sx5;
@@ -1718,6 +1720,7 @@ module hnf_cache_pipeline `HNF_PARAM
         if (rst == 1'b1)begin
             pipe_sf_other_hit_sx5_q                                     <= 1'b0;
             pipe_sf_hit_sx5_q                                           <= 1'b0;
+            pipe_sf_self_hit_sx5_q                                      <= 1'b0;
             pipe_sf_wr_sx5_q                                            <= 1'b0;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= {`RNF_NUM{1'b0}};
             pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= {`RNF_NUM{1'b0}};
@@ -1730,6 +1733,7 @@ module hnf_cache_pipeline `HNF_PARAM
         else begin
             pipe_sf_other_hit_sx5_q                                     <= pipe_sf_other_match_sx4;
             pipe_sf_hit_sx5_q                                           <= pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4;
+            pipe_sf_self_hit_sx5_q                                      <= pipe_sf_self_match_sx4;
             pipe_sf_wr_sx5_q                                            <= pipe_sf_wr_sx4;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0];
             pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
@@ -2065,6 +2069,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_hit_sx7_q        <= 1'b0;
             l3_hit_dirty_sx7_q  <= 1'b0;
             l3_sfhit_sx7_q      <= 1'b0;
+            l3_rn_absent_sx7_q  <= 1'b0;
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {HNF_MSHR_RNF_NUM_PARAM{1'b0}};
@@ -2082,6 +2087,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_hit_sx7_q        <= 1'b0;
             l3_hit_dirty_sx7_q  <= 1'b0;
             l3_sfhit_sx7_q      <= 1'b0;
+            l3_rn_absent_sx7_q  <= 1'b0;
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {`RNF_NUM{1'b0}};
@@ -2107,6 +2113,10 @@ module hnf_cache_pipeline `HNF_PARAM
             // no-snoop fast path and the post-snoop path both fire and the entry
             // issues two downstream requests under one TxnID (SS2.5.2 p.2-87, MUST).
             l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit_snp | (|pipe_sf_tgt_vec_sx5_q);
+            // The Requester is never snooped for its own read, so only the directory
+            // can say it holds no copy -- and a line queued for back-invalidation has
+            // no directory entry to say so.
+            l3_rn_absent_sx7_q  <= ~pipe_sf_self_hit_sx5_q & ~biq_hit;
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
             l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit_snp & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
