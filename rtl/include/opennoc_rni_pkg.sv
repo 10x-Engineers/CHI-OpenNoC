@@ -92,6 +92,48 @@ package opennoc_rni_pkg;
     logic [ID_WIDTH-1:0]    id;
   } r_ch_s;
 
+  // AXI4 (IHI 0022) A4.4: AxCACHE Modifiable with a Read- or Write-Allocate
+  // hint, the accesses this bridge carries as Cacheable CHI requests.
+  function automatic logic axi_cacheable(logic [3:0] cache);
+    return cache[1] & (|cache[3:2]);
+  endfunction
+
+  parameter int PKT_CHUNKS = chie_pkg::PKT_CHUNKS;
+
+  function automatic logic [3:0] dat_chunks(logic [1:0] dataid);
+    return 4'(((5'd1 << PKT_CHUNKS) - 5'd1) << dataid);
+  endfunction
+
+  // The chunks of every packet that holds any of `chunks`.
+  function automatic logic [3:0] pkt_cover(logic [3:0] chunks);
+    for (int c = 0; c < 4; c++)
+      pkt_cover[c] = |chunks[(c / PKT_CHUNKS) * PKT_CHUNKS +: PKT_CHUNKS];
+  endfunction
+
+  // SS2.10.4 (p.2-136): the packet count follows the Size field and the data width,
+  // so a transaction's packets are those of its Size-aligned container (SS2.10.2
+  // p.2-134), whichever of its bytes carry data.
+  function automatic logic [3:0] size_pkts(chie_pkg::size_e size, logic [1:0] ccid);
+    logic [3:0] chunks;
+    case (size)
+      chie_pkg::SIZE_64B: chunks = 4'b1111;
+      chie_pkg::SIZE_32B: chunks = ccid[1] ? 4'b1100 : 4'b0011;
+      default:            chunks = 4'b0001 << ccid;
+    endcase
+    return pkt_cover(chunks);
+  endfunction
+
+  // The chunks of the packet a Requester sends next from `pend`: the one holding the
+  // critical chunk first, the rest in line order after it.
+  function automatic logic [3:0] next_pkt(logic [3:0] pend, logic [1:0] ccid);
+    logic [1:0] c;
+    next_pkt = 4'b0000;
+    for (int k = 3; k >= 0; k--) begin
+      c = ccid + 2'(k);
+      if (pend[c]) next_pkt = dat_chunks(c & 2'(~(PKT_CHUNKS - 1)));
+    end
+  endfunction
+
   // The read-data FIFO entry: an R beat plus the byte count RN-I tracks
   // alongside it, which the AXI R channel has no field for.
   typedef struct packed {

@@ -50,6 +50,13 @@ package chie_pkg;
   parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
+  // SS2.10.4 (p.2-136), Table 2-15: a 64-byte line is 512/Data_Width packets of
+  // Data_Width/128 sixteen-byte chunks, and packet p carries DataID p x PKT_CHUNKS.
+  parameter int LINE_PKTS       = 512 / DATA_WIDTH;
+  parameter int PKT_BYTES       = DATA_WIDTH / 8;
+  parameter int PKT_CHUNKS      = DATA_WIDTH / 128;
+  parameter int PKT_CHUNKS_LOG2 = $clog2(PKT_CHUNKS);
+  parameter int PKT_IDX_W       = (LINE_PKTS > 1) ? $clog2(LINE_PKTS) : 1;
   // Table 13-32 (SS13.10.37 p.13-435).
   localparam logic [1:0] TAGOP_INVALID  = 2'b00;
   localparam logic [1:0] TAGOP_TRANSFER = 2'b01;
@@ -273,6 +280,31 @@ package chie_pkg;
     SIZE_64B = 3'h6
   } size_e;
 
+  function automatic int unsigned pkt_of_dataid(logic [1:0] dataid);
+    return int'(dataid) >> PKT_CHUNKS_LOG2;
+  endfunction
+
+  function automatic logic [1:0] dataid_of_pkt(int unsigned pkt);
+    return 2'(pkt << PKT_CHUNKS_LOG2);
+  endfunction
+
+  // SS2.10.4 (p.2-136): "The number of data packets required is determined only by
+  // the Size field and the data bus width" -- those of the Size-aligned container.
+  function automatic int unsigned pkts_of_size(size_e size);
+    int unsigned bytes = 1 << int'(size);
+    return (bytes > PKT_BYTES) ? bytes / PKT_BYTES : 1;
+  endfunction
+
+  function automatic logic [LINE_PKTS-1:0] pkt_mask(logic [5:0] off, size_e size);
+    int unsigned bytes = 1 << int'(size);
+    int unsigned first = (32'(off) & ~(bytes - 1)) / PKT_BYTES;
+    logic [LINE_PKTS-1:0] m = '0;
+    for (int unsigned p = 0; p < LINE_PKTS; p++)
+      if ((p >= first) && (p < first + pkts_of_size(size)))
+        m[p] = 1'b1;
+    return m;
+  endfunction
+
   // Table 2-11 (SS2.9.4 p.2-129). Named bits rather than four indices into a
   // 4-bit field.
   typedef struct packed {
@@ -451,6 +483,13 @@ package chie_pkg;
     logic [3:0]                 qos;
   } snp_flit_s;
 
+  // Table 13-8 (p.13-413) gives the SNP channel no TgtID, so the snoopee a Home or MN
+  // addresses travels beside the flit as the fabric's routing envelope.
+  typedef struct packed {
+    logic [NID_WIDTH-1:0] tgtid;
+    snp_flit_s            flit;
+  } snp_routed_s;
+
   // CHI E.b section 9.6 (p.9-348): "The DAT packet carries eight Data Check bits per
   // 64 bits of data. The Data Check bit is a parity bit that generates Odd Byte
   // parity." One bit per data byte, so DATACHECK_WIDTH == BE_WIDTH.
@@ -500,6 +539,185 @@ package chie_pkg;
 `else
     return '0;
 `endif
+  endfunction
+
+  // The requests that owe a Persist response on top of their completion. Table 4-38
+  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
+  // "Comp + Persist or CompPersist"; SS4.2.4 (p.4-182) has a Persistent CMO combined
+  // with a write "treated as a CleanSharedPersistSep", so the six WriteCleanShPerSep
+  // forms owe one too -- which SS2.3.2 Alt 2a2 (p.2-67) lets the Home fold into a
+  // single CompPersist, exactly as the standalone request does.
+  function automatic logic persist_response(req_opcode_e op);
+    case (op)
+      REQ_CLEANSHAREDPERSISTSEP,
+      REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      REQ_WRITEBACKFULLCLEANSHPERSEP,
+      REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                         : return 1'b0;
+    endcase
+  endfunction
+
+  // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
+  // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
+  // range, the gaps inside that range being RESERVED. The six persistent forms fold
+  // that CompCMO into the CompPersist persist_response() elects.
+  function automatic logic combined_write(req_opcode_e op);
+    case (op)
+      REQ_WRITENOSNPFULLCLEANSH,
+      REQ_WRITENOSNPFULLCLEANINV,
+      REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      REQ_WRITENOSNPPTLCLEANSH,
+      REQ_WRITENOSNPPTLCLEANINV,
+      REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEFULLCLEANSH,
+      REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEPTLCLEANSH,
+      REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      REQ_WRITEBACKFULLCLEANSH,
+      REQ_WRITEBACKFULLCLEANINV,
+      REQ_WRITEBACKFULLCLEANSHPERSEP,
+      REQ_WRITECLEANFULLCLEANSH,
+      REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                         : return 1'b0;
+    endcase
+  endfunction
+
+  // Table 4-39 (p.4-219) gives a Write Zero a WriteData response of None, so the
+  // Home sources the line: SS4.2.3's (p.4-176) "write data value of zero without
+  // transferring data bytes".
+  function automatic logic write_zero(req_opcode_e op);
+    return op == REQ_WRITEUNIQUEZERO || op == REQ_WRITENOSNPZERO;
+  endfunction
+
+  // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 has it
+  // displace Excl on the shared REQ bit -- so the Excl bit of an Atomic is not an
+  // Exclusive request and must not be read as one.
+  function automatic logic atomic_req(req_opcode_e op);
+    return (op >= REQ_ATOMICSTORE_ADD) && (op <= REQ_ATOMICCOMPARE);
+  endfunction
+
+  // Table 4-40 (SS4.7.4 p.4-219): an AtomicStore completes with Comp, the other three
+  // with CompData carrying SS4.2.5's (p.4-187, MUST) "original value at the addressed
+  // location".
+  function automatic logic atomic_returns_data(req_opcode_e op);
+    return (op >= REQ_ATOMICLOAD_ADD) && (op <= REQ_ATOMICCOMPARE);
+  endfunction
+
+  // SS2.10.5 (p.2-137): Size is the whole outbound payload, and an AtomicCompare
+  // concatenates equal Compare and Swap halves -- so the element the operation reads,
+  // writes and returns is half of it (Table 2-16 p.2-137).
+  function automatic int unsigned atomic_elem_bytes(req_opcode_e op,
+                                                    size_e       size);
+    int unsigned n;
+    n = 32'd1 << size;
+    return (op == REQ_ATOMICCOMPARE) ? (n >> 1) : n;
+  endfunction
+
+  // SS4.2.5 (p.4-187, MUST): an Atomic's inbound data is its outbound size, and half
+  // of it for AtomicCompare.
+  function automatic size_e atomic_in_size(req_opcode_e op, size_e size);
+    return ((op == REQ_ATOMICCOMPARE) && (size != SIZE_1B)) ? size_e'(size - 3'd1) : size;
+  endfunction
+
+  // SS2.10.5 (p.2-137): "the Swap data address can be determined by inverting bit[n]
+  // in the Compare data address where n = log2(Compare data size in bytes)" -- which
+  // for a power-of-two element size is the offset XOR that size.
+  function automatic logic [5:0] atomic_swap_off(logic [5:0]  cmp_off,
+                                                int unsigned elem_bytes);
+    return cmp_off ^ elem_bytes[5:0];
+  endfunction
+
+  function automatic logic [63:0] atomic_mask(int unsigned nbytes);
+    logic [63:0] m;
+    m = 64'd0;
+    for (int unsigned b = 0; b < 8; b = b + 1)
+      if (b < nbytes)
+        m[b*8 +: 8] = 8'hff;
+    return m;
+  endfunction
+
+  function automatic logic [63:0] atomic_bswap(logic [63:0] v, int unsigned nbytes);
+    logic [63:0] r;
+    int unsigned src;
+    r = 64'd0;
+    for (int unsigned b = 0; b < 8; b = b + 1)
+      if (b < nbytes) begin
+        src = nbytes - 1 - b;
+        r[b*8 +: 8] = v[src*8 +: 8];
+      end
+    return r;
+  endfunction
+
+  // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186) give the eight AtomicStore
+  // and eight AtomicLoad operations, and p.4-186 AtomicSwap's. SS2.10.5 (p.2-138):
+  // "for arithmetic operations, such as ADD, MAX, and MIN the component performing
+  // the operation needs to know the format of the data" -- so both operands are
+  // brought to a common order first. The bitwise rows are byte-invariant, which is
+  // why the same swap in and out serves them unchanged.
+  function automatic logic [63:0] atomic_alu(req_opcode_e op,
+                                             int unsigned nbytes,
+                                             logic        big_endian,
+                                             logic [63:0] initial_data,
+                                             logic [63:0] txn_data);
+    logic [63:0]        m, a, b, res;
+    logic signed [63:0] sa, sb;
+    int unsigned        sh;
+
+    m  = atomic_mask(nbytes);
+    a  = (big_endian ? atomic_bswap(initial_data, nbytes) : initial_data) & m;
+    b  = (big_endian ? atomic_bswap(txn_data,     nbytes) : txn_data)     & m;
+    sh = 32'd64 - nbytes * 32'd8;
+    sa = $signed(a << sh) >>> sh;
+    sb = $signed(b << sh) >>> sh;
+
+    case (op)
+      REQ_ATOMICSTORE_ADD,
+      REQ_ATOMICLOAD_ADD  : res = a + b;
+      REQ_ATOMICSTORE_CLR,
+      REQ_ATOMICLOAD_CLR  : res = a & ~b;
+      REQ_ATOMICSTORE_EOR,
+      REQ_ATOMICLOAD_EOR  : res = a ^ b;
+      REQ_ATOMICSTORE_SET,
+      REQ_ATOMICLOAD_SET  : res = a | b;
+      REQ_ATOMICSTORE_SMAX,
+      REQ_ATOMICLOAD_SMAX : res = (sb > sa) ? b : a;
+      REQ_ATOMICSTORE_SMIN,
+      REQ_ATOMICLOAD_SMIN : res = (sb < sa) ? b : a;
+      REQ_ATOMICSTORE_UMAX,
+      REQ_ATOMICLOAD_UMAX : res = (b > a) ? b : a;
+      REQ_ATOMICSTORE_UMIN,
+      REQ_ATOMICLOAD_UMIN : res = (b < a) ? b : a;
+      REQ_ATOMICSWAP      : res = b;
+      default             : res = a;
+    endcase
+
+    res = res & m;
+    return big_endian ? atomic_bswap(res, nbytes) : res;
+  endfunction
+
+  // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186): the MAX and MIN rows
+  // update the location only "if" their condition holds, where the other rows
+  // always do.
+  function automatic logic atomic_conditional(req_opcode_e op);
+    return op inside {REQ_ATOMICSTORE_SMAX, REQ_ATOMICSTORE_SMIN, REQ_ATOMICSTORE_UMAX, REQ_ATOMICSTORE_UMIN,
+                      REQ_ATOMICLOAD_SMAX,  REQ_ATOMICLOAD_SMIN,  REQ_ATOMICLOAD_UMAX,  REQ_ATOMICLOAD_UMIN};
+  endfunction
+
+  // SS4.2.5 (p.4-186): AtomicCompare writes the Swap value only "if the values
+  // match", which is a byte equality against the addressed location -- no arithmetic,
+  // so SS2.10.5's Endian bit does not reach it.
+  function automatic logic atomic_compare_eq(logic [127:0] initial_data,
+                                             logic [127:0] compare_data,
+                                             int unsigned  nbytes);
+    logic eq;
+    eq = 1'b1;
+    for (int unsigned b = 0; b < 16; b = b + 1)
+      if ((b < nbytes) && (initial_data[b*8 +: 8] != compare_data[b*8 +: 8]))
+        eq = 1'b0;
+    return eq;
   endfunction
 
   parameter int REQ_FLIT_WIDTH = $bits(req_flit_s);

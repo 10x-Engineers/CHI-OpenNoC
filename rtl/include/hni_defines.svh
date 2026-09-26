@@ -29,6 +29,10 @@
 `define HNI_AXI4_AXADDR_WIDTH              AXI4_PA_WIDTH_PARAM
 
 //hni_dbf
+`define HNI_LINE_BITS                      512
+`define HNI_PKTS                           (chie_pkg::LINE_PKTS)
+`define HNI_PKT_CHUNKS_LOG2                (chie_pkg::PKT_CHUNKS_LOG2)
+`define HNI_PKT_IDX_W                      (chie_pkg::PKT_IDX_W)
 `define HNI_MASK_CD_WIDTH                  4
 `define HNI_MASK_CD_LSB                    0
 `define HNI_MASK_CD_MSB                    3

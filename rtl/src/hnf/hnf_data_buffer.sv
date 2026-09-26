@@ -44,9 +44,9 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [6:0]                         mshr_dbf_atm_len_s0,
     input  wire                               mshr_dbf_atm_end_s0,
     input  wire                               mshr_dbf_rd_atm_sx1,
-    input  wire [chie_pkg::BE_WIDTH*2-1:0]    mshr_dbf_rd_atm_be_sx1,
-    input  wire [1:0]                         mshr_dbf_rd_atm_pe_sx1,
-    input  wire [1:0]                         mshr_dbf_rd_pe_sx1,
+    input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_rd_atm_be_sx1,
+    input  wire [`HNF_PKTS-1:0]               mshr_dbf_rd_atm_pe_sx1,
+    input  wire [`HNF_PKTS-1:0]               mshr_dbf_rd_pe_sx1,
 
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_rd_idx_sx1_q,
     input  wire                               mshr_dbf_rd_valid_sx1_q,
@@ -60,12 +60,12 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     mshr_dbf_home_fill_idx_sx1_q,
     input  wire                               mshr_dbf_home_fill_valid_sx1_q,
     input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_home_fill_be_sx1_q,
-    input  wire [1:0]                         mshr_dbf_home_fill_pe_sx1_q,
+    input  wire [`HNF_PKTS-1:0]               mshr_dbf_home_fill_pe_sx1_q,
 
     //inputs from hnf_cache_pipeline
     input  wire                               pipe_dbf_wr_valid_sx9_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_wr_idx_sx9_q,
-    input  wire [chie_pkg::DATA_WIDTH*2-1:0]  pipe_dbf_wr_data_sx9_q,
+    input  wire [`CACHE_LINE_WIDTH-1:0]       pipe_dbf_wr_data_sx9_q,
     input  wire [`CACHE_POISON_WIDTH-1:0]     pipe_dbf_wr_poison_sx9_q,
     input  wire [`CACHE_TAGV_WIDTH-1:0]       pipe_dbf_wr_tagv_sx9_q,
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]     pipe_dbf_rd_idx_sx2_q,
@@ -73,7 +73,7 @@ module hnf_data_buffer `HNF_PARAM
 
 
     //outputs to hnf_cache_pipeline
-    output logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx7_q,
+    output logic [`CACHE_LINE_WIDTH-1:0]      dbf_pipe_rd_data_sx7_q,
     output wire [`CACHE_POISON_WIDTH-1:0]     dbf_pipe_rd_poison_sx7_q,
     output wire [`CACHE_TAGV_WIDTH-1:0]       dbf_pipe_rd_tagv_sx7_q,
 
@@ -97,24 +97,24 @@ module hnf_data_buffer `HNF_PARAM
 
     output wire                               dbf_txdat_valid_sx1,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]     dbf_txdat_idx_sx1,
-    output wire [chie_pkg::BE_WIDTH*2-1:0]    dbf_txdat_be_sx1,
-    output wire [chie_pkg::DATA_WIDTH*2-1:0]  dbf_txdat_data_sx1,
-    output wire [1:0]                         dbf_txdat_pe_sx1,
+    output wire [`CACHE_BE_WIDTH-1:0]         dbf_txdat_be_sx1,
+    output wire [`CACHE_LINE_WIDTH-1:0]       dbf_txdat_data_sx1,
+    output wire [`HNF_PKTS-1:0]               dbf_txdat_pe_sx1,
     output wire [`CACHE_POISON_WIDTH-1:0]     dbf_txdat_poison_sx1,
     output wire [`CACHE_TAGV_WIDTH-1:0]       dbf_txdat_tagv_sx1
     );
 
     //internal signals
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_data_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_BE_WIDTH-1:0]        dbf_be_q[0:`MSHR_ENTRIES_NUM-1];
     // SS4.4.2 (p.4-196, MUST) merges a partial Snoop response with "any dirty data
     // received with the Snoop response", and SS5.1.5 (p.5-251) fills the remainder
     // from memory -- so the Snoopee's copy wins and memory only completes it.
     // dbf_be_q records that a byte is present, never who supplied it, so this marks
     // the bytes that came from the Home's own fill (a memory CompData or an L3 read)
     // and are therefore still superseded by a Snoopee's.
-    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_fill_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [1:0]                        dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_BE_WIDTH-1:0]        dbf_fill_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`HNF_PKTS-1:0]              dbf_pe_q[0:`MSHR_ENTRIES_NUM-1];
     // SS9.5 (p.9-347, MUST): "The Poison value, once set, must be propagated along
     // with the data." Chunk-granular, so it accumulates per 64-bit chunk rather
     // than following the byte-wise merge below.
@@ -125,29 +125,30 @@ module hnf_data_buffer `HNF_PARAM
     // SS12.5.2 (p.12-379): a Match write's Physical Tags, apart from the Allocation Tags.
     logic [`CACHE_TAG_WIDTH-1:0]       dbf_match_tag_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`CACHE_TAG_WIDTH-1:0]       temp_li_match_tag;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   dbf_match_be_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_match_be;
+    logic [`CACHE_BE_WIDTH-1:0]        dbf_match_be_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_BE_WIDTH-1:0]        temp_li_match_be;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_li_poison;
     logic [`CACHE_POISON_WIDTH-1:0]    temp_pipe_poison;
     // SS4.2.5 (p.4-187, MUST): an Atomic returns "the original value at the addressed
     // location", so dbf_data_q must keep the line as fetched and the operand is held
-    // apart until the result is written out to the L3 below. One RXDAT packet holds
-    // it whole -- Table 2-16 (SS2.10.5 p.2-137) caps Size at 32 bytes and SS2.10.5
-    // aligns the payload to it, so it never crosses a packet boundary.
-    logic [chie_pkg::DATA_WIDTH-1:0]   dbf_atm_data_q[0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::BE_WIDTH-1:0]     dbf_atm_be_q  [0:`MSHR_ENTRIES_NUM-1];
+    // apart, at its line position, until the result is written out to the L3 below.
+    // Table 2-16 (SS2.10.5 p.2-137) caps Size at 32 bytes, two packets at Data_Width 128.
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_atm_data_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_BE_WIDTH-1:0]        dbf_atm_be_q  [0:`MSHR_ENTRIES_NUM-1];
+    logic [`CACHE_LINE_WIDTH-1:0]      temp_atm_data;
+    logic [`CACHE_BE_WIDTH-1:0]        temp_atm_be;
     logic                              dbf_atm_v_q   [0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::req_opcode_e             dbf_atm_op_q  [0:`MSHR_ENTRIES_NUM-1];
     logic [5:0]                        dbf_atm_off_q [0:`MSHR_ENTRIES_NUM-1];
     logic [6:0]                        dbf_atm_len_q [0:`MSHR_ENTRIES_NUM-1];
     logic                              dbf_atm_end_q [0:`MSHR_ENTRIES_NUM-1];
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_atm_result_sx2;
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_atm_result_sx2;
     wire                               dbf_atm_rd_sx2;
     wire                               li_dbf_atm_operand_s0;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx3_q;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx4_q;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx5_q;
-    logic [chie_pkg::DATA_WIDTH*2-1:0] dbf_pipe_rd_data_sx6_q;
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_pipe_rd_data_sx3_q;
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_pipe_rd_data_sx4_q;
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_pipe_rd_data_sx5_q;
+    logic [`CACHE_LINE_WIDTH-1:0]      dbf_pipe_rd_data_sx6_q;
     // The line's Poison and Allocation Tags, which travel to the L3 beside its data.
     localparam DBF_SB_WIDTH = `CACHE_POISON_WIDTH + `CACHE_TAGV_WIDTH;
     logic [DBF_SB_WIDTH-1:0]           dbf_pipe_rd_sb_sx3_q;
@@ -156,25 +157,20 @@ module hnf_data_buffer `HNF_PARAM
     logic [DBF_SB_WIDTH-1:0]           dbf_pipe_rd_sb_sx6_q;
     logic [DBF_SB_WIDTH-1:0]           dbf_pipe_rd_sb_sx7_q;
 
-    logic [chie_pkg::DATA_WIDTH*2-1:0] temp_li_data;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_be;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_li_fill;
+    logic [`CACHE_LINE_WIDTH-1:0]      temp_li_data;
+    logic [`CACHE_BE_WIDTH-1:0]        temp_li_be;
+    logic [`CACHE_BE_WIDTH-1:0]        temp_li_fill;
 
-    logic [chie_pkg::DATA_WIDTH*2-1:0] temp_pipe_data;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_pipe_be;
-    logic [chie_pkg::BE_WIDTH*2-1:0]   temp_pipe_fill;
+    logic [`CACHE_LINE_WIDTH-1:0]      temp_pipe_data;
+    logic [`CACHE_BE_WIDTH-1:0]        temp_pipe_be;
+    logic [`CACHE_BE_WIDTH-1:0]        temp_pipe_fill;
 
-    // Element idx of a line-wide vector of 2*w lies in the packet DataID names.
-    function automatic logic in_half(logic [1:0] dataid, int idx, int w);
-        return ((dataid == 2'b00) && (idx < w)) || ((dataid == 2'b10) && (idx >= w));
+    // Element idx of a line-wide vector of w per packet lies in the packet DataID names.
+    function automatic logic in_pkt(logic [1:0] dataid, int idx, int w);
+        return (idx / w) == chie_pkg::pkt_of_dataid(dataid);
     endfunction
 
     localparam DBF_PKT_BYTE_NUM  = chie_pkg::DATA_WIDTH/8;
-    localparam DBF_PKT_IDX_WIDTH = $clog2(DBF_PKT_BYTE_NUM);
-
-    wire [DBF_PKT_IDX_WIDTH:0] offset;
-
-    assign offset=(li_dbf_rxdat_dataid_s0 == 2'b10)?DBF_PKT_BYTE_NUM[DBF_PKT_IDX_WIDTH:0]:{(DBF_PKT_IDX_WIDTH+1){1'b0}};
 
     assign li_dbf_atm_operand_s0 = li_dbf_rxdat_valid_s0 & dbf_atm_v_q[li_dbf_rxdat_txnid_s0] &
            ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA) |
@@ -182,17 +178,15 @@ module hnf_data_buffer `HNF_PARAM
 
     genvar i;
     generate
-        for(i = 0;i<(chie_pkg::DATA_WIDTH*2)/8;i = i+1) begin:get_wt_temp
-            // i counts bytes across the two-packet line, offset selects which packet
-            // arrived, so the difference is the byte's index inside that packet. The
-            // DataID guards below are what pair the two, and offset is a multiple of
-            // DBF_PKT_BYTE_NUM, so this width carries the difference exactly.
-            wire [DBF_PKT_IDX_WIDTH-1:0] rxdat_byte_idx;
-            assign rxdat_byte_idx = i[DBF_PKT_IDX_WIDTH-1:0] - offset[DBF_PKT_IDX_WIDTH-1:0];
+        for(i = 0;i<`CACHE_LINE_WIDTH/8;i = i+1) begin:get_wt_temp
+            // i counts bytes across the line; SS2.10.4 (p.2-136) keeps every byte at its
+            // natural position, so its index inside the packet the DataID guards name is i mod the packet.
+            localparam int rxdat_byte_idx = i % DBF_PKT_BYTE_NUM;
+            wire           rxdat_in_pkt   = in_pkt(li_dbf_rxdat_dataid_s0, i, DBF_PKT_BYTE_NUM);
 
             always_comb begin//linklist temp data
                 if (li_dbf_rxdat_valid_s0&&pipe_dbf_wr_valid_sx9_q&&(li_dbf_rxdat_txnid_s0 == pipe_dbf_wr_idx_sx9_q)) begin//write conflict
-                    if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8)) begin//first package
+                    if (rxdat_in_pkt) begin//first package
                         temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8]:pipe_dbf_wr_data_sx9_q[i*8+:8]);
                         temp_li_be[i]        = 1;
                         temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:(dbf_be_q[li_dbf_rxdat_txnid_s0][i]?dbf_fill_q[li_dbf_rxdat_txnid_s0][i]:1'b1);
@@ -205,7 +199,7 @@ module hnf_data_buffer `HNF_PARAM
                 end
                 else begin
                     if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_COPYBACKWRDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK))) begin//over write
-                        if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
+                        if (rxdat_in_pkt)begin
                             temp_li_data[i*8+:8] = li_dbf_rxdat_be_s0[rxdat_byte_idx]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
                             temp_li_be[i]        = li_dbf_rxdat_be_s0[rxdat_byte_idx]||dbf_be_q[li_dbf_rxdat_txnid_s0][i];
                             temp_li_fill[i]      = li_dbf_rxdat_be_s0[rxdat_byte_idx]?1'b0:dbf_fill_q[li_dbf_rxdat_txnid_s0][i];
@@ -217,7 +211,7 @@ module hnf_data_buffer `HNF_PARAM
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATA)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAFWDED)||(li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_SNPRESPDATAPTL))) begin//merge
-                        if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
+                        if (rxdat_in_pkt)begin
                             // SS4.4.2 (p.4-196, MUST) / SS5.1.5 (p.5-251): a byte the Home's
                             // own fill supplied is superseded here, not kept.
                             temp_li_data[i*8+:8] = (li_dbf_rxdat_be_s0[rxdat_byte_idx]&&(!dbf_be_q[li_dbf_rxdat_txnid_s0][i]||dbf_fill_q[li_dbf_rxdat_txnid_s0][i]))?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
@@ -231,7 +225,7 @@ module hnf_data_buffer `HNF_PARAM
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_COMPDATA))begin
-                        if ((li_dbf_rxdat_dataid_s0 == 2'b00&&i<chie_pkg::DATA_WIDTH/8)||(li_dbf_rxdat_dataid_s0 == 2'b10&&i >= chie_pkg::DATA_WIDTH/8))begin
+                        if (rxdat_in_pkt)begin
                             // SS2.10.3 (p.2-135) scopes Byte Enables to Writes and Snoop responses,
                             // so a CompData carries the whole packet and every byte of it is valid.
                             temp_li_data[i*8+:8] = !dbf_be_q[li_dbf_rxdat_txnid_s0][i]?li_dbf_rxdat_data_s0[rxdat_byte_idx*8+:8]:dbf_data_q[li_dbf_rxdat_txnid_s0][i*8+:8];
@@ -290,7 +284,7 @@ module hnf_data_buffer `HNF_PARAM
             wire [POISON_CHUNK_BYTES-1:0] pipe_held_own;
             wire li_base_poison;
             assign covered = li_dbf_rxdat_valid_s0 && (li_dbf_rxdat_opcode_s0 != chie_pkg::DAT_WRITEDATACANCEL) &&
-                             in_half(li_dbf_rxdat_dataid_s0, i, chie_pkg::POISON_WIDTH);
+                             in_pkt(li_dbf_rxdat_dataid_s0, i, chie_pkg::POISON_WIDTH);
             assign li_chunk_be = li_fill ? {POISON_CHUNK_BYTES{1'b1}}
                                          : li_dbf_rxdat_be_s0[(i % chie_pkg::POISON_WIDTH)*POISON_CHUNK_BYTES +: POISON_CHUNK_BYTES];
             // The bytes of the chunk this packet supplies, by the byte merge's precedence.
@@ -323,12 +317,12 @@ module hnf_data_buffer `HNF_PARAM
         logic [chie_pkg::TAG_WIDTH-1:0] tag,
         logic [chie_pkg::TU_WIDTH-1:0]  tu);
         opennoc_hnf_pkg::hnf_tagv_s     r;
-        logic                           upd, cln, in_pkt;
+        logic                           upd, cln, in_pkt_t;
         r = base;
-        for (int t = 0; t < 2*chie_pkg::TU_WIDTH; t++) begin
-            in_pkt = covered && in_half(dataid, t, chie_pkg::TU_WIDTH);
-            upd    = in_pkt && (tagop == chie_pkg::TAGOP_UPDATE) && tu[t % chie_pkg::TU_WIDTH];
-            cln    = in_pkt && (tagop == chie_pkg::TAGOP_TRANSFER) && !base.valid[t];
+        for (int t = 0; t < opennoc_hnf_pkg::HNF_LINE_TU; t++) begin
+            in_pkt_t = covered && in_pkt(dataid, t, chie_pkg::TU_WIDTH);
+            upd    = in_pkt_t && (tagop == chie_pkg::TAGOP_UPDATE) && tu[t % chie_pkg::TU_WIDTH];
+            cln    = in_pkt_t && (tagop == chie_pkg::TAGOP_TRANSFER) && !base.valid[t];
             if (upd || cln) begin
                 r.tag[t*4 +: 4] = tag[(t % chie_pkg::TU_WIDTH)*4 +: 4];
                 r.valid[t]      = 1'b1;
@@ -345,7 +339,7 @@ module hnf_data_buffer `HNF_PARAM
         opennoc_hnf_pkg::hnf_tagv_s fill);
         opennoc_hnf_pkg::hnf_tagv_s r;
         r = held;
-        for (int t = 0; t < 2*chie_pkg::TU_WIDTH; t++)
+        for (int t = 0; t < opennoc_hnf_pkg::HNF_LINE_TU; t++)
             if (!held.valid[t]) begin
                 r.tag[t*4 +: 4] = fill.tag[t*4 +: 4];
                 r.valid[t]      = fill.valid[t];
@@ -372,15 +366,15 @@ module hnf_data_buffer `HNF_PARAM
                     ((li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NONCOPYBACKWRDATA) ||
                      (li_dbf_rxdat_opcode_s0 == chie_pkg::DAT_NCBWRDATACOMPACK));
     generate
-        for(i = 0;i<2*chie_pkg::TU_WIDTH;i = i+1) begin:get_match_temp
-            wire match_covered = li_match && in_half(li_dbf_rxdat_dataid_s0, i, chie_pkg::TU_WIDTH);
+        for(i = 0;i<opennoc_hnf_pkg::HNF_LINE_TU;i = i+1) begin:get_match_temp
+            wire match_covered = li_match && in_pkt(li_dbf_rxdat_dataid_s0, i, chie_pkg::TU_WIDTH);
             assign temp_li_match_tag[i*4 +: 4] = match_covered
                 ? li_dbf_rxdat_tag_s0[(i % chie_pkg::TU_WIDTH)*4 +: 4]
                 : dbf_match_tag_q[li_dbf_rxdat_txnid_s0][i*4 +: 4];
         end
-        for(i = 0;i<(chie_pkg::BE_WIDTH*2);i = i+1) begin:get_match_be_temp
+        for(i = 0;i<(`CACHE_BE_WIDTH);i = i+1) begin:get_match_be_temp
             assign temp_li_match_be[i] = dbf_match_be_q[li_dbf_rxdat_txnid_s0][i] |
-                   (li_match && in_half(li_dbf_rxdat_dataid_s0, i, chie_pkg::BE_WIDTH) &&
+                   (li_match && in_pkt(li_dbf_rxdat_dataid_s0, i, chie_pkg::BE_WIDTH) &&
                     li_dbf_rxdat_be_s0[i % chie_pkg::BE_WIDTH]);
         end
     endgenerate
@@ -418,7 +412,7 @@ module hnf_data_buffer `HNF_PARAM
                             dbf_data_q[i]   <= temp_pipe_data;
                             dbf_be_q[i]     <= temp_pipe_be;
                             dbf_fill_q[i]   <= temp_pipe_fill;
-                            dbf_pe_q[i]     <= 2'b11;
+                            dbf_pe_q[i]     <= '1;
                             dbf_poison_q[i] <= temp_pipe_poison;
                             dbf_tagv_q[i]   <= temp_pipe_tagv;
                         end
@@ -427,7 +421,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_data_q[i]   <= temp_li_data;
                         dbf_be_q[i]     <= temp_li_be;
                         dbf_fill_q[i]   <= temp_li_fill;
-                        dbf_pe_q[i]     <= 2'b11;
+                        dbf_pe_q[i]     <= '1;
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
@@ -437,7 +431,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_data_q[i]   <= temp_li_data;
                         dbf_be_q[i]     <= temp_li_be;
                         dbf_fill_q[i]   <= temp_li_fill;
-                        dbf_pe_q[i]     <= (li_dbf_rxdat_dataid_s0 == 2'b00) ? (dbf_pe_q[i] | 2'b01) : (dbf_pe_q[i] | 2'b10);
+                        dbf_pe_q[i]     <= dbf_pe_q[i] | (`HNF_PKTS'(1) << chie_pkg::pkt_of_dataid(li_dbf_rxdat_dataid_s0));
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
@@ -447,7 +441,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_data_q[i]   <= temp_pipe_data;
                         dbf_be_q[i]     <= temp_pipe_be;
                         dbf_fill_q[i]   <= temp_pipe_fill;
-                        dbf_pe_q[i]     <= 2'b11;
+                        dbf_pe_q[i]     <= '1;
                         dbf_poison_q[i] <= temp_pipe_poison;
                         dbf_tagv_q[i]   <= temp_pipe_tagv;
                     end
@@ -499,8 +493,8 @@ module hnf_data_buffer `HNF_PARAM
                     dbf_atm_be_q[i]   <= 'd0;
                 end
                 else if(li_dbf_atm_operand_s0 && i == li_dbf_rxdat_txnid_s0)begin
-                    dbf_atm_data_q[i] <= li_dbf_rxdat_data_s0;
-                    dbf_atm_be_q[i]   <= li_dbf_rxdat_be_s0;
+                    dbf_atm_data_q[i] <= temp_atm_data;
+                    dbf_atm_be_q[i]   <= temp_atm_be;
                 end
                 else if(mshr_dbf_retired_valid_sx1_q && i == mshr_dbf_retired_idx_sx1_q)begin
                     dbf_atm_data_q[i] <= 'd0;
@@ -512,6 +506,17 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
 
+    always_comb begin : atm_operand_place
+        for (int b = 0; b < `CACHE_BE_WIDTH; b++) begin
+            temp_atm_data[b*8 +: 8] = dbf_atm_data_q[li_dbf_rxdat_txnid_s0][b*8 +: 8];
+            temp_atm_be[b]          = dbf_atm_be_q[li_dbf_rxdat_txnid_s0][b];
+            if (in_pkt(li_dbf_rxdat_dataid_s0, b, DBF_PKT_BYTE_NUM)) begin
+                temp_atm_data[b*8 +: 8] = li_dbf_rxdat_data_s0[(b % DBF_PKT_BYTE_NUM)*8 +: 8];
+                temp_atm_be[b]          = li_dbf_rxdat_be_s0[b % DBF_PKT_BYTE_NUM];
+            end
+        end
+    end
+
     // The read-modify-write, on the one path that carries the line out to the L3.
     // Table 4-19 (SS4.2.5 p.4-185) and Table 4-20 (p.4-186) give the arithmetic;
     // SS2.10.5 (p.2-137) the placement -- the element sits at Addr[5:0] within the
@@ -521,7 +526,7 @@ module hnf_data_buffer `HNF_PARAM
     always_comb begin : dbf_atm_rmw
         logic [`MSHR_ENTRIES_WIDTH-1:0] a_idx;
         chie_pkg::req_opcode_e          a_op;
-        int unsigned                    a_len, a_off, a_soff, a_poff;
+        int unsigned                    a_len, a_off, a_soff;
         logic [127:0]                   a_init128, a_cmp128, a_swap128, a_wr128;
         logic [63:0]                    a_res;
         logic                           a_match;
@@ -531,11 +536,7 @@ module hnf_data_buffer `HNF_PARAM
         a_op               = dbf_atm_op_q[a_idx];
         a_len              = {25'd0, dbf_atm_len_q[a_idx]};
         a_off              = {26'd0, dbf_atm_off_q[a_idx]};
-        a_soff             = {26'd0, opennoc_hnf_pkg::hnf_atomic_swap_off(dbf_atm_off_q[a_idx], a_len)};
-        // The operand is one RXDAT packet, so its bytes are indexed inside that
-        // packet rather than inside the line.
-        a_poff             = a_off & (DBF_PKT_BYTE_NUM - 1);
-        a_soff             = a_soff & (DBF_PKT_BYTE_NUM - 1);
+        a_soff             = {26'd0, chie_pkg::atomic_swap_off(dbf_atm_off_q[a_idx], a_len)};
 
         a_init128 = 128'd0;
         a_cmp128  = 128'd0;
@@ -543,13 +544,13 @@ module hnf_data_buffer `HNF_PARAM
         for (int unsigned b = 0; b < 16; b = b + 1)
             if (b < a_len) begin
                 a_init128[b*8 +: 8] = dbf_data_q[a_idx][((a_off + b) & 63)*8 +: 8];
-                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[a_idx][((a_poff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
-                a_swap128[b*8 +: 8] = dbf_atm_data_q[a_idx][((a_soff + b) & (DBF_PKT_BYTE_NUM-1))*8 +: 8];
+                a_cmp128 [b*8 +: 8] = dbf_atm_data_q[a_idx][((a_off + b) & 63)*8 +: 8];
+                a_swap128[b*8 +: 8] = dbf_atm_data_q[a_idx][((a_soff + b) & 63)*8 +: 8];
             end
 
-        a_match = opennoc_hnf_pkg::hnf_atomic_compare_eq(a_init128, a_cmp128, a_len);
-        a_res   = opennoc_hnf_pkg::hnf_atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
-                                                  a_init128[63:0], a_cmp128[63:0]);
+        a_match = chie_pkg::atomic_compare_eq(a_init128, a_cmp128, a_len);
+        a_res   = chie_pkg::atomic_alu(a_op, a_len, dbf_atm_end_q[a_idx],
+                                       a_init128[63:0], a_cmp128[63:0]);
 
         // Table 2-16 (SS2.10.5 p.2-137) bounds AtomicStore/Load/Swap at 8 bytes and
         // only AtomicCompare at 16, so the ALU result is the narrower source, widened
@@ -630,7 +631,7 @@ module hnf_data_buffer `HNF_PARAM
             logic pass;
             always_comb begin
                 pass = chie_pkg::tag_match_pass(dbf_match_tag_q[i], dbf_tagv_q[i].tag, dbf_match_be_q[i]);
-                for (int t = 0; t < 2*chie_pkg::TU_WIDTH; t++)
+                for (int t = 0; t < opennoc_hnf_pkg::HNF_LINE_TU; t++)
                     if ((|dbf_match_be_q[i][t*chie_pkg::LINE_BE_PER_TAG +: chie_pkg::LINE_BE_PER_TAG]) &&
                         !dbf_tagv_q[i].valid[t])
                         pass = 1'b0;

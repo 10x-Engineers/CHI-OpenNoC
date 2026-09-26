@@ -154,8 +154,16 @@ module snf `SNF_PARAM
     wire                                  mshr_txdat_won_sx;
     wire                                  dbf_mshr_rxdat_ok_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagfetch_req_sx;
-    wire                                  mshr_dbf_tagfetch_ack_sx;
-    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    mshr_dbf_tagfetch_idx_sx;
+    wire                                  mshr_dbf_rdreq_ack_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    mshr_dbf_rdreq_idx_sx;
+    wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_atmrd_req_sx;
+    wire                                  dbf_mshr_atm_done_sx;
+    wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    dbf_mshr_atm_done_idx_sx;
+    wire                                  dbf_mshr_atm_nowr_sx;
+    wire                                  dbf_mshr_atm_err_sx;
+    wire                                  rxreq_dbf_atomic_s1;
+    chie_pkg::req_opcode_e                rxreq_dbf_opcode_s1;
+    wire                                  rxreq_dbf_endian_s1;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagmatch_done_sx;
     wire [`SNF_MSHR_ENTRIES_NUM-1:0]      dbf_mshr_tagmatch_pass_sx;
     wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]    dbf_mshr_rxdat_ok_idx_sx;
@@ -405,6 +413,9 @@ module snf `SNF_PARAM
             .rxreq_dbf_addr_s1(rxreq_dbf_addr_s1),
             .rxreq_dbf_size_s1(rxreq_dbf_size_s1),
             .rxreq_dbf_axlen_s1(rxreq_dbf_axlen_s1),
+            .rxreq_dbf_atomic_s1(rxreq_dbf_atomic_s1),
+            .rxreq_dbf_opcode_s1(rxreq_dbf_opcode_s1),
+            .rxreq_dbf_endian_s1(rxreq_dbf_endian_s1),
             .mshr_retired_valid_sx(mshr_retired_valid_sx),
             .mshr_retired_idx_sx(mshr_retired_idx_sx),
             .mshr_wdat_en_sx(mshr_wdat_en_sx),
@@ -428,8 +439,13 @@ module snf `SNF_PARAM
             .txdat_flit(txdat_flit),
             .mshr_txdat_won_sx(mshr_txdat_won_sx),
             .dbf_mshr_tagfetch_req_sx(dbf_mshr_tagfetch_req_sx),
-            .mshr_dbf_tagfetch_ack_sx(mshr_dbf_tagfetch_ack_sx),
-            .mshr_dbf_tagfetch_idx_sx(mshr_dbf_tagfetch_idx_sx),
+            .mshr_dbf_rdreq_ack_sx(mshr_dbf_rdreq_ack_sx),
+            .mshr_dbf_rdreq_idx_sx(mshr_dbf_rdreq_idx_sx),
+            .dbf_mshr_atmrd_req_sx(dbf_mshr_atmrd_req_sx),
+            .dbf_mshr_atm_done_sx(dbf_mshr_atm_done_sx),
+            .dbf_mshr_atm_done_idx_sx(dbf_mshr_atm_done_idx_sx),
+            .dbf_mshr_atm_nowr_sx(dbf_mshr_atm_nowr_sx),
+            .dbf_mshr_atm_err_sx(dbf_mshr_atm_err_sx),
             .dbf_mshr_tagmatch_done_sx(dbf_mshr_tagmatch_done_sx),
             .dbf_mshr_tagmatch_pass_sx(dbf_mshr_tagmatch_pass_sx),
             .dbf_mshr_rxdat_ok_sx(dbf_mshr_rxdat_ok_sx),
@@ -479,12 +495,20 @@ module snf `SNF_PARAM
             .rxreq_dbf_addr_s1(rxreq_dbf_addr_s1),
             .rxreq_dbf_size_s1(rxreq_dbf_size_s1),
             .rxreq_dbf_axlen_s1(rxreq_dbf_axlen_s1),
+            .rxreq_dbf_atomic_s1(rxreq_dbf_atomic_s1),
+            .rxreq_dbf_opcode_s1(rxreq_dbf_opcode_s1),
+            .rxreq_dbf_endian_s1(rxreq_dbf_endian_s1),
             .dbf_mshr_rdata_en_sx(dbf_mshr_rdata_en_sx),
             .dbf_mshr_rdata_idx_sx(dbf_mshr_rdata_idx_sx),
             .dbf_mshr_rdata_cdmask_sx(dbf_mshr_rdata_cdmask_sx),
             .dbf_mshr_tagfetch_req_sx(dbf_mshr_tagfetch_req_sx),
-            .mshr_dbf_tagfetch_ack_sx(mshr_dbf_tagfetch_ack_sx),
-            .mshr_dbf_tagfetch_idx_sx(mshr_dbf_tagfetch_idx_sx),
+            .mshr_dbf_rdreq_ack_sx(mshr_dbf_rdreq_ack_sx),
+            .mshr_dbf_rdreq_idx_sx(mshr_dbf_rdreq_idx_sx),
+            .dbf_mshr_atmrd_req_sx(dbf_mshr_atmrd_req_sx),
+            .dbf_mshr_atm_done_sx(dbf_mshr_atm_done_sx),
+            .dbf_mshr_atm_done_idx_sx(dbf_mshr_atm_done_idx_sx),
+            .dbf_mshr_atm_nowr_sx(dbf_mshr_atm_nowr_sx),
+            .dbf_mshr_atm_err_sx(dbf_mshr_atm_err_sx),
             .dbf_mshr_tagmatch_done_sx(dbf_mshr_tagmatch_done_sx),
             .dbf_mshr_tagmatch_pass_sx(dbf_mshr_tagmatch_pass_sx),
             .dbf_mshr_rxdat_ok_sx(dbf_mshr_rxdat_ok_sx),
@@ -544,12 +568,10 @@ module snf `SNF_PARAM
 
     // A node's optional-field widths and chie_pkg's layout are one declaration; this
     // refuses a build where they disagree rather than silently shifting every field.
-    // The SN-F packetises by Data_Width (snf_defines.svh SNF_PKTS), so it takes all three.
     chie_flit_opt_check #(
         .REQ_RSVDC_WIDTH (CHIE_REQ_RSVDC_WIDTH_PARAM),
         .DAT_RSVDC_WIDTH (CHIE_DAT_RSVDC_WIDTH_PARAM),
-        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM),
-        .ANY_DATA_WIDTH  (1'b1)
+        .MPAM_WIDTH      (CHIE_MPAM_WIDTH_PARAM)
     ) u_chie_flit_opt_check ();
 
 endmodule

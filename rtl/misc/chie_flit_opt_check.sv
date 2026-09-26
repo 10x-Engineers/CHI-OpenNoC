@@ -21,9 +21,7 @@
 module chie_flit_opt_check #(
     parameter REQ_RSVDC_WIDTH = 0,
     parameter DAT_RSVDC_WIDTH = 0,
-    parameter MPAM_WIDTH      = 0,
-    // Set by a node whose datapath packetises by Data_Width; the rest are held to 256.
-    parameter bit ANY_DATA_WIDTH = 1'b0
+    parameter MPAM_WIDTH      = 0
     ) ();
 
     function automatic bit width_legal(int unsigned w);
@@ -47,17 +45,10 @@ module chie_flit_opt_check #(
             $fatal(1, "%m: MPAM_WIDTH=%0d -- section 11.3 (p.11-365) makes the field either 0 bits or 11 bits.",
                    MPAM_WIDTH);
 
-        // Section 16.1 (p.16-471) gives Data_Width three legal values and section 2.10.4
-        // (p.2-136) makes the packets per 64-byte line follow it. A node that sets
-        // ANY_DATA_WIDTH packetises by it; every other node is written against "a line is
-        // exactly two data packets", which holds only at 256 -- hnf_mshr_ctl, for one,
-        // counts a snoop response's packets that way -- and is refused at elaboration
-        // rather than silently mis-serving data.
+        // Section 16.1 (p.16-471) gives Data_Width three legal values, and every node
+        // packetises a 64-byte line by it (section 2.10.4 p.2-136).
         if (!(chie_pkg::DATA_WIDTH inside {128, 256, 512}))
             $fatal(1, "%m: CHIE_DATA_WIDTH=%0d -- section 16.1 (p.16-471) permits 128, 256 and 512.",
-                   chie_pkg::DATA_WIDTH);
-        if (!ANY_DATA_WIDTH && (chie_pkg::DATA_WIDTH != 256))
-            $fatal(1, "%m: CHIE_DATA_WIDTH=%0d. Section 16.1 (p.16-471) permits 128, 256 and 512, but this node's beat-count and DataID logic assumes a 64-byte line is exactly two data packets, which is true only at 256.",
                    chie_pkg::DATA_WIDTH);
 
         // Section 16.1 (p.16-471/16-472) bounds the other two. Both are carried

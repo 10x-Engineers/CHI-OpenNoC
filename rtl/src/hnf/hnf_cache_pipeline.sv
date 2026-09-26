@@ -109,6 +109,7 @@ module hnf_cache_pipeline `HNF_PARAM
     output logic                                    l3_hit_sx7_q,
     output logic                                    l3_hit_dirty_sx7_q,
     output logic                                    l3_sfhit_sx7_q,
+    output logic                                    l3_rn_absent_sx7_q,
     output logic                                    l3_snpdirect_sx7_q,
     output logic                                    l3_snpbrd_sx7_q,
     output logic [HNF_MSHR_RNF_NUM_PARAM-1:0]       l3_snp_bit_sx7_q,
@@ -470,6 +471,7 @@ module hnf_cache_pipeline `HNF_PARAM
     // SF hit vec for snp
     logic                                    pipe_sf_other_hit_sx5_q;
     logic                                    pipe_sf_hit_sx5_q;
+    logic                                    pipe_sf_self_hit_sx5_q;
     logic [`RNF_NUM-1:0]                     pipe_sf_tgt_vec_sx5_q;
     logic [`RNF_NUM-1:0]                     pipe_stash_tgt_vec_sx5_q;
     wire                                     pipe_biq_hit_cancel_brd_sx5;
@@ -543,6 +545,7 @@ module hnf_cache_pipeline `HNF_PARAM
     wire                                     biq_fifo_full;
     wire                                     biq_hit_raw;
     wire                                     biq_hit;
+    wire                                     biq_hit_snp;
     wire                                     biq_evict_valid_sx5;
     wire                                     biq_find_valid_sx5;
 
@@ -1302,7 +1305,10 @@ module hnf_cache_pipeline `HNF_PARAM
 
     //clean or dirty tag needs to be updated
     assign pipe_update_slc_nofill_sx4 = pipe_tag_match_dirty_sx4_q & (op_cmo_cs_sx4_q);
-    assign pipe_update_slc_fill_sx4 = 1'b0;//pipe_tag_match_sx4_q & (op_wufull_sx4_q | op_wbfull_sx4_q);
+    // Table 4-27 (p.4-200): a WriteBackFull's data passes responsibility for memory, so it
+    // updates a line the SLC already holds -- the copy a SnpSharedFwd's SD_PD forward
+    // (Table 4-53 p.4-234) left here -- rather than being dropped.
+    assign pipe_update_slc_fill_sx4 = pipe_tag_match_sx4_q & op_wbfull_sx4_q;
     assign pipe_update_slc_sx4 = (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)|(pipe_fill_sx4 & pipe_update_slc_fill_sx4);
 
     //clean or dirty tag needs to be invalidated
@@ -1347,9 +1353,9 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
 
-    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_invalid_slc_sx4 | (~pipe_fill_sx4 & pipe_update_slc_nofill_sx4)) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
+    assign pipe_tag_wr_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_invalid_slc_sx4 | pipe_update_slc_sx4) ? pipe_tag_match_vec_sx4_q : pipe_tag_free_sx4_q ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0];
 
-    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:0] = pipe_read_slc_sx4 ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
+    assign pipe_tag_haz_way_sx4[`LOC_WAY_NUM-1:0] = (pipe_read_slc_sx4 | pipe_update_slc_sx4) ? pipe_tag_match_vec_sx4_q : (pipe_insert_slc_sx4 & pipe_tag_free_sx4_q) ? pipe_tag_alloc_free_way_vec_sx4[`LOC_WAY_NUM-1:0] : pipe_tag_evict_sx4_q ? pipe_tag_evict_way_sx4_q[`LOC_WAY_NUM-1:0] : {`LOC_WAY_NUM{1'b0}};
 
     assign pipe_tag_evict_addr_sx4[ADDR_WIDTH-1:
                                    `CACHE_BLOCK_OFFSET] = {
@@ -1717,6 +1723,7 @@ module hnf_cache_pipeline `HNF_PARAM
         if (rst == 1'b1)begin
             pipe_sf_other_hit_sx5_q                                     <= 1'b0;
             pipe_sf_hit_sx5_q                                           <= 1'b0;
+            pipe_sf_self_hit_sx5_q                                      <= 1'b0;
             pipe_sf_wr_sx5_q                                            <= 1'b0;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= {`RNF_NUM{1'b0}};
             pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= {`RNF_NUM{1'b0}};
@@ -1729,6 +1736,7 @@ module hnf_cache_pipeline `HNF_PARAM
         else begin
             pipe_sf_other_hit_sx5_q                                     <= pipe_sf_other_match_sx4;
             pipe_sf_hit_sx5_q                                           <= pipe_sf_other_match_sx4 | pipe_sf_self_match_sx4;
+            pipe_sf_self_hit_sx5_q                                      <= pipe_sf_self_match_sx4;
             pipe_sf_wr_sx5_q                                            <= pipe_sf_wr_sx4;
             pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0]                          <= pipe_sf_tgt_vec_sx4[`RNF_NUM-1:0];
             pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0]                       <= pipe_stash_tgt_vec_sx4[`RNF_NUM-1:0];
@@ -2050,6 +2058,10 @@ module hnf_cache_pipeline `HNF_PARAM
     end
 
     //outputs cpl result to mshr
+    // Table 15-1 (p.15-468, MUST): a line queued for back-invalidation is snooped at every
+    // other interface in Coherency Connect or Enabled. With none, no Snoop request may be
+    // generated and there is none to wait on, so the request is served as the miss it is.
+    assign biq_hit_snp = biq_hit & (|pipe_biq_hit_tgt_vec_sx5_q);
     assign pipe_biq_hit_cancel_brd_sx5 = pipe_tag_hit_sx5_q & ((pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READONCE)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READNOTSHAREDDIRTY)||(pipe_opcode_sx_q[SX5]==chie_pkg::REQ_READCLEAN));
     always_ff @(posedge clk or posedge rst)begin
         if (rst == 1'b1)begin
@@ -2060,6 +2072,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_hit_sx7_q        <= 1'b0;
             l3_hit_dirty_sx7_q  <= 1'b0;
             l3_sfhit_sx7_q      <= 1'b0;
+            l3_rn_absent_sx7_q  <= 1'b0;
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {HNF_MSHR_RNF_NUM_PARAM{1'b0}};
@@ -2077,6 +2090,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_hit_sx7_q        <= 1'b0;
             l3_hit_dirty_sx7_q  <= 1'b0;
             l3_sfhit_sx7_q      <= 1'b0;
+            l3_rn_absent_sx7_q  <= 1'b0;
             l3_snpdirect_sx7_q  <= 1'b0;
             l3_snpbrd_sx7_q     <= 1'b0;
             l3_snp_bit_sx7_q    <= {`RNF_NUM{1'b0}};
@@ -2090,7 +2104,7 @@ module hnf_cache_pipeline `HNF_PARAM
             l3_pipeval_sx7_q    <= pipe_req_valid_sx_q[SX5];
             l3_opcode_sx7_q     <= pipe_opcode_sx_q[SX5];
             l3_mshr_entry_sx7_q <= pipe_mshr_idx_sx_q[SX5][`MSHR_ENTRIES_WIDTH-1:0];
-            l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit);
+            l3_memrd_sx7_q      <= pipe_mem_rd_sx5_q & ~l3_replay_sx5 & (~biq_hit_snp);
             l3_hit_sx7_q        <= pipe_tag_hit_sx5_q;
             l3_hit_dirty_sx7_q  <= pipe_tag_dirty_sx5_q;
             // Not "a peer holds the line" but "a snoop on this line is outstanding":
@@ -2101,9 +2115,13 @@ module hnf_cache_pipeline `HNF_PARAM
             // so this reads the pass's whole snoopee vector. With either missing, the
             // no-snoop fast path and the post-snoop path both fire and the entry
             // issues two downstream requests under one TxnID (SS2.5.2 p.2-87, MUST).
-            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit | (|pipe_sf_tgt_vec_sx5_q);
+            l3_sfhit_sx7_q      <= pipe_sf_other_hit_sx5_q | biq_hit_snp | (|pipe_sf_tgt_vec_sx5_q);
+            // The Requester is never snooped for its own read, so only the directory
+            // can say it holds no copy -- and a line queued for back-invalidation has
+            // no directory entry to say so.
+            l3_rn_absent_sx7_q  <= ~pipe_sf_self_hit_sx5_q & ~biq_hit;
             l3_snpdirect_sx7_q  <= (pipe_sf_hit_count_sx5 == 1);
-            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit & (~pipe_biq_hit_cancel_brd_sx5));
+            l3_snpbrd_sx7_q     <= (pipe_sf_other_hit_sx5_q & (pipe_sf_hit_count_sx5 > 1) & !pipe_biq_hit_cancel_brd_sx5) | (biq_hit_snp & (~pipe_biq_hit_cancel_brd_sx5));
             l3_snp_bit_sx7_q    <= biq_hit?pipe_biq_hit_tgt_vec_sx5_q[`RNF_NUM-1:0]: pipe_sf_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_stash_bit_sx7_q  <= biq_hit?{`RNF_NUM{1'b0}}                         : pipe_stash_tgt_vec_sx5_q[`RNF_NUM-1:0];
             l3_replay_sx7_q     <= l3_replay_sx5;

@@ -29,6 +29,8 @@ module hni_global_monitor `HNI_PARAM
     //inputs from hni_qos
     input  wire                 rxreq_alloc_en_s0,
     input  chie_pkg::req_flit_s rxreq_alloc_flit_s0,
+    // hni_mshr's own write classes: a request this node writes memory for.
+    input  wire                 rxreq_mem_update_s0,
 
     //outputs to hni_mshr and hni_txrsp(fastpath)
     output wire                 excl_pass_s1,
@@ -57,7 +59,6 @@ module hni_global_monitor `HNI_PARAM
 
     logic                                excl_pass_s1_q;
     logic                                excl_fail_s1_q;
-    logic                                rxreq_mem_update_s0;//req updates the monitored location
     logic                                load_same_lp_s0;//load req come from same LP
     logic                                load_new_lp_s0;//load req come from not same LP
     logic                                store_match_s0;//store req match
@@ -76,27 +77,6 @@ module hni_global_monitor `HNI_PARAM
     // gives no other write the Excl bit.
     assign rxreq_wr_s0           = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL||rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)&&rxreq_alloc_en_s0;
     assign excl_store_s0         = rxreq_excl_s0&&rxreq_wr_s0;
-
-    // Every request that updates the monitored location, which is a wider set than
-    // the one that can BE an Exclusive Store. SS6.2.4 (p.6-285) resets a System
-    // monitor on "an update to the location by another LP" without naming opcodes,
-    // and mirrors hni_mshr's own rxreq_wrf_s0/rxreq_wrp_s0 -- the writes this node
-    // actually drives onto AXI.
-    assign rxreq_mem_update_s0   = rxreq_alloc_en_s0 &&
-                                   ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANINV)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
-                                  ||(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP));
 
     assign store_notmatch_s0    = !store_match_s0&&excl_store_s0;
 

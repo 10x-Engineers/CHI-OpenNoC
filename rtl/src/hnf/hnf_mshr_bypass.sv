@@ -40,7 +40,7 @@ module hnf_mshr_bypass `HNF_PARAM
     input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
-    // opennoc_hnf_pkg::hnf_write_zero() of the request as sent, alongside the
+    // chie_pkg::write_zero() of the request as sent, alongside the
     // opcode this stage services it as (opennoc_hnf_pkg::hnf_serviced_as()).
     input  wire                                li_mshr_rxreq_wrzero_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,
@@ -148,12 +148,14 @@ module hnf_mshr_bypass `HNF_PARAM
     wire                                 do_dwt_wrnosnpfull_s0;
     wire                                 do_dwt_wrnosnpptl_s0;
     wire                                 do_dmt_s0;
+    wire                                 do_sep_s0;
+    logic                                do_sep_s1_q;
     logic                                do_dwt_wrnosnpfull_s1_q;
     logic                                do_dwt_wrnosnpptl_s1_q;
     logic                                do_dmt_s1_q;
     logic                                mshr_alloc_en_s1_q;
 
-    assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READONCE||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
+    assign req_rd_s0             = (li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_receipt_read(li_mshr_rxreq_opcode_s0);
     // Table 4-16 (Sec 4.2.3 p.4-181)'s CopyBack set, which is what hnf_mshr_ctl's
     // op_wb/op_wc/op_we cover -- an opcode missing here never has its CompDBIDResp
     // released, because mshr_dbid_rdy_set_s2 hangs off txrsp_mshr_bypass_lost_s1.
@@ -164,7 +166,7 @@ module hnf_mshr_bypass `HNF_PARAM
     assign req_wrnosnpful_s0     = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL);
     assign req_wrnosnpptl_s0     = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
     assign req_wrnosnp_s0        = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL||li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
-    assign req_ord_s0            = (li_mshr_rxreq_valid_s0)&&(li_mshr_rxreq_order_s0 == 2'b10);
+    assign req_ord_s0            = (li_mshr_rxreq_valid_s0)&&opennoc_hnf_pkg::hnf_ordered(li_mshr_rxreq_order_s0);
     assign req_memattr_cacheable = li_mshr_rxreq_memattr_s0[2];
 
 
@@ -290,7 +292,8 @@ module hnf_mshr_bypass `HNF_PARAM
 
 
     //valid judgment
-    assign rd_receipt_s0        = req_rd_s0&&req_ord_s0&&mshr_alloc_en_s0;
+    // A read taking separate responses owes its RespSepData at acceptance, as an ordered one its ReadReceipt.
+    assign rd_receipt_s0        = ((req_rd_s0&&req_ord_s0)||(req_rdnosnp_s0&&do_sep_s0))&&mshr_alloc_en_s0;
     assign wr_compdbid_s0       = (req_cb_s0||(req_wrnosnp_s0&&(li_mshr_rxreq_excl_s0 == 1||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0 == 1))))&&mshr_alloc_en_s0;
     // Table 4-39 (p.4-219) still gives a Write Zero a DBID -- "DBIDResp + Comp or
     // CompDBIDResp" -- even though its WriteData response is None. It cannot come
@@ -380,7 +383,7 @@ module hnf_mshr_bypass `HNF_PARAM
     end
 
     //dmt judgment
-    assign do_dmt_s0 = (!(((li_mshr_rxreq_order_s0 == 2'b10)&&(li_mshr_rxreq_expcompack_s0 == 0))||(li_mshr_rxreq_excl_s0 == 1)))&&((li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP));
+    assign do_dmt_s0 = opennoc_hnf_pkg::hnf_dmt_permitted(li_mshr_rxreq_order_s0, li_mshr_rxreq_expcompack_s0)&&(li_mshr_rxreq_excl_s0 == 0)&&(li_mshr_rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP);
     always_ff @(posedge clk or posedge rst) begin: pass_do_dmt
         if (rst)
             do_dmt_s1_q <= 'd0;
@@ -388,12 +391,24 @@ module hnf_mshr_bypass `HNF_PARAM
             do_dmt_s1_q <= do_dmt_s0;
     end
 
+    // SS2.3.1 (p.2-46) flow 4: RespSepData from this Home and ReadNoSnpSep to the
+    // Subordinate in place of DMT. Unordered reads only: SS5.1.9 (p.5-255) would hold
+    // the next ordered request to the Subordinate until an ordered one's CompAck.
+    assign do_sep_s0 = HNF_SEP_RESP_EN_PARAM && do_dmt_s0 && (li_mshr_rxreq_order_s0 == chie_pkg::ORDER_NONE) &&
+                       (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_INVALID);
+    always_ff @(posedge clk or posedge rst) begin: pass_do_sep
+        if (rst)
+            do_sep_s1_q <= 'd0;
+        else
+            do_sep_s1_q <= do_sep_s0;
+    end
+
     //txrsp_bypass
     assign mshr_txrsp_bypass_valid_s1    = (rd_receipt_s1_q||wr_compdbid_s1_q||wr_dbid_s1_q)&&!rxreq_cam_hazard_s1_q;
     assign mshr_txrsp_bypass_qos_s1      = li_mshr_rxreq_qos_s1_q;
     assign mshr_txrsp_bypass_tgtid_s1    = li_mshr_rxreq_srcid_s1_q;
     assign mshr_txrsp_bypass_txnid_s1    = li_mshr_rxreq_txnid_s1_q;
-    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?chie_pkg::RSP_READRECEIPT:(wr_compdbid_s1_q?chie_pkg::RSP_COMPDBIDRESP:(wr_dbid_s1_q?chie_pkg::RSP_DBIDRESP:chie_pkg::RSP_RSPLCRDRETURN));
+    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?(do_sep_s1_q?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(wr_compdbid_s1_q?chie_pkg::RSP_COMPDBIDRESP:(wr_dbid_s1_q?chie_pkg::RSP_DBIDRESP:chie_pkg::RSP_RSPLCRDRETURN));
     assign mshr_txrsp_bypass_resperr_s1  = (wr_compdbid_s1_q&&li_mshr_rxreq_excl_s1_q&&excl_pass_s1)?chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK;
     assign mshr_txrsp_bypass_dbid_s1     = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     assign mshr_txrsp_bypass_tracetag_s1 = li_mshr_rxreq_tracetag_s1_q;
@@ -419,12 +434,14 @@ module hnf_mshr_bypass `HNF_PARAM
                                             ? opennoc_hnf_pkg::hnf_dn_rd_tagop(li_mshr_rxreq_tagop_s1_q, do_dmt_s1_q,
                                                                                li_mshr_rxreq_size_s1_q, li_mshr_rxreq_memattr_s1_q)
                                             : chie_pkg::TAGOP_INVALID;
-    assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?chie_pkg::REQ_READNOSNP:(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
+    assign mshr_txreq_bypass_opcode_s1      = tx_rdnosnp_s1_q?(do_sep_s1_q?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):(tx_wrnosnpful_s1?chie_pkg::REQ_WRITENOSNPFULL:(tx_wrnosnpptl_s1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_REQLCRDRETURN));
     assign mshr_txreq_bypass_size_s1        = li_mshr_rxreq_size_s1_q;
     assign mshr_txreq_bypass_addr_s1        = li_mshr_rxreq_addr_s1_q;
     assign mshr_txreq_bypass_ns_s1          = li_mshr_rxreq_ns_s1_q;
     assign mshr_txreq_bypass_allowretry_s1  = 1'b1;
-    assign mshr_txreq_bypass_order_s1       = (tx_rdnosnp_s1_q&&(li_mshr_rxreq_order_s1_q != chie_pkg::ORDER_REQ_WR_OBS)&&(li_mshr_rxreq_expcompack_s1_q == 0)&&(li_mshr_rxreq_excl_s1_q == 0)) ? chie_pkg::ORDER_RSVD : chie_pkg::ORDER_NONE;
+    // Table 2-6 (SS2.3.1 p.2-48): a DMT read without CompAck obtains Request Accepted from
+    // the SN; a ReadNoSnpSep always does, as the CompAck may precede the SN's acceptance.
+    assign mshr_txreq_bypass_order_s1       = (tx_rdnosnp_s1_q&&do_dmt_s1_q&&(do_sep_s1_q||(li_mshr_rxreq_expcompack_s1_q == 0))) ? chie_pkg::ORDER_RSVD : chie_pkg::ORDER_NONE;
     assign mshr_txreq_bypass_pcrdtype_s1    = li_mshr_rxreq_pcrdtype_s1_q;
     assign mshr_txreq_bypass_memattr_s1     = li_mshr_rxreq_memattr_s1_q;
     assign mshr_txreq_bypass_dodwt_s1       = tx_rdnosnp_s1_q?1'd0:(tx_wrnosnpful_s1?do_dwt_wrnosnpfull_s1_q:(tx_wrnosnpptl_s1?do_dwt_wrnosnpptl_s1_q:1'd0));

@@ -33,6 +33,25 @@
 //                               WriteEvictOrEvict, Evict, CleanShared,
 //                               CleanInvalid, MakeInvalid, and the Table 4-17
 //                               (SS4.2.4 p.4-182) combinations of them
+//   Device / Non-cacheable   -> ReadNoSnp, WriteNoSnp{Full,Ptl,Zero}, the cache
+//                               bypassed (Table 2-11 SS2.9.4 p.2-129)
+//   atomic, near             -> the store's own acquire, then the operation on
+//                               the line in the cache (SS16.3.1 p.16-478)
+//   stash                    -> WriteUnique{Full,Ptl}Stash, StashOnce{Shared,Unique}
+//                               to STASHNID (SS7.2 p.7-296, SS7.3 p.7-297)
+//   Data Pull                -> the snoop port's implied read, completed as an
+//                               allocating read the core did not make (SS7.1.1 p.7-295)
+//   atomic, far              -> Atomic{Store,Load,Swap,Compare}, the line first
+//                               written back or dropped, or kept with SnoopMe
+//                               (SS4.2.5 p.4-187)
+//
+// With BROADCASTMTE, every allocating read asks for the line's Allocation Tags
+// (TagOp Transfer), and a CopyBack returns them Dirty (Update) or Clean (Transfer)
+// per Table 12-2 (SS12.12 p.12-388). A core access that needs tags the line does
+// not hold has the line written back or dropped first and read again with them;
+// a whole-line store that needs them reads by ReadUnique with Fetch (SS12.4.1
+// p.12-376). A cached store's Tag Match is performed here, a WriteUnique's or far
+// Atomic's by the Completer, whose TagMatch the B response waits for.
 //
 // A line is UCE when a CleanUnique ends from Invalid (Table 4-38 p.4-218): owned,
 // with no valid bytes. A partial store into it makes it UDP (Table 4-32 p.4-209),
@@ -74,6 +93,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_ARADDR_WIDTH-1:0]        ARADDR,
     input  wire [`AXI4_ARLEN_WIDTH-1:0]         ARLEN,
     input  wire [`AXI4_ARSIZE_WIDTH-1:0]        ARSIZE,
+    input  wire [`AXI4_ARCACHE_WIDTH-1:0]       ARCACHE,
+    input  wire [`AXI4_ARQOS_WIDTH-1:0]         ARQOS,
     input  wire [`RNF_AR_COH_W-1:0]             ARCOH,
     input  wire [`RNF_AR_ORD_W-1:0]             ARORD,
     input  wire [`AXI4_ARLOCK_WIDTH-1:0]        ARLOCK,
@@ -93,7 +114,11 @@ module rnf_ctl `RNF_PARAM
     input  wire [`AXI4_AWADDR_WIDTH-1:0]        AWADDR,
     input  wire [`AXI4_AWLEN_WIDTH-1:0]         AWLEN,
     input  wire [`AXI4_AWSIZE_WIDTH-1:0]        AWSIZE,
+    input  wire [`AXI4_AWCACHE_WIDTH-1:0]       AWCACHE,
+    input  wire [`AXI4_AWQOS_WIDTH-1:0]         AWQOS,
     input  wire [`RNF_AW_COH_W-1:0]             AWCOH,
+    input  wire [`RNF_ATOP_W-1:0]               AWATOP,
+    input  wire [`RNF_ATM_W-1:0]                AWATM,
     input  wire [`AXI4_AWLOCK_WIDTH-1:0]        AWLOCK,
     input  wire [`AXI4_AWUSER_WIDTH-1:0]        AWUSER,
     input  wire                                 AWVALID,
@@ -108,6 +133,19 @@ module rnf_ctl `RNF_PARAM
     output wire [`AXI4_BRESP_WIDTH-1:0]         BRESP,
     output wire                                 BVALID,
     input  wire                                 BREADY,
+    // The original value an AtomicLoad, Swap or Compare returns, with BVALID.
+    output wire [`AXI4_RDATA_WIDTH-1:0]         BATDATA,
+    // A Tag Match verdict, with BVALID (axi4_defines.svh).
+    output wire [`AXI4_BUSER_WIDTH-1:0]         BUSER,
+    // SS16.2.4 (p.16-476, MUST): deasserted, the interface generates no Atomic.
+    input  wire                                 BROADCASTATOMIC,
+    // SS16.2.6 (p.16-476, MUST): deasserted, no request carries MTE.
+    input  wire                                 BROADCASTMTE,
+
+    // The Stash target a stash request names (SS13.10.8 p.13-419), sampled with
+    // AWVALID or CMVALID.
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0]      STASHNID,
+    input  wire                                 STASHNIDVALID,
 
     // Cache maintenance
     input  wire                                 CMVALID,
@@ -194,25 +232,42 @@ module rnf_ctl `RNF_PARAM
     input  wire                                 snp_line_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_i,
 
+    // A Data Pull the snoop port has put in its response, taken only while idle.
+    output wire                                 pull_ready_o,
+    output wire [11:0]                          pull_txnid_o,
+    input  wire                                 pull_v_i,
+    input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr_i,
+    input  wire [`RNF_WAY_W-1:0]                pull_way_i,
+    input  chie_pkg::req_opcode_e               pull_op_i,
+
     output wire                                 txn_active_o
     );
 
-    localparam logic [3:0] S_IDLE    = 4'd0;
-    localparam logic [3:0] S_WDATA   = 4'd1;
-    localparam logic [3:0] S_CB_REQ  = 4'd2;
-    localparam logic [3:0] S_CB_DBID = 4'd3;
-    localparam logic [3:0] S_CB_DAT  = 4'd4;
-    localparam logic [3:0] S_REQ     = 4'd5;
-    localparam logic [3:0] S_DATA    = 4'd6;
-    localparam logic [3:0] S_ACK     = 4'd7;
-    localparam logic [3:0] S_RESP    = 4'd8;
-    localparam logic [3:0] S_BRESP   = 4'd9;
-    localparam logic [3:0] S_PCRD    = 4'd10;
-    localparam logic [3:0] S_PCRD_RET= 4'd11;
-    localparam logic [3:0] S_WU_DAT  = 4'd12;
-    localparam logic [3:0] S_CMRSP   = 4'd13;
-    localparam logic [3:0] S_CMO     = 4'd14;
-    localparam logic [3:0] S_RCPT    = 4'd15;
+    localparam logic [4:0] S_IDLE    = 5'd0;
+    localparam logic [4:0] S_WDATA   = 5'd1;
+    localparam logic [4:0] S_CB_REQ  = 5'd2;
+    localparam logic [4:0] S_CB_DBID = 5'd3;
+    localparam logic [4:0] S_CB_DAT  = 5'd4;
+    localparam logic [4:0] S_REQ     = 5'd5;
+    localparam logic [4:0] S_DATA    = 5'd6;
+    localparam logic [4:0] S_ACK     = 5'd7;
+    localparam logic [4:0] S_RESP    = 5'd8;
+    localparam logic [4:0] S_BRESP   = 5'd9;
+    localparam logic [4:0] S_PCRD    = 5'd10;
+    localparam logic [4:0] S_PCRD_RET= 5'd11;
+    localparam logic [4:0] S_WU_DAT  = 5'd12;
+    localparam logic [4:0] S_CMRSP   = 5'd13;
+    localparam logic [4:0] S_CMO     = 5'd14;
+    localparam logic [4:0] S_RCPT    = 5'd15;
+
+    // SS2.10.4 (p.2-136): a packet carries Data_Width/8 bytes, and Table 2-15 gives
+    // the packet holding line bytes [p*PKT_B +: PKT_B] DataID p*DID_STEP.
+    localparam int DW       = CHIE_DATA_WIDTH_PARAM;
+    localparam int PKT_B    = DW / 8;
+    localparam int NPKT     = `RNF_LINE_BYTES / PKT_B;
+    localparam int DID_STEP = PKT_B / 16;
+    localparam int PKT_W    = (NPKT == 1) ? 1 : $clog2(NPKT);
+    localparam int PSN_PKT  = DW / 64;
 
     // What the request in S_REQ is waiting for.
     localparam logic [2:0] K_READ    = 3'd0;   // a Data response, the line filled from it
@@ -228,13 +283,14 @@ module rnf_ctl `RNF_PARAM
     localparam logic [1:0] CH_B      = 2'd2;
     localparam logic [1:0] CH_CM     = 2'd3;
 
-    logic [3:0]                                 st_q;
+    logic [4:0]                                 st_q;
     logic [`AXI4_ARID_WIDTH-1:0]                id_q;
     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]       addr_q;
     logic [11:0]                                txnid_q;
     logic [`RNF_LINE_BITS-1:0]                  line_q;
     logic [`RNF_CS_WIDTH-1:0]                   fill_state_q;
-    logic                                       got_lo_q, got_hi_q, got_rsp_q;
+    logic [NPKT-1:0]                            got_q;      // Data packets received, by packet
+    logic                                       got_rsp_q;
     logic                                       got_rcpt_q;     // an ordered read's ReadReceipt
     logic [CHIE_NID_WIDTH_PARAM-1:0]            ack_tgt_q;
     logic [11:0]                                ack_txnid_q;
@@ -265,6 +321,50 @@ module rnf_ctl `RNF_PARAM
     logic                                       exok_q;
     logic                                       core_q;
     logic [`AXI4_MPAM_WIDTH-1:0]                mpam_q;
+    // SS10.2 (p.10-357): the QoS the core assigned the access, carried by every
+    // message of the transaction that serves it.
+    logic [3:0]                                 qos_q;
+    // The access is Device or Normal Non-cacheable, served around the cache by
+    // a Non-snoopable request: its Device and EWA memory attributes, and the
+    // bytes of the line it names -- Size and the offset aligned to it.
+    logic                                       nc_q;
+    logic                                       dev_q;
+    logic                                       ewa_q;
+    chie_pkg::size_e                            sz_q;
+    logic [`RNF_LINE_OFFSET_W-1:0]              off_q;
+    logic [`RNF_LINE_OFFSET_W-1:0]              aw_lo_q, aw_hi_q;
+    // The write is an atomic operation: its AWATOP and AWATM, whether it executes
+    // in the cache, and whether the Atomic sent for it returns data.
+    logic [`RNF_ATOP_W-1:0]                     atop_q;
+    logic [`RNF_ATM_W-1:0]                      atm_mode_q;
+    logic [5:0]                                 atm_nb_q;   // outbound bytes, 1..32
+    logic [`RNF_LINE_OFFSET_W-1:0]              aw_off_q;
+    logic                                       atm_ret_q;
+    logic                                       snoopme_q;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]            stash_nid_q;
+    logic                                       stash_nid_v_q;
+    // MTE: the TagOp the core asked of the access and its TagGroupID, the Tag and
+    // TU written for each 16-byte chunk, whether the store needs the line's tags,
+    // and the TagOp of the request in flight.
+    logic [1:0]                                 ctag_q;
+    logic [7:0]                                 tggid_q;
+    logic [15:0]                                wtag_q;
+    logic [3:0]                                 wtu_q;
+    logic                                       need_tags_q;
+    logic [1:0]                                 tagop_q;
+    // The tags of line_q and SS12.3's (p.12-374) state of them, TD counting only
+    // while the line is Dirty; the TagOp its Data response carried.
+    logic [15:0]                                ltag_q;
+    logic                                       ltv_q;
+    logic                                       ltd_q;
+    logic [1:0]                                 rtagop_q;
+    // The CopyBack's TagOp as its request went out, which a resend repeats
+    // (SS13.10.37 p.13-435) and its WriteData follows (SS12.5.1 p.12-378).
+    logic [1:0]                                 cb_tagop_q;
+    // SS12.11.1 (p.12-386): the TagMatch a Match request is owed, and its verdict.
+    logic                                       tm_owed_q;
+    logic                                       tm_got_q;
+    logic                                       tm_pass_q;
 
     logic                                       is_wr_q;
     logic [`RNF_LINE_BITS-1:0]                  wbuf_q;
@@ -315,14 +415,18 @@ module rnf_ctl `RNF_PARAM
     logic [CHIE_NID_WIDTH_PARAM-1:0]            wr_tgt_q;
     logic [11:0]                                wr_txnid_q;
     logic                                       wr_tt_q;
-    logic                                       wr_hi_q;
+    logic [PKT_W-1:0]                           wr_pkt_q;
     logic                                       wr_dbid_q;
     logic                                       wr_sent_q;
     logic                                       cb_done_q;
     logic                                       drop_q;
     // The CompCMO of the request in flight, and where S_CMO goes once it lands.
     logic                                       cmo_got_q;
-    logic [3:0]                                 cmo_ret_st_q;
+    logic [4:0]                                 cmo_ret_st_q;
+    // The Persist of the request in flight, and whether S_CMO waits on the
+    // CopyBack's tail or the request's.
+    logic                                       persist_got_q;
+    logic                                       cmo_cb_q;
 
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
     localparam int MON = RNF_EXCL_LP_NUM_PARAM;
@@ -384,6 +488,7 @@ module rnf_ctl `RNF_PARAM
             `RNF_AR_ONCE:           return chie_pkg::REQ_READONCE;
             `RNF_AR_ONCE_CLEAN_INV: return chie_pkg::REQ_READONCECLEANINVALID;
             `RNF_AR_ONCE_MAKE_INV:  return chie_pkg::REQ_READONCEMAKEINVALID;
+            `RNF_AR_NOT_SHARED_DIRTY: return chie_pkg::REQ_READNOTSHAREDDIRTY;
             default:                return chie_pkg::REQ_READSHARED;
         endcase
     endfunction
@@ -396,7 +501,7 @@ module rnf_ctl `RNF_PARAM
     // SS6.3 (p.6-286): the Snoopable Exclusive Loads this node issues.
     function automatic bit excl_load_op(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_READSHARED) || (op == chie_pkg::REQ_READCLEAN) ||
-               (op == chie_pkg::REQ_READPREFERUNIQUE);
+               (op == chie_pkg::REQ_READNOTSHAREDDIRTY) || (op == chie_pkg::REQ_READPREFERUNIQUE);
     endfunction
 
     // A line whose bytes are not all valid cannot be served, nor kept Clean.
@@ -414,18 +519,9 @@ module rnf_ctl `RNF_PARAM
                                              : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
     endfunction
 
-    // SS2.3.2 (p.2-57, p.2-66): the Combined Writes without Persist, whose CMO leg
-    // completes on a CompCMO of its own.
-    function automatic bit is_cmb_write(chie_pkg::req_opcode_e op);
-        return (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)  ||
-               (op == chie_pkg::REQ_WRITENOSNPFULLCLEANINV) ||
-               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)   ||
-               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)  ||
-               (op == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH) ||
-               (op == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)  ||
-               (op == chie_pkg::REQ_WRITEBACKFULLCLEANSH)   ||
-               (op == chie_pkg::REQ_WRITEBACKFULLCLEANINV)  ||
-               (op == chie_pkg::REQ_WRITECLEANFULLCLEANSH);
+    function automatic bit is_stash_req(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_WRITEUNIQUEFULLSTASH) || (op == chie_pkg::REQ_WRITEUNIQUEPTLSTASH) ||
+               (op == chie_pkg::REQ_STASHONCESHARED)      || (op == chie_pkg::REQ_STASHONCEUNIQUE);
     endfunction
 
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
@@ -448,6 +544,127 @@ module rnf_ctl `RNF_PARAM
                b[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W];
     endfunction
 
+    // SS2.10.4 (p.2-136): the packets of a Size-byte transfer at `off` are those
+    // holding the Size-aligned bytes around it; a line takes all of them.
+    function automatic logic [NPKT-1:0] pkt_mask(logic [`RNF_LINE_OFFSET_W-1:0] off,
+                                                 chie_pkg::size_e              sz);
+        int unsigned nbytes = 32'd1 << sz;
+        int unsigned lo     = int'(off) & ~(nbytes - 1);
+        pkt_mask = '0;
+        for (int p = 0; p < NPKT; p++)
+            if (((p + 1) * PKT_B > lo) && (p * PKT_B < lo + nbytes)) pkt_mask[p] = 1'b1;
+    endfunction
+
+    function automatic logic [PKT_W-1:0] pkt_of_dataid(logic [1:0] dataid);
+        return PKT_W'(int'(dataid) / DID_STEP);
+    endfunction
+
+    function automatic logic [PKT_W-1:0] first_pkt(logic [NPKT-1:0] m);
+        first_pkt = '0;
+        for (int p = NPKT - 1; p >= 0; p--) if (m[p]) first_pkt = PKT_W'(p);
+    endfunction
+
+    function automatic logic [PKT_W-1:0] last_pkt(logic [NPKT-1:0] m);
+        last_pkt = '0;
+        for (int p = 0; p < NPKT; p++) if (m[p]) last_pkt = PKT_W'(p);
+    endfunction
+
+    // Table 2-14 (SS2.10.1 p.2-134): the smallest Size whose aligned window holds
+    // bytes lo..hi of the line.
+    function automatic chie_pkg::size_e size_spanning(logic [`RNF_LINE_OFFSET_W-1:0] lo,
+                                                      logic [`RNF_LINE_OFFSET_W-1:0] hi);
+        size_spanning = chie_pkg::SIZE_64B;
+        for (int k = 6; k >= 0; k--)
+            if ((lo >> k) == (hi >> k)) size_spanning = chie_pkg::size_e'(k);
+    endfunction
+
+    // AMBA AXI4 (IHI 0022) Table A4-5: AxCACHE[1] low is Device, and high with
+    // AxCACHE[3:2] low Normal Non-cacheable. Table 2-11 (SS2.9.4 p.2-129) gives
+    // neither a Snoopable row, so neither is cached.
+    function automatic bit axcache_nc(logic [3:0] cache);
+        return !cache[1] || (cache[3:2] == 2'b00);
+    endfunction
+
+    // AMBA AXI5's AWATOP: [5:4] names the class and [2:0] the operation, which
+    // Table 13-13 (SS13.10.17 p.13-423) makes Opcode[2:0] of AtomicStore (Opcode[5:3]
+    // 101) and AtomicLoad (110).
+    function automatic chie_pkg::req_opcode_e atop_opcode(logic [`RNF_ATOP_W-1:0] atop);
+        case (atop[5:4])
+            2'b01:   return chie_pkg::req_opcode_e'({4'b0101, atop[2:0]});
+            2'b10:   return chie_pkg::req_opcode_e'({4'b0110, atop[2:0]});
+            default: return (atop == `RNF_ATOP_COMPARE) ? chie_pkg::REQ_ATOMICCOMPARE
+                                                        : chie_pkg::REQ_ATOMICSWAP;
+        endcase
+    endfunction
+
+    // Table 2-16 (SS2.10.5 p.2-137): Store, Load and Swap carry 1, 2, 4 or 8 bytes,
+    // Compare 2 to 32, each at an address aligned to the value it operates on.
+    function automatic bit atop_legal(logic [`RNF_ATOP_W-1:0] atop, logic [5:0] nb,
+                                      logic [`RNF_LINE_OFFSET_W-1:0] off);
+        automatic int unsigned elem = (atop == `RNF_ATOP_COMPARE) ? int'(nb) / 2 : int'(nb);
+        if ((atop[5:4] == 2'b11) && (atop[3:1] != 3'b000)) return 1'b0;
+        if (atop == `RNF_ATOP_COMPARE) begin
+            if (!(nb inside {6'd2, 6'd4, 6'd8, 6'd16, 6'd32})) return 1'b0;
+        end
+        else if (!(nb inside {6'd1, 6'd2, 6'd4, 6'd8})) return 1'b0;
+        return (int'(off) % elem) == 0;
+    endfunction
+
+    // The operation performed on the line in the cache: SS4.2.5's (p.4-185)
+    // TxnData against InitialData at the addressed bytes, or for AtomicCompare the
+    // Swap half written over the addressed bytes when they equal the Compare half
+    // (SS2.10.5 p.2-137 places the Swap half at the address with bit[log2(n)] inverted).
+    function automatic logic [`RNF_LINE_BITS-1:0]
+        atomic_apply(logic [`RNF_LINE_BITS-1:0] line, logic [`RNF_LINE_BITS-1:0] wdat,
+                     chie_pkg::req_opcode_e op, logic [`RNF_LINE_OFFSET_W-1:0] off,
+                     logic [5:0] nb, logic big_endian);
+        automatic int unsigned elem = (op == chie_pkg::REQ_ATOMICCOMPARE) ? int'(nb) / 2 : int'(nb);
+        automatic logic [`RNF_LINE_OFFSET_W-1:0] soff = chie_pkg::atomic_swap_off(off, elem);
+        logic [127:0] init128, arg128, swp128;
+        logic [63:0]  res;
+        atomic_apply = line;
+        init128 = '0;
+        arg128  = '0;
+        swp128  = '0;
+        for (int unsigned b = 0; b < 16; b++)
+            if (b < elem) begin
+                init128[b*8 +: 8] = line[(int'(off) + b)*8 +: 8];
+                arg128[b*8 +: 8]  = wdat[(int'(off) + b)*8 +: 8];
+                swp128[b*8 +: 8]  = wdat[(int'(soff) + b)*8 +: 8];
+            end
+        if (op == chie_pkg::REQ_ATOMICCOMPARE) begin
+            if (chie_pkg::atomic_compare_eq(init128, arg128, elem))
+                for (int unsigned b = 0; b < 16; b++)
+                    if (b < elem) atomic_apply[(int'(off) + b)*8 +: 8] = swp128[b*8 +: 8];
+        end
+        else begin
+            res = chie_pkg::atomic_alu(op, elem, big_endian, init128[63:0], arg128[63:0]);
+            for (int unsigned b = 0; b < 8; b++)
+                if (b < elem) atomic_apply[(int'(off) + b)*8 +: 8] = res[b*8 +: 8];
+        end
+    endfunction
+
+    function automatic chie_pkg::size_e size_of_bytes(logic [5:0] nb);
+        size_of_bytes = chie_pkg::SIZE_1B;
+        for (int k = 0; k < 6; k++) if (nb == 6'(1 << k)) size_of_bytes = chie_pkg::size_e'(k);
+    endfunction
+
+    // Table 12-2 (SS12.12 p.12-388): every read this node issues may carry Transfer
+    // but ReadOnceCleanInvalid and ReadOnceMakeInvalid. An allocating one always
+    // asks, so the line is cached with its tags; a ReadOnce when the core wants them.
+    function automatic logic [1:0] read_tagop(chie_pkg::req_opcode_e op, bit want);
+        if (!is_read_once(op)) return chie_pkg::TAGOP_TRANSFER;
+        return (want && (op == chie_pkg::REQ_READONCE)) ? chie_pkg::TAGOP_TRANSFER
+                                                        : chie_pkg::TAGOP_INVALID;
+    endfunction
+
+    // SS12.5.2 (p.12-379): the tags a TagOp Update leaves, TU selecting each one.
+    function automatic logic [15:0] merge_tags(logic [15:0] base, logic [15:0] wtag,
+                                               logic [3:0] tu);
+        for (int k = 0; k < 4; k++)
+            merge_tags[k*4 +: 4] = tu[k] ? wtag[k*4 +: 4] : base[k*4 +: 4];
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ar_line =
         {ARADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] aw_line =
@@ -460,9 +677,72 @@ module rnf_ctl `RNF_PARAM
     // other read may be ordered at all.
     wire chie_pkg::order_e ar_ord = (is_read_once(ar_op) && ARORD[0]) ? chie_pkg::ORDER_REQ_WR_OBS
                                                                       : chie_pkg::ORDER_NONE;
+    // The write in hand is an atomic, and whether it executes in the cache: a far
+    // one does unless BROADCASTATOMIC forbids the Atomic (SS16.3.1 p.16-478).
+    wire atm_q    = is_wr_q && (atop_q != `RNF_ATOP_NONE);
+    wire atm_near = !nc_q && ((atm_mode_q == `RNF_ATM_NEAR) || !BROADCASTATOMIC);
+    wire ar_nc = axcache_nc(ARCACHE);
+    wire aw_nc = axcache_nc(AWCACHE);
+    // SS12.1 (p.12-372): tags only on a Normal WriteBack access, and SS16.2.6
+    // (p.16-476, MUST) only with BROADCASTMTE.
+    wire       mte_on  = BROADCASTMTE;
+    wire [1:0] ar_ctag = (mte_on && !ar_nc) ? ARUSER[`AXI4_USER_TAGOP_RANGE] : chie_pkg::TAGOP_INVALID;
+    wire [1:0] aw_ctag = (mte_on && !aw_nc && AWUSER[`AXI4_USER_TAGOP_LSB + 1])
+                         ? AWUSER[`AXI4_USER_TAGOP_RANGE] : chie_pkg::TAGOP_INVALID;
+    wire       ar_want_tags = (ar_ctag != chie_pkg::TAGOP_INVALID);
+    // SS4.2.1 (p.4-163, p.4-164): the invalidation of ReadOnceCleanInvalid and
+    // ReadOnceMakeInvalid is a hint, so a core wanting tags is served a ReadOnce.
+    wire chie_pkg::req_opcode_e ar_miss_op = (ar_want_tags && is_read_once(ar_op)) ? chie_pkg::REQ_READONCE
+                                                                                 : ar_op;
+    // The bytes of the line an AXI write burst addresses: one beat of 2^AWSIZE
+    // bytes, or AWLEN+1 beats of the 16-byte lanes this port steps through.
+    logic [`RNF_LINE_OFFSET_W-1:0] aw_lo, aw_hi;
+    always_comb begin
+        automatic int unsigned nb = 32'd1 << ((AWSIZE > `AXI4_AWSIZE_WIDTH'(4)) ? 4 : int'(AWSIZE));
+        if (AWLEN == '0) begin
+            aw_lo = `RNF_LINE_OFFSET_W'(int'(AWADDR[5:0]) & ~(nb - 1));
+            aw_hi = `RNF_LINE_OFFSET_W'(int'(aw_lo) + nb - 1);
+        end
+        else begin
+            aw_lo = {AWADDR[5:4], 4'h0};
+            aw_hi = `RNF_LINE_OFFSET_W'((int'(AWADDR[5:4]) + int'(AWLEN) >= 3) ? 63
+                                        : (int'(AWADDR[5:4]) + int'(AWLEN)) * 16 + 15);
+        end
+    end
+    // A core read returns one AXI beat, so a Non-snoopable one asks for that beat
+    // alone: SS2.9.3 (p.2-127, MUST) has a Device read "not read more data than
+    // requested".
+    wire chie_pkg::size_e ar_nc_sz =
+        (ARSIZE > `AXI4_ARSIZE_WIDTH'(4)) ? chie_pkg::SIZE_16B : chie_pkg::size_e'(ARSIZE);
     // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
     wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
     wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
+    // The CleanShared family on the maintenance port: which CMO, which Table 4-17
+    // (SS4.2.4 p.4-182) Combined Write folds a Dirty line into it, and whether the
+    // line is kept.
+    function automatic chie_pkg::req_opcode_e cm_cmo_op(logic [`RNF_CM_OP_W-1:0] op);
+        case (op)
+            `RNF_CM_CLEAN_SHARED_PERSIST:           return chie_pkg::REQ_CLEANSHAREDPERSIST;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP,
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: return chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+            default:                                return chie_pkg::REQ_CLEANSHARED;
+        endcase
+    endfunction
+
+    function automatic chie_pkg::req_opcode_e cm_cb_op(logic [`RNF_CM_OP_W-1:0] op);
+        case (op)
+            `RNF_CM_CLEAN_SHARED:                   return chie_pkg::REQ_WRITECLEANFULLCLEANSH;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP:       return chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP;
+            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: return chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP;
+            default:                                return chie_pkg::REQ_WRITEBACKFULLCLEANSH;
+        endcase
+    endfunction
+
+    function automatic bit cm_keeps(logic [`RNF_CM_OP_W-1:0] op);
+        return (op == `RNF_CM_CLEAN_SHARED) || (op == `RNF_CM_CLEAN_SHARED_PERSIST) ||
+               (op == `RNF_CM_CLEAN_SHARED_PERSIST_SEP);
+    endfunction
+
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] cm_line =
         {CMADDR[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
 
@@ -477,7 +757,8 @@ module rnf_ctl `RNF_PARAM
     // A surplus P-Credit goes back before new work is taken: offering READY in
     // the same cycle the FSM leaves to return it would complete an AXI handshake
     // for a request nothing then serves.
-    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i;
+    wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i &&
+                     !pull_v_i;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
     assign CMREADY = accept_ok && !ARVALID && !AWVALID;
@@ -537,6 +818,21 @@ module rnf_ctl `RNF_PARAM
         endcase
     end
     wire wr_zero = wr_full && (wbuf_now == '0);
+    // SS13.10.38/SS13.10.39 (p.13-435): WUSER carries the beat's one tag and TU bit.
+    logic [15:0] wtag_now;
+    logic [3:0]  wtu_now;
+    always_comb begin
+        wtag_now = wtag_q;
+        wtu_now  = wtu_q;
+        wtag_now[wchunk_q*4 +: 4] = WUSER[`AXI4_USER_TAG_RANGE];
+        wtu_now[wchunk_q]         = WUSER[`AXI4_USER_TU_LSB];
+    end
+    // A Match reads the line's tags, and so does an Update that leaves some of
+    // them as they were.
+    wire need_tags_now = (ctag_q == chie_pkg::TAGOP_MATCH) ||
+                         ((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
+    wire lu_tv = cache_lu_meta_i[`RNF_META_TV];
+    wire wu_full_tags = wr_full && !((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
 
     // The displaced way as the snoop port leaves it: cache_vic_state_i is read
     // combinationally, so a snoop writing that way on the very edge the victim is
@@ -550,6 +846,19 @@ module rnf_ctl `RNF_PARAM
     // transaction commits to filling, so cache_vic_* still describe the way the
     // fill will take.
     wire need_cb = is_dirty(vic_sel_state);
+
+    // Table 12-2 (SS12.12 p.12-388) and SS12.5.2 (p.12-378): a Full CopyBack returns
+    // Dirty tags by Update, Clean ones by Transfer; a WriteBackPtl carries none.
+    // Only a WriteBack or WriteClean line can hold Dirty tags, so the Evicts Transfer.
+    wire       cb_td = vic_meta_q[`RNF_META_TV] && vic_meta_q[`RNF_META_TD] && is_dirty(vic_state_q);
+    wire [1:0] cb_req_tagop = (!mte_on || !vic_meta_q[`RNF_META_TV] ||
+                               (cb_op_q == chie_pkg::REQ_WRITEBACKPTL)) ? chie_pkg::TAGOP_INVALID :
+                              cb_td                                      ? chie_pkg::TAGOP_UPDATE
+                                                                         : chie_pkg::TAGOP_TRANSFER;
+    wire [1:0] cb_tagop = retry_q ? cb_tagop_q : cb_req_tagop;
+    // Fetch shares Match's encoding (Table 13-32 SS13.10.37 p.13-435); only a write
+    // or Atomic carries a Match.
+    wire       tagop_match  = (kind_q == K_WU) && (tagop_q == chie_pkg::TAGOP_MATCH);
 
     // Table 2-8 (SS2.8.3 p.2-117) sets ExpCompAck per request: required for the
     // allocating reads and the ownership requests, and WriteEvictOrEvict; not
@@ -568,9 +877,14 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.memattr.early_wr_ack = 1'b1;
         prot_txreqflit_o.snpattr.snpattr      = 1'b1;
         prot_txreqflit_o.txnid        = txnid_q;
+        prot_txreqflit_o.qos          = qos_q;
         // SS2.7 (p.2-113): the LP the access was made by; the node's own requests (a
         // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
-        prot_txreqflit_o.lpid         = core_q ? lpid_q : 8'd0;
+        // SS13.10.16 (p.13-420): a Persist-owing request's LPID bits are its
+        // PGroupID, which this single-outstanding node keeps at 0.
+        prot_txreqflit_o.lpid         = (core_q && !chie_pkg::persist_response(acq_op_q)) ? lpid_q : 8'd0;
+        // SS13.10.40 (p.13-435): a Match request's LPID bits are its TagGroupID.
+        if (tagop_match) prot_txreqflit_o.lpid = tggid_q;
 `ifdef CHIE_MPAM_PRESENT
         // SS11.3 (p.11-365, MUST): the core's label from AxUSER, and Table 11-5's
         // (p.11-366) defaults on a request the core did not make.
@@ -579,7 +893,7 @@ module rnf_ctl `RNF_PARAM
 `endif
         if (st_q == S_PCRD_RET) begin
             // SS2.6.6 (p.2-112): addressed to the credit's source, TxnID zero, and
-            // the PCrdType it was granted under. Table A-2 (p.A-484) leaves every
+            // the PCrdType it was granted under. Table A-2 (p.A-483) leaves every
             // other field inapplicable, so zero.
             prot_txreqflit_o          = '0;
             prot_txreqflit_o.srcid    = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
@@ -602,22 +916,49 @@ module rnf_ctl `RNF_PARAM
             // (p.4-177) encodes the line's initial state in LikelyShared.
             prot_txreqflit_o.expcompack   = (cb_op_q == chie_pkg::REQ_WRITEEVICTOREVICT);
             prot_txreqflit_o.likelyshared = (cb_op_q == chie_pkg::REQ_WRITEEVICTOREVICT) && cb_ls_q;
+            prot_txreqflit_o.tagop        = cb_tagop;
         end
         else begin
             prot_txreqflit_o.opcode       = acq_op_q;
-            prot_txreqflit_o.addr         = addr_q;
+            prot_txreqflit_o.tagop        = tagop_q;
+            prot_txreqflit_o.addr         = addr_q | CHIE_REQ_ADDR_WIDTH_PARAM'(off_q);
+            prot_txreqflit_o.size         = sz_q;
             prot_txreqflit_o.expcompack   = ack_q;
             // SS2.11 (p.2-145): a resend keeps the first attempt's Order.
             prot_txreqflit_o.order        = ord_q;
-            // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores.
+            // SS6.3 (p.6-286): the Excl bit on this node's Exclusive Loads and Stores,
+            // Snoopable and Non-snoopable (Tables 4-1/4-13 give ReadNoSnp and
+            // WriteNoSnp Excl 0,1).
             prot_txreqflit_o.excl.excl    = excl_q && core_q &&
-                                            (excl_load_op(acq_op_q) ||
+                                            (excl_load_op(acq_op_q) || nc_q ||
                                              (acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
                                              (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE));
             // Table 4-1 (SS4.2.1 p.4-165) and Table 4-7 (SS4.2.2 p.4-172):
             // ReadOnceMakeInvalid and Evict are MemAttr 0101 only.
             prot_txreqflit_o.memattr.allocate = (acq_op_q != chie_pkg::REQ_EVICT) &&
                                                 (acq_op_q != chie_pkg::REQ_READONCEMAKEINVALID);
+            // SS13.10.8/SS13.10.9 (p.13-419): a stash request's target, with no
+            // StashLPID.
+            if (is_stash_req(acq_op_q)) begin
+                prot_txreqflit_o.stashnidvalid.stashnidvalid = stash_nid_v_q;
+                prot_txreqflit_o.returnnid                   = stash_nid_v_q ? stash_nid_q : '0;
+            end
+            // SS13.10.31 (p.13-433) and SS13.10.28 (p.13-432): an Atomic's shared REQ
+            // bits are SnoopMe and Endian.
+            if (chie_pkg::atomic_req(acq_op_q)) begin
+                prot_txreqflit_o.excl.snoopme        = snoopme_q;
+                prot_txreqflit_o.stashnidvalid.endian = (atop_q[5:4] != 2'b11) && atop_q[3];
+            end
+            // Tables 4-1 (p.4-165) and 4-13 (SS4.2.3 p.4-178): a Device access is
+            // MemAttr 001x and a Normal Non-cacheable one 000x, SnpAttr 0, with EWA
+            // from AxCACHE[0] (Table 2-11 SS2.9.4 p.2-129).
+            if (nc_q) begin
+                prot_txreqflit_o.memattr.allocate     = 1'b0;
+                prot_txreqflit_o.memattr.cacheable    = 1'b0;
+                prot_txreqflit_o.memattr.device       = dev_q;
+                prot_txreqflit_o.memattr.early_wr_ack = ewa_q;
+                prot_txreqflit_o.snpattr.snpattr      = 1'b0;
+            end
         end
     end
 
@@ -638,6 +979,7 @@ module rnf_ctl `RNF_PARAM
         prot_txrspflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txrspflit_o.txnid  = ack_txnid_q;
         prot_txrspflit_o.opcode = chie_pkg::RSP_COMPACK;
+        prot_txrspflit_o.qos    = qos_q;
         // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the completion it acknowledges.
         prot_txrspflit_o.tracetag = ack_tt_q;
     end
@@ -665,39 +1007,96 @@ module rnf_ctl `RNF_PARAM
         end
     end
 
+    // SS12.5.1 (p.12-378): the CopyBack's WriteData keeps its request's TagOp, but
+    // for Transfer once a snoop has taken the Dirty tags, and Invalid in
+    // CopyBackWrData_I. SS12.5.2 (p.12-379): Update asserts every TU, and Invalid
+    // zeroes Tag and TU.
+    wire [1:0]  cb_dat_tagop = cb_invalid ? chie_pkg::TAGOP_INVALID :
+                               ((cb_tagop_q == chie_pkg::TAGOP_UPDATE) && !cb_td) ? chie_pkg::TAGOP_TRANSFER
+                                                                                   : cb_tagop_q;
+    wire [15:0] cb_tags = (cb_dat_tagop == chie_pkg::TAGOP_INVALID) ? 16'h0 : vic_meta_q[`RNF_META_TAGS];
+    wire [3:0]  cb_tu   = (cb_dat_tagop == chie_pkg::TAGOP_UPDATE) ? 4'hF : 4'h0;
+    // A Non-CopyBack write's: Update carries every tag and its TU; Match the tags of
+    // the chunks it writes, the others zero, as SS12.7 (p.12-381) has an Atomic's --
+    // a 32-byte AtomicCompare's Compare-half tag duplicated over the Swap half.
+    wire        cmp32 = atm_q && (atop_q == `RNF_ATOP_COMPARE) && (atm_nb_q == 6'd32);
+    logic [15:0] wu_tags;
+    always_comb begin
+        for (int k = 0; k < 4; k++)
+            wu_tags[k*4 +: 4] =
+                (tagop_q == chie_pkg::TAGOP_UPDATE)                          ? wtag_q[k*4 +: 4] :
+                ((tagop_q == chie_pkg::TAGOP_MATCH) && (|wbe_q[k*16 +: 16])) ?
+                    (cmp32 ? wtag_q[aw_off_q[5:4]*4 +: 4] : wtag_q[k*4 +: 4])  : 4'h0;
+    end
+    wire [3:0]  wu_tu = (tagop_q == chie_pkg::TAGOP_UPDATE) ? wtu_q : 4'h0;
+
+    // The WriteData packets, the Non-CopyBack write's and the CopyBack's, one per
+    // Table 2-15 (SS2.10.4 p.2-136) DataID.
+    localparam int TAG_PKT = DW / 32;
+    localparam int TU_PKT  = DW / 128;
+    logic [DW-1:0]      wu_pkt_data [NPKT];
+    logic [PKT_B-1:0]   wu_pkt_be   [NPKT];
+    logic [PSN_PKT-1:0] wu_pkt_psn  [NPKT];
+    logic [DW-1:0]      cb_pkt_data [NPKT];
+    logic [PKT_B-1:0]   cb_pkt_be   [NPKT];
+    logic [PSN_PKT-1:0] cb_pkt_psn  [NPKT];
+    always_comb begin
+        for (int p = 0; p < NPKT; p++) begin
+            wu_pkt_data[p] = wu_line[p*DW +: DW];
+            wu_pkt_be[p]   = wbe_q[p*PKT_B +: PKT_B];
+            wu_pkt_psn[p]  = wu_poison[p*PSN_PKT +: PSN_PKT];
+            cb_pkt_data[p] = cb_line[p*DW +: DW];
+            cb_pkt_be[p]   = cb_be[p*PKT_B +: PKT_B];
+            cb_pkt_psn[p]  = cb_poison[p*PSN_PKT +: PSN_PKT];
+        end
+    end
+
     always_comb begin
         prot_txdatflit_o        = '0;
         prot_txdatflit_o.tgtid  = wr_tgt_q;
         prot_txdatflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         prot_txdatflit_o.txnid  = wr_txnid_q;
+        prot_txdatflit_o.qos    = qos_q;
         // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the DBID response that
         // drew the data.
         prot_txdatflit_o.tracetag = wr_tt_q;
-        // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
-        prot_txdatflit_o.dataid = wr_hi_q ? 2'd2 : 2'd0;
+        prot_txdatflit_o.dataid = 2'(int'(wr_pkt_q) * DID_STEP);
         if (st_q == S_WU_DAT) begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
             // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the request.
-            prot_txdatflit_o.ccid   = addr_q[5:4];
-            prot_txdatflit_o.be     = wr_hi_q ? wbe_q[63:32]    : wbe_q[31:0];
-            prot_txdatflit_o.data   = wr_hi_q ? wu_line[511:256] : wu_line[255:0];
-            prot_txdatflit_o.poison = wr_hi_q ? wu_poison[7:4]   : wu_poison[3:0];
+            prot_txdatflit_o.ccid   = off_q[5:4];
+            prot_txdatflit_o.be     = wu_pkt_be[wr_pkt_q];
+            prot_txdatflit_o.data   = wu_pkt_data[wr_pkt_q];
+            prot_txdatflit_o.poison = wu_pkt_psn[wr_pkt_q];
+            prot_txdatflit_o.tagop  = tagop_q;
+            prot_txdatflit_o.tag    = wu_tags[int'(wr_pkt_q)*TAG_PKT +: TAG_PKT];
+            prot_txdatflit_o.tu     = wu_tu[int'(wr_pkt_q)*TU_PKT +: TU_PKT];
         end
         else begin
             prot_txdatflit_o.opcode = chie_pkg::DAT_COPYBACKWRDATA;
+            prot_txdatflit_o.tagop  = cb_dat_tagop;
+            prot_txdatflit_o.tag    = cb_tags[int'(wr_pkt_q)*TAG_PKT +: TAG_PKT];
+            prot_txdatflit_o.tu     = cb_tu[int'(wr_pkt_q)*TU_PKT +: TU_PKT];
             prot_txdatflit_o.ccid   = vic_addr_q[5:4];
             prot_txdatflit_o.resp   = cb_resp_of(vic_state_q);
-            prot_txdatflit_o.be     = wr_hi_q ? cb_be[63:32]     : cb_be[31:0];
+            prot_txdatflit_o.be     = cb_pkt_be[wr_pkt_q];
             // SS9.4.3 (p.9-340, MUST): write data known to be corrupt carries an
             // error indication, and Table 9-7 makes DERR the one WriteData may carry.
             prot_txdatflit_o.resperr = (vic_meta_q[`RNF_META_DERR] && !cb_invalid)
                                        ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
-            prot_txdatflit_o.data   = wr_hi_q ? cb_line[511:256] : cb_line[255:0];
-            prot_txdatflit_o.poison = wr_hi_q ? cb_poison[7:4]   : cb_poison[3:0];
+            prot_txdatflit_o.data   = cb_pkt_data[wr_pkt_q];
+            prot_txdatflit_o.poison = cb_pkt_psn[wr_pkt_q];
         end
         // SS9.6 (p.9-348): odd byte parity over the data sent.
         prot_txdatflit_o.datacheck = chie_pkg::datacheck_of(prot_txdatflit_o.data);
     end
+
+    // The WriteData packets of the transaction in flight: the Size-aligned window a
+    // Non-CopyBack write names, and every packet of a CopyBack's line.
+    wire [NPKT-1:0]  wu_mask     = pkt_mask(off_q, sz_q);
+    wire [PKT_W-1:0] wu_first    = first_pkt(wu_mask);
+    wire             wr_last_pkt = (st_q == S_WU_DAT) ? (wr_pkt_q == last_pkt(wu_mask))
+                                                      : (wr_pkt_q == PKT_W'(NPKT - 1));
 
     assign prot_txdatflitv_o = (st_q == S_CB_DAT) || (st_q == S_WU_DAT);
 
@@ -717,7 +1116,19 @@ module rnf_ctl `RNF_PARAM
                ((f.opcode == chie_pkg::DAT_COMPDATA) || (f.opcode == chie_pkg::DAT_DATASEPRESP));
     endfunction
 
-    wire rx_compcmo      = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPCMO);
+    wire rx_comppersist  = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPPERSIST);
+    wire rx_compcmo      = rx_rsp_txn && ((prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPCMO) ||
+                                          rx_comppersist);
+    // Table A-8 (p.A-488): a Persist carries TxnID 0 and names its request by
+    // PGroupID, in the DBID bits.
+    wire rx_persist      = prot_rxrspflitv_i && (prot_rxrspflit_i.opcode == chie_pkg::RSP_PERSIST) &&
+                           (prot_rxrspflit_i.dbid[7:0] == 8'd0);
+    // Table A-8 (p.A-488): a TagMatch carries TxnID 0 and names its request by
+    // TagGroupID, in the DBID bits; Table 13-35 (SS13.10.44 p.13-437) puts the
+    // verdict in Resp[0].
+    wire rx_tagmatch     = prot_rxrspflitv_i && (prot_rxrspflit_i.opcode == chie_pkg::RSP_TAGMATCH) &&
+                           tm_owed_q && (prot_rxrspflit_i.dbid[7:0] == tggid_q);
+    wire tm_got_now      = tm_got_q || rx_tagmatch;
     wire rx_dat_mine     = prot_rxdatflitv_i && is_read_data(prot_rxdatflit_i, txnid_q);
     wire rx_dat_arriving = rxdat_arr_v_i && is_read_data(rxdat_arr_flit_i, txnid_q);
     wire rx_dat_comb = rx_dat_mine &&
@@ -772,8 +1183,10 @@ module rnf_ctl `RNF_PARAM
 
     // The line the transaction installs: the store merged over whatever the
     // acquire brought back, or over the copy already resident.
-    wire [`RNF_LINE_BITS-1:0] fill_line = (is_wr_q && apply_q) ? merge_line(line_q, wbuf_q, wbe_q)
-                                                               : line_q;
+    wire [`RNF_LINE_BITS-1:0] fill_line =
+        !(is_wr_q && apply_q) ? line_q :
+        atm_q                 ? atomic_apply(line_q, wbuf_q, atop_opcode(atop_q), aw_off_q, atm_nb_q, atop_q[3])
+                              : merge_line(line_q, wbuf_q, wbe_q);
 
     // The acquire's line as it stands this cycle, including a snoop writing it on
     // the very edge its completion arrives -- acq_cs_q alone would miss that one.
@@ -790,23 +1203,44 @@ module rnf_ctl `RNF_PARAM
     // own copy of the cache line, rather than the copy returned".
     wire take_data = (kind_q != K_MRU) || acq_lost;
 
-    wire got_lo_now = got_lo_q || (rx_dat_mine && (prot_rxdatflit_i.dataid == 2'd0));
-    wire got_hi_now = got_hi_q || (rx_dat_mine && (prot_rxdatflit_i.dataid != 2'd0));
-    wire data_done  = got_lo_now && got_hi_now && (got_rsp_q || rx_sep || rx_dat_comb);
+    // SS12.4.1 (p.12-376): a read's tags are valid with Transfer (Clean) or Update
+    // (Dirty). SS12.11.3 (p.12-387): Invalid to a Transfer or Fetch is a Completer
+    // without MTE, whose zero tags "can be cached as Clean".
+    wire       rx_tags_valid = mte_on && ((prot_rxdatflit_i.tagop == chie_pkg::TAGOP_TRANSFER) ||
+                                          (prot_rxdatflit_i.tagop == chie_pkg::TAGOP_UPDATE));
+    wire [1:0] rt_now        = rx_dat_mine ? prot_rxdatflit_i.tagop : rtagop_q;
+    wire       rd_tv_now     = mte_on && ((rt_now == chie_pkg::TAGOP_TRANSFER) ||
+                                          (rt_now == chie_pkg::TAGOP_UPDATE) ||
+                                          (tagop_q != chie_pkg::TAGOP_INVALID));
+
+    // SS2.10.4 (p.2-136): the read is whole once every packet its Size names is in.
+    wire [PKT_W-1:0] rx_pkt  = pkt_of_dataid(prot_rxdatflit_i.dataid);
+    wire [NPKT-1:0]  got_now = got_q | ((rx_dat_mine ? NPKT'(1) : NPKT'(0)) << rx_pkt);
+    wire data_done  = (&(got_now | ~pkt_mask(off_q, sz_q))) && (got_rsp_q || rx_sep || rx_dat_comb);
     // SS2.8.5 (p.2-119): an ordered read is released by its ReadReceipt, or by a
     // RespSepData sent in its place, and stays outstanding until then (SS2.11 p.2-146).
     wire rcpt_owed  = (ord_q != chie_pkg::ORDER_NONE) &&
                       !(got_rcpt_q || rx_rcpt || got_rsp_q || rx_sep);
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
-    wire wu_comp_now = got_rsp_q || rx_comp || rx_compdbid;
+    // SS2.3.3 (p.2-69): an AtomicLoad, Swap or Compare completes with CompData of
+    // its inbound size, half the outbound one for AtomicCompare (Table 2-16 p.2-137).
+    wire atm_ret_now = chie_pkg::atomic_req(acq_op_q) && atm_ret_q;
+    wire chie_pkg::size_e atm_in_sz = chie_pkg::atomic_in_size(acq_op_q, sz_q);
+    wire atm_in_done = &(got_now | ~pkt_mask(off_q, atm_in_sz));
+    wire wu_comp_now = atm_ret_now ? atm_in_done : (got_rsp_q || rx_comp || rx_compdbid);
 
     // SS2.11 (p.2-146): a transaction is outstanding until every response it is owed
     // has arrived, CompCMO among them, and SS2.3.2 (p.2-58, p.2-66) orders the CompCMO
     // against none of the others -- so it is taken in whichever state it lands in.
-    wire cmo_got_now = cmo_got_q || rx_compcmo;
-    wire wu_cmo_now  = !is_cmb_write(acq_op_q) || cmo_got_now;
-    wire cb_cmo_now  = !is_cmb_write(cb_op_q)  || cmo_got_now;
+    // A Match write's TagMatch is waited for alike, as the core's B carries it.
+    wire cmo_got_now     = cmo_got_q || rx_compcmo;
+    wire persist_got_now = persist_got_q || rx_persist || rx_comppersist;
+    wire wu_cmo_now  = (!chie_pkg::combined_write(acq_op_q) || cmo_got_now) &&
+                       (!chie_pkg::persist_response(acq_op_q) || persist_got_now) &&
+                       (!tm_owed_q || tm_got_now);
+    wire cb_cmo_now  = (!chie_pkg::combined_write(cb_op_q)  || cmo_got_now) &&
+                       (!chie_pkg::persist_response(cb_op_q)  || persist_got_now);
 
     function automatic bit same_set(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
                                     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
@@ -861,7 +1295,7 @@ module rnf_ctl `RNF_PARAM
     // invalidated no other copy and the line is left as the request found it.
     wire own_pass   = exok_now && !acq_lost && mon_ok;
 
-    logic [3:0] fin_st;
+    logic [4:0] fin_st;
     always_comb begin
         case (rsp_ch_q)
             CH_R:    fin_st = S_RESP;
@@ -879,8 +1313,7 @@ module rnf_ctl `RNF_PARAM
             txnid_q       <= '0;
             line_q        <= '0;
             fill_state_q  <= `RNF_CS_I;
-            got_lo_q      <= 1'b0;
-            got_hi_q      <= 1'b0;
+            got_q         <= '0;
             got_rsp_q     <= 1'b0;
             ack_tgt_q     <= '0;
             ack_txnid_q   <= '0;
@@ -902,6 +1335,36 @@ module rnf_ctl `RNF_PARAM
             exok_q        <= 1'b0;
             core_q        <= 1'b0;
             mpam_q        <= '0;
+            qos_q         <= 4'd0;
+            nc_q          <= 1'b0;
+            dev_q         <= 1'b0;
+            ewa_q         <= 1'b0;
+            sz_q          <= chie_pkg::SIZE_64B;
+            off_q         <= '0;
+            aw_lo_q       <= '0;
+            aw_hi_q       <= '0;
+            atop_q        <= `RNF_ATOP_NONE;
+            atm_mode_q    <= `RNF_ATM_NEAR;
+            atm_nb_q      <= '0;
+            aw_off_q      <= '0;
+            atm_ret_q     <= 1'b0;
+            snoopme_q     <= 1'b0;
+            stash_nid_q   <= '0;
+            stash_nid_v_q <= 1'b0;
+            ctag_q        <= chie_pkg::TAGOP_INVALID;
+            tggid_q       <= 8'd0;
+            wtag_q        <= '0;
+            wtu_q         <= '0;
+            need_tags_q   <= 1'b0;
+            tagop_q       <= chie_pkg::TAGOP_INVALID;
+            ltag_q        <= '0;
+            ltv_q         <= 1'b0;
+            ltd_q         <= 1'b0;
+            rtagop_q      <= chie_pkg::TAGOP_INVALID;
+            cb_tagop_q    <= chie_pkg::TAGOP_INVALID;
+            tm_owed_q     <= 1'b0;
+            tm_got_q      <= 1'b0;
+            tm_pass_q     <= 1'b0;
             for (int i = 0; i < MON; i++) begin
                 mon_v_q[i]    <= 1'b0;
                 mon_lp_q[i]   <= 8'd0;
@@ -946,13 +1409,15 @@ module rnf_ctl `RNF_PARAM
             wr_tgt_q      <= '0;
             wr_txnid_q    <= '0;
             wr_tt_q       <= 1'b0;
-            wr_hi_q       <= 1'b0;
+            wr_pkt_q      <= '0;
             wr_dbid_q     <= 1'b0;
             wr_sent_q     <= 1'b0;
             cb_done_q     <= 1'b0;
             drop_q        <= 1'b0;
             cmo_got_q     <= 1'b0;
             cmo_ret_st_q  <= S_IDLE;
+            persist_got_q <= 1'b0;
+            cmo_cb_q      <= 1'b0;
         end
         else begin
             automatic logic                                 set_now  = 1'b0;
@@ -971,13 +1436,30 @@ module rnf_ctl `RNF_PARAM
                 if (inc) pcrd_src_q[t] <= prot_rxrspflit_i.srcid;
             end
 
-            if (acq_snp_now && (st_q != S_IDLE))
+            if (acq_snp_now && (st_q != S_IDLE)) begin
                 acq_cs_q <= snp_upd_state_i;
+                // A snoop that leaves the line Clean has taken its Dirty tags too.
+                if (!is_dirty(snp_upd_state_i)) ltd_q <= 1'b0;
+            end
+            // SS6.3 (p.6-286): EXOK on any response of the transaction.
+            if (rx_exok) exok_q <= 1'b1;
 
             // Each attempt's CompCMO is its own: a request resent after RetryAck owes
             // a fresh one.
-            if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i)
-                cmo_got_q <= 1'b0;
+            if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i) begin
+                cmo_got_q     <= 1'b0;
+                persist_got_q <= 1'b0;
+            end
+            if ((st_q == S_REQ) && prot_txreqflit_sent_i) begin
+                tm_owed_q <= tagop_match;
+                tm_got_q  <= 1'b0;
+            end
+            if ((st_q == S_CB_REQ) && prot_txreqflit_sent_i) cb_tagop_q <= cb_tagop;
+            if (rx_tagmatch) begin
+                tm_got_q  <= 1'b1;
+                tm_pass_q <= prot_rxrspflit_i.resp[0];
+            end
+            if (rx_persist || rx_comppersist) persist_got_q <= 1'b1;
             if (rx_compcmo) begin
                 cmo_got_q <= 1'b1;
                 // SS9.4.3 (p.9-341): CompCMO carries the CMO leg's error, which the
@@ -990,15 +1472,39 @@ module rnf_ctl `RNF_PARAM
             if (vic_snp_now)
                 vic_state_q <= snp_upd_state_i;
 
+            // SS2.10.4 (p.2-136): packet p carries line bytes [p*PKT_B +: PKT_B].
+            // Table 4-33 fn c (p.4-212): returned bytes fill only those the line
+            // does not already hold valid. SS2.3.3 (p.2-69) lets an Atomic's CompData
+            // arrive while its own WriteData is still going out.
+            if (rx_dat_mine && (((st_q == S_DATA) && !rx_retryack) || (st_q == S_WU_DAT))) begin
+                // Unsigned: a size cast keeps its operand's signedness, so a
+                // signed offset of 32+ would index below zero.
+                automatic int unsigned base = int'(rx_pkt) * PSN_PKT;
+                if (take_data) begin
+                    for (int unsigned b = 0; b < PKT_B; b++)
+                        if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
+                            line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
+                    // SS12.4.1 (p.12-376): Transfer and Update return the tags, and
+                    // with Invalid "Tag is inapplicable and can take any value".
+                    ltag_q[int'(rx_pkt)*TAG_PKT +: TAG_PKT] <= rx_tags_valid ? prot_rxdatflit_i.tag : '0;
+                    rtagop_q <= prot_rxdatflit_i.tagop;
+                    for (int unsigned c = 0; c < PSN_PKT; c++)
+                        line_poison_q[3'(base + c)] <=
+                            (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
+                            (prot_rxdatflit_i.poison[c] |
+                             (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
+                end
+                got_q[rx_pkt] <= 1'b1;
+            end
+
             case (st_q)
                 S_IDLE: begin
-                    got_lo_q   <= 1'b0;
-                    got_hi_q   <= 1'b0;
+                    got_q      <= '0;
                     got_rsp_q  <= 1'b0;
                     err_q      <= 1'b0;
                     nderr_q    <= 1'b0;
                     data_err_q <= 1'b0;
-                    wr_hi_q    <= 1'b0;
+                    wr_pkt_q   <= '0;
                     wr_dbid_q  <= 1'b0;
                     wr_sent_q  <= 1'b0;
                     cb_keep_q  <= 1'b0;
@@ -1006,11 +1512,18 @@ module rnf_ctl `RNF_PARAM
                     base_udp_q <= 1'b0;
                     got_rcpt_q <= 1'b0;
                     ord_q      <= chie_pkg::ORDER_NONE;
+                    nc_q       <= 1'b0;
+                    sz_q       <= chie_pkg::SIZE_64B;
+                    off_q      <= '0;
+                    snoopme_q  <= 1'b0;
+                    tagop_q    <= chie_pkg::TAGOP_INVALID;
+                    tm_owed_q  <= 1'b0;
                     if (surplus_v) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
                     end
                     else if (flush_v) begin
+                        qos_q       <= 4'd0;
                         vic_addr_q  <= cache_flush_addr_i;
                         vic_way_q   <= cache_flush_way_i;
                         vic_state_q <= flush_sel_state;
@@ -1028,6 +1541,32 @@ module rnf_ctl `RNF_PARAM
                         end
                         else drop_q <= 1'b1;
                     end
+                    // SS7.1.1 (p.7-295): a Data Pull is a read this node completes as
+                    // it would its own allocating one, under the TxnID its response
+                    // gave (SS7.2 p.7-296), and owes a CompAck (SS2.3.4 p.2-71).
+                    else if (pull_v_i) begin
+                        addr_q        <= pull_addr_i;
+                        way_q         <= pull_way_i;
+                        is_wr_q       <= 1'b0;
+                        rsp_ch_q      <= CH_NONE;
+                        core_q        <= 1'b0;
+                        excl_q        <= 1'b0;
+                        excl_pass_q   <= 1'b0;
+                        qos_q         <= 4'd0;
+                        hit_q         <= 1'b0;
+                        line_err_q    <= 1'b0;
+                        line_poison_q <= 8'h00;
+                        line_vmask_q  <= '0;
+                        ltv_q         <= 1'b0;
+                        ltd_q         <= 1'b0;
+                        ctag_q        <= chie_pkg::TAGOP_INVALID;
+                        acq_cs_q      <= `RNF_CS_I;
+                        acq_op_q      <= pull_op_i;
+                        kind_q        <= K_READ;
+                        alloc_q       <= 1'b1;
+                        ack_q         <= 1'b1;
+                        st_q          <= S_DATA;
+                    end
                     else if (ARVALID && ARREADY) begin
                         id_q          <= ARID;
                         addr_q        <= ar_line;
@@ -1038,13 +1577,42 @@ module rnf_ctl `RNF_PARAM
                         lpid_q        <= ARID[7:0];
                         excl_q        <= ar_excl;
                         mpam_q        <= ARUSER[`AXI4_USER_MPAM_RANGE];
+                        qos_q         <= ARQOS;
+                        dev_q         <= !ARCACHE[1];
+                        ewa_q         <= ARCACHE[0];
                         excl_pass_q   <= 1'b0;
                         way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
                         line_err_q    <= lu_hit_now && cache_lu_meta_i[`RNF_META_DERR];
                         line_poison_q <= lu_hit_now ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
                         line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                        ctag_q        <= ar_ctag;
+                        ltag_q        <= cache_lu_meta_i[`RNF_META_TAGS];
+                        ltv_q         <= mte_on && lu_hit_now && lu_tv;
+                        ltd_q         <= lu_hit_now && cache_lu_meta_i[`RNF_META_TD] && is_dirty(lu_state);
                         acq_cs_q      <= lu_state;
-                        if (lu_hit_now && !is_short(lu_state)) begin
+                        // Table 2-11 (SS2.9.4 p.2-129): a Device or Non-cacheable read
+                        // is a ReadNoSnp of the beat, which the cache neither serves
+                        // nor keeps. Table 4-1 (SS4.2.1 p.4-165) gives Device nRnE
+                        // Order 11 and Normal Non-cacheable 00.
+                        if (ar_nc) begin
+                            nc_q       <= 1'b1;
+                            acq_cs_q   <= `RNF_CS_I;
+                            hit_q      <= 1'b0;
+                            line_err_q <= 1'b0;
+                            line_poison_q <= 8'h00;
+                            line_vmask_q  <= '0;
+                            sz_q       <= ar_nc_sz;
+                            // SS2.10.2 (p.2-134): a Device access reads from its Addr to
+                            // the next Size boundary, so the beat's own address is kept.
+                            off_q      <= ARADDR[5:0];
+                            acq_op_q   <= chie_pkg::REQ_READNOSNP;
+                            ord_q      <= ARCACHE[1] ? chie_pkg::ORDER_NONE : chie_pkg::ORDER_END_POINT;
+                            kind_q     <= K_READ;
+                            alloc_q    <= 1'b0;
+                            ack_q      <= 1'b0;
+                            st_q       <= S_REQ;
+                        end
+                        else if (lu_hit_now && !is_short(lu_state) && !(ar_want_tags && !lu_tv)) begin
                             line_q      <= cache_lu_data_i;
                             hit_q       <= 1'b1;
                             // SS6.3.3 (p.6-290): a Load of a line already held needs
@@ -1059,19 +1627,55 @@ module rnf_ctl `RNF_PARAM
                         // Table 4-4 (SS4.2.1 p.4-167): a line short of valid bytes is
                         // read by ReadUnique, which Table 4-33 (p.4-212) ends UD from
                         // UDP, merging the returned bytes under its own.
-                        else if (lu_hit_now) begin
+                        else if (lu_hit_now && is_short(lu_state)) begin
                             line_q     <= cache_lu_data_i;
                             hit_q      <= 1'b0;
                             base_udp_q <= (lu_state == `RNF_CS_UDP);
                             acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                            tagop_q    <= mte_on ? read_tagop(chie_pkg::REQ_READUNIQUE, 1'b1)
+                                                 : chie_pkg::TAGOP_INVALID;
                             kind_q     <= K_READ;
                             alloc_q    <= 1'b1;
                             ack_q      <= 1'b1;
                             st_q       <= S_REQ;
                         end
+                        // SS12.4.1 (p.12-375): a line held without the tags the core
+                        // wants is read again with them, once written back or dropped
+                        // (Table 4-32 SS4.6 p.4-209 lets a Clean one go silently).
+                        else if (lu_hit_now) begin
+                            hit_q        <= 1'b0;
+                            line_q       <= '0;
+                            line_err_q   <= 1'b0;
+                            line_poison_q <= 8'h00;
+                            line_vmask_q <= '0;
+                            ltv_q        <= 1'b0;
+                            ltd_q        <= 1'b0;
+                            acq_cs_q     <= `RNF_CS_I;
+                            acq_op_q     <= ar_miss_op;
+                            tagop_q      <= read_tagop(ar_miss_op, 1'b1);
+                            ord_q        <= ar_ord;
+                            kind_q       <= K_READ;
+                            alloc_q      <= ar_alloc;
+                            ack_q        <= ar_alloc;
+                            vic_addr_q   <= ar_line;
+                            vic_way_q    <= cache_lu_way_i;
+                            vic_state_q  <= lu_state;
+                            vic_data_q   <= cache_lu_data_i;
+                            vic_meta_q   <= cache_lu_meta_i;
+                            if (is_dirty(lu_state)) begin
+                                cb_op_q       <= back_op(lu_state);
+                                cb_then_req_q <= 1'b1;
+                                st_q          <= S_CB_REQ;
+                            end
+                            else begin
+                                drop_q <= 1'b1;
+                                st_q   <= S_REQ;
+                            end
+                        end
                         else begin
                             hit_q    <= 1'b0;
-                            acq_op_q <= ar_op;
+                            acq_op_q <= ar_miss_op;
+                            tagop_q  <= mte_on ? read_tagop(ar_miss_op, ar_want_tags) : chie_pkg::TAGOP_INVALID;
                             ord_q    <= ar_ord;
                             kind_q   <= K_READ;
                             alloc_q  <= ar_alloc;
@@ -1091,11 +1695,32 @@ module rnf_ctl `RNF_PARAM
                         addr_q   <= aw_line;
                         is_wr_q  <= 1'b1;
                         rsp_ch_q <= CH_B;
-                        aw_coh_q <= AWCOH;
+                        // A near atomic takes the line Unique as a plain store does.
+                        aw_coh_q <= (AWATOP == `RNF_ATOP_NONE) ? AWCOH : `RNF_AW_CACHED;
                         core_q   <= 1'b1;
                         lpid_q   <= AWID[7:0];
-                        excl_q   <= aw_excl;
+                        // AMBA AXI5: an atomic write is never also exclusive.
+                        excl_q   <= aw_excl && (AWATOP == `RNF_ATOP_NONE);
                         mpam_q   <= AWUSER[`AXI4_USER_MPAM_RANGE];
+                        qos_q    <= AWQOS;
+                        atop_q   <= AWATOP;
+                        atm_mode_q <= AWATM;
+                        atm_ret_q  <= AWATOP[5];
+                        atm_nb_q <= ((AWLEN == '0) && (AWSIZE <= `AXI4_AWSIZE_WIDTH'(4))) ? 6'(1 << AWSIZE) :
+                                    ((AWLEN == `AXI4_AWLEN_WIDTH'(1)) && (AWSIZE == `AXI4_AWSIZE_WIDTH'(4))) ? 6'd32 : 6'd0;
+                        aw_off_q <= AWADDR[5:0];
+                        rchunk_q <= AWADDR[5:4];
+                        stash_nid_q   <= STASHNID;
+                        stash_nid_v_q <= STASHNIDVALID;
+                        ctag_q   <= aw_ctag;
+                        tggid_q  <= AWUSER[`AXI4_USER_TGGID_RANGE];
+                        wtag_q   <= '0;
+                        wtu_q    <= '0;
+                        nc_q     <= aw_nc;
+                        dev_q    <= !AWCACHE[1];
+                        ewa_q    <= AWCACHE[0];
+                        aw_lo_q  <= aw_lo;
+                        aw_hi_q  <= aw_hi;
                         excl_pass_q <= 1'b0;
                         apply_q  <= 1'b1;
                         wpoison_q <= 8'h00;
@@ -1105,7 +1730,11 @@ module rnf_ctl `RNF_PARAM
                         st_q     <= S_WDATA;
                     end
                     else if (CMVALID && CMREADY) begin
+                        qos_q       <= 4'd0;
+                        ctag_q      <= chie_pkg::TAGOP_INVALID;
                         addr_q      <= cm_line;
+                        stash_nid_q   <= STASHNID;
+                        stash_nid_v_q <= STASHNIDVALID;
                         is_wr_q     <= 1'b0;
                         rsp_ch_q    <= CH_CM;
                         alloc_q     <= 1'b0;
@@ -1168,8 +1797,10 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else st_q <= S_CMRSP;
                             end
-                            `RNF_CM_CLEAN_SHARED, `RNF_CM_CLEAN_SHARED_EVICT: begin
-                                acq_op_q <= chie_pkg::REQ_CLEANSHARED;
+                            `RNF_CM_CLEAN_SHARED, `RNF_CM_CLEAN_SHARED_EVICT,
+                            `RNF_CM_CLEAN_SHARED_PERSIST, `RNF_CM_CLEAN_SHARED_PERSIST_SEP,
+                            `RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT: begin
+                                acq_op_q <= cm_cmo_op(CMOP);
                                 // Table 4-17 (SS4.2.4 p.4-182): a Dirty line folds its
                                 // CopyBack into the CMO, keeping a Clean copy or not.
                                 // Table 4-17 (SS4.2.4 p.4-182) combines no CMO with
@@ -1179,19 +1810,38 @@ module rnf_ctl `RNF_PARAM
                                     cb_then_req_q <= 1'b1;
                                     st_q          <= S_CB_REQ;
                                 end
+                                // Table 4-17 combines no CleanSharedPersist, so a Dirty
+                                // line goes back by WriteCleanFull and the CMO follows.
+                                else if (is_dirty(lu_state) && (CMOP == `RNF_CM_CLEAN_SHARED_PERSIST)) begin
+                                    cb_op_q       <= chie_pkg::REQ_WRITECLEANFULL;
+                                    cb_keep_q     <= 1'b1;
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
                                 else if (is_dirty(lu_state)) begin
-                                    cb_op_q   <= (CMOP == `RNF_CM_CLEAN_SHARED)
-                                                 ? chie_pkg::REQ_WRITECLEANFULLCLEANSH
-                                                 : chie_pkg::REQ_WRITEBACKFULLCLEANSH;
-                                    cb_keep_q <= (CMOP == `RNF_CM_CLEAN_SHARED);
+                                    cb_op_q   <= cm_cb_op(CMOP);
+                                    cb_keep_q <= cm_keeps(CMOP);
                                     st_q      <= S_CB_REQ;
                                 end
-                                // Table 4-10 (SS4.2.2 p.4-174): CleanShared from UC,
-                                // SC or I only.
+                                // Table 4-10 (SS4.2.2 p.4-174): CleanShared and the
+                                // persistent CMOs from UC, SC or I only.
                                 else begin
-                                    drop_q <= lu_hit_now &&
-                                              ((CMOP == `RNF_CM_CLEAN_SHARED_EVICT) ||
-                                               (lu_state == `RNF_CS_UCE));
+                                    drop_q <= lu_hit_now && (!cm_keeps(CMOP) || (lu_state == `RNF_CS_UCE));
+                                    st_q   <= S_REQ;
+                                end
+                            end
+                            // Table 4-10 (SS4.2.2 p.4-174): StashOnce from I only, so a
+                            // Dirty line goes back and a Clean one is dropped first.
+                            `RNF_CM_STASH_ONCE_SHARED, `RNF_CM_STASH_ONCE_UNIQUE: begin
+                                acq_op_q <= (CMOP == `RNF_CM_STASH_ONCE_SHARED) ? chie_pkg::REQ_STASHONCESHARED
+                                                                                : chie_pkg::REQ_STASHONCEUNIQUE;
+                                if (is_dirty(lu_state)) begin
+                                    cb_op_q       <= back_op(lu_state);
+                                    cb_then_req_q <= 1'b1;
+                                    st_q          <= S_CB_REQ;
+                                end
+                                else begin
+                                    drop_q <= lu_hit_now;
                                     st_q   <= S_REQ;
                                 end
                             end
@@ -1242,19 +1892,106 @@ module rnf_ctl `RNF_PARAM
                             2'd2: begin wbuf_q[383:256] <= WDATA; wbe_q[47:32] <= WSTRB; end
                             default: begin wbuf_q[511:384] <= WDATA; wbe_q[63:48] <= WSTRB; end
                         endcase
-                        wchunk_q  <= wchunk_q + 2'd1;
+                        // SS2.10.5 (p.2-137): a 32-byte AtomicCompare's window is the
+                        // aligned 32 bytes around its Compare half, so its second beat
+                        // wraps within them.
+                        wchunk_q  <= (atm_q && (atm_nb_q == 6'd32)) ? {wchunk_q[1], ~wchunk_q[0]}
+                                                                    : (wchunk_q + 2'd1);
                         wpoison_q <= wpoison_now;
+                        wtag_q    <= wtag_now;
+                        wtu_q     <= wtu_now;
                         if (WLAST) begin
                             way_q         <= lu_hit_now ? cache_lu_way_i : cache_vic_way_i;
                             line_err_q    <= lu_hit_now && cache_lu_meta_i[`RNF_META_DERR];
                             line_poison_q <= lu_hit_now ? cache_lu_meta_i[`RNF_META_POISON] : 8'h00;
                             line_vmask_q  <= lu_hit_now ? cache_lu_meta_i[`RNF_META_VMASK] : '0;
+                            ltag_q        <= cache_lu_meta_i[`RNF_META_TAGS];
+                            ltv_q         <= mte_on && lu_hit_now && lu_tv;
+                            ltd_q         <= lu_hit_now && cache_lu_meta_i[`RNF_META_TD] && is_dirty(lu_state);
+                            need_tags_q   <= need_tags_now;
                             alloc_q       <= 1'b1;
                             ack_q         <= 1'b1;
+                            // Table 2-11 (SS2.9.4 p.2-129): a Device or Non-cacheable
+                            // write is a WriteNoSnp of the bytes the burst addresses,
+                            // Full only for a whole line, and Table 4-13 (SS4.2.3
+                            // p.4-178) gives Device nRnE Order 11. SS4.2.3 (p.4-176)
+                            // makes a line of zeros WriteNoSnpZero's.
+                            // Table 2-16 (SS2.10.5 p.2-137) bounds an atomic's size and
+                            // alignment, and SS16.2.4 (p.16-476, MUST) forbids an Atomic
+                            // with BROADCASTATOMIC deasserted -- which leaves a location
+                            // this node cannot cache no way to execute the operation.
+                            // Table 12-2 (SS12.12 p.12-389): an Atomic carries no Update.
+                            if (atm_q && (!atop_legal(atop_q, atm_nb_q, aw_off_q) ||
+                                          (nc_q && !BROADCASTATOMIC) ||
+                                          (!atm_near && (ctag_q == chie_pkg::TAGOP_UPDATE)))) begin
+                                hit_q   <= 1'b1;
+                                apply_q <= 1'b0;
+                                err_q   <= 1'b1;
+                                st_q    <= S_BRESP;
+                            end
+                            // SS4.2.5 (p.4-187): the far atomic. Its Requester state must
+                            // read Invalid at issue for SnoopMe=0, so FAR writes a Dirty
+                            // line back or drops a Clean one first; FAR_SNOOPME keeps it
+                            // and "must set the value of SnoopMe in the Atomic request to 1".
+                            else if (atm_q && !atm_near) begin
+                                hit_q        <= 1'b0;
+                                alloc_q      <= 1'b0;
+                                ack_q        <= 1'b0;
+                                kind_q       <= K_WU;
+                                acq_op_q     <= atop_opcode(atop_q);
+                                sz_q         <= size_of_bytes(atm_nb_q);
+                                off_q        <= aw_off_q;
+                                line_vmask_q <= '0;
+                                acq_cs_q     <= `RNF_CS_I;
+                                ord_q        <= (nc_q && dev_q) ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
+                                snoopme_q    <= !nc_q && (atm_mode_q == `RNF_ATM_FAR_SNOOPME);
+                                tagop_q      <= ctag_q;
+                                if (!nc_q && (atm_mode_q == `RNF_ATM_FAR) && lu_hit_now) begin
+                                    vic_addr_q  <= addr_q;
+                                    vic_way_q   <= cache_lu_way_i;
+                                    vic_state_q <= lu_state;
+                                    vic_data_q  <= cache_lu_data_i;
+                                    vic_meta_q  <= cache_lu_meta_i;
+                                    if (is_dirty(lu_state)) begin
+                                        cb_op_q       <= back_op(lu_state);
+                                        cb_then_req_q <= 1'b1;
+                                        st_q          <= S_CB_REQ;
+                                    end
+                                    else begin
+                                        drop_q <= 1'b1;
+                                        st_q   <= S_REQ;
+                                    end
+                                end
+                                else st_q <= S_REQ;
+                            end
+                            else if (nc_q) begin
+                                hit_q    <= 1'b0;
+                                alloc_q  <= 1'b0;
+                                ack_q    <= 1'b0;
+                                acq_cs_q <= `RNF_CS_I;
+                                kind_q   <= K_WU;
+                                sz_q     <= wr_full ? chie_pkg::SIZE_64B : size_spanning(aw_lo_q, aw_hi_q);
+                                off_q    <= wr_full ? '0 :
+                                            `RNF_LINE_OFFSET_W'(int'(aw_lo_q) &
+                                                                ~((32'd1 << size_spanning(aw_lo_q, aw_hi_q)) - 1));
+                                acq_op_q <= (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
+                                                ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSH
+                                                           : chie_pkg::REQ_WRITENOSNPPTLCLEANSH) :
+                                            (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
+                                                ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP
+                                                           : chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP) :
+                                            wr_zero ? chie_pkg::REQ_WRITENOSNPZERO :
+                                            wr_full ? chie_pkg::REQ_WRITENOSNPFULL
+                                                    : chie_pkg::REQ_WRITENOSNPPTL;
+                                ord_q    <= dev_q ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
+                                st_q     <= S_REQ;
+                            end
                             // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
                             // is reset fails, and issues no transaction.
-                            if (excl_q && !(lu_hit_now && !is_short(lu_state) &&
-                                            mon_set(lpid_q, addr_q))) begin
+                            // A line that would have to leave the cache for its tags
+                            // resets the monitor on the way out, so that Store fails too.
+                            else if (excl_q && !(lu_hit_now && !is_short(lu_state) &&
+                                            mon_set(lpid_q, addr_q) && !(need_tags_now && !lu_tv))) begin
                                 hit_q   <= 1'b1;
                                 apply_q <= 1'b0;
                                 st_q    <= S_BRESP;
@@ -1262,8 +1999,13 @@ module rnf_ctl `RNF_PARAM
                             // A Unique line is already this node's to modify; Table
                             // 4-32 (SS4.6 p.4-209) makes the store silent, UD once every
                             // byte is valid and UDP until then. SS6.3.3 (p.6-290) passes
-                            // an Exclusive Store from it without a transaction.
-                            else if (lu_hit_now && is_unique(lu_state)) begin
+                            // an Exclusive Store from it without a transaction. A store
+                            // carrying tags needs a line with all its bytes, since
+                            // WriteBackPtl carries none (SS12.5.2 p.12-378), and a Match or
+                            // partial Update needs the line's own tags.
+                            else if (lu_hit_now && is_unique(lu_state) &&
+                                     !((atm_q || (ctag_q != chie_pkg::TAGOP_INVALID)) && is_short(lu_state)) &&
+                                     !(need_tags_now && !lu_tv)) begin
                                 line_q       <= cache_lu_data_i;
                                 fill_state_q <= `RNF_CS_UC;
                                 hit_q        <= 1'b1;
@@ -1273,14 +2015,59 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 hit_q <= 1'b0;
-                                if (lu_hit_now) begin
+                                // SS16.3.1 (p.16-478): a near atomic reads the bytes it
+                                // operates on, so a line short of valid bytes is completed
+                                // by ReadUnique first, as a read of it is (Table 4-33 p.4-212).
+                                if (lu_hit_now && is_short(lu_state)) begin
+                                    line_q     <= cache_lu_data_i;
+                                    acq_cs_q   <= lu_state;
+                                    base_udp_q <= (lu_state == `RNF_CS_UDP);
+                                    acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                                    tagop_q    <= mte_on ? chie_pkg::TAGOP_TRANSFER : chie_pkg::TAGOP_INVALID;
+                                    kind_q     <= K_READ;
+                                    st_q       <= S_REQ;
+                                end
+                                // SS12.4.1 (p.12-375): a store that needs tags the line
+                                // does not hold has it written back or dropped and read
+                                // again, a whole-line one by ReadUnique with Fetch
+                                // (p.12-376), whose data it overwrites.
+                                else if (lu_hit_now && need_tags_now && !lu_tv) begin
+                                    line_q        <= '0;
+                                    line_err_q    <= 1'b0;
+                                    line_poison_q <= 8'h00;
+                                    line_vmask_q  <= '0;
+                                    ltv_q         <= 1'b0;
+                                    ltd_q         <= 1'b0;
+                                    acq_cs_q      <= `RNF_CS_I;
+                                    acq_op_q      <= chie_pkg::REQ_READUNIQUE;
+                                    tagop_q       <= wr_full ? chie_pkg::TAGOP_MATCH : chie_pkg::TAGOP_TRANSFER;
+                                    kind_q        <= K_READ;
+                                    vic_addr_q    <= addr_q;
+                                    vic_way_q     <= cache_lu_way_i;
+                                    vic_state_q   <= lu_state;
+                                    vic_data_q    <= cache_lu_data_i;
+                                    vic_meta_q    <= cache_lu_meta_i;
+                                    if (is_dirty(lu_state)) begin
+                                        cb_op_q       <= back_op(lu_state);
+                                        cb_then_req_q <= 1'b1;
+                                        st_q          <= S_CB_REQ;
+                                    end
+                                    else begin
+                                        drop_q <= 1'b1;
+                                        st_q   <= S_REQ;
+                                    end
+                                end
+                                else if (lu_hit_now) begin
                                     // SC or SD: Table 4-38 (p.4-218) and Table 4-36
                                     // (SS4.7.1 p.4-216) end both Unique, and the node
-                                    // keeps its own bytes.
+                                    // keeps its own bytes. SS12.4.1 (p.12-375): MakeReadUnique
+                                    // carries Transfer from a line holding its tags.
                                     line_q   <= cache_lu_data_i;
                                     acq_cs_q <= lu_state;
                                     if (aw_coh_q == `RNF_AW_READ_UNIQUE) begin
                                         acq_op_q <= chie_pkg::REQ_MAKEREADUNIQUE;
+                                        tagop_q  <= (mte_on && lu_tv) ? chie_pkg::TAGOP_TRANSFER
+                                                                      : chie_pkg::TAGOP_INVALID;
                                         kind_q   <= K_MRU;
                                     end
                                     else begin
@@ -1290,39 +2077,75 @@ module rnf_ctl `RNF_PARAM
                                     st_q <= S_REQ;
                                 end
                                 else if ((aw_coh_q == `RNF_AW_IMMEDIATE) ||
-                                         (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)) begin
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)) begin
                                     // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
-                                    // line that is Invalid here, and leaves it so.
+                                    // line that is Invalid here, and leaves it so. Table
+                                    // 12-2 (SS12.12 p.12-388): the core's Update or Match
+                                    // rides on it, but not on a Combined or Zero form, and
+                                    // SS12.5.2 (p.12-379) has a Full one's Update assert
+                                    // every TU, so a write updating fewer goes Ptl.
                                     alloc_q <= 1'b0;
                                     ack_q   <= 1'b0;
                                     kind_q  <= K_WU;
-                                    if (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
-                                        acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH
-                                                            : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH;
-                                    else
-                                        acq_op_q <= wr_zero ? chie_pkg::REQ_WRITEUNIQUEZERO :
-                                                    wr_full ? chie_pkg::REQ_WRITEUNIQUEFULL
-                                                            : chie_pkg::REQ_WRITEUNIQUEPTL;
-                                    st_q <= S_REQ;
+                                    tagop_q <= ctag_q;
+                                    if ((ctag_q != chie_pkg::TAGOP_INVALID) &&
+                                        ((aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP))) begin
+                                        hit_q   <= 1'b1;
+                                        apply_q <= 1'b0;
+                                        err_q   <= 1'b1;
+                                        st_q    <= S_BRESP;
+                                    end
+                                    else begin
+                                        if (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
+                                            acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH
+                                                                : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH;
+                                        else if (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
+                                            acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP
+                                                                : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP;
+                                        else if (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)
+                                            acq_op_q <= wu_full_tags ? chie_pkg::REQ_WRITEUNIQUEFULLSTASH
+                                                                     : chie_pkg::REQ_WRITEUNIQUEPTLSTASH;
+                                        else
+                                            acq_op_q <= (wr_zero && (ctag_q == chie_pkg::TAGOP_INVALID))
+                                                                          ? chie_pkg::REQ_WRITEUNIQUEZERO :
+                                                        wu_full_tags ? chie_pkg::REQ_WRITEUNIQUEFULL
+                                                                     : chie_pkg::REQ_WRITEUNIQUEPTL;
+                                        st_q <= S_REQ;
+                                    end
                                 end
                                 else begin
                                     line_q     <= '0;
                                     acq_cs_q   <= `RNF_CS_I;
                                     // Table 4-38 (p.4-218): MakeUnique needs no data
-                                    // fetched, so it is the whole-line store's request.
+                                    // fetched, so it is the whole-line store's request,
+                                    // with Update when it writes every tag too (SS12.6
+                                    // p.12-380). One that needs the line's tags reads
+                                    // them by ReadUnique with Fetch (SS12.4.1 p.12-376).
                                     // A partial one reads the bytes it does not write,
                                     // or with PARTIAL takes a CleanUnique from I to UCE
-                                    // and keeps only its own bytes.
-                                    if (wr_full) begin
+                                    // and keeps only its own bytes -- never with tags,
+                                    // which a UDP line cannot write back.
+                                    if (wr_full && !need_tags_now) begin
                                         acq_op_q <= chie_pkg::REQ_MAKEUNIQUE;
+                                        tagop_q  <= (ctag_q == chie_pkg::TAGOP_UPDATE) ? chie_pkg::TAGOP_UPDATE
+                                                                                      : chie_pkg::TAGOP_INVALID;
                                         kind_q   <= K_OWN;
                                     end
-                                    else if (aw_coh_q == `RNF_AW_PARTIAL) begin
+                                    else if (wr_full) begin
+                                        acq_op_q <= chie_pkg::REQ_READUNIQUE;
+                                        tagop_q  <= chie_pkg::TAGOP_MATCH;
+                                        kind_q   <= K_READ;
+                                    end
+                                    else if ((aw_coh_q == `RNF_AW_PARTIAL) && (ctag_q == chie_pkg::TAGOP_INVALID)) begin
                                         acq_op_q <= chie_pkg::REQ_CLEANUNIQUE;
                                         kind_q   <= K_OWN;
                                     end
                                     else begin
                                         acq_op_q <= chie_pkg::REQ_READUNIQUE;
+                                        tagop_q  <= mte_on ? chie_pkg::TAGOP_TRANSFER : chie_pkg::TAGOP_INVALID;
                                         kind_q   <= K_READ;
                                     end
                                     vic_addr_q <= cache_vic_addr_i;
@@ -1355,7 +2178,7 @@ module rnf_ctl `RNF_PARAM
                         wr_tgt_q   <= prot_rxrspflit_i.srcid;
                         wr_txnid_q <= prot_rxrspflit_i.dbid;
                         wr_tt_q    <= prot_rxrspflit_i.tracetag;
-                        wr_hi_q    <= 1'b0;
+                        wr_pkt_q   <= '0;
                         if (!cb_then_req_q && rx_err) err_q <= 1'b1;
                         st_q       <= S_CB_DAT;
                     end
@@ -1374,21 +2197,22 @@ module rnf_ctl `RNF_PARAM
 
                 S_CB_DAT: begin
                     if (prot_txdatflit_sent_i) begin
-                        if (wr_hi_q) begin
+                        if (wr_last_pkt) begin
                             // The way is free only now; cb_hold_v_o keeps this
                             // line's snoops queued until the retirement lands.
                             cb_done_q <= 1'b1;
-                            wr_hi_q   <= 1'b0;
+                            wr_pkt_q  <= '0;
                             if (cb_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
                                 st_q    <= cb_then_req_q ? S_REQ : fin_st;
                             end
                             else begin
                                 cmo_ret_st_q <= cb_then_req_q ? S_REQ : fin_st;
+                                cmo_cb_q     <= 1'b1;
                                 st_q         <= S_CMO;
                             end
                         end
-                        else wr_hi_q <= 1'b1;
+                        else wr_pkt_q <= wr_pkt_q + 1'b1;
                     end
                 end
 
@@ -1408,7 +2232,6 @@ module rnf_ctl `RNF_PARAM
                     if (rx_err)      err_q      <= 1'b1;
                     if (rx_nderr)    nderr_q    <= 1'b1;
                     if (rx_derr_dat) data_err_q <= 1'b1;
-                    if (rx_exok)     exok_q     <= 1'b1;
 
                     if (rx_sep || rx_comp) begin
                         ack_tgt_q   <= prot_rxrspflit_i.srcid;
@@ -1428,28 +2251,6 @@ module rnf_ctl `RNF_PARAM
                     if (rx_dat_mine) fill_state_q <= cs_of_resp(prot_rxdatflit_i.resp);
                     if (rx_comp)     fill_state_q <= cs_of_resp(prot_rxrspflit_i.resp);
 
-                    // SS2.10.4 (p.2-136): a 64-byte transfer at Data_Width 256 is
-                    // two packets, DataID 0 then 2.
-                    // Table 4-33 fn c (p.4-212): returned bytes fill only those the
-                    // line does not already hold valid.
-                    if (rx_dat_mine) begin
-                        // Unsigned: a size cast keeps its operand's signedness, so a
-                        // signed offset of 32+ would index below zero.
-                        automatic int unsigned base = (prot_rxdatflit_i.dataid == 2'd0) ? 0 : 4;
-                        if (take_data) begin
-                            for (int unsigned b = 0; b < 32; b++)
-                                if (!merge_vm[`RNF_LINE_OFFSET_W'(base*8 + b)])
-                                    line_q[(base*8 + b)*8 +: 8] <= prot_rxdatflit_i.data[b*8 +: 8];
-                            for (int unsigned c = 0; c < 4; c++)
-                                line_poison_q[3'(base + c)] <=
-                                    (&merge_vm[(base + c)*8 +: 8]) ? line_poison_q[3'(base + c)] :
-                                    (prot_rxdatflit_i.poison[c] |
-                                     (line_poison_q[3'(base + c)] & (|merge_vm[(base + c)*8 +: 8])));
-                        end
-                        if (base == 0) got_lo_q <= 1'b1;
-                        else           got_hi_q <= 1'b1;
-                    end
-
                     case (kind_q)
                         K_READ, K_MRU: begin
                             // The line takes its granted state on the completion,
@@ -1462,6 +2263,8 @@ module rnf_ctl `RNF_PARAM
                                 if (take_data) begin
                                     line_err_q   <= data_err_now;
                                     line_vmask_q <= '1;
+                                    ltv_q        <= rd_tv_now;
+                                    ltd_q        <= mte_on && (rt_now == chie_pkg::TAGOP_UPDATE);
                                 end
                                 // Table 4-33 (p.4-212): ReadUnique ends a UDP line UD.
                                 if (base_udp_q && !acq_lost) fill_state_q <= `RNF_CS_UD;
@@ -1485,13 +2288,16 @@ module rnf_ctl `RNF_PARAM
                                 // SS9.3 leaves it UCE; Table 4-32 (SS4.6 p.4-209) then
                                 // permits the silent eviction to I, so the line can
                                 // never be served or merged into with no data behind it.
-                                if (nderr_now && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
+                                if (nderr_now && !nc_q && cache_lu_hit_i && (cache_lu_state_i == `RNF_CS_UCE)) begin
                                     vic_addr_q <= addr_q;
                                     vic_way_q  <= cache_lu_way_i;
                                     drop_q     <= 1'b1;
                                 end
                             end
-                            else if ((kind_q == K_MRU) && rx_comp && !got_lo_q && !got_hi_q) begin
+                            else if ((kind_q == K_MRU) && rx_comp && (got_q == '0)) begin
+                                // SS12.13 (p.12-390): Comp's Update passes the Dirty tags
+                                // of the line kept here.
+                                if (mte_on && (prot_rxrspflit_i.tagop == chie_pkg::TAGOP_UPDATE)) ltd_q <= 1'b1;
                                 fill_v_q    <= !nderr_now && (!excl_q || mru_pass);
                                 apply_q     <= !excl_q || mru_pass;
                                 excl_pass_q <= excl_q && mru_pass;
@@ -1509,9 +2315,16 @@ module rnf_ctl `RNF_PARAM
                             end
                         end
                         K_NOTE: begin
-                            if (rx_comp) begin
-                                txnid_q <= txnid_q + 12'd1;
-                                st_q    <= fin_st;
+                            if (rx_comp || rx_comppersist) begin
+                                if (wu_cmo_now) begin
+                                    txnid_q <= txnid_q + 12'd1;
+                                    st_q    <= fin_st;
+                                end
+                                else begin
+                                    cmo_ret_st_q <= fin_st;
+                                    cmo_cb_q     <= 1'b0;
+                                    st_q         <= S_CMO;
+                                end
                             end
                         end
                         default: begin
@@ -1523,14 +2336,17 @@ module rnf_ctl `RNF_PARAM
                             end
                             if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;
                             if (wu_dbid_now) begin
-                                if ((acq_op_q != chie_pkg::REQ_WRITEUNIQUEZERO) && !wr_sent_q)
-                                    st_q <= S_WU_DAT;
+                                if (!chie_pkg::write_zero(acq_op_q) && !wr_sent_q) begin
+                                    wr_pkt_q <= wu_first;
+                                    st_q     <= S_WU_DAT;
+                                end
                                 else if (wu_comp_now && wu_cmo_now) begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
                                 end
                                 else if (wu_comp_now) begin
                                     cmo_ret_st_q <= fin_st;
+                                    cmo_cb_q     <= 1'b0;
                                     st_q         <= S_CMO;
                                 end
                             end
@@ -1543,14 +2359,17 @@ module rnf_ctl `RNF_PARAM
                     // dataless MakeReadUnique completion to a lost line takes the
                     // same path. A partial store then either keeps its own bytes
                     // (PARTIAL) or follows with the ReadUnique that fills the rest.
-                    if (rx_comp && acq_lost && !nderr_now && !got_lo_q && !got_hi_q && !excl_q &&
+                    if (rx_comp && acq_lost && !nderr_now && (got_q == '0) && !excl_q &&
                         ((acq_op_q == chie_pkg::REQ_CLEANUNIQUE) ||
                          (acq_op_q == chie_pkg::REQ_MAKEREADUNIQUE))) begin
                         line_q        <= '0;
                         line_err_q    <= 1'b0;
                         line_poison_q <= 8'h00;
                         line_vmask_q  <= '0;
-                        if (!(&wbe_q) && (aw_coh_q != `RNF_AW_PARTIAL)) begin
+                        ltv_q         <= 1'b0;
+                        ltd_q         <= 1'b0;
+                        if ((!(&wbe_q) && ((aw_coh_q != `RNF_AW_PARTIAL) || (ctag_q != chie_pkg::TAGOP_INVALID))) ||
+                            need_tags_q) begin
                             fill_uce_q <= 1'b1;
                             chain_ru_q <= 1'b1;
                         end
@@ -1562,9 +2381,9 @@ module rnf_ctl `RNF_PARAM
                     if (rx_err) err_q <= 1'b1;
                     if (rx_comp) got_rsp_q <= 1'b1;
                     if (prot_txdatflit_sent_i) begin
-                        if (wr_hi_q) begin
+                        if (wr_last_pkt) begin
                             wr_sent_q <= 1'b1;
-                            if (!(got_rsp_q || rx_comp))
+                            if (!wu_comp_now)
                                 st_q <= S_DATA;
                             else if (wu_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
@@ -1572,10 +2391,11 @@ module rnf_ctl `RNF_PARAM
                             end
                             else begin
                                 cmo_ret_st_q <= fin_st;
+                                cmo_cb_q     <= 1'b0;
                                 st_q         <= S_CMO;
                             end
                         end
-                        else wr_hi_q <= 1'b1;
+                        else wr_pkt_q <= wr_pkt_q + 1'b1;
                     end
                 end
 
@@ -1590,10 +2410,10 @@ module rnf_ctl `RNF_PARAM
                     if (prot_txreqflit_sent_i) st_q <= S_IDLE;
                 end
 
-                // The write leg is done and the CMO leg still owes its CompCMO; the
-                // core's response and the TxnID both wait for it.
+                // The write leg is done and the CMO leg still owes its CompCMO, or a
+                // Match its TagMatch; the core's response and the TxnID both wait for it.
                 S_CMO: begin
-                    if (rx_compcmo) begin
+                    if (cmo_cb_q ? cb_cmo_now : wu_cmo_now) begin
                         txnid_q <= txnid_q + 12'd1;
                         st_q    <= cmo_ret_st_q;
                     end
@@ -1616,12 +2436,12 @@ module rnf_ctl `RNF_PARAM
                             // p.4-215: the other transaction the lost line costs.
                             chain_ru_q <= 1'b0;
                             fill_uce_q <= 1'b0;
-                            got_lo_q   <= 1'b0;
-                            got_hi_q   <= 1'b0;
+                            got_q      <= '0;
                             got_rsp_q  <= 1'b0;
                             data_err_q <= 1'b0;
                             line_err_q <= 1'b0;
                             acq_op_q   <= chie_pkg::REQ_READUNIQUE;
+                            tagop_q    <= mte_on ? chie_pkg::TAGOP_TRANSFER : chie_pkg::TAGOP_INVALID;
                             kind_q     <= K_READ;
                             st_q       <= S_REQ;
                         end
@@ -1688,8 +2508,15 @@ module rnf_ctl `RNF_PARAM
     assign cache_fill_state_o = fill_uce_q ? `RNF_CS_UCE :
                                 store_fill ? wr_fill_state : fill_state_q;
     assign cache_fill_data_o  = fill_line;
+    // SS12.5.2 (p.12-379): an Update writes the tags its TU selects and leaves
+    // them Dirty. A line ending UCE holds no bytes, so no tags (SS12.3 p.12-374).
+    wire        fill_upd_tags = store_fill && (ctag_q == chie_pkg::TAGOP_UPDATE);
+    wire        fill_tv   = !fill_uce_q && (ltv_q || (fill_upd_tags && (&wtu_q)));
+    wire        fill_td   = fill_tv && (ltd_q || (fill_upd_tags && (|wtu_q)));
+    wire [15:0] fill_tags = fill_upd_tags ? merge_tags(ltag_q, wtag_q, wtu_q) : ltag_q;
     // A store covering the whole line replaces every corrupt byte.
-    assign cache_fill_meta_o  = {line_err_q && !(store_fill && (&wbe_q)),
+    assign cache_fill_meta_o  = {fill_td, fill_tv, fill_tags,
+                                 line_err_q && !(store_fill && (&wbe_q)),
                                  store_fill ? merge_poison(line_poison_q, wpoison_q, wbe_q)
                                             : line_poison_q,
                                  fill_uce_q ? {`RNF_LINE_BYTES{1'b0}} : fill_vmask};
@@ -1716,7 +2543,10 @@ module rnf_ctl `RNF_PARAM
     // SS9.3 (p.9-336): a non-OK RespErr is the endpoint's, and the core is owed
     // it rather than a silent OKAY.
     // AMBA AXI4 (IHI 0022) A7.2: EXOKAY for an exclusive access that passed.
-    wire [1:0] axi_resp = err_q ? 2'b10 : excl_pass_q ? 2'b01 : 2'b00;
+    // SS6.3.2 (p.6-289): a Non-snoopable Exclusive passes on the EXOK the PoS
+    // returned; a Snoopable one on this node's own monitor.
+    wire       excl_ok  = nc_q ? (excl_q && exok_q) : excl_pass_q;
+    wire [1:0] axi_resp = err_q ? 2'b10 : excl_ok ? 2'b01 : 2'b00;
 
     assign RVALID = (st_q == S_RESP);
     assign RDATA  = rdata_c;
@@ -1727,12 +2557,20 @@ module rnf_ctl `RNF_PARAM
     always_comb begin
         RUSER = '0;
         RUSER[`AXI4_USER_POISON_RANGE] = line_poison_q[2*rchunk_q +: 2];
+        if (ctag_q != chie_pkg::TAGOP_INVALID)
+            RUSER[`AXI4_USER_TAG_RANGE] = ltag_q[rchunk_q*4 +: 4];
     end
     assign RLAST  = 1'b1;
 
     assign BVALID = (st_q == S_BRESP);
+    assign BATDATA = rdata_c;
     assign BID    = `AXI4_BID_WIDTH'(id_q);
     assign BRESP  = axi_resp;
+    // SS12.11.1 (p.12-386): the Completer's TagMatch, or this node's own match on a
+    // store it completed in the cache -- a Pass where no match was performed.
+    wire local_pass = !(apply_q && ltv_q) || chie_pkg::tag_match_pass(wtag_q, ltag_q, wbe_q);
+    assign BUSER  = tm_owed_q                          ? {tm_pass_q, tm_got_q} :
+                    (ctag_q == chie_pkg::TAGOP_MATCH)  ? {local_pass, 1'b1}    : 2'b00;
 
     assign CMDONE = (st_q == S_CMRSP);
     assign CMRESP = err_q ? 2'b10 : 2'b00;
@@ -1740,7 +2578,7 @@ module rnf_ctl `RNF_PARAM
     // From the first Data packet until the fill it completes has been written. SS4.11.1
     // (p.4-242, MUST) is judged at the interface, so a packet counts from its cycle on the pins.
     assign defer_v_o    = ((st_q == S_DATA) &&
-                           (got_lo_q || got_hi_q || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
+                           ((got_q != '0) || rx_dat_mine || rx_dat_arriving)) || fill_v_q;
     assign defer_addr_o = addr_q;
 
     assign cb_hold_v_o    = (st_q == S_CB_DAT) || cb_done_q;
@@ -1749,6 +2587,11 @@ module rnf_ctl `RNF_PARAM
     // SS14.7.1 (p.14-460): a held surplus P-Credit is a PCrdReturn this node still
     // owes, so it counts as work in progress even from idle.
     assign txn_active_o = (st_q != S_IDLE) || surplus_v;
+
+    // Idle and about to stay so: the S_IDLE arms above take a surplus P-Credit and
+    // the leaving-coherency flush ahead of a pull.
+    assign pull_ready_o = (st_q == S_IDLE) && !surplus_v && !flush_v;
+    assign pull_txnid_o = txnid_q;
 
     // A single-outstanding Requester draws at most one RetryAck at a time, so a
     // conformant Completer never grants it more than a few credits of one type
