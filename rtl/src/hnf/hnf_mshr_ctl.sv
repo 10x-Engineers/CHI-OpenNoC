@@ -56,14 +56,14 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire [1:0]                          li_mshr_rxreq_tagop_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_excl_noexok_s0,
-    // opennoc_hnf_pkg::hnf_write_zero() of the request as sent. The opcode this
+    // chie_pkg::write_zero() of the request as sent. The opcode this
     // module decodes is the one hnf_serviced_as() maps it to, so nothing else
     // here can still tell a Write Zero from the *Full write it is serviced as.
     input  wire                                li_mshr_rxreq_wrzero_s0,
-    // opennoc_hnf_pkg::hnf_combined_write() of the request as sent; the opcode this
+    // chie_pkg::combined_write() of the request as sent; the opcode this
     // module decodes is the write leg alone, and the CMO leg is answered CompCMO.
     input  wire                                li_mshr_rxreq_cw_s0,
-    // opennoc_hnf_pkg::hnf_persist_cmo() / hnf_persist_response() of the request as
+    // opennoc_hnf_pkg::hnf_persist_cmo() / chie_pkg::persist_response() of the request as
     // sent: whether it owes a downstream persistent CMO, and whether its deferred
     // response is a CompPersist rather than a Comp or CompCMO.
     input  wire                                li_mshr_rxreq_persist_s0,

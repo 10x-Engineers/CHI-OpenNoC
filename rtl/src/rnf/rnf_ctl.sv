@@ -519,43 +519,9 @@ module rnf_ctl `RNF_PARAM
                                              : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
     endfunction
 
-    // SS2.3.2 (p.2-57, p.2-66): the Combined Writes, whose CMO leg completes on a
-    // CompCMO of its own -- or on a CompPersist, which also carries the Persist.
-    function automatic bit is_cmb_write(chie_pkg::req_opcode_e op);
-        return is_persep_write(op) ||
-               (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)  ||
-               (op == chie_pkg::REQ_WRITENOSNPFULLCLEANINV) ||
-               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)   ||
-               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)  ||
-               (op == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH) ||
-               (op == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)  ||
-               (op == chie_pkg::REQ_WRITEBACKFULLCLEANSH)   ||
-               (op == chie_pkg::REQ_WRITEBACKFULLCLEANINV)  ||
-               (op == chie_pkg::REQ_WRITECLEANFULLCLEANSH);
-    endfunction
-
-    function automatic bit is_persep_write(chie_pkg::req_opcode_e op);
-        return (op == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)  ||
-               (op == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)   ||
-               (op == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP) ||
-               (op == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)  ||
-               (op == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)   ||
-               (op == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
-    endfunction
-
-    // SS2.3.5 (p.2-73) and SS2.3.2 (p.2-61, p.2-66): these owe a Persist response
-    // beside their completion, which a CompPersist combines with it.
-    function automatic bit owes_persist(chie_pkg::req_opcode_e op);
-        return (op == chie_pkg::REQ_CLEANSHAREDPERSISTSEP) || is_persep_write(op);
-    endfunction
-
     function automatic bit is_stash_req(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_WRITEUNIQUEFULLSTASH) || (op == chie_pkg::REQ_WRITEUNIQUEPTLSTASH) ||
                (op == chie_pkg::REQ_STASHONCESHARED)      || (op == chie_pkg::REQ_STASHONCEUNIQUE);
-    endfunction
-
-    function automatic bit is_write_zero(chie_pkg::req_opcode_e op);
-        return (op == chie_pkg::REQ_WRITEUNIQUEZERO) || (op == chie_pkg::REQ_WRITENOSNPZERO);
     endfunction
 
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
@@ -916,7 +882,7 @@ module rnf_ctl `RNF_PARAM
         // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
         // SS13.10.16 (p.13-420): a Persist-owing request's LPID bits are its
         // PGroupID, which this single-outstanding node keeps at 0.
-        prot_txreqflit_o.lpid         = (core_q && !owes_persist(acq_op_q)) ? lpid_q : 8'd0;
+        prot_txreqflit_o.lpid         = (core_q && !chie_pkg::persist_response(acq_op_q)) ? lpid_q : 8'd0;
         // SS13.10.40 (p.13-435): a Match request's LPID bits are its TagGroupID.
         if (tagop_match) prot_txreqflit_o.lpid = tggid_q;
 `ifdef CHIE_MPAM_PRESENT
@@ -1270,11 +1236,11 @@ module rnf_ctl `RNF_PARAM
     // A Match write's TagMatch is waited for alike, as the core's B carries it.
     wire cmo_got_now     = cmo_got_q || rx_compcmo;
     wire persist_got_now = persist_got_q || rx_persist || rx_comppersist;
-    wire wu_cmo_now  = (!is_cmb_write(acq_op_q) || cmo_got_now) &&
-                       (!owes_persist(acq_op_q) || persist_got_now) &&
+    wire wu_cmo_now  = (!chie_pkg::combined_write(acq_op_q) || cmo_got_now) &&
+                       (!chie_pkg::persist_response(acq_op_q) || persist_got_now) &&
                        (!tm_owed_q || tm_got_now);
-    wire cb_cmo_now  = (!is_cmb_write(cb_op_q)  || cmo_got_now) &&
-                       (!owes_persist(cb_op_q)  || persist_got_now);
+    wire cb_cmo_now  = (!chie_pkg::combined_write(cb_op_q)  || cmo_got_now) &&
+                       (!chie_pkg::persist_response(cb_op_q)  || persist_got_now);
 
     function automatic bit same_set(logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] a,
                                     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] b);
@@ -2370,7 +2336,7 @@ module rnf_ctl `RNF_PARAM
                             end
                             if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;
                             if (wu_dbid_now) begin
-                                if (!is_write_zero(acq_op_q) && !wr_sent_q) begin
+                                if (!chie_pkg::write_zero(acq_op_q) && !wr_sent_q) begin
                                     wr_pkt_q <= wu_first;
                                     st_q     <= S_WU_DAT;
                                 end

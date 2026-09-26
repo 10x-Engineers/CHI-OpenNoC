@@ -54,13 +54,13 @@ package opennoc_hnf_pkg;
   //     "for each Write request" plus a CMO, and lets the receiver "separate the
   //     write and the CMO request and process them separately" provided "the CMO
   //     request must be ordered behind the write". The write is serviced as the
-  //     Write it names, and hnf_combined_write() is what makes the entry owe the
+  //     Write it names, and chie_pkg::combined_write() is what makes the entry owe the
   //     CMO leg's CompCMO behind it.
   //   Write Zero -> the *Full write of the same address region: SS4.2.3 (p.4-176)
   //     is "write data value of zero without transferring data bytes", and
   //     Table 4-13 (p.4-178) gives it Size=64, so it is that write over a line the
   //     Home sources itself. Table 4-39 (p.4-219) shares the completion row -- the
-  //     only delta is the WriteData response of None, which hnf_write_zero() below
+  //     only delta is the WriteData response of None, which chie_pkg::write_zero() below
   //     is what the MSHR reads to source the bytes and to withhold DWT.
   //   StashOnce* -> Evict: SS2.3.4 (p.2-71) permits the Home to ignore a Stash
   //     request, SS7.3 (p.7-297, MUST) still owes the Comp, Comp_I when the
@@ -136,25 +136,6 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_MAKEREADUNIQUE;
   endfunction
 
-  // The requests that owe a Persist response on top of their completion. Table 4-38
-  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
-  // "Comp + Persist or CompPersist"; SS4.2.4 (p.4-182) has a Persistent CMO combined
-  // with a write "treated as a CleanSharedPersistSep", so the six WriteCleanShPerSep
-  // forms owe one too -- which SS2.3.2 Alt 2a2 (p.2-67) lets the Home fold into a
-  // single CompPersist, exactly as the standalone request does.
-  function automatic logic hnf_persist_response(chie_pkg::req_opcode_e op);
-    case (op)
-      chie_pkg::REQ_CLEANSHAREDPERSISTSEP,
-      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
-      default                                   : return 1'b0;
-    endcase
-  endfunction
-
   // The requests whose completion has to reach the Point of Persistence. SS4.2.2
   // (p.4-171, MUST) makes that a downstream obligation for a Home that is not the
   // PoP, and SS16.1 (p.16-471, MUST) fixes the shape when the Subordinate's own
@@ -162,7 +143,7 @@ package opennoc_hnf_pkg;
   // assume: a substituted CleanSharedPersist whose Comp the Home's own Persist
   // waits on.
   function automatic logic hnf_persist_cmo(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_CLEANSHAREDPERSIST || hnf_persist_response(op);
+    return op == chie_pkg::REQ_CLEANSHAREDPERSIST || chie_pkg::persist_response(op);
   endfunction
 
   // Table 2-9 (SS2.8.5 p.2-119): Request Order and Endpoint Order, the two a Requester
@@ -180,38 +161,6 @@ package opennoc_hnf_pkg;
   // Table 2-6 (SS2.3.1 p.2-48): DMT is not permitted for an ordered read without CompAck.
   function automatic logic hnf_dmt_permitted(chie_pkg::order_e order, logic expcompack);
     return !(hnf_ordered(order) && !expcompack);
-  endfunction
-
-  // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
-  // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
-  // range, the gaps inside that range being RESERVED. The six persistent forms fold
-  // that CompCMO into the CompPersist hnf_persist_response() elects.
-  function automatic logic hnf_combined_write(chie_pkg::req_opcode_e op);
-    case (op)
-      chie_pkg::REQ_WRITENOSNPFULLCLEANSH,
-      chie_pkg::REQ_WRITENOSNPFULLCLEANINV,
-      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
-      chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
-      chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH,
-      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
-      chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITEBACKFULLCLEANSH,
-      chie_pkg::REQ_WRITEBACKFULLCLEANINV,
-      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,
-      chie_pkg::REQ_WRITECLEANFULLCLEANSH,
-      chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
-      default                                   : return 1'b0;
-    endcase
-  endfunction
-
-  // Table 4-39 (p.4-219) gives a Write Zero a WriteData response of None, so the
-  // Home sources the line: SS4.2.3's (p.4-176) "write data value of zero without
-  // transferring data bytes".
-  function automatic logic hnf_write_zero(chie_pkg::req_opcode_e op);
-    return op == chie_pkg::REQ_WRITEUNIQUEZERO || op == chie_pkg::REQ_WRITENOSNPZERO;
   endfunction
 
   // The two reads whose own snoop this Home sends, told from the opcode as sent

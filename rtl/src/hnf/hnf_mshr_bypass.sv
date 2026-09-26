@@ -40,7 +40,7 @@ module hnf_mshr_bypass `HNF_PARAM
     input  wire [7:0]                          li_mshr_rxreq_lpid_s0,
     input  wire                                li_mshr_rxreq_excl_s0,
     input  wire                                li_mshr_rxreq_expcompack_s0,
-    // opennoc_hnf_pkg::hnf_write_zero() of the request as sent, alongside the
+    // chie_pkg::write_zero() of the request as sent, alongside the
     // opcode this stage services it as (opennoc_hnf_pkg::hnf_serviced_as()).
     input  wire                                li_mshr_rxreq_wrzero_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,

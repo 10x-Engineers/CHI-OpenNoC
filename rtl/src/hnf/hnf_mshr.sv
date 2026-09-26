@@ -292,11 +292,11 @@ module hnf_mshr `HNF_PARAM
     assign req_stash_snpcode_s0   = opennoc_hnf_pkg::hnf_stash_snp_of(li_mshr_rxreq_opcode_s0, li_mshr_rxreq_tagop_s0);
     assign req_stash_s0           = opennoc_hnf_pkg::hnf_stash_req(li_mshr_rxreq_opcode_s0);
     assign req_excl_noexok_s0     = opennoc_hnf_pkg::hnf_excl_no_exok(li_mshr_rxreq_opcode_s0);
-    assign req_wrzero_s0          = opennoc_hnf_pkg::hnf_write_zero(li_mshr_rxreq_opcode_s0);
-    assign req_cw_s0              = opennoc_hnf_pkg::hnf_combined_write(li_mshr_rxreq_opcode_s0);
+    assign req_wrzero_s0          = chie_pkg::write_zero(li_mshr_rxreq_opcode_s0);
+    assign req_cw_s0              = chie_pkg::combined_write(li_mshr_rxreq_opcode_s0);
     assign req_wr_ptl_s0          = opennoc_hnf_pkg::hnf_write_partial(li_mshr_rxreq_opcode_s0);
     assign req_persist_s0         = opennoc_hnf_pkg::hnf_persist_cmo(li_mshr_rxreq_opcode_s0);
-    assign req_persist_rsp_s0     = opennoc_hnf_pkg::hnf_persist_response(li_mshr_rxreq_opcode_s0);
+    assign req_persist_rsp_s0     = chie_pkg::persist_response(li_mshr_rxreq_opcode_s0);
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
     assign req_atomic_s0          = chie_pkg::atomic_req(li_mshr_rxreq_opcode_s0);

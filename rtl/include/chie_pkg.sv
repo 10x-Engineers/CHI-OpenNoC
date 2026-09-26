@@ -541,6 +541,57 @@ package chie_pkg;
 `endif
   endfunction
 
+  // The requests that owe a Persist response on top of their completion. Table 4-38
+  // (SS4.7.2 p.4-218) gives CleanSharedPersist a bare Comp and CleanSharedPersistSep
+  // "Comp + Persist or CompPersist"; SS4.2.4 (p.4-182) has a Persistent CMO combined
+  // with a write "treated as a CleanSharedPersistSep", so the six WriteCleanShPerSep
+  // forms owe one too -- which SS2.3.2 Alt 2a2 (p.2-67) lets the Home fold into a
+  // single CompPersist, exactly as the standalone request does.
+  function automatic logic persist_response(req_opcode_e op);
+    case (op)
+      REQ_CLEANSHAREDPERSISTSEP,
+      REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      REQ_WRITEBACKFULLCLEANSHPERSEP,
+      REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                         : return 1'b0;
+    endcase
+  endfunction
+
+  // Table 4-17's (SS4.2.4 p.4-182) fifteen Combined Writes, whose CMO leg SS2.3.2
+  // (p.2-58/p.2-66) answers with CompCMO -- enumerated rather than taken as an opcode
+  // range, the gaps inside that range being RESERVED. The six persistent forms fold
+  // that CompCMO into the CompPersist persist_response() elects.
+  function automatic logic combined_write(req_opcode_e op);
+    case (op)
+      REQ_WRITENOSNPFULLCLEANSH,
+      REQ_WRITENOSNPFULLCLEANINV,
+      REQ_WRITENOSNPFULLCLEANSHPERSEP,
+      REQ_WRITENOSNPPTLCLEANSH,
+      REQ_WRITENOSNPPTLCLEANINV,
+      REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEFULLCLEANSH,
+      REQ_WRITEUNIQUEFULLCLEANSHPERSEP,
+      REQ_WRITEUNIQUEPTLCLEANSH,
+      REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      REQ_WRITEBACKFULLCLEANSH,
+      REQ_WRITEBACKFULLCLEANINV,
+      REQ_WRITEBACKFULLCLEANSHPERSEP,
+      REQ_WRITECLEANFULLCLEANSH,
+      REQ_WRITECLEANFULLCLEANSHPERSEP : return 1'b1;
+      default                         : return 1'b0;
+    endcase
+  endfunction
+
+  // Table 4-39 (p.4-219) gives a Write Zero a WriteData response of None, so the
+  // Home sources the line: SS4.2.3's (p.4-176) "write data value of zero without
+  // transferring data bytes".
+  function automatic logic write_zero(req_opcode_e op);
+    return op == REQ_WRITEUNIQUEZERO || op == REQ_WRITENOSNPZERO;
+  endfunction
+
   // SS13.10.31 (p.13-433) scopes SnoopMe to the Atomics, where Table 13-6 has it
   // displace Excl on the shared REQ bit -- so the Excl bit of an Atomic is not an
   // Exclusive request and must not be read as one.
