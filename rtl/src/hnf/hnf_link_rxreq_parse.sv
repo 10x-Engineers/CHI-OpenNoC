@@ -35,6 +35,12 @@ module hnf_link_rxreq_parse `HNF_PARAM
     input  wire                                biq_req_valid_s0_q,
     input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] biq_req_addr_s0_q,
 
+    //inputs from the SnpQuery port
+    input  wire                                snpq_req_valid_s0,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] snpq_req_addr_s0,
+    input  wire                                snpq_req_ns_s0,
+    output wire                                snpq_req_ready_s0,
+
     //inputs from hnf_mshr_qos
     input  wire                                qos_seq_pool_full_s0_q,
     input  wire                                rxreq_retry_enable_s0,
@@ -53,6 +59,8 @@ module hnf_link_rxreq_parse `HNF_PARAM
     // p.13-421) defines the request command space and leaves the rest Reserved,
     // and neither half belongs to the interconnect's internal commands.
     output wire                                li_mshr_rxreq_seq_s0,
+    // A SnpQuery from the port: the same internally generated slot, one snoop.
+    output wire                                li_mshr_rxreq_snpq_s0,
     output wire [3:0]                          li_mshr_rxreq_qos_s0,
     output wire [chie_pkg::NID_WIDTH-1:0]      li_mshr_rxreq_srcid_s0,
     output wire [11:0]                         li_mshr_rxreq_txnid_s0,
@@ -116,7 +124,9 @@ module hnf_link_rxreq_parse `HNF_PARAM
                                          (rxreqflit.opcode == chie_pkg::REQ_REQLCRDRETURN);
     assign rxreq_flit_valid_s0         = (rxreqflitv == 1'b1) && !rxreq_link_flit_s0;
     assign li_mshr_rxreq_seq_s0        = (rxreq_flit_valid_s0 == 1'b0) && (biq_req_valid_s0_q == 1'b1) && (qos_seq_pool_full_s0_q == 1'b0);
-    assign li_mshr_rxreq_valid_s0      = rxreq_flit_valid_s0 || li_mshr_rxreq_seq_s0;
+    assign snpq_req_ready_s0           = (rxreq_flit_valid_s0 == 1'b0) && (biq_req_valid_s0_q == 1'b0) && (qos_seq_pool_full_s0_q == 1'b0);
+    assign li_mshr_rxreq_snpq_s0       = snpq_req_valid_s0 && snpq_req_ready_s0;
+    assign li_mshr_rxreq_valid_s0      = rxreq_flit_valid_s0 || li_mshr_rxreq_seq_s0 || li_mshr_rxreq_snpq_s0;
 
     assign li_mshr_rxreq_qos_s0        = rxreq_flit_valid_s0? rxreqflit.qos       :'0;
     assign li_mshr_rxreq_srcid_s0      = rxreq_flit_valid_s0? rxreqflit.srcid     :'0;
@@ -126,9 +136,11 @@ module hnf_link_rxreq_parse `HNF_PARAM
     assign li_mshr_rxreq_size_s0       = rxreq_flit_valid_s0? rxreqflit.size      :chie_pkg::SIZE_1B;
 
     assign li_mshr_rxreq_addr_s0       = rxreq_flit_valid_s0? rxreqflit.addr      :
-           li_mshr_rxreq_seq_s0? biq_req_addr_s0_q:'0;
+           li_mshr_rxreq_seq_s0? biq_req_addr_s0_q:
+           li_mshr_rxreq_snpq_s0? snpq_req_addr_s0:'0;
 
-    assign li_mshr_rxreq_ns_s0         = rxreq_flit_valid_s0? rxreqflit.ns        :'0;
+    assign li_mshr_rxreq_ns_s0         = rxreq_flit_valid_s0? rxreqflit.ns        :
+           li_mshr_rxreq_snpq_s0 & snpq_req_ns_s0;
     assign li_mshr_rxreq_allowretry_s0 = rxreq_flit_valid_s0? rxreqflit.allowretry: li_mshr_rxreq_seq_s0 ? {1{1'b1}} : '0;
     assign li_mshr_rxreq_order_s0      = rxreq_flit_valid_s0? rxreqflit.order     :chie_pkg::ORDER_NONE;
     assign li_mshr_rxreq_pcrdtype_s0   = rxreq_flit_valid_s0? rxreqflit.pcrdtype  :'0;

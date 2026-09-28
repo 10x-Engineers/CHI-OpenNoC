@@ -182,7 +182,7 @@ module {{ module }}
         {% endif %}
         {% else %}
         {% if channel in ['snp'] %}
-        {% if node.P0.value in ['HNF'] %}
+        {% if node.P0.value in ['HNF', 'MN'] %}
         ,.RX{{ channel.upper() }}FLITV_P0({{ node.name }}_P0_TX{{ channel.upper() }}FLITV)
         ,.RX{{ channel.upper() }}FLIT_P0 ({{ node.name }}_P0_TX{{ channel.upper() }}FLIT)
         ,.RX{{ channel.upper() }}LCRDV_P0({{ node.name }}_P0_TX{{ channel.upper() }}LCRDV)
@@ -192,7 +192,7 @@ module {{ module }}
         ,.RX{{ channel.upper() }}LCRDV_P0 ()
         {% endif %}
         {% else %}
-        {% if node.P0.value not in ['NONE'] %}
+        {% if node.P0.value not in ['NONE'] and not (channel == 'dat' and node.P0.value == 'MN') %}
         ,.RX{{ channel.upper() }}FLITV_P0({{ node.name }}_P0_TX{{ channel.upper() }}FLITV)
         ,.RX{{ channel.upper() }}FLIT_P0 ({{ node.name }}_P0_TX{{ channel.upper() }}FLIT)
         ,.RX{{ channel.upper() }}LCRDV_P0({{ node.name }}_P0_TX{{ channel.upper() }}LCRDV)
@@ -216,7 +216,7 @@ module {{ module }}
         {% endif %}
         {% else %}
         {% if channel in ['snp'] %}
-        {% if node.P1.value in ['HNF'] %}
+        {% if node.P1.value in ['HNF', 'MN'] %}
         ,.RX{{ channel.upper() }}FLITV_P1({{ node.name }}_P1_TX{{ channel.upper() }}FLITV)
         ,.RX{{ channel.upper() }}FLIT_P1 ({{ node.name }}_P1_TX{{ channel.upper() }}FLIT)
         ,.RX{{ channel.upper() }}LCRDV_P1({{ node.name }}_P1_TX{{ channel.upper() }}LCRDV)
@@ -227,7 +227,7 @@ module {{ module }}
         {% endif %}
         {% else %}
         
-        {% if node.P1.value not in ['NONE'] %}
+        {% if node.P1.value not in ['NONE'] and not (channel == 'dat' and node.P1.value == 'MN') %}
         ,.RX{{ channel.upper() }}FLITV_P1({{ node.name }}_P1_TX{{ channel.upper() }}FLITV)
         ,.RX{{ channel.upper() }}FLIT_P1 ({{ node.name }}_P1_TX{{ channel.upper() }}FLIT)
         ,.RX{{ channel.upper() }}LCRDV_P1({{ node.name }}_P1_TX{{ channel.upper() }}LCRDV)
@@ -259,7 +259,7 @@ module {{ module }}
         ,.TX{{ channel.upper() }}LCRDV_W (m_{{ channel }}lcrdv_{{ node.X }}_{{ xmax}})
         {% endif %}
         {% if channel in ['req'] %}
-        {% if node.P0.value in ['HNI', 'HNF' , 'SNF'] %}
+        {% if node.P0.value in ['HNI', 'HNF', 'SNF', 'MN'] %}
         ,.TX{{ channel.upper() }}FLITPEND_P0 ({{ node.name }}_P0_RX{{ channel.upper() }}FLITPEND)
         ,.TX{{ channel.upper() }}FLITV_P0({{ node.name }}_P0_RX{{ channel.upper() }}FLITV)
         ,.TX{{ channel.upper() }}FLIT_P0 ({{ node.name }}_P0_RX{{ channel.upper() }}FLIT)
@@ -313,7 +313,7 @@ module {{ module }}
         {% endif %}
 
         {% if channel in ['req'] %}
-        {% if node.P1.value in ['HNI', 'HNF' , 'SNF'] %}
+        {% if node.P1.value in ['HNI', 'HNF', 'SNF', 'MN'] %}
         ,.TX{{ channel.upper() }}FLITPEND_P1 ({{ node.name }}_P1_RX{{ channel.upper() }}FLITPEND)
         ,.TX{{ channel.upper() }}FLITV_P1({{ node.name }}_P1_RX{{ channel.upper() }}FLITV)
         ,.TX{{ channel.upper() }}FLIT_P1 ({{ node.name }}_P1_RX{{ channel.upper() }}FLIT)

@@ -55,30 +55,17 @@
 `define display_error(flag,info)              if(!(flag)) $error(info);
 `endif
 
-`ifdef DISPLAY_FATAL
-// Elaborate once per module that uses `display_fatal, beside its clk/rst: the
-// checks are live from time 0 otherwise, over registers reset has not reached.
-`define display_fatal_arm                                                     \
-    logic __df_rst_applied = 1'b0;                                            \
-    always @(posedge clk or posedge rst)                                      \
-        if (rst === 1'b1) __df_rst_applied <= 1'b1;                           \
-    wire  __df_armed = (rst === 1'b0) && (__df_rst_applied === 1'b1);
-// Procedural form, for a check already inside a clocked always block.
-`define display_fatal(flag,info)              if(__df_armed && !(flag)) $fatal(1, info);
-// Module-scope form: samples in the Preponed region, so a check over signals
-// that settle in different deltas cannot see a glitched combination.
-`define display_fatal_sva(flag,info)                                          \
-    assert property (@(posedge clk) disable iff (!__df_armed) (flag))         \
-    else $fatal(1, info);
-`endif
+`include "display_fatal.svh"
 
-`define CACHE_LINE_WIDTH                   CHIE_DATA_WIDTH_PARAM*2
-`define CACHE_BE_WIDTH                     CHIE_BE_WIDTH_PARAM*2
+// A line is opennoc_hnf_pkg::HNF_PKTS data packets at any Data_Width (SS2.10.4 p.2-136).
+`define HNF_PKTS                           opennoc_hnf_pkg::HNF_PKTS
+`define CACHE_LINE_WIDTH                   (CHIE_DATA_WIDTH_PARAM*`HNF_PKTS)
+`define CACHE_BE_WIDTH                     (CHIE_BE_WIDTH_PARAM*`HNF_PKTS)
 // CHI E.b SS9.5 (p.9-347): one Poison bit per 64-bit chunk of the line.
-`define CACHE_POISON_WIDTH                 CHIE_POISON_WIDTH_PARAM*2
+`define CACHE_POISON_WIDTH                 (CHIE_POISON_WIDTH_PARAM*`HNF_PKTS)
 // SS12.2 (p.12-373): the widths of opennoc_hnf_pkg::hnf_tagv_s.
-`define CACHE_TAG_WIDTH                    (chie_pkg::TAG_WIDTH*2)
-`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + chie_pkg::TU_WIDTH*2 + 1)
+`define CACHE_TAG_WIDTH                    opennoc_hnf_pkg::HNF_LINE_TAG
+`define CACHE_TAGV_WIDTH                   (`CACHE_TAG_WIDTH + opennoc_hnf_pkg::HNF_LINE_TU + 1)
 `define CACHE_BLOCK_OFFSET                 6
 `define RNF_NUM                            HNF_MSHR_RNF_NUM_PARAM
 `define RNI_NUM                            HNF_MSHR_RNI_NUM_PARAM

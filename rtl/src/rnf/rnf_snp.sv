@@ -25,12 +25,36 @@
 // with SnpRespData_SC_PD rather than SD, which Table 4-42's (p.4-223) own SC row
 // admits and SS4.10's (p.4-241) DoNotGoToSD can never forbid.
 //
-// This node declares neither DCT nor Stash, but still answers those snoops
-// coherently: each is decoded as the Non-forwarding, Non-stash snoop whose
-// response it gives (base_of()). SnpDVMOp is not decoded: DVM_Support is False.
+// A Forwarding snoop on a line held with all its bytes (UC, UD, SC or SD) sends
+// the line to the Requester as CompData and answers Home SnpResp*Fwded, taking one
+// row of Tables 4-51..4-56 (SS4.8.3 p.4-229) per snoop: SnpOnceFwd keeps the line
+// and forwards it I, SnpUniqueFwd forwards it Unique and ends I, and the rest
+// forward it SC and end SC -- SnpPreferUniqueFwd as Table 4-55's Non-invalidating
+// row, which p.4-237 makes "protocol compliant ... always". A UCE or UDP line has
+// nothing to forward and answers the Non-forwarding twin (base_of()), as does
+// every snoop not yet serviced beyond it.
+//
+// DVM_Support is DVM_v8.4 (SS16.1.1 p.16-473). A SnpDVMOp pair touches no line:
+// it is answered with one SnpResp_I once both parts are in (SS8.1.3 p.8-308,
+// MUST), and at once, since this node holds no TLB, branch predictor or
+// instruction cache for a DVM operation -- a Sync included (SS8.1.2 p.8-307) -- to
+// wait on. It accepts RNF_SNPDVM_NUM pairs at once, SS8.1.3's two.
+//
+// A Stash snoop is answered with a Data Pull (SS7.1.1 p.7-295) where Tables
+// 4-46..4-48 (SS4.8.2 p.4-227) permit one -- SnpStashUnique on a line not held or
+// held SC, SnpStashShared on one not held, SnpUniqueStash and SnpMakeInvalidStash
+// on any -- when the core side has no transaction of its own to hazard with it
+// (SS7.2 p.7-296) and the line has a way it can take without a write-back. The
+// DBID names the TxnID the core side then completes the implied read under.
 //
 // Snoops are answered in every coherency state: Table 15-1 (p.15-468) requires it
 // in all but Coherency Disabled, and does not forbid it there.
+//
+// With BROADCASTMTE a SnpRespData carries the line's tags (SS12.9.4 p.12-384): by
+// Update where it passes Dirty tags with the line's dirtiness, else by Transfer
+// where the tags are valid. A forwarded CompData carries none. A line with Dirty
+// tags answers SnpUniqueFwd as SnpUnique, since SS12.9.2 (p.12-383, MUST) forbids
+// forwarding them.
 module rnf_snp `RNF_PARAM
     (
     input  wire                                 clk_i,
@@ -38,6 +62,9 @@ module rnf_snp `RNF_PARAM
 
     input  wire                                 prot_rxsnpflitv_i,
     input  chie_pkg::snp_flit_s                 prot_rxsnpflit_i,
+
+    // SS16.2.6 (p.16-476, MUST): deasserted, no response carries MTE.
+    input  wire                                 mte_en_i,
 
     // A snoop taken off the queue, so its L-Credit can be granted again: SS14.2.1
     // (p.14-445) has a Receiver grant only what it can accept.
@@ -79,12 +106,33 @@ module rnf_snp `RNF_PARAM
     // The line of the snoop being answered, from the cycle it is taken until its
     // response has gone.
     output wire                                 snp_line_v_o,
-    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o,
+
+    // The Data Pull handed to the core side: its line, the way it fills, and the
+    // read Table 7-2 (SS7.1.1 p.7-295) makes of it.
+    input  wire [`RNF_WAY_W-1:0]                cache_vic_way_i,
+    input  wire [`RNF_CS_WIDTH-1:0]             cache_vic_state_i,
+    input  wire                                 pull_ready_i,
+    input  wire [11:0]                          pull_txnid_i,
+    output wire                                 pull_v_o,
+    output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] pull_addr_o,
+    output wire [`RNF_WAY_W-1:0]                pull_way_o,
+    output chie_pkg::req_opcode_e               pull_op_o
     );
 
     localparam logic [1:0] S_IDLE = 2'd0;
     localparam logic [1:0] S_RSP  = 2'd1;
     localparam logic [1:0] S_DAT  = 2'd2;
+    localparam logic [1:0] S_FWD  = 2'd3;
+
+    // SS2.10.4 (p.2-136): a 64-byte line is 512/Data_Width packets, packet p
+    // carrying DataID p*(Data_Width/128) (Table 2-15).
+    localparam int DW       = CHIE_DATA_WIDTH_PARAM;
+    localparam int PKT_B    = DW / 8;
+    localparam int NPKT     = `RNF_LINE_BYTES / PKT_B;
+    localparam int DID_STEP = PKT_B / 16;
+    localparam int PKT_W    = (NPKT == 1) ? 1 : $clog2(NPKT);
+    localparam int PSN_PKT  = DW / 64;
 
     logic [1:0]                           st_q;
     chie_pkg::snp_flit_s                  snp_q;
@@ -94,7 +142,14 @@ module rnf_snp `RNF_PARAM
     logic [`RNF_CS_WIDTH-1:0]             cur_state_q;
     logic                                 with_data_q;
     logic                                 pass_dirty_q;
-    logic                                 dat_lo_sent_q;
+    logic [PKT_W-1:0]                     pkt_q;
+    // The line goes to the Requester too (SS4.8.3 p.4-229), in state fwd_resp_q.
+    logic                                 fwd_q;
+    chie_pkg::resp_state_e                fwd_resp_q;
+    // The response carries a Data Pull under DBID pull_dbid_q.
+    logic                                 pull_q;
+    logic [11:0]                          pull_dbid_q;
+    logic                                 tag_dirty_q;
 
     // SS4.8.3 (p.4-229): the Snoopee "is permitted, but not expected, to convert
     // the Snoop to its corresponding Non-forwarding type". SS4.8.2 (p.4-227):
@@ -129,8 +184,7 @@ module rnf_snp `RNF_PARAM
                is_stash_hint(op);
     endfunction
 
-    // Tables 4-47/4-48 (p.4-228/4-229): answered with the precise state and no
-    // Data Pull, which SS7.1.1 (p.7-295) lets a Snoopee decline.
+    // Tables 4-47/4-48 (p.4-228/4-229): answered with the precise state.
     function automatic bit is_stash_hint(chie_pkg::snp_opcode_e op);
         return (op == chie_pkg::SNP_SNPSTASHUNIQUE) || (op == chie_pkg::SNP_SNPSTASHSHARED);
     endfunction
@@ -138,7 +192,8 @@ module rnf_snp `RNF_PARAM
     // SS4.8.1 (p.4-221) lists the Non-forwarding, Non-stash snoops; base_of()
     // folds every other snoop but SnpDVMOp onto one of them.
     function automatic bit is_decoded(chie_pkg::snp_opcode_e op);
-        return is_stash_hint(op) || is_base_decoded(base_of(op));
+        return is_stash_hint(op) || is_base_decoded(base_of(op)) ||
+               (op == chie_pkg::SNP_SNPDVMOP);
     endfunction
 
     function automatic bit is_base_decoded(chie_pkg::snp_opcode_e op);
@@ -156,6 +211,32 @@ module rnf_snp `RNF_PARAM
 
     function automatic bit is_dirty(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD) || (cs == `RNF_CS_UDP);
+    endfunction
+
+    function automatic bit is_fwd(chie_pkg::snp_opcode_e op);
+        return (op == chie_pkg::SNP_SNPONCEFWD)   || (op == chie_pkg::SNP_SNPCLEANFWD) ||
+               (op == chie_pkg::SNP_SNPSHAREDFWD) || (op == chie_pkg::SNP_SNPNOTSHAREDDIRTYFWD) ||
+               (op == chie_pkg::SNP_SNPPREFERUNIQUEFWD) || (op == chie_pkg::SNP_SNPUNIQUEFWD);
+    endfunction
+
+    // Tables 4-51..4-56 (SS4.8.3 p.4-231): the state the line is forwarded in --
+    // I for SnpOnceFwd, Unique (UD_PD from a Dirty line, since "Snoopee that has the
+    // cache line in Dirty state must Pass Dirty to the Requester") for SnpUniqueFwd,
+    // SC for the rest (a CompData Resp, Table 13-35 SS13.10.44 p.13-437).
+    function automatic chie_pkg::resp_state_e
+        fwd_state(chie_pkg::snp_opcode_e op, logic [`RNF_CS_WIDTH-1:0] cur);
+        if (op == chie_pkg::SNP_SNPONCEFWD)   return chie_pkg::RESP_I;
+        if (op == chie_pkg::SNP_SNPUNIQUEFWD) return is_dirty(cur) ? chie_pkg::RESP_UC_PD
+                                                                  : chie_pkg::RESP_UC_UD;
+        return chie_pkg::RESP_SC;
+    endfunction
+
+    // The Snoopee's own final state on those rows.
+    function automatic logic [`RNF_CS_WIDTH-1:0]
+        fwd_final(chie_pkg::snp_opcode_e op, logic [`RNF_CS_WIDTH-1:0] cur);
+        if (op == chie_pkg::SNP_SNPONCEFWD)   return cur;
+        if (op == chie_pkg::SNP_SNPUNIQUEFWD) return `RNF_CS_I;
+        return `RNF_CS_SC;
     endfunction
 
     // Table 4-44 (p.4-225): SnpCleanShared strips the dirtiness and leaves the
@@ -229,8 +310,25 @@ module rnf_snp `RNF_PARAM
         return dv && ((addr >> `RNF_LINE_OFFSET_W) == (da >> `RNF_LINE_OFFSET_W));
     endfunction
 
-    wire head_line_deferred = on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000}) ||
-                              on_defer_line(cb_hold_v_i, cb_hold_addr_i, {head.addr, 3'b000});
+    // SS8.1.3 (p.8-307): a SnpDVMOp is two packets on one TxnID, in either order.
+    // Its Addr is DVM payload, not a line, so no line hazard holds it.
+    localparam int RNF_SNPDVM_NUM = 2;
+    logic [RNF_SNPDVM_NUM-1:0]          dvm_v_q;
+    logic [CHIE_NID_WIDTH_PARAM-1:0]    dvm_src_q [RNF_SNPDVM_NUM];
+    logic [11:0]                        dvm_txn_q [RNF_SNPDVM_NUM];
+    logic                               dvm_q;
+    wire                                head_dvm = (head.opcode == chie_pkg::SNP_SNPDVMOP);
+    logic [RNF_SNPDVM_NUM-1:0]          dvm_hit, dvm_free_first;
+    always_comb begin
+        for (int d = 0; d < RNF_SNPDVM_NUM; d++)
+            dvm_hit[d] = dvm_v_q[d] && (dvm_src_q[d] == head.srcid) && (dvm_txn_q[d] == head.txnid);
+        dvm_free_first = ~dvm_v_q & (dvm_v_q + 1'b1);
+    end
+    wire dvm_pair_whole = |dvm_hit;
+
+    wire head_line_deferred = !head_dvm &&
+                              (on_defer_line(defer_v_i, defer_addr_i, {head.addr, 3'b000}) ||
+                               on_defer_line(cb_hold_v_i, cb_hold_addr_i, {head.addr, 3'b000}));
 
     // One snoop at a time, and never the one SS4.11.1 has waiting. That also holds
     // the snoops behind it, but only for as long as the Home takes to send the rest
@@ -247,9 +345,41 @@ module rnf_snp `RNF_PARAM
     assign cache_lu_addr_o = (st_q == S_IDLE) ? snp_addr : snp_addr_q;
 
     wire [`RNF_CS_WIDTH-1:0] cur_state = cache_lu_hit_i ? cache_lu_state_i : `RNF_CS_I;
+    // SS12.3 (p.12-374): the line's tags are Dirty only while the line is.
+    wire head_tag_dirty = mte_en_i && cache_lu_meta_i[`RNF_META_TV] &&
+                          cache_lu_meta_i[`RNF_META_TD] && is_dirty(cur_state);
+    // SS12.9.2 (p.12-383, MUST): with Dirty tags the invalidating Forwarding snoop
+    // "Must not forward data to the Requester" and returns data and tags to Home.
+    wire head_fwd_as_base = (head.opcode == chie_pkg::SNP_SNPUNIQUEFWD) && head_tag_dirty;
     chie_pkg::snp_opcode_e head_op;
     assign head_op = base_of(head.opcode);
-    wire [`RNF_CS_WIDTH-1:0] nxt_state = final_state(head_op, cur_state);
+    // SS4.8.3 (p.4-229): "Expected ... to forward a copy of the cache line to the
+    // Requester if the cache line is in one of the following states: UD, UC, SD, SC".
+    wire head_fwd = !head_dvm && is_fwd(head.opcode) && cache_lu_hit_i && !head_fwd_as_base &&
+                    ((cur_state == `RNF_CS_UC) || (cur_state == `RNF_CS_UD) ||
+                     (cur_state == `RNF_CS_SC) || (cur_state == `RNF_CS_SD));
+    wire [`RNF_CS_WIDTH-1:0] nxt_state = head_fwd ? fwd_final(head.opcode, cur_state)
+                                                  : final_state(head_op, cur_state);
+
+    // SS4.8.2 (p.4-228): SnpStashUnique pulls only "if the cache-data is not present,
+    // or present in a Shared state", SnpStashShared only if not present; Table 4-46
+    // (p.4-227) permits a pull with any response to the other two. The pulled line
+    // takes the snooped line's own way, or a victim that leaves silently (Table 4-32
+    // SS4.6 p.4-209) -- a Dirty one would need a CopyBack in the pull's way.
+    wire head_stash_pull_ok =
+        ((head.opcode == chie_pkg::SNP_SNPSTASHUNIQUE) &&
+         ((cur_state == `RNF_CS_I) || (cur_state == `RNF_CS_SC))) ||
+        ((head.opcode == chie_pkg::SNP_SNPSTASHSHARED) && (cur_state == `RNF_CS_I)) ||
+        (head.opcode == chie_pkg::SNP_SNPUNIQUESTASH) ||
+        (head.opcode == chie_pkg::SNP_SNPMAKEINVALIDSTASH);
+    wire pull_way_ok = cache_lu_hit_i || !is_dirty(cache_vic_state_i);
+    wire head_pull   = head_stash_pull_ok && pull_way_ok && pull_ready_i;
+
+    assign pull_v_o    = take && head_pull;
+    assign pull_addr_o = {snp_addr[CHIE_REQ_ADDR_WIDTH_PARAM-1:`RNF_LINE_OFFSET_W], {`RNF_LINE_OFFSET_W{1'b0}}};
+    assign pull_way_o  = cache_lu_hit_i ? cache_lu_way_i : cache_vic_way_i;
+    assign pull_op_o   = (head.opcode == chie_pkg::SNP_SNPSTASHSHARED) ? chie_pkg::REQ_READNOTSHAREDDIRTY
+                                                                       : chie_pkg::REQ_READUNIQUE;
 
     // SS4.9 (p.4-240): a Dirty line goes back whatever RetToSrc says, a Shared
     // Clean one only when RetToSrc is asserted, and a Unique Clean one is that
@@ -260,15 +390,25 @@ module rnf_snp `RNF_PARAM
     // Snoopee retains a copy", which would exempt SnpUnique from SC -- but
     // Table 4-43 (p.4-224) gives that cell SnpRespData_I as its only response,
     // so the table governs.
-    wire data_eligible = (head_op != chie_pkg::SNP_SNPMAKEINVALID) &&
+    wire data_eligible = !head_dvm &&
+                         (head_op != chie_pkg::SNP_SNPMAKEINVALID) &&
                          (head_op != chie_pkg::SNP_SNPQUERY) &&
                          !is_stash_hint(head_op);
-    wire want_data     = data_eligible &&
-                         (is_dirty(cur_state) ||
-                          ((cur_state == `RNF_CS_SC) && head.rettosrc));
+    // A forwarded line goes to Home as well only where Tables 4-51..4-56 have it:
+    // a Dirty line left Clean passes its dirtiness there (SnpRespData_SC_PD_Fwded_SC),
+    // and RetToSrc asks for a copy of a Clean one.
+    wire want_data     = head_fwd ? ((is_dirty(cur_state) && !is_dirty(nxt_state) &&
+                                      (head.opcode != chie_pkg::SNP_SNPUNIQUEFWD)) ||
+                                     (!is_dirty(cur_state) && head.rettosrc &&
+                                      (head.opcode != chie_pkg::SNP_SNPUNIQUEFWD) &&
+                                      (head.opcode != chie_pkg::SNP_SNPONCEFWD)))
+                                  : (data_eligible &&
+                                     (is_dirty(cur_state) ||
+                                      ((cur_state == `RNF_CS_SC) && head.rettosrc)));
 
     // A Dirty line whose snoop leaves it Clean hands the dirtiness to the Home
-    // with it; one that stays Dirty keeps it (Table 4-41's SnpOnce UD -> UD).
+    // with it; one that stays Dirty keeps it (Table 4-41's SnpOnce UD -> UD). A
+    // SnpUniqueFwd passes it to the Requester instead (Table 4-54 p.4-236).
     wire pass_dirty = is_dirty(cur_state) && want_data && !is_dirty(nxt_state);
 
     always_comb begin
@@ -276,8 +416,15 @@ module rnf_snp `RNF_PARAM
         snp_txrspflit_o.tgtid  = snp_q.srcid;
         snp_txrspflit_o.srcid  = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         snp_txrspflit_o.txnid  = snp_q.txnid;
-        snp_txrspflit_o.opcode = chie_pkg::RSP_SNPRESP;
+        snp_txrspflit_o.opcode = fwd_q ? chie_pkg::RSP_SNPRESPFWDED : chie_pkg::RSP_SNPRESP;
         snp_txrspflit_o.resp   = resp_of(final_q, pass_dirty_q);
+        // SS13.10.45 (p.13-438): the state the line was forwarded to the Requester in,
+        // and on a Stash snoop's answer the same bits are DataPull (SS13.10.33 p.13-433).
+        snp_txrspflit_o.fwdstate.fwdstate = fwd_q ? fwd_resp_q : chie_pkg::RESP_I;
+        if (pull_q) begin
+            snp_txrspflit_o.fwdstate.datapull = 3'b001;
+            snp_txrspflit_o.dbid              = pull_dbid_q;
+        end
         // SS11.5.1 (p.11-368, MUST): the snoop's TraceTag is reflected.
         snp_txrspflit_o.tracetag = snp_q.tracetag;
     end
@@ -297,28 +444,76 @@ module rnf_snp `RNF_PARAM
             poison_out[c] = meta_q[64 + c] && (|be_q[c*8 +: 8]);
     end
 
+    // SS12.9.4 (p.12-384): SnpRespDataPtl carries no tags; Update "All TU bits must be
+    // asserted. The data state must include Pass Dirty". SS4.8.3 (p.4-231, MUST): Dirty
+    // tags go "Update if the response state includes Pass Dirty", Transfer if not.
+    wire [1:0]  dat_tagop   = (!mte_en_i || ptl_q || !meta_q[`RNF_META_TV]) ? chie_pkg::TAGOP_INVALID :
+                              (pass_dirty_q && tag_dirty_q)                ? chie_pkg::TAGOP_UPDATE
+                                                                           : chie_pkg::TAGOP_TRANSFER;
+    localparam int TAG_PKT = DW / 32;
+    wire [15:0] tags_out = meta_q[`RNF_META_TAGS];
+
+    logic [DW-1:0]      pkt_data [NPKT];
+    logic [PKT_B-1:0]   pkt_be   [NPKT];
+    logic [PSN_PKT-1:0] pkt_psn  [NPKT];
+    always_comb begin
+        for (int p = 0; p < NPKT; p++) begin
+            pkt_data[p] = out_line[p*DW +: DW];
+            pkt_be[p]   = be_q[p*PKT_B +: PKT_B];
+            pkt_psn[p]  = poison_out[p*PSN_PKT +: PSN_PKT];
+        end
+    end
+
     always_comb begin
         snp_txdatflit_o         = '0;
         snp_txdatflit_o.tgtid   = snp_q.srcid;
         snp_txdatflit_o.srcid   = CHIE_NID_WIDTH_PARAM'(RNF_NID_PARAM);
         snp_txdatflit_o.txnid   = snp_q.txnid;
-        snp_txdatflit_o.opcode  = ptl_q ? chie_pkg::DAT_SNPRESPDATAPTL : chie_pkg::DAT_SNPRESPDATA;
+        snp_txdatflit_o.opcode  = ptl_q ? chie_pkg::DAT_SNPRESPDATAPTL :
+                                  fwd_q ? chie_pkg::DAT_SNPRESPDATAFWDED : chie_pkg::DAT_SNPRESPDATA;
         snp_txdatflit_o.resp    = resp_of(final_q, pass_dirty_q);
-        // SS2.10.4 (p.2-136): a 64-byte line is two packets at Data_Width 256.
-        snp_txdatflit_o.dataid  = dat_lo_sent_q ? 2'd2 : 2'd0;
+        // SS13.10.45 (p.13-438): FwdState rides in the DataSource bits.
+        snp_txdatflit_o.datasource.fwdstate = {1'b0, (fwd_q ? fwd_resp_q : chie_pkg::RESP_I)};
+        // SS7.2 (p.7-296): "If the Snoop response with Data Pull includes data, then
+        // the DBID field value in all data packets must be the same."
+        if (pull_q) begin
+            snp_txdatflit_o.datasource.datapull = 4'b0001;
+            snp_txdatflit_o.dbid                = pull_dbid_q;
+        end
+        snp_txdatflit_o.dataid  = 2'(int'(pkt_q) * DID_STEP);
         snp_txdatflit_o.tracetag = snp_q.tracetag;
         // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the snoop, whose Addr field
         // starts at Addr[3] (SS13.10.19).
         snp_txdatflit_o.ccid    = snp_q.addr[2:1];
-        snp_txdatflit_o.data    = dat_lo_sent_q ? out_line[511:256] : out_line[255:0];
+        snp_txdatflit_o.data    = pkt_data[pkt_q];
         // SS9.4.7 (p.9-345, MUST): snoop data known to be corrupt carries an error
         // indication; Table 9-14 makes DERR the one a SnpRespData may carry.
         snp_txdatflit_o.resperr = meta_q[`RNF_META_DERR] ? chie_pkg::RESP_ERR_DATA
                                                          : chie_pkg::RESP_ERR_NORM_OK;
         // SS2.10.3 (p.2-135): SnpRespData asserts every byte enable, SnpRespDataPtl
         // any combination.
-        snp_txdatflit_o.be      = dat_lo_sent_q ? be_q[63:32] : be_q[31:0];
-        snp_txdatflit_o.poison  = dat_lo_sent_q ? poison_out[7:4] : poison_out[3:0];
+        snp_txdatflit_o.be      = pkt_be[pkt_q];
+        snp_txdatflit_o.poison  = pkt_psn[pkt_q];
+        snp_txdatflit_o.tagop   = dat_tagop;
+        if (dat_tagop != chie_pkg::TAGOP_INVALID)
+            snp_txdatflit_o.tag = tags_out[int'(pkt_q)*TAG_PKT +: TAG_PKT];
+        if (dat_tagop == chie_pkg::TAGOP_UPDATE)
+            snp_txdatflit_o.tu  = '1;
+        // SS4.8.3 (p.4-229) and SS2.3.1 (p.2-43): the forwarded line is the
+        // Requester's CompData -- addressed to FwdNID under FwdTxnID, its HomeNID and
+        // DBID naming the Home and the snoop the CompAck completes against.
+        if (st_q == S_FWD) begin
+            snp_txdatflit_o.tgtid   = snp_q.fwdnid;
+            snp_txdatflit_o.txnid   = snp_q.fwdtxnid.fwdtxnid;
+            snp_txdatflit_o.opcode  = chie_pkg::DAT_COMPDATA;
+            snp_txdatflit_o.resp    = fwd_resp_q;
+            snp_txdatflit_o.homenid = snp_q.srcid;
+            snp_txdatflit_o.dbid    = snp_q.txnid;
+            snp_txdatflit_o.datasource.datasource = 4'd0;
+            snp_txdatflit_o.tagop   = chie_pkg::TAGOP_INVALID;
+            snp_txdatflit_o.tag     = '0;
+            snp_txdatflit_o.tu      = '0;
+        end
         // SS9.6 (p.9-348): odd byte parity over the data sent.
         snp_txdatflit_o.datacheck = chie_pkg::datacheck_of(snp_txdatflit_o.data);
     end
@@ -326,19 +521,20 @@ module rnf_snp `RNF_PARAM
     // SS4.11.1 (p.4-242, MUST): "a Request Node must not respond to a Snoop request
     // before receiving all data packets" -- which also holds a snoop taken before
     // its line's first Data packet arrived, until the response has started.
-    wire resp_deferred = on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !dat_lo_sent_q;
+    logic started_q;
+    wire resp_deferred = !dvm_q && on_defer_line(defer_v_i, defer_addr_i, snp_addr_q) && !started_q;
 
     assign snp_txrspflitv_o  = (st_q == S_RSP) && !with_data_q && !resp_deferred;
-    assign snp_txdatflitv_o  = (st_q == S_DAT) && !resp_deferred;
-    assign cache_upd_v_o     = take &&
+    assign snp_txdatflitv_o  = ((st_q == S_DAT) || (st_q == S_FWD)) && !resp_deferred;
+    assign cache_upd_v_o     = take && !head_dvm &&
                                cache_lu_hit_i && (nxt_state != cur_state);
     assign cache_upd_addr_o  = snp_addr;
     assign cache_upd_way_o   = cache_lu_way_i;
     assign cache_upd_state_o = nxt_state;
     // A queued snoop is owed an answer too, so it counts as work in progress: SS15.2.1
     // (p.15-467) holds SYSCOREQ until "All data packets are sent for snoops".
-    assign snp_busy_o        = (st_q != S_IDLE) || !q_empty;
-    assign snp_line_v_o      = (st_q != S_IDLE) || take;
+    assign snp_busy_o        = (st_q != S_IDLE) || !q_empty || (|dvm_v_q);
+    assign snp_line_v_o      = ((st_q != S_IDLE) && !dvm_q) || (take && !head_dvm);
     assign snp_line_addr_o   = cache_lu_addr_o;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
@@ -351,12 +547,47 @@ module rnf_snp `RNF_PARAM
             cur_state_q   <= `RNF_CS_I;
             with_data_q   <= 1'b0;
             pass_dirty_q  <= 1'b0;
-            dat_lo_sent_q <= 1'b0;
+            pkt_q         <= '0;
+            started_q     <= 1'b0;
+            fwd_q         <= 1'b0;
+            fwd_resp_q    <= chie_pkg::RESP_I;
+            pull_q        <= 1'b0;
+            pull_dbid_q   <= '0;
+            tag_dirty_q   <= 1'b0;
+            dvm_q         <= 1'b0;
+            dvm_v_q       <= '0;
+            for (int d = 0; d < RNF_SNPDVM_NUM; d++) begin
+                dvm_src_q[d] <= '0;
+                dvm_txn_q[d] <= '0;
+            end
         end
         else begin
             case (st_q)
                 S_IDLE: begin
-                    if (take) begin
+                    if (take && head_dvm) begin
+                        if (dvm_pair_whole) begin
+                            dvm_v_q      <= dvm_v_q & ~dvm_hit;
+                            snp_q        <= head;
+                            final_q      <= `RNF_CS_I;
+                            with_data_q  <= 1'b0;
+                            pass_dirty_q <= 1'b0;
+                            fwd_q        <= 1'b0;
+                            pull_q       <= 1'b0;
+                            tag_dirty_q  <= 1'b0;
+                            dvm_q        <= 1'b1;
+                            st_q         <= S_RSP;
+                        end
+                        else begin
+                            dvm_v_q <= dvm_v_q | dvm_free_first;
+                            for (int d = 0; d < RNF_SNPDVM_NUM; d++)
+                                if (dvm_free_first[d]) begin
+                                    dvm_src_q[d] <= head.srcid;
+                                    dvm_txn_q[d] <= head.txnid;
+                                end
+                        end
+                    end
+                    else if (take) begin
+                        dvm_q         <= 1'b0;
                         snp_q         <= head;
                         final_q       <= nxt_state;
                         data_q        <= cache_lu_data_i;
@@ -364,8 +595,15 @@ module rnf_snp `RNF_PARAM
                         cur_state_q   <= cur_state;
                         with_data_q   <= want_data;
                         pass_dirty_q  <= pass_dirty;
-                        dat_lo_sent_q <= 1'b0;
-                        st_q          <= want_data ? S_DAT : S_RSP;
+                        fwd_q         <= head_fwd;
+                        fwd_resp_q    <= fwd_state(head.opcode, cur_state);
+                        pull_q        <= head_pull;
+                        pull_dbid_q   <= pull_txnid_i;
+                        tag_dirty_q   <= head_tag_dirty;
+                        pkt_q         <= '0;
+                        started_q     <= 1'b0;
+                        st_q          <= head_fwd  ? S_FWD :
+                                         want_data ? S_DAT : S_RSP;
                     end
                 end
 
@@ -373,10 +611,21 @@ module rnf_snp `RNF_PARAM
                     if (snp_txrspflit_sent_i) st_q <= S_IDLE;
                 end
 
+                // The Requester's copy first, then Home's response: SS4.8.3 orders
+                // neither against the other.
+                S_FWD: begin
+                    if (snp_txdatflit_sent_i) begin
+                        started_q <= 1'b1;
+                        pkt_q     <= (pkt_q == PKT_W'(NPKT - 1)) ? '0 : (pkt_q + 1'b1);
+                        if (pkt_q == PKT_W'(NPKT - 1)) st_q <= with_data_q ? S_DAT : S_RSP;
+                    end
+                end
+
                 S_DAT: begin
                     if (snp_txdatflit_sent_i) begin
-                        if (dat_lo_sent_q) st_q <= S_IDLE;
-                        else               dat_lo_sent_q <= 1'b1;
+                        started_q <= 1'b1;
+                        pkt_q     <= (pkt_q == PKT_W'(NPKT - 1)) ? '0 : (pkt_q + 1'b1);
+                        if (pkt_q == PKT_W'(NPKT - 1)) st_q <= S_IDLE;
                     end
                 end
 
@@ -398,15 +647,24 @@ module rnf_snp `RNF_PARAM
                        .cond  ( prot_rxsnpflitv_i && q_full && !take )
                    );
 
-    // SS16.1.1 (p.16-473, MUST): with DVM_Support False the interconnect must
-    // suppress DVM operations, so a SnpDVMOp never reaches this node.
     assert_checker #(
                        3,
-                       "RN-F was sent a snoop opcode it does not decode: a SnpDVMOp at a node declaring DVM_Support False")
+                       "RN-F was sent a snoop opcode it does not decode")
                    SNP_OPCODE_check (
                        .clk   ( clk_i ),
                        .rst   ( rst_i ),
                        .cond  ( prot_rxsnpflitv_i && !is_decoded(prot_rxsnpflit_i.opcode) )
+                   );
+
+    // SS8.1.3 (p.8-307, MUST): the MN sends a SnpDVMOp only when this node has room
+    // for both of its parts.
+    assert_checker #(
+                       3,
+                       "RN-F was sent the first part of a SnpDVMOp beyond the RNF_SNPDVM_NUM it accepts")
+                   SNPDVM_OVERFLOW_check (
+                       .clk   ( clk_i ),
+                       .rst   ( rst_i ),
+                       .cond  ( take && head_dvm && !dvm_pair_whole && (&dvm_v_q) )
                    );
 `endif
 

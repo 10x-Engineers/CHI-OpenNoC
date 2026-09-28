@@ -8,7 +8,7 @@ Mesh Generator 主要可以根据用户自定义配置完成 Mesh XP 的自动�
     "XP0_0": {         //XP的名字,可以根据拓扑自定义,符合 verilog 实例名称就可以
         "X": 0,        //XP的X坐标,目前是支持3bit,即0-7
         "Y": 0,        //XP的Y坐标,目前是支持3bit,即0-7
-        "P0": "RNF",   //P0的类型,目前支持 RNF, RNI, HNF, HNI, SNF, 当端口没有连接时,请配置为 NONE
+        "P0": "RNF",   //P0的类型,目前支持 RNF, RNI, HNF, HNI, SNF, MN, 当端口没有连接时,请配置为 NONE
         "P1": "NONE"
     },
     "XP1_0": {
@@ -45,7 +45,7 @@ Generate Mesh Wrapper mesh_wrapper_xxx.sv
 When the config has any `RNF` port, the generator also emits `mesh_system_<X>x<Y>.sv`
 (`ring_gen.py` emits `ring_system_<N>.sv` the same way): the fabric with an `rnf`
 instance on every RNF port. Every other port is brought out under the wrapper's own
-names, for the integrator to connect its HN-F, SN-F, HN-I or RN-I.
+names, for the integrator to connect its HN-F, SN-F, HN-I, RN-I or MN.
 
 - **NodeIDs are derived, not typed.** The fabric routes on LSB-anchored fields --
   `{X, Y, port}` for a mesh (`X<<4 | Y<<1 | port`), `{X, port}` for a ring -- so the

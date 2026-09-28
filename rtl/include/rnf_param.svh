@@ -42,6 +42,7 @@
     parameter RNF_MSHR_ENTRIES_PARAM     = 8,                           \
     parameter RNF_EXCL_LP_NUM_PARAM      = 4,                           \
     parameter HNF_NID_PARAM              = 0,                           \
+    parameter MN_NID_PARAM               = 4,                           \
     parameter RNF_NID_PARAM              = 8    )
 
 `define RNF_PARAM_INST #( \
@@ -63,6 +64,7 @@
     .RNF_MSHR_ENTRIES_PARAM         (RNF_MSHR_ENTRIES_PARAM      ), \
     .RNF_EXCL_LP_NUM_PARAM          (RNF_EXCL_LP_NUM_PARAM       ), \
     .HNF_NID_PARAM                  (HNF_NID_PARAM               ), \
+    .MN_NID_PARAM                   (MN_NID_PARAM                ), \
     .RNF_NID_PARAM                  (RNF_NID_PARAM               ))
 
 `endif

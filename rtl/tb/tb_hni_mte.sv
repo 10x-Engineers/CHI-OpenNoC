@@ -14,7 +14,8 @@
 // Allocation Tags. Sec 12.11.3 (p.12-387, MUST): the Completer "is still required
 // to send a TagMatch response", reporting Fail; Table A-8 (p.A-488) gives it
 // TxnID 0 and Sec 12.10 (p.12-385) the request's TagGroupID. The AXI side accepts
-// every write and answers it OKAY.
+// every write and answers it OKAY, and answers every read -- the one an executed
+// Atomic makes -- with zeros.
 // SPEC-AMBIGUITY: Table B-3 (p.B-495) names no ICN(HN-I) TagMatch source; the
 // Sec 12.11 MUST governs here.
 // =============================================================================
@@ -47,6 +48,35 @@ module tb_hni_mte;
         end
     end
 
+    wire [10:0] ARID;
+    wire [7:0]  ARLEN;
+    wire        ARVALID, RREADY;
+    reg         RVALID = 1'b0, RLAST = 1'b0;
+    reg  [10:0] RID    = '0;
+    integer     r_left = 0;
+    logic [10:0] ar_ids[$];
+    logic [7:0]  ar_lens[$];
+    always @(posedge CLK) begin
+        if (!RST && ARVALID) begin
+            ar_ids.push_back(ARID);
+            ar_lens.push_back(ARLEN);
+        end
+        if (RVALID && RREADY) begin
+            if (RLAST) begin
+                RVALID <= 1'b0;
+                RLAST  <= 1'b0;
+            end else begin
+                r_left = r_left - 1;
+                RLAST  <= (r_left == 0);
+            end
+        end else if (!RVALID && ar_ids.size() > 0) begin
+            RVALID <= 1'b1;
+            RID    <= ar_ids.pop_front();
+            r_left = ar_lens.pop_front();
+            RLAST  <= (r_left == 0);
+        end
+    end
+
     hni u_hni (
         .CLK(CLK), .RST(RST),
         .TXLINKACTIVEREQ(TXLINKACTIVEREQ), .TXLINKACTIVEACK(TXLINKACTIVEACK),
@@ -57,9 +87,9 @@ module tb_hni_mte;
         .RXDATFLITV(RXDATFLITV), .RXDATFLIT(RXDATFLIT), .RXDATFLITPEND(RXDATFLITPEND), .RXDATLCRDV(RXDATLCRDV),
         .TXRSPFLITV(TXRSPFLITV), .TXRSPFLIT(TXRSPFLIT), .TXRSPFLITPEND(TXRSPFLITPEND), .TXRSPLCRDV(TXRSPLCRDV),
         .TXDATFLITV(TXDATFLITV), .TXDATFLIT(TXDATFLIT), .TXDATFLITPEND(TXDATFLITPEND), .TXDATLCRDV(TXDATLCRDV),
-        .ARID(), .ARADDR(), .ARLEN(), .ARSIZE(), .ARBURST(), .ARLOCK(), .ARCACHE(), .ARPROT(),
-        .ARQOS(), .ARREGION(), .ARUSER(), .ARVALID(), .ARREADY(1'b1),
-        .RID('0), .RDATA('0), .RUSER('0), .RRESP('0), .RLAST(1'b0), .RVALID(1'b0), .RREADY(),
+        .ARID(ARID), .ARADDR(), .ARLEN(ARLEN), .ARSIZE(), .ARBURST(), .ARLOCK(), .ARCACHE(), .ARPROT(),
+        .ARQOS(), .ARREGION(), .ARUSER(), .ARVALID(ARVALID), .ARREADY(1'b1),
+        .RID(RID), .RDATA('0), .RUSER('0), .RRESP('0), .RLAST(RLAST), .RVALID(RVALID), .RREADY(RREADY),
         .AWID(AWID), .AWADDR(), .AWLEN(), .AWSIZE(), .AWBURST(), .AWLOCK(), .AWCACHE(), .AWPROT(),
         .AWQOS(), .AWREGION(), .AWUSER(), .AWVALID(AWVALID), .AWREADY(1'b1),
         .WDATA(), .WUSER(), .WSTRB(), .WLAST(WLAST), .WVALID(WVALID), .WREADY(1'b1),

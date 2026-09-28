@@ -28,6 +28,7 @@ class PortEnum(Enum):
     HNF = "HNF"
     HNI = "HNI"
     SNF = "SNF"
+    MN = "MN"
 
 
 def _channel(tx, ch, width):
@@ -46,7 +47,9 @@ def chi_signals(kind):
 
     Figure 13-5 (SS13.6.1 p.13-400) gives an RN-F an RX snoop channel and no RXREQ;
     Figure 13-8 (SS13.6.2 p.13-401) gives a Subordinate no RXRSP. A Home's TX snoop
-    carries the routing TgtID beside the flit, which Table 13-8 does not define.
+    carries the routing TgtID beside the flit, which Table 13-8 does not define. An
+    MN completes DVMOps and sources SnpDVMOps (Tables B-1/B-2), so it has neither
+    TXREQ nor TXDAT, and its TX snoop is routed as a Home's is.
     """
     flit = "[{0}_FLIT_WIDTH-1:0]".format
     sigs = [("input", "", "TXSACTIVE"), ("output", "", "RXSACTIVE"),
@@ -54,14 +57,15 @@ def chi_signals(kind):
             ("output", "", "RXLINKACTIVEREQ"), ("input", "", "RXLINKACTIVEACK")]
     if kind in ("RNF", "RNI", "HNF"):
         sigs += _channel(True, "REQ", flit("REQ"))
-    if kind in ("HNF", "HNI", "SNF"):
+    if kind in ("HNF", "HNI", "SNF", "MN"):
         sigs += _channel(False, "REQ", flit("REQ"))
     sigs += _channel(True, "RSP", flit("RSP"))
     if kind != "SNF":
         sigs += _channel(False, "RSP", flit("RSP"))
-    sigs += _channel(True, "DAT", flit("DAT"))
+    if kind != "MN":
+        sigs += _channel(True, "DAT", flit("DAT"))
     sigs += _channel(False, "DAT", flit("DAT"))
-    if kind == "HNF":
+    if kind in ("HNF", "MN"):
         sigs += _channel(True, "SNP", "[SNP_FLIT_WIDTH+CHIE_NID_WIDTH_PARAM-1:0]")
     if kind == "RNF":
         sigs += _channel(False, "SNP", flit("SNP"))
@@ -112,5 +116,10 @@ def render_system(env, wrapper, system, ports, out_dir):
     if len(homes) != 1:
         raise SystemExit(f"{system}: an RN-F's Home is derived from the config's one HNF "
                          f"port, and this config has {len(homes)}")
+    mns = [p for p in ports if p.kind == "MN"]
+    if len(mns) > 1:
+        raise SystemExit(f"{system}: an RN-F's DVMOps go to the config's one MN port, "
+                         f"and this config has {len(mns)}")
     render(env, "noc_system.j2", Path(out_dir) / f"{system}.sv",
-           module=system, wrapper=wrapper, ports=ports, rnfs=rnfs, home=homes[0])
+           module=system, wrapper=wrapper, ports=ports, rnfs=rnfs, home=homes[0],
+           mn=mns[0] if mns else None)

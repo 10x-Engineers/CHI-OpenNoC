@@ -139,6 +139,7 @@ module rni_arctrl
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_dealloc_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_rdata_retire_w;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_retired_q;
+    logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rxdat_all_q;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxrsp_respsep_recv_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  rxdat_sepform_vec_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_respsep_owed_w;
@@ -214,6 +215,7 @@ module rni_arctrl
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_start_ptr_q;
     logic [RNI_AR_ENTRIES_NUM_PARAM-1:0] arctrl_rdata_send_q;
     logic [`RNI_DMASK_RV_WIDTH-1:0]      arctrl_entry_rvmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    wire  [`RNI_DMASK_RV_WIDTH-1:0]      arctrl_entry_pkts_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [`RNI_DMASK_CT_WIDTH-1:0]      arctrl_entry_ctmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
     logic [`RNI_DMASK_PD_WIDTH-1:0]      arctrl_entry_pdmask_q[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 
@@ -688,7 +690,7 @@ module rni_arctrl
     end
 
     assign ar_device_w    = ~ar_axcache_r[1];
-    assign ar_cacheable_w = ar_axcache_r[1] & (|ar_axcache_r[3:2]);
+    assign ar_cacheable_w = opennoc_rni_pkg::axi_cacheable(ar_axcache_r);
 
     // The selected entry's AxLOCK, already reduced by rni_segburst to the bursts
     // one Exclusive ReadNoSnp can carry.
@@ -1175,8 +1177,11 @@ module rni_arctrl
         rxdat_recv_done_vec_r[RNI_AR_ENTRIES_NUM_PARAM-1:0] = {RNI_AR_ENTRIES_NUM_PARAM{1'b0}};
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             if(arctrl_rxdat_ptr_r[i])begin
-                rxdat_recv_done_vec_r[i] = (((arctrl_entry_rvmask_q[i][`RNI_DMASK_RV_WIDTH-1:0] | {{2{rxdat_dataid_q[1]}},{2{~rxdat_dataid_q[1]}}}) &
-                                             arctrl_entry_pdmask_q[i][`RNI_DMASK_PD_WIDTH-1:0]) == arctrl_entry_pdmask_q[i][`RNI_DMASK_PD_WIDTH-1:0]);
+                // SS2.10.4 (p.2-136): the Completer sends every packet of the Size-aligned
+                // container, the ones carrying no requested byte included, so the entry is
+                // done only once all of them are in.
+                rxdat_recv_done_vec_r[i] = (((arctrl_entry_rvmask_q[i][`RNI_DMASK_RV_WIDTH-1:0] | opennoc_rni_pkg::dat_chunks(rxdat_dataid_q)) &
+                                             arctrl_entry_pkts_w[i]) == arctrl_entry_pkts_w[i]);
             end
         end
     end
@@ -1251,6 +1256,12 @@ module rni_arctrl
     end
 
     generate
+        for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:arctrl_pkts
+            // The Size the request went out with: a cacheable ReadOnce is a whole line.
+            assign arctrl_entry_pkts_w[entry] = opennoc_rni_pkg::size_pkts(
+                opennoc_rni_pkg::axi_cacheable(arctrl_entry_info_q[entry].cache) ? chie_pkg::SIZE_64B : chie_pkg::size_e'(arctrl_entry_size_q[entry]),
+                arctrl_entry_addr_q[entry][5:4]);
+        end
         for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:arctrl_mask
             always_ff @(posedge clk_i or posedge rst_i) begin
                 if (rst_i == 1'b1)begin
@@ -1261,7 +1272,7 @@ module rni_arctrl
                         arctrl_entry_rvmask_q[entry][`RNI_DMASK_RV_WIDTH-1:0] <= arlink_dmask_s2_w[`RNI_DMASK_RV_RANGE];
                     end
                     else if(arctrl_rxdat_ptr_r[entry])begin
-                        arctrl_entry_rvmask_q[entry][`RNI_DMASK_RV_WIDTH-1:0] <= arctrl_entry_rvmask_q[entry][`RNI_DMASK_RV_WIDTH-1:0] | {{2{rxdat_dataid_q[1]}},{2{~rxdat_dataid_q[1]}}};
+                        arctrl_entry_rvmask_q[entry][`RNI_DMASK_RV_WIDTH-1:0] <= arctrl_entry_rvmask_q[entry][`RNI_DMASK_RV_WIDTH-1:0] | opennoc_rni_pkg::dat_chunks(rxdat_dataid_q);
                     end
 
                 end
@@ -1321,11 +1332,26 @@ module rni_arctrl
         end
     endgenerate
 
+    // SS2.5.2 (p.2-87): the TxnID is held until every packet of the container is in.
+    // The AXI bytes can all be forwarded before the last one arrives, which would
+    // otherwise land on the entry's next occupant.
+    generate
+        for (entry=0; entry < RNI_AR_ENTRIES_NUM_PARAM; entry=entry+1) begin:rxdat_all
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i || arctrl_alloc_ptr_s2_q[entry])
+                    arctrl_rxdat_all_q[entry] <= 1'b0;
+                else if (rxdat_recv_done_vec_r[entry])
+                    arctrl_rxdat_all_q[entry] <= 1'b1;
+            end
+        end
+    endgenerate
+
     // SS2.5.2 (p.2-87): the TxnID is free only once "All responses associated with
     // a previous transaction" have arrived, and an ordered read's ReadReceipt may
     // land after its last CompData -- SS14.7.2 (p.14-462) names it the completing
     // flit then.
     assign arctrl_ordrsp_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = arctrl_ordered_pending_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_ordrsp_recv_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
-    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] | arctrl_rdata_retired_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_ordrsp_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
+    assign arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] = (arctrl_rdata_retire_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] | arctrl_rdata_retired_q[RNI_AR_ENTRIES_NUM_PARAM-1:0]) & ~arctrl_respsep_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0] & ~arctrl_ordrsp_owed_w[RNI_AR_ENTRIES_NUM_PARAM-1:0]
+                                                                     & (arctrl_rxdat_all_q[RNI_AR_ENTRIES_NUM_PARAM-1:0] | rxdat_recv_done_vec_r[RNI_AR_ENTRIES_NUM_PARAM-1:0]);
     assign arctrl_entry_dealloc_v_w = |arctrl_entry_dealloc_vec_w[RNI_AR_ENTRIES_NUM_PARAM-1:0];
 endmodule

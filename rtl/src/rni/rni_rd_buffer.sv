@@ -473,15 +473,6 @@ generate if(AXI4_AXDATA_WIDTH_PARAM == 128)begin
 
     assert_checker #(
                        3,  // security_level
-                       "CHIE_DATA_WIDTH_PARAM must be 256!")
-                   CHIE_DATA_WIDTH_PARAM_check (
-                       .clk   (clk_i),
-                       .rst   (rst_i),
-                       .cond  (CHIE_DATA_WIDTH_PARAM !== 256)
-                   );
-
-    assert_checker #(
-                       3,  // security_level
                        "AXI4_AXDATA_WIDTH_PARAM must be 128!")
                    AXI4_AXDATA_WIDTH_PARAM_check (
                        .clk   (clk_i),

@@ -44,7 +44,7 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-ALL_NODES=(hnf hni rni rnf snf)
+ALL_NODES=(hnf hni rni rnf snf mn)
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=("${ALL_NODES[@]}"); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
@@ -149,14 +149,22 @@ for n in "${NODES[@]}"; do
     bounds_node "$n" "MSHR entries 64" -GHNF_MSHR_ENTRIES_NUM_PARAM=64 || rc=1
     lint_node   "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
     bounds_node "$n" "MSHR entries 16" -GHNF_MSHR_ENTRIES_NUM_PARAM=16 || rc=1
+    # SS2.3.1 (p.2-46) flow 4 and SS4.3's (p.4-192) SnpQuery port are parameter-enabled.
+    lint_node   "$n" "optional Home features" -GHNF_SEP_RESP_EN_PARAM=1 -GHNF_SNPQUERY_EN_PARAM=1 || rc=1
   fi
-  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512. The SN-F packetises by it
-  # (snf_defines.svh SNF_PKTS), so it is elaborated at the other two widths as well;
-  # every other node still refuses anything but 256 (chie_flit_opt_check).
-  if [ "$n" = snf ]; then
-    for w in 128 512; do
-      lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
-      bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
+  # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512, and every node packetises
+  # by it, so each is elaborated at the other two widths as well.
+  for w in 128 512; do
+    lint_node   "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
+    bounds_node "$n" "Data_Width $w" -DCHIE_DATA_WIDTH=$w || rc=1
+  done
+  # The tracker, the snoopee list and a snoopee's SnpDVMOp count size every MN index;
+  # the smallest legal set and a larger one are both elaborated.
+  if [ "$n" = mn ]; then
+    for g in "-GMN_ENTRIES_NUM_PARAM=2 -GMN_RN_NUM_PARAM=1 -GMN_RN_NID_LIST_PARAM=8" \
+             "-GMN_ENTRIES_NUM_PARAM=8 -GMN_RN_SNPDVM_NUM_PARAM=4"; do
+      lint_node   "$n" "$g" $g || rc=1
+      bounds_node "$n" "$g" $g || rc=1
     done
   fi
 done
@@ -247,51 +255,23 @@ fi
 # chie_flit_opt_check's refusals are `initial`-block $fatals, which --lint-only
 # never reaches: it elaborates but runs nothing, and an uninstantiated module under
 # --top-module is simply dropped. So a node that never instantiates the check has
-# no refusal at all and nothing above says so -- rnf.sv was in that state, and a
-# CHIE_DATA_WIDTH=512 RN-F elaborated cleanly and then hung on its first read.
-run_width_refusal() {
-  echo "==================== Data_Width refusal ===================="
-  local n rcw=0 out d
+# no refusal at all and nothing above says so.
+run_opt_check_instantiated() {
+  echo "==================== chie_flit_opt_check ===================="
+  local n rcw=0
   for n in "${ALL_NODES[@]}"; do
     if grep -q "u_chie_flit_opt_check" "src/$n/$n.sv"; then
       echo "  $n instantiates chie_flit_opt_check"
     else
-      echo "  FAIL: src/$n/$n.sv does not instantiate chie_flit_opt_check, so a"
-      echo "        CHIE_DATA_WIDTH != 256 build of $n is accepted rather than refused."
+      echo "  FAIL: src/$n/$n.sv does not instantiate chie_flit_opt_check, so a build"
+      echo "        whose flit layout or Data_Width is illegal is accepted rather than refused."
       rcw=1
     fi
   done
-  # The structural pass above cannot show the refusal actually firing, so one node
-  # is built and run at 512. The RN-F is that node: it is the cheapest to build and
-  # the one the instantiation was missing from. A build failure is reported as a
-  # build failure -- "did not refuse" would accuse the RTL of a defect that is not
-  # there, which is the conflation run_xp_link's coroutine arm also exists to avoid.
-  d=$(mktemp -d) || return 1
-  # ccache cannot see through --binary's precompiled header; same reason as run_xp_link.
-  export OBJCACHE="${OBJCACHE-}"
-  if ! out=$(verilator --binary -Wno-fatal -DDISPLAY_FATAL -DCHIE_DATA_WIDTH=512 \
-               --top-module rnf -Iinclude -Imisc -Isrc/rnf --Mdir "$d/obj" -o sim \
-               $(node_sources rnf) 2>&1); then
-    echo "  FAIL: the CHIE_DATA_WIDTH=512 rnf build did not complete -- this is a"
-    echo "        toolchain or elaboration failure, not a missing refusal."
-    echo "$out" | tail -20 | sed 's/^/  /'
-    rm -rf "$d"; return 1
-  fi
-  out=$("$d/obj/sim" 2>&1)
-  rm -rf "$d"
-  # Anchored on chie_flit_opt_check's own $fatal text, so nothing but that refusal
-  # firing can satisfy the gate.
-  if echo "$out" | grep -q "Section 16.1 (p.16-471) permits 128, 256 and 512"; then
-    echo "  rnf refuses CHIE_DATA_WIDTH=512 at time zero"
-  else
-    echo "  FAIL: an rnf built at CHIE_DATA_WIDTH=512 ran without refusing"
-    echo "$out" | tail -20 | sed 's/^/  /'
-    rcw=1
-  fi
   return $rcw
 }
 
-run_width_refusal || rc=1
+run_opt_check_instantiated || rc=1
 
 echo
 if [ $rc -eq 0 ]; then echo "lint OK"; else echo "lint FAILED"; fi

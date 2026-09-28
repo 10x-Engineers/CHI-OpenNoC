@@ -126,7 +126,7 @@ module rni_wr_buffer `RNI_PARAM
     wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0]           w_strb_nxt_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     wire [`WR_BUFFER_DATA_BANK_NUM-1:0]                             w_strb_entry_bank_upd_d1_w[0:RNI_AW_ENTRIES_NUM_PARAM-1];
     wire                                                            txdat_info_flop_en_d2_w;
-    wire [`RNI_DMASK_CT_WIDTH/2-1:0]                                txdat_ctmask_d3_w;
+    logic [1:0]                                                     txdat_pkt_d3_w;
     wire [chie_pkg::DATA_WIDTH-1:0]                                 txdat_data_d3_w;
     wire [chie_pkg::BE_WIDTH-1:0]                                   txdat_be_d3_w;
     wire [11:0]                                                     txdatflit_txnid_d3_w;
@@ -489,23 +489,19 @@ module rni_wr_buffer `RNI_PARAM
         end
     end
 
-    // select high 256 bits or low 256 bits
-    assign txdat_ctmask_d3_w = {(|txdat_ctmask_d3_q[3:2]), (|txdat_ctmask_d3_q[1:0])};
+    // SS2.10.4 (p.2-136), Table 2-15: the chunk mask names one whole packet, which is
+    // the Data_Width slice of the line its first chunk starts.
+    always_comb begin: txdat_pkt_comb_logic
+        txdat_pkt_d3_w = 2'd0;
+        for (int c = 3; c >= 0; c--)
+            if (txdat_ctmask_d3_q[c]) txdat_pkt_d3_w = 2'(c / opennoc_rni_pkg::PKT_CHUNKS);
+    end
 
-    assign txdat_data_d3_w = {chie_pkg::DATA_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_data_d3_q[chie_pkg::DATA_WIDTH-1:0] |
-           {chie_pkg::DATA_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_data_d3_q[(chie_pkg::DATA_WIDTH*2)-1:chie_pkg::DATA_WIDTH];
-
-    assign txdat_be_d3_w = {chie_pkg::BE_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_be_d3_q[chie_pkg::BE_WIDTH-1:0] |
-           {chie_pkg::BE_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_be_d3_q[(chie_pkg::BE_WIDTH*2)-1:chie_pkg::BE_WIDTH];
-
-    assign txdat_poison_d3_w = {chie_pkg::POISON_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_poison_d3_q[chie_pkg::POISON_WIDTH-1:0] |
-           {chie_pkg::POISON_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_poison_d3_q[(chie_pkg::POISON_WIDTH*2)-1:chie_pkg::POISON_WIDTH];
-
-    assign txdat_tag_d3_w = {chie_pkg::TAG_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_tag_d3_q[chie_pkg::TAG_WIDTH-1:0] |
-           {chie_pkg::TAG_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_tag_d3_q[(chie_pkg::TAG_WIDTH*2)-1:chie_pkg::TAG_WIDTH];
-
-    assign txdat_tu_d3_w = {chie_pkg::TU_WIDTH{txdat_ctmask_d3_w[0]}} & txdat_tu_d3_q[chie_pkg::TU_WIDTH-1:0] |
-           {chie_pkg::TU_WIDTH{txdat_ctmask_d3_w[1]}} & txdat_tu_d3_q[(chie_pkg::TU_WIDTH*2)-1:chie_pkg::TU_WIDTH];
+    assign txdat_data_d3_w   = txdat_data_d3_q[txdat_pkt_d3_w*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH];
+    assign txdat_be_d3_w     = txdat_be_d3_q[txdat_pkt_d3_w*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH];
+    assign txdat_poison_d3_w = txdat_poison_d3_q[txdat_pkt_d3_w*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH];
+    assign txdat_tag_d3_w    = txdat_tag_d3_q[txdat_pkt_d3_w*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH];
+    assign txdat_tu_d3_w     = txdat_tu_d3_q[txdat_pkt_d3_w*chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH];
 
     ////////////////////////////////////////////////////////
     // pack txdatflit and Dispatch
@@ -518,8 +514,7 @@ module rni_wr_buffer `RNI_PARAM
     assign txdatflit_txnid_d3_w[12-1]   = 1'b1;
 
     // txdatflit DataID
-    assign txdatflit_dataid_d3_w = ({2{txdat_ctmask_d3_w[0]}} & 2'b00) |
-           ({2{txdat_ctmask_d3_w[1]}} & 2'b10) ;
+    assign txdatflit_dataid_d3_w = 2'(txdat_pkt_d3_w * opennoc_rni_pkg::PKT_CHUNKS);
 
     // txdatflit Be
     assign txdatflit_be_d3_w = txdat_be_d3_w;

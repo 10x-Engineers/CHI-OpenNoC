@@ -34,6 +34,9 @@ module snf_data_buffer `SNF_PARAM
         input  logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s1,
         input  chie_pkg::size_e                     rxreq_dbf_size_s1,
         input  wire [`AXI4_ARLEN_WIDTH-1:0]         rxreq_dbf_axlen_s1,
+        input  wire                                 rxreq_dbf_atomic_s1,
+        input  chie_pkg::req_opcode_e               rxreq_dbf_opcode_s1,
+        input  wire                                 rxreq_dbf_endian_s1,
         input  wire                                 mshr_retired_valid_sx,
         input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_retired_idx_sx,
         input  wire                                 mshr_wdat_en_sx,
@@ -58,8 +61,13 @@ module snf_data_buffer `SNF_PARAM
         input  wire                                 txdat_dbf_won_sx,
         output chie_pkg::dat_flit_s                 txdat_flit,
         output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagfetch_req_sx,
-        input  wire                                 mshr_dbf_tagfetch_ack_sx,
-        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_tagfetch_idx_sx,
+        output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_atmrd_req_sx,
+        input  wire                                 mshr_dbf_rdreq_ack_sx,
+        input  wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_rdreq_idx_sx,
+        output wire                                 dbf_mshr_atm_done_sx,
+        output wire [`SNF_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_atm_done_idx_sx,
+        output wire                                 dbf_mshr_atm_nowr_sx,
+        output wire                                 dbf_mshr_atm_err_sx,
         output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_done_sx,
         output wire [`SNF_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_pass_sx,
         output wire                                 dbf_mshr_rxdat_ok_sx,
@@ -135,6 +143,27 @@ module snf_data_buffer `SNF_PARAM
 
     wire                                AXI_128;
 
+    // SS16.3.3 (p.16-479): the Atomic an entry executes. SS2.10.5 (p.2-137) aligns
+    // the operand to its outbound Size, at most 32 bytes, so it is held as the
+    // 32-byte half of the line that contains it; the original value SS4.2.5
+    // (p.4-187, MUST) returns is at most 16 bytes, the element.
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   atm_q;
+    chie_pkg::req_opcode_e              atm_op_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [5:0]                         atm_off_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [4:0]                         atm_len_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   atm_end_q;
+    logic [255:0]                       atm_opnd_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [127:0]                       atm_orig_q[0:`SNF_MSHR_ENTRIES_NUM-1];
+    logic [`SNF_MSHR_ENTRIES_NUM-1:0]   atm_rd_req_q;
+    logic                               atm_rmw_v_q;
+    logic [`SNF_MSHR_ENTRIES_WIDTH-1:0] atm_rmw_idx_q;
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0] atm_rmw_line_sx;
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]   atm_rmw_be_sx;
+    logic [127:0]                       atm_rmw_orig_sx;
+    logic                               atm_rmw_nowr_sx;
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0] atm_txdat_line_sx;
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]   atm_txdat_be_sx;
+
     localparam [31:0]                        ENTRIES_M1 = `SNF_MSHR_ENTRIES_NUM-1;
     localparam [`SNF_MSHR_ENTRIES_WIDTH-1:0] IDX_LAST   = ENTRIES_M1[`SNF_MSHR_ENTRIES_WIDTH-1:0];
     wire                                   wdata_to_slave;
@@ -152,6 +181,8 @@ module snf_data_buffer `SNF_PARAM
     wire                                   wdata_cancel_recv_s0;
     wire                                   wrzero_inject_sx;
     logic [chie_pkg::DATA_WIDTH-1:0]       dbf_txdat_data_sx;
+    logic [`SNF_PKTS*chie_pkg::DATA_WIDTH-1:0] dbf_txdat_line_sx;
+    logic [`SNF_PKTS*chie_pkg::BE_WIDTH-1:0]   dbf_txdat_lbe_sx;
     logic [chie_pkg::BE_WIDTH-1:0]         dbf_txdat_be_sx;
     logic [chie_pkg::POISON_WIDTH-1:0]     dbf_txdat_poison_sx;
     logic [chie_pkg::TAG_WIDTH-1:0]        dbf_txdat_tag_sx;
@@ -366,11 +397,19 @@ module snf_data_buffer `SNF_PARAM
                     dbf_tag_q[entry]    <= dbf_tag_q[entry]    | rdata_recv_tag_sx;
                 end
                 else if (wdata_recv_update && (entry == wdata_recv_idx))begin
-                    dbf_data_q[entry]   <= dbf_data_q[entry] | wdata_recv_data_sx;
-                    dbf_be_q[entry]     <= dbf_be_q[entry] | wdata_recv_be_sx;
+                    // An Atomic's operand is held in atm_opnd_q: the line here is where
+                    // the location's original value is fetched to.
+                    if (!atm_q[entry]) begin
+                        dbf_data_q[entry] <= dbf_data_q[entry] | wdata_recv_data_sx;
+                        dbf_be_q[entry]   <= dbf_be_q[entry] | wdata_recv_be_sx;
+                    end
                     dbf_poison_q[entry] <= dbf_poison_q[entry] | wdata_recv_poison_sx;
                     dbf_tag_q[entry]    <= dbf_tag_q[entry]    | wdata_recv_tag_sx;
                     dbf_tu_q[entry]     <= dbf_tu_q[entry]     | wdata_recv_tu_sx;
+                end
+                else if (atm_rmw_v_q && (entry == atm_rmw_idx_q))begin
+                    dbf_data_q[entry]   <= atm_rmw_line_sx;
+                    dbf_be_q[entry]     <= atm_rmw_be_sx;
                 end
                 else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))begin
                     dbf_data_q[entry]   <= '0;
@@ -400,9 +439,10 @@ module snf_data_buffer `SNF_PARAM
                         rdata_cdmask_q[entry]   <= dbf_cdmask_s0;
                         rdata_wlmask_q[entry]   <= dbf_wlmask_s1_q;
                 end
-                // A write entry's own tag fetch reuses the read chunk mask, which is
-                // free by then: nothing else on a write entry reads the R channel.
-                else if(mshr_dbf_tagfetch_ack_sx && (entry == mshr_dbf_tagfetch_idx_sx))begin
+                // A write entry's own tag fetch, or an Atomic's fetch of its original
+                // value, reuses the read chunk mask, which is free by then: the two are
+                // issued one after the other and nothing else on the entry reads R.
+                else if(mshr_dbf_rdreq_ack_sx && (entry == mshr_dbf_rdreq_idx_sx))begin
                         rdata_cdmask_q[entry]   <= dbf_match_cdmask_q[entry];
                         rdata_wlmask_q[entry]   <= dbf_match_wlmask_q[entry];
                 end
@@ -519,7 +559,8 @@ module snf_data_buffer `SNF_PARAM
                     tagmatch_done_q[entry] <= 1'b1;
                     tagmatch_pass_q[entry] <= 1'b1;
                 end
-                else if(mshr_dbf_tagfetch_ack_sx && (entry == mshr_dbf_tagfetch_idx_sx))begin
+                else if(mshr_dbf_rdreq_ack_sx && (entry == mshr_dbf_rdreq_idx_sx)
+                        && tagfetch_req_q[entry])begin
                     tagfetch_req_q[entry]  <= 1'b0;
                     tagfetch_busy_q[entry] <= 1'b1;
                 end
@@ -540,6 +581,140 @@ module snf_data_buffer `SNF_PARAM
     endgenerate
 
     assign dbf_mshr_tagfetch_req_sx  = tagfetch_req_q;
+
+    //************************************************************************//
+    //                 SS16.3.3 Atomic read-modify-write                      //
+    //************************************************************************//
+    generate
+        for(entry=0;entry<`SNF_MSHR_ENTRIES_NUM;entry=entry+1) begin: atm_logic
+            always_ff @(posedge clk or posedge rst) begin: atm_req_timing_logic
+                if (rst) begin
+                    atm_q[entry]     <= 1'b0;
+                    atm_op_q[entry]  <= chie_pkg::REQ_REQLCRDRETURN;
+                    atm_off_q[entry] <= 6'd0;
+                    atm_len_q[entry] <= 5'd0;
+                    atm_end_q[entry] <= 1'b0;
+                end
+                else if (rxreq_dbf_en_s1 && (entry == rxreq_dbf_entry_idx_s1)) begin
+                    atm_q[entry]     <= rxreq_dbf_atomic_s1;
+                    atm_op_q[entry]  <= rxreq_dbf_opcode_s1;
+                    atm_off_q[entry] <= rxreq_dbf_addr_s1[5:0];
+                    atm_len_q[entry] <= 5'(chie_pkg::atomic_elem_bytes(rxreq_dbf_opcode_s1, rxreq_dbf_size_s1));
+                    atm_end_q[entry] <= rxreq_dbf_endian_s1;
+                end
+                else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx)) begin
+                    atm_q[entry]     <= 1'b0;
+                    atm_op_q[entry]  <= chie_pkg::REQ_REQLCRDRETURN;
+                    atm_off_q[entry] <= 6'd0;
+                    atm_len_q[entry] <= 5'd0;
+                    atm_end_q[entry] <= 1'b0;
+                end
+            end
+
+            always_ff @(posedge clk or posedge rst) begin: atm_data_timing_logic
+                if (rst || (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))) begin
+                    atm_opnd_q[entry]   <= '0;
+                    atm_orig_q[entry]   <= '0;
+                    atm_rd_req_q[entry] <= 1'b0;
+                end
+                else begin
+                    if (wdata_recv_update && (entry == wdata_recv_idx) && atm_q[entry])
+                        atm_opnd_q[entry] <= atm_opnd_q[entry]
+                                           | wdata_recv_data_sx[rxreq_alloc_ccid_s2_q[entry][1]*256 +: 256];
+                    if (atm_rmw_v_q && (entry == atm_rmw_idx_q))
+                        atm_orig_q[entry] <= atm_rmw_orig_sx;
+                    if (dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx) && atm_q[entry])
+                        atm_rd_req_q[entry] <= 1'b1;
+                    else if (mshr_dbf_rdreq_ack_sx && (entry == mshr_dbf_rdreq_idx_sx) && ~tagfetch_req_q[entry])
+                        atm_rd_req_q[entry] <= 1'b0;
+                end
+            end
+
+            // The original value is fetched once the operand is in, and after any tag
+            // fetch: the two reads share the entry's AXI ID and its read window.
+            assign dbf_mshr_atmrd_req_sx[entry] = atm_rd_req_q[entry] & ~tagfetch_req_q[entry] & ~tagfetch_busy_q[entry];
+        end
+    endgenerate
+
+    // The fetch's last beat is in; the operation runs on the next cycle, over the line
+    // as it now stands.
+    always_ff @(posedge clk or posedge rst) begin: atm_rmw_timing_logic
+        if (rst) begin
+            atm_rmw_v_q   <= 1'b0;
+            atm_rmw_idx_q <= {`SNF_MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else begin
+            atm_rmw_v_q   <= rdata_recv_update_sx && rlast && ~tagfetch_busy_q[rdata_recv_entry_idx_sx]
+                           && atm_q[rdata_recv_entry_idx_sx];
+            atm_rmw_idx_q <= rdata_recv_entry_idx_sx;
+        end
+    end
+
+    // Table 4-19 (SS4.2.5 p.4-185), Table 4-20 (p.4-186) and the AtomicSwap and
+    // AtomicCompare rows (p.4-186), over SS2.10.5's (p.2-137) placement: the element at
+    // Addr[5:0], AtomicCompare's Swap half at that offset with bit[log2(len)] flipped.
+    // The store half writes only the element's bytes, and none where the operation
+    // leaves the location as it was -- the MAX/MIN rows update it only "if" their
+    // condition holds, a failed AtomicCompare "does not write" -- or where the
+    // original value could not be read (SS9.4.4 p.9-342).
+    always_comb begin: atm_rmw_comb_logic
+        int unsigned           a_len, a_off, a_coff, a_soff;
+        chie_pkg::req_opcode_e a_op;
+        logic [127:0]          a_init, a_cmp, a_swap, a_wr;
+        logic [63:0]           a_res;
+        logic                  a_match;
+
+        a_op   = atm_op_q[atm_rmw_idx_q];
+        a_len  = {27'd0, atm_len_q[atm_rmw_idx_q]};
+        a_off  = {26'd0, atm_off_q[atm_rmw_idx_q]};
+        a_coff = a_off & 32'd31;
+        a_soff = {26'd0, chie_pkg::atomic_swap_off(atm_off_q[atm_rmw_idx_q], a_len)} & 32'd31;
+        a_init = '0;
+        a_cmp  = '0;
+        a_swap = '0;
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < a_len) begin
+                a_init[b*8 +: 8] = dbf_data_q[atm_rmw_idx_q][((a_off + b) & 32'd63)*8 +: 8];
+                a_cmp[b*8 +: 8]  = atm_opnd_q[atm_rmw_idx_q][((a_coff + b) & 32'd31)*8 +: 8];
+                a_swap[b*8 +: 8] = atm_opnd_q[atm_rmw_idx_q][((a_soff + b) & 32'd31)*8 +: 8];
+            end
+        a_match = chie_pkg::atomic_compare_eq(a_init, a_cmp, a_len);
+        a_res   = chie_pkg::atomic_alu(a_op, a_len, atm_end_q[atm_rmw_idx_q], a_init[63:0], a_cmp[63:0]);
+        a_wr    = (a_op == chie_pkg::REQ_ATOMICCOMPARE) ? a_swap : {64'd0, a_res};
+
+        atm_rmw_nowr_sx = rresp_q[atm_rmw_idx_q][1]
+                        | ((a_op == chie_pkg::REQ_ATOMICCOMPARE) ? ~a_match
+                                                                 : (chie_pkg::atomic_conditional(a_op)
+                                                                    & (a_res == (a_init[63:0] & chie_pkg::atomic_mask(a_len)))));
+        atm_rmw_orig_sx = a_init;
+        atm_rmw_line_sx = dbf_data_q[atm_rmw_idx_q];
+        atm_rmw_be_sx   = '0;
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < a_len) begin
+                atm_rmw_line_sx[((a_off + b) & 32'd63)*8 +: 8] = a_wr[b*8 +: 8];
+                atm_rmw_be_sx[(a_off + b) & 32'd63]            = ~atm_rmw_nowr_sx;
+            end
+    end
+
+    assign dbf_mshr_atm_done_sx     = atm_rmw_v_q;
+    assign dbf_mshr_atm_done_idx_sx = atm_rmw_idx_q;
+    assign dbf_mshr_atm_nowr_sx     = atm_rmw_nowr_sx;
+    assign dbf_mshr_atm_err_sx      = rresp_q[atm_rmw_idx_q][1];
+
+    // SS4.2.5 (p.4-187, MUST): a Non-store Atomic's CompData carries "the original
+    // value at the addressed location", its byte enables over that element alone.
+    always_comb begin: atm_txdat_comb_logic
+        int unsigned t_off, t_len;
+        t_off = {26'd0, atm_off_q[dbf_txdat_entry_idx_sx]};
+        t_len = {27'd0, atm_len_q[dbf_txdat_entry_idx_sx]};
+        atm_txdat_line_sx = '0;
+        atm_txdat_be_sx   = '0;
+        for (int unsigned b = 0; b < 16; b = b + 1)
+            if (b < t_len) begin
+                atm_txdat_line_sx[((t_off + b) & 32'd63)*8 +: 8] = atm_orig_q[dbf_txdat_entry_idx_sx][b*8 +: 8];
+                atm_txdat_be_sx[(t_off + b) & 32'd63]            = 1'b1;
+            end
+    end
     assign dbf_mshr_tagmatch_done_sx = tagmatch_done_q;
     assign dbf_mshr_tagmatch_pass_sx = tagmatch_pass_q;
 
@@ -588,10 +763,12 @@ module snf_data_buffer `SNF_PARAM
     assign dbf_txdat_entry_idx_sx = mshr_txdat_entry_idx_sx;
     // Table 2-15 (SS2.10.4 p.2-136): DataID names the packet's place in the line.
     assign dbf_txdat_pkt_sx    = mshr_txdat_dataid_sx >> `SNF_PKT_CHUNKS_LOG2;
-    assign dbf_txdat_data_sx   = (dbf_txdat_en_sx) ? dbf_data_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] : '0;
+    assign dbf_txdat_line_sx   = atm_q[dbf_txdat_entry_idx_sx] ? atm_txdat_line_sx : dbf_data_q[dbf_txdat_entry_idx_sx];
+    assign dbf_txdat_lbe_sx    = atm_q[dbf_txdat_entry_idx_sx] ? atm_txdat_be_sx   : dbf_be_q[dbf_txdat_entry_idx_sx];
+    assign dbf_txdat_data_sx   = (dbf_txdat_en_sx) ? dbf_txdat_line_sx[dbf_txdat_pkt_sx*chie_pkg::DATA_WIDTH +: chie_pkg::DATA_WIDTH] : '0;
     assign dbf_txdat_tag_sx    = (dbf_txdat_en_sx) ? dbf_tag_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::TAG_WIDTH +: chie_pkg::TAG_WIDTH] : '0;
     assign dbf_txdat_poison_sx = (dbf_txdat_en_sx) ? dbf_poison_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::POISON_WIDTH +: chie_pkg::POISON_WIDTH] : '0;
-    assign dbf_txdat_be_sx     = (dbf_txdat_en_sx) ? dbf_be_q[dbf_txdat_entry_idx_sx][dbf_txdat_pkt_sx*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH] : '0;
+    assign dbf_txdat_be_sx     = (dbf_txdat_en_sx) ? dbf_txdat_lbe_sx[dbf_txdat_pkt_sx*chie_pkg::BE_WIDTH +: chie_pkg::BE_WIDTH] : '0;
 
     assign mshr_txdat_ccid_sx = rxreq_alloc_ccid_s2_q[dbf_txdat_entry_idx_sx];
 
@@ -744,10 +921,9 @@ module snf_data_buffer `SNF_PARAM
 
     // SS2.10.4 (p.2-136): a write of Size bytes arrives in max(1, Size/packet bytes)
     // packets, one per DataID; a Write Zero's injected line holds all of them.
-    localparam int PKT_BYTES_LOG2 = $clog2(chie_pkg::DATA_WIDTH / 8);
     wire [2:0] rxdat_ok_size = rxreq_alloc_size_s2_q[wdata_rec_idx_sx_q];
-    wire [3:0] rxdat_ok_pkts = (int'(rxdat_ok_size) > PKT_BYTES_LOG2) ? (4'd1 << (int'(rxdat_ok_size) - PKT_BYTES_LOG2)) : 4'd1;
-    assign dbf_mshr_rxdat_ok_sx = ($countones(wdata_recv_cnt_q[wdata_rec_idx_sx_q]) >= int'(rxdat_ok_pkts));
+    assign dbf_mshr_rxdat_ok_sx = ($countones(wdata_recv_cnt_q[wdata_rec_idx_sx_q])
+                                   >= int'(chie_pkg::pkts_of_size(chie_pkg::size_e'(rxdat_ok_size))));
     assign dbf_mshr_rxdat_ok_idx_sx = wdata_rec_idx_sx_q;
     assign dbf_mshr_rxdat_cancel_sx = dbf_mshr_rxdat_ok_sx && wdata_cancel_q[dbf_mshr_rxdat_ok_idx_sx];
     assign dbf_mshr_rxdat_cancel_idx_sx = dbf_mshr_rxdat_ok_idx_sx;
