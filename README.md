@@ -82,7 +82,7 @@ The **Issue** column tracks the work to reach 🟢.
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
 | `WriteBackPtl`, `WriteEvictOrEvict` | — | 🟢 | 🟢 | |
 | `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
-| `StashOnceSep*` | — | 🔴 `CompStashDone`, but with the wrong StashGroupID | 🟢 | ¹. The HN-I puts its own MSHR index where the request's StashGroupID belongs (section 2.6.2) |
+| `StashOnceSep*` | — | 🟢 hint ignored, `CompStashDone` | 🟢 | ¹ |
 | Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
 | Combined Writes, others (9) | 🟢 as the `WriteNoSnp` form ² | 🟢 | 🟢 | |
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
@@ -145,7 +145,7 @@ Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 make
 | Combined Writes | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
 | Write Zero | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
 | Atomics | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F declares `Atomic_Transactions` (section 16.3.3) for its whole space; HN-I `Atomic_Transactions` True ³; RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
-| Stash | — | 🟡 | — | 🟢 | 🟢 | HN-I completes without stashing, but its `CompStashDone` carries the wrong StashGroupID (request table); RN-F is a source and a Data Pull target |
+| Stash | — | 🟡 | — | 🟢 | 🟢 | HN-I completes without stashing (request table); RN-F is a source and a Data Pull target |
 | DVM | — | — | — | 🟢 | — | serviced by the MN (below); the RN-F issues `DVMOp` from its DVM port and answers `SnpDVMOp` |
 | System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F; the HN-F's `SYSCOACK` also waits on `SYSCO_SNP_PEND`, another node's snoop to that RN-F |
 | MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | SN-F keeps tags in AXI memory over `W/RUSER`: `Update` writes install them per TU, `Transfer`/`Fetch` reads return them `Transfer`, and a `Match` write or Atomic fetches them and answers an accurate `TagMatch` to `ReturnNID`; `AR/AWUSER` carry `TagOp`/`TagGroupID` only on its own Match fetch. HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹. RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE` |
