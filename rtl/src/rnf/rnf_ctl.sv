@@ -215,6 +215,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_LINE_BITS-1:0]            cache_flush_data_i,
     input  wire [`RNF_META_W-1:0]               cache_flush_meta_i,
     input  wire                                 link_run_i,
+    // A DVMOp is running (rnf_dvm.sv) and owns the request path.
+    input  wire                                 dvm_busy_i,
 
     // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
     // in waits for the rest. Held until the fill has landed, since before then the
@@ -1518,11 +1520,13 @@ module rnf_ctl `RNF_PARAM
                     snoopme_q  <= 1'b0;
                     tagop_q    <= chie_pkg::TAGOP_INVALID;
                     tm_owed_q  <= 1'b0;
-                    if (surplus_v) begin
+                    // rnf.sv gives TXREQ to a running DVMOp, so a start here would resend
+                    // its request (SS2.5.2 p.2-87); the arms below are masked there.
+                    if (surplus_v && !dvm_busy_i) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
                     end
-                    else if (flush_v) begin
+                    else if (flush_v && !dvm_busy_i) begin
                         qos_q       <= 4'd0;
                         vic_addr_q  <= cache_flush_addr_i;
                         vic_way_q   <= cache_flush_way_i;

@@ -458,6 +458,7 @@ module rnf `RNF_PARAM
                      ,.cache_flush_data_i    ( cache_flush_data     )
                      ,.cache_flush_meta_i     ( cache_flush_meta      )
                      ,.link_run_i            ( prot_link_run        )
+                     ,.dvm_busy_i            ( dvm_active           )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
                      ,.cb_hold_v_o           ( ctl_cb_hold_v        )
