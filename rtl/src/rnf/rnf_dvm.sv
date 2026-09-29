@@ -38,8 +38,8 @@ module rnf_dvm `RNF_PARAM
     output wire                                 DVMDONE,
     output wire [1:0]                           DVMRESP,
 
-    // rnf_ctl idle, and Coherency Enabled: Table 15-1 (p.15-468) lets a Request
-    // Node send DVM transactions in no other state.
+    // rnf_ctl idle, and Coherency Enabled with COHERENCY_EN still high: Table 15-1
+    // (p.15-468) lets a Request Node send DVM transactions in no other state.
     input  wire                                 start_ok_i,
     output wire                                 active_o,
 

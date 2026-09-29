@@ -215,6 +215,8 @@ module rnf_ctl `RNF_PARAM
     input  wire [`RNF_LINE_BITS-1:0]            cache_flush_data_i,
     input  wire [`RNF_META_W-1:0]               cache_flush_meta_i,
     input  wire                                 link_run_i,
+    // A DVMOp is running (rnf_dvm.sv) and owns the request path.
+    input  wire                                 dvm_busy_i,
 
     // SS4.11.1 (p.4-242, MUST): a snoop to a line whose Data response is part-way
     // in waits for the rest. Held until the fill has landed, since before then the
@@ -608,6 +610,16 @@ module rnf_ctl `RNF_PARAM
         end
         else if (!(nb inside {6'd1, 6'd2, 6'd4, 6'd8})) return 1'b0;
         return (int'(off) % elem) == 0;
+    endfunction
+
+    // SS2.10.3 (p.2-135): an Atomic's data window is [Addr:Addr+Size-1], or for an
+    // Addr not aligned to Size [Addr-Size/2:Addr+Size/2-1] -- the Size-aligned bytes
+    // holding Addr either way, as atop_legal leaves Size a power of two.
+    function automatic logic [`RNF_LINE_BYTES-1:0] atm_window(logic [`RNF_LINE_OFFSET_W-1:0] off,
+                                                             logic [5:0] nb);
+        automatic logic [`RNF_LINE_OFFSET_W-1:0] blk = ~(`RNF_LINE_OFFSET_W'(nb) - 1'b1);
+        for (int unsigned b = 0; b < `RNF_LINE_BYTES; b++)
+            atm_window[b] = (((`RNF_LINE_OFFSET_W'(b)) ^ off) & blk) == '0;
     endfunction
 
     // The operation performed on the line in the cache: SS4.2.5's (p.4-185)
@@ -1518,11 +1530,13 @@ module rnf_ctl `RNF_PARAM
                     snoopme_q  <= 1'b0;
                     tagop_q    <= chie_pkg::TAGOP_INVALID;
                     tm_owed_q  <= 1'b0;
-                    if (surplus_v) begin
+                    // rnf.sv gives TXREQ to a running DVMOp, so a start here would resend
+                    // its request (SS2.5.2 p.2-87); the arms below are masked there.
+                    if (surplus_v && !dvm_busy_i) begin
                         ret_type_q <= surplus_type;
                         st_q       <= S_PCRD_RET;
                     end
-                    else if (flush_v) begin
+                    else if (flush_v && !dvm_busy_i) begin
                         qos_q       <= 4'd0;
                         vic_addr_q  <= cache_flush_addr_i;
                         vic_way_q   <= cache_flush_way_i;
@@ -1942,6 +1956,9 @@ module rnf_ctl `RNF_PARAM
                                 sz_q         <= size_of_bytes(atm_nb_q);
                                 off_q        <= aw_off_q;
                                 line_vmask_q <= '0;
+                                // SS2.10.3 (p.2-135, MUST): "For Atomic transactions all byte
+                                // enables within the data window must be asserted" -- and no other.
+                                wbe_q        <= atm_window(aw_off_q, atm_nb_q);
                                 acq_cs_q     <= `RNF_CS_I;
                                 ord_q        <= (nc_q && dev_q) ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
                                 snoopme_q    <= !nc_q && (atm_mode_q == `RNF_ATM_FAR_SNOOPME);

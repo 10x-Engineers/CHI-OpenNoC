@@ -458,6 +458,7 @@ module rnf `RNF_PARAM
                      ,.cache_flush_data_i    ( cache_flush_data     )
                      ,.cache_flush_meta_i     ( cache_flush_meta      )
                      ,.link_run_i            ( prot_link_run        )
+                     ,.dvm_busy_i            ( dvm_active           )
                      ,.defer_v_o             ( ctl_defer_v          )
                      ,.defer_addr_o          ( ctl_defer_addr       )
                      ,.cb_hold_v_o           ( ctl_cb_hold_v        )
@@ -475,6 +476,11 @@ module rnf `RNF_PARAM
 
     wire ctl_accept = (ARVALID & ctl_arready) | (AWVALID & ctl_awready) | (CMVALID & ctl_cmready);
 
+    // Table 15-1 (p.15-468, MUST): DVM only in Coherency Enabled. SYSCOREQ falls on a cycle
+    // COHERENCY_EN is low, before dvm_active can hold it, so the start needs COHERENCY_EN too.
+    // It yields to a Data Pull as to a core request: dvm_active masks neither until next cycle.
+    wire dvm_start_ok = coh_enabled & COHERENCY_EN & ~txn_active & ~ctl_accept & ~pull_v;
+
     rnf_dvm `RNF_PARAM_INST u_rnf_dvm(
                       .clk_i                 ( CLK                  )
                      ,.rst_i                 ( RST                  )
@@ -485,7 +491,7 @@ module rnf `RNF_PARAM
                      ,.DVMDOMAIN             ( DVMDOMAIN            )
                      ,.DVMDONE               ( DVMDONE              )
                      ,.DVMRESP               ( DVMRESP              )
-                     ,.start_ok_i            ( coh_enabled & ~txn_active & ~ctl_accept )
+                     ,.start_ok_i            ( dvm_start_ok         )
                      ,.active_o              ( dvm_active           )
                      ,.prot_txreqflit_o      ( dvm_txreqflit        )
                      ,.prot_txreqflitv_o     ( dvm_txreqflitv       )
