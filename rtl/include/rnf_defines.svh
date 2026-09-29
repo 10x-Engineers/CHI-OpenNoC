@@ -80,7 +80,9 @@
 // CleanSharedPersistSep (SS2.3.2 p.2-61), and IMMEDIATE_STASH is its
 // WriteUnique{Full,Ptl}Stash (SS7.2 p.7-296) to STASHNID. On a Device or
 // Non-cacheable write IMMEDIATE_CLSH and IMMEDIATE_PERSEP give the WriteNoSnp
-// forms. 3'd7 is reserved and reads as CACHED.
+// forms. IMMEDIATE_OWO is IMMEDIATE's WriteUnique{Full,Ptl} with Ordered Write
+// Observation: Order 0b10 and ExpCompAck (SS2.8.3 p.2-117), acknowledged in the
+// WriteData by NCBWrDataCompAck when Comp has already arrived (SS2.3.2 Alt 3b2).
 `define RNF_AW_COH_W          3
 `define RNF_AW_CACHED         3'd0
 `define RNF_AW_READ_UNIQUE    3'd1
@@ -89,6 +91,7 @@
 `define RNF_AW_PARTIAL        3'd4
 `define RNF_AW_IMMEDIATE_PERSEP 3'd5
 `define RNF_AW_IMMEDIATE_STASH  3'd6
+`define RNF_AW_IMMEDIATE_OWO    3'd7
 
 // Cache maintenance port: one operation on one line, answered on CMDONE/CMRESP.
 `define RNF_CM_OP_W               4
@@ -111,6 +114,9 @@
 // (SS4.2.2 p.4-174) issues them from I only, so a held line leaves first.
 `define RNF_CM_STASH_ONCE_SHARED              4'd12
 `define RNF_CM_STASH_ONCE_UNIQUE              4'd13
+// SS4.2.6: PrefetchTgt to the Subordinate, a hint with no response; CMDONE follows
+// the request, and the line's state here is untouched.
+`define RNF_CM_PREFETCH_TGT                   4'd14
 
 // AWATOP qualifies AWVALID with an atomic operation, in AMBA AXI5's AWATOP encoding:
 // [5:4] 01 AtomicStore and 10 AtomicLoad, [3] the Endian bit and [2:0] the Table

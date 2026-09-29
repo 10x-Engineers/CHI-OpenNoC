@@ -120,6 +120,8 @@ def render_system(env, wrapper, system, ports, out_dir):
     if len(mns) > 1:
         raise SystemExit(f"{system}: an RN-F's DVMOps go to the config's one MN port, "
                          f"and this config has {len(mns)}")
+    # A PrefetchTgt goes to a Subordinate (CHI SS3.3.1): the config's first SNF port.
+    snfs = [p for p in ports if p.kind == "SNF"]
     render(env, "noc_system.j2", Path(out_dir) / f"{system}.sv",
            module=system, wrapper=wrapper, ports=ports, rnfs=rnfs, home=homes[0],
-           mn=mns[0] if mns else None)
+           mn=mns[0] if mns else None, snf=snfs[0] if snfs else None)

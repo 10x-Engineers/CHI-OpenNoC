@@ -420,6 +420,10 @@ module rnf_ctl `RNF_PARAM
     logic [PKT_W-1:0]                           wr_pkt_q;
     logic                                       wr_dbid_q;
     logic                                       wr_sent_q;
+    // SS2.3.2 Alt 3b2: every packet of this write's data carries its CompAck.
+    logic                                       wcack_q;
+    // SS4.5.2: every packet of this write's data is a WriteDataCancel.
+    logic                                       wcancel_q;
     logic                                       cb_done_q;
     logic                                       drop_q;
     // The CompCMO of the request in flight, and where S_CMO goes once it lands.
@@ -845,6 +849,9 @@ module rnf_ctl `RNF_PARAM
                          ((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
     wire lu_tv = cache_lu_meta_i[`RNF_META_TV];
     wire wu_full_tags = wr_full && !((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
+    // IMMEDIATE_OWO's Ordered Write Observation, left off a Match so no TagMatch wait
+    // meets the CompAck.
+    wire wu_owo = (aw_coh_q == `RNF_AW_IMMEDIATE_OWO) && (ctag_q != chie_pkg::TAGOP_MATCH);
 
     // The displaced way as the snoop port leaves it: cache_vic_state_i is read
     // combinationally, so a snoop writing that way on the very edge the victim is
@@ -971,6 +978,12 @@ module rnf_ctl `RNF_PARAM
                 prot_txreqflit_o.memattr.early_wr_ack = ewa_q;
                 prot_txreqflit_o.snpattr.snpattr      = 1'b0;
             end
+            // SS3.3.1: "PrefetchTgt always targets a Subordinate Node", and SS2.11 gives it
+            // no Retry sequence, so no AllowRetry.
+            if (acq_op_q == chie_pkg::REQ_PREFETCHTGT) begin
+                prot_txreqflit_o.tgtid      = CHIE_NID_WIDTH_PARAM'(SNF_NID_PARAM);
+                prot_txreqflit_o.allowretry = 1'b0;
+            end
         end
     end
 
@@ -1074,7 +1087,11 @@ module rnf_ctl `RNF_PARAM
         prot_txdatflit_o.tracetag = wr_tt_q;
         prot_txdatflit_o.dataid = 2'(int'(wr_pkt_q) * DID_STEP);
         if (st_q == S_WU_DAT) begin
-            prot_txdatflit_o.opcode = chie_pkg::DAT_NONCOPYBACKWRDATA;
+            // SS4.5.2: a cancelled write still sends every packet, BE all zero, which
+            // wbe_q already is; a combined CompAck rides every packet (SS2.8.5).
+            prot_txdatflit_o.opcode = wcancel_q ? chie_pkg::DAT_WRITEDATACANCEL  :
+                                      wcack_q   ? chie_pkg::DAT_NCBWRDATACOMPACK :
+                                                  chie_pkg::DAT_NONCOPYBACKWRDATA;
             // SS2.10.6 (p.2-139, MUST): CCID is Addr[5:4] of the request.
             prot_txdatflit_o.ccid   = off_q[5:4];
             prot_txdatflit_o.be     = wu_pkt_be[wr_pkt_q];
@@ -1235,6 +1252,17 @@ module rnf_ctl `RNF_PARAM
                       !(got_rcpt_q || rx_rcpt || got_rsp_q || rx_sep);
 
     wire wu_dbid_now = wr_dbid_q || rx_dbid || rx_compdbid;
+    // SS4.5.2: WriteDataCancel may replace the NonCopyBackWrData of a WriteNoSnpPtl,
+    // WriteUniquePtl, WriteUniquePtlStash or their Combined forms, never to Device
+    // memory; used here for a write whose every strobe is clear and that carries no tags.
+    wire wr_cancel_ok = (acq_op_q inside {chie_pkg::REQ_WRITENOSNPPTL, chie_pkg::REQ_WRITEUNIQUEPTL,
+                                          chie_pkg::REQ_WRITEUNIQUEPTLSTASH,
+                                          chie_pkg::REQ_WRITENOSNPPTLCLEANSH, chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+                                          chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
+                                          chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+                                          chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP}) &&
+                        !(nc_q && dev_q) && !atm_q && (tagop_q == chie_pkg::TAGOP_INVALID) &&
+                        (wbe_q == '0);
     // SS2.3.3 (p.2-69): an AtomicLoad, Swap or Compare completes with CompData of
     // its inbound size, half the outbound one for AtomicCompare (Table 2-16 p.2-137).
     wire atm_ret_now = chie_pkg::atomic_req(acq_op_q) && atm_ret_q;
@@ -1424,6 +1452,8 @@ module rnf_ctl `RNF_PARAM
             wr_pkt_q      <= '0;
             wr_dbid_q     <= 1'b0;
             wr_sent_q     <= 1'b0;
+            wcack_q       <= 1'b0;
+            wcancel_q     <= 1'b0;
             cb_done_q     <= 1'b0;
             drop_q        <= 1'b0;
             cmo_got_q     <= 1'b0;
@@ -1519,6 +1549,8 @@ module rnf_ctl `RNF_PARAM
                     wr_pkt_q   <= '0;
                     wr_dbid_q  <= 1'b0;
                     wr_sent_q  <= 1'b0;
+                    wcack_q    <= 1'b0;
+                    wcancel_q  <= 1'b0;
                     cb_keep_q  <= 1'b0;
                     exok_q     <= 1'b0;
                     base_udp_q <= 1'b0;
@@ -1859,6 +1891,11 @@ module rnf_ctl `RNF_PARAM
                                     st_q   <= S_REQ;
                                 end
                             end
+                            // SS4.2.6: a hint to the Subordinate that changes no state here.
+                            `RNF_CM_PREFETCH_TGT: begin
+                                acq_op_q <= chie_pkg::REQ_PREFETCHTGT;
+                                st_q     <= S_REQ;
+                            end
                             `RNF_CM_CLEAN_INVALID: begin
                                 acq_op_q <= chie_pkg::REQ_CLEANINVALID;
                                 if (lu_state == `RNF_CS_UDP) begin
@@ -2096,7 +2133,8 @@ module rnf_ctl `RNF_PARAM
                                 else if ((aw_coh_q == `RNF_AW_IMMEDIATE) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP) ||
-                                         (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)) begin
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_STASH) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_OWO)) begin
                                     // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
                                     // line that is Invalid here, and leaves it so. Table
                                     // 12-2 (SS12.12 p.12-388): the core's Update or Match
@@ -2104,7 +2142,11 @@ module rnf_ctl `RNF_PARAM
                                     // SS12.5.2 (p.12-379) has a Full one's Update assert
                                     // every TU, so a write updating fewer goes Ptl.
                                     alloc_q <= 1'b0;
-                                    ack_q   <= 1'b0;
+                                    // SS2.8.3 (p.2-117): a WriteUnique uses CompAck only for
+                                    // Ordered Write Observation, Order 0b10 (Streaming Ordered
+                                    // Write, p.2-122); a Match keeps the plain form.
+                                    ack_q   <= wu_owo;
+                                    ord_q   <= wu_owo ? chie_pkg::ORDER_REQ_WR_OBS : chie_pkg::ORDER_NONE;
                                     kind_q  <= K_WU;
                                     tagop_q <= ctag_q;
                                     if ((ctag_q != chie_pkg::TAGOP_INVALID) &&
@@ -2126,7 +2168,8 @@ module rnf_ctl `RNF_PARAM
                                             acq_op_q <= wu_full_tags ? chie_pkg::REQ_WRITEUNIQUEFULLSTASH
                                                                      : chie_pkg::REQ_WRITEUNIQUEPTLSTASH;
                                         else
-                                            acq_op_q <= (wr_zero && (ctag_q == chie_pkg::TAGOP_INVALID))
+                                            // WriteUniqueZero may not carry ExpCompAck.
+                                            acq_op_q <= (wr_zero && (ctag_q == chie_pkg::TAGOP_INVALID) && !wu_owo)
                                                                           ? chie_pkg::REQ_WRITEUNIQUEZERO :
                                                         wu_full_tags ? chie_pkg::REQ_WRITEUNIQUEFULL
                                                                      : chie_pkg::REQ_WRITEUNIQUEPTL;
@@ -2234,7 +2277,10 @@ module rnf_ctl `RNF_PARAM
                 end
 
                 S_REQ: begin
-                    if (prot_txreqflit_sent_i) st_q <= S_DATA;
+                    // SS4.2.6: "The Requester can deallocate the request as soon as the
+                    // request is sent"; its TxnID is inapplicable, so it does not advance.
+                    if (prot_txreqflit_sent_i)
+                        st_q <= (acq_op_q == chie_pkg::REQ_PREFETCHTGT) ? S_CMRSP : S_DATA;
                 end
 
                 S_DATA: begin
@@ -2352,11 +2398,25 @@ module rnf_ctl `RNF_PARAM
                                 wr_dbid_q  <= 1'b1;
                             end
                             if (rx_comp || rx_compdbid) got_rsp_q <= 1'b1;
+                            // SS2.6.1 (p.2-100): a write's CompAck goes to the completion's
+                            // source with its DBID.
+                            if (rx_compdbid) begin
+                                ack_tgt_q   <= prot_rxrspflit_i.srcid;
+                                ack_txnid_q <= prot_rxrspflit_i.dbid;
+                                ack_tt_q    <= prot_rxrspflit_i.tracetag;
+                            end
                             if (wu_dbid_now) begin
                                 if (!chie_pkg::write_zero(acq_op_q) && !wr_sent_q) begin
-                                    wr_pkt_q <= wu_first;
-                                    st_q     <= S_WU_DAT;
+                                    wr_pkt_q  <= wu_first;
+                                    wcancel_q <= wr_cancel_ok;
+                                    // SS2.3.2 Alt 3b2: combined "only after it has received
+                                    // CompDBIDResp or both DBIDResp/DBIDRespOrd and Comp".
+                                    wcack_q   <= ack_q && !wr_cancel_ok && wu_comp_now;
+                                    st_q      <= S_WU_DAT;
                                 end
+                                // SS2.3.2 Alt 3b1: the separate CompAck follows Comp.
+                                else if (wu_comp_now && ack_q && !wcack_q)
+                                    st_q <= S_ACK;
                                 else if (wu_comp_now && wu_cmo_now) begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;
@@ -2396,12 +2456,19 @@ module rnf_ctl `RNF_PARAM
 
                 S_WU_DAT: begin
                     if (rx_err) err_q <= 1'b1;
-                    if (rx_comp) got_rsp_q <= 1'b1;
+                    if (rx_comp) begin
+                        got_rsp_q   <= 1'b1;
+                        ack_tgt_q   <= prot_rxrspflit_i.srcid;
+                        ack_txnid_q <= prot_rxrspflit_i.dbid;
+                        ack_tt_q    <= prot_rxrspflit_i.tracetag;
+                    end
                     if (prot_txdatflit_sent_i) begin
                         if (wr_last_pkt) begin
                             wr_sent_q <= 1'b1;
                             if (!wu_comp_now)
                                 st_q <= S_DATA;
+                            else if (ack_q && !wcack_q)
+                                st_q <= S_ACK;
                             else if (wu_cmo_now) begin
                                 txnid_q <= txnid_q + 12'd1;
                                 st_q    <= fin_st;

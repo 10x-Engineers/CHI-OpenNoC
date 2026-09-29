@@ -46,6 +46,10 @@ module {{ module }}
   // Where its DVMOps go: the config's MN port, else its Home, which error-completes
   // them (SS2.3.7 p.2-75).
   parameter int {{ p.name }}_MN_NID = int'({{ module }}_pkg::{{ (mn or home).name }}_NID),
+{% if snf %}
+  // Where its PrefetchTgt goes (SS3.3.1): the config's first SNF port.
+  parameter int {{ p.name }}_SNF_NID = int'({{ module }}_pkg::{{ snf.name }}_NID),
+{% endif %}
 {% endfor %}
   localparam REQ_FLIT_WIDTH          = $bits(chie_pkg::req_flit_s),
   localparam RSP_FLIT_WIDTH          = $bits(chie_pkg::rsp_flit_s),
@@ -149,6 +153,9 @@ module {{ module }}
   rnf #(
     .HNF_NID_PARAM ({{ p.name }}_HNF_NID),
     .MN_NID_PARAM  ({{ p.name }}_MN_NID),
+{% if snf %}
+    .SNF_NID_PARAM ({{ p.name }}_SNF_NID),
+{% endif %}
     .RNF_NID_PARAM (int'({{ module }}_pkg::{{ p.name }}_NID))
   ) u_{{ p.name | lower }}_rnf (
     .CLK          (clk)
