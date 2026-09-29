@@ -1263,7 +1263,10 @@ module hni_mshr `HNI_PARAM
     assign txrsp_resp_sx     = ((txrsp_opcode_sx == chie_pkg::RSP_COMP)
                                 && (rxreq_opcode_s1_q[txrsp_entry_idx_s1_q] inside {chie_pkg::REQ_CLEANUNIQUE, chie_pkg::REQ_MAKEUNIQUE}))
                              ? chie_pkg::RESP_UC_UD : chie_pkg::RESP_I;
-    assign txrsp_dbid_sx     = (txrsp_opcode_sx inside {chie_pkg::RSP_COMPPERSIST, chie_pkg::RSP_TAGMATCH})
+    // Sec 13.10: the request's LPID bits carry PGroupID, TagGroupID or StashGroupID, and the
+    // response's DBID bits return it; Sec 2.6.2 sets CompStashDone's StashGroupID from the request.
+    assign txrsp_dbid_sx     = (txrsp_opcode_sx inside {chie_pkg::RSP_COMPPERSIST, chie_pkg::RSP_TAGMATCH,
+                                                        chie_pkg::RSP_COMPSTASHDONE})
                              ? {{(12-8){1'b0}}, rxreq_lpid_s1_q[txrsp_entry_idx_s1_q]}
                              : {{(12-`HNI_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_s1_q};
     assign txrsp_tracetag_sx = rxreq_tracetag_s1_q[txrsp_entry_idx_s1_q];
