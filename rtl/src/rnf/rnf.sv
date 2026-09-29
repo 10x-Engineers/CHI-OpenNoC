@@ -478,7 +478,8 @@ module rnf `RNF_PARAM
 
     // Table 15-1 (p.15-468, MUST): DVM only in Coherency Enabled. SYSCOREQ falls on a cycle
     // COHERENCY_EN is low, before dvm_active can hold it, so the start needs COHERENCY_EN too.
-    wire dvm_start_ok = coh_enabled & COHERENCY_EN & ~txn_active & ~ctl_accept;
+    // It yields to a Data Pull as to a core request: dvm_active masks neither until next cycle.
+    wire dvm_start_ok = coh_enabled & COHERENCY_EN & ~txn_active & ~ctl_accept & ~pull_v;
 
     rnf_dvm `RNF_PARAM_INST u_rnf_dvm(
                       .clk_i                 ( CLK                  )
