@@ -475,6 +475,10 @@ module rnf `RNF_PARAM
 
     wire ctl_accept = (ARVALID & ctl_arready) | (AWVALID & ctl_awready) | (CMVALID & ctl_cmready);
 
+    // Table 15-1 (p.15-468, MUST): DVM only in Coherency Enabled. SYSCOREQ falls on a cycle
+    // COHERENCY_EN is low, before dvm_active can hold it, so the start needs COHERENCY_EN too.
+    wire dvm_start_ok = coh_enabled & COHERENCY_EN & ~txn_active & ~ctl_accept;
+
     rnf_dvm `RNF_PARAM_INST u_rnf_dvm(
                       .clk_i                 ( CLK                  )
                      ,.rst_i                 ( RST                  )
@@ -485,7 +489,7 @@ module rnf `RNF_PARAM
                      ,.DVMDOMAIN             ( DVMDOMAIN            )
                      ,.DVMDONE               ( DVMDONE              )
                      ,.DVMRESP               ( DVMRESP              )
-                     ,.start_ok_i            ( coh_enabled & ~txn_active & ~ctl_accept )
+                     ,.start_ok_i            ( dvm_start_ok         )
                      ,.active_o              ( dvm_active           )
                      ,.prot_txreqflit_o      ( dvm_txreqflit        )
                      ,.prot_txreqflitv_o     ( dvm_txreqflitv       )
