@@ -4219,9 +4219,11 @@ module hnf_mshr_ctl `HNF_PARAM
     // a DBIDResp or DBIDRespOrd message for a Write transaction must include the
     // same DBID field value in the Comp and DBIDResp or DBIDRespOrd message." The
     // MSHR index IS that value where this Home granted the buffer itself; under DWT
-    // it never did, so the Comp echoes the DBID the Subordinate granted.
+    // it never did, so the Comp echoes the DBID the Subordinate granted. Sec 2.6.2 sets
+    // CompStashDone's StashGroupID, like CompPersist's PGroupID, from the request's LPID bits.
     assign mshr_txrsp_dbid_sx1     = (mshr_txrsp_persist_rsp_sx1 ||
-                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH))
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH) ||
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_COMPSTASHDONE))
                                    ? {4'd0, mshr_pgroupid_s1_q[mshr_txrsp_idx_sx1_q]}
                                    : mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
                                    ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]
