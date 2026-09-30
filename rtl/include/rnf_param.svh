@@ -22,7 +22,9 @@
 //
 // RNF_NID_PARAM defaults to 8, the first entry of hnf_param.svh's
 // RNF_NID_LIST_PARAM {48,16,40,8}, so a default-parameterised RN-F and HN-F pair
-// up without either being overridden.
+// up without either being overridden. SNF_NID_PARAM is where a PrefetchTgt goes
+// (SS3.3.1: "PrefetchTgt always targets a Subordinate Node"); its default, 32, is
+// hnf_param.svh's own SNF_NID_PARAM.
 `define RNF_PARAM #( \
     parameter CHIE_NID_WIDTH_PARAM       = chie_pkg::NID_WIDTH,         \
     parameter CHIE_REQ_ADDR_WIDTH_PARAM  = chie_pkg::REQ_ADDR_WIDTH,    \
@@ -43,6 +45,7 @@
     parameter RNF_EXCL_LP_NUM_PARAM      = 4,                           \
     parameter HNF_NID_PARAM              = 0,                           \
     parameter MN_NID_PARAM               = 4,                           \
+    parameter SNF_NID_PARAM              = 32,                          \
     parameter RNF_NID_PARAM              = 8    )
 
 `define RNF_PARAM_INST #( \
@@ -65,6 +68,7 @@
     .RNF_EXCL_LP_NUM_PARAM          (RNF_EXCL_LP_NUM_PARAM       ), \
     .HNF_NID_PARAM                  (HNF_NID_PARAM               ), \
     .MN_NID_PARAM                   (MN_NID_PARAM                ), \
+    .SNF_NID_PARAM                  (SNF_NID_PARAM               ), \
     .RNF_NID_PARAM                  (RNF_NID_PARAM               ))
 
 `endif
