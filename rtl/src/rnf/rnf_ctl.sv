@@ -1083,8 +1083,9 @@ module rnf_ctl `RNF_PARAM
         prot_txdatflit_o.txnid  = wr_txnid_q;
         prot_txdatflit_o.qos    = qos_q;
         // SS11.5.1 (p.11-368, MUST): TraceTag reflected from the DBID response that
-        // drew the data.
-        prot_txdatflit_o.tracetag = wr_tt_q;
+        // drew the data; NCBWrDataCompAck's is set "if either one of Comp or DBIDResp"
+        // had it set.
+        prot_txdatflit_o.tracetag = wr_tt_q | (wcack_q && (st_q == S_WU_DAT) && ack_tt_q);
         prot_txdatflit_o.dataid = 2'(int'(wr_pkt_q) * DID_STEP);
         if (st_q == S_WU_DAT) begin
             // SS4.5.2: a cancelled write still sends every packet, BE all zero, which
