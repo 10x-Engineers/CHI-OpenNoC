@@ -66,10 +66,13 @@
 `define RNF_AR_ONCE_MAKE_INV  3'd6
 `define RNF_AR_NOT_SHARED_DIRTY 3'd7
 
-// ARORD qualifies ARVALID: set, a ReadOnce* miss asks for Request Order (Table 2-9
-// SS2.8.5 p.2-119), the one non-zero Order Table 4-1 (p.4-165) permits the ReadOnce
-// family. Every other read ignores it, as none of them may be ordered.
-`define RNF_AR_ORD_W          1
+// ARORD qualifies ARVALID. Bit 0 asks for Request Order (Table 2-9 SS2.8.5 p.2-119),
+// the one non-zero Order Table 4-1 (p.4-165) permits a ReadOnce* miss and a Normal
+// Non-cacheable ReadNoSnp; a Device read is always Endpoint Order. Bit 1 asks for a
+// CompAck, which Table 2-8 (SS2.8.3 p.2-117) makes optional for ReadOnce* and
+// ReadNoSnp, and is honoured only on a read that is not ordered. Every other read
+// ignores both, as none of them may be ordered.
+`define RNF_AR_ORD_W          2
 
 // AWCOH qualifies AWVALID. READ_UNIQUE upgrades a Shared line with MakeReadUnique
 // instead of CleanUnique; IMMEDIATE writes an uncached line with WriteUnique
@@ -82,16 +85,20 @@
 // Non-cacheable write IMMEDIATE_CLSH and IMMEDIATE_PERSEP give the WriteNoSnp
 // forms. IMMEDIATE_OWO is IMMEDIATE's WriteUnique{Full,Ptl} with Ordered Write
 // Observation: Order 0b10 and ExpCompAck (SS2.8.3 p.2-117), acknowledged in the
-// WriteData by NCBWrDataCompAck when Comp has already arrived (SS2.3.2 Alt 3b2).
-`define RNF_AW_COH_W          3
-`define RNF_AW_CACHED         3'd0
-`define RNF_AW_READ_UNIQUE    3'd1
-`define RNF_AW_IMMEDIATE      3'd2
-`define RNF_AW_IMMEDIATE_CLSH 3'd3
-`define RNF_AW_PARTIAL        3'd4
-`define RNF_AW_IMMEDIATE_PERSEP 3'd5
-`define RNF_AW_IMMEDIATE_STASH  3'd6
-`define RNF_AW_IMMEDIATE_OWO    3'd7
+// WriteData by NCBWrDataCompAck when Comp has already arrived (SS2.3.2 Alt 3b2). On a
+// Normal Non-cacheable or Device-with-EWA write it gives WriteNoSnp{Full,Ptl} with the
+// same Order and ExpCompAck (Table 4-13 p.4-178), and a Device write without EWA keeps
+// Endpoint Order. IMMEDIATE_STASH_OWO is IMMEDIATE_STASH with the same.
+`define RNF_AW_COH_W          4
+`define RNF_AW_CACHED         4'd0
+`define RNF_AW_READ_UNIQUE    4'd1
+`define RNF_AW_IMMEDIATE      4'd2
+`define RNF_AW_IMMEDIATE_CLSH 4'd3
+`define RNF_AW_PARTIAL        4'd4
+`define RNF_AW_IMMEDIATE_PERSEP 4'd5
+`define RNF_AW_IMMEDIATE_STASH  4'd6
+`define RNF_AW_IMMEDIATE_OWO    4'd7
+`define RNF_AW_IMMEDIATE_STASH_OWO 4'd8
 
 // Cache maintenance port: one operation on one line, answered on CMDONE/CMRESP.
 `define RNF_CM_OP_W               4

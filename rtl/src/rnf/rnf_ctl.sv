@@ -693,6 +693,16 @@ module rnf_ctl `RNF_PARAM
     // other read may be ordered at all.
     wire chie_pkg::order_e ar_ord = (is_read_once(ar_op) && ARORD[0]) ? chie_pkg::ORDER_REQ_WR_OBS
                                                                       : chie_pkg::ORDER_NONE;
+    // Table 4-1 (p.4-165): a ReadNoSnp takes Order 10 on Normal memory and only 11 on
+    // Device, so a Device read stays Endpoint Order.
+    wire chie_pkg::order_e ar_nc_ord = !ARCACHE[1] ? chie_pkg::ORDER_END_POINT :
+                                       ARORD[0]    ? chie_pkg::ORDER_REQ_WR_OBS
+                                                   : chie_pkg::ORDER_NONE;
+    // Table 2-8 (SS2.8.3 p.2-117): CompAck is optional on a ReadOnce* and a ReadNoSnp. An
+    // ordered read is released by its ReadReceipt, which the CompAck state would skip,
+    // so it asks for none.
+    wire ar_ack_once = ARORD[1] && (ar_ord    == chie_pkg::ORDER_NONE);
+    wire ar_ack_nc   = ARORD[1] && (ar_nc_ord == chie_pkg::ORDER_NONE);
     // The write in hand is an atomic, and whether it executes in the cache: a far
     // one does unless BROADCASTATOMIC forbids the Atomic (SS16.3.1 p.16-478).
     wire atm_q    = is_wr_q && (atop_q != `RNF_ATOP_NONE);
@@ -849,9 +859,13 @@ module rnf_ctl `RNF_PARAM
                          ((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
     wire lu_tv = cache_lu_meta_i[`RNF_META_TV];
     wire wu_full_tags = wr_full && !((ctag_q == chie_pkg::TAGOP_UPDATE) && !(&wtu_now));
-    // IMMEDIATE_OWO's Ordered Write Observation, left off a Match so no TagMatch wait
-    // meets the CompAck.
-    wire wu_owo = (aw_coh_q == `RNF_AW_IMMEDIATE_OWO) && (ctag_q != chie_pkg::TAGOP_MATCH);
+    // IMMEDIATE_OWO's and IMMEDIATE_STASH_OWO's Ordered Write Observation, left off a
+    // Match so no TagMatch wait meets the CompAck.
+    wire wu_owo = ((aw_coh_q == `RNF_AW_IMMEDIATE_OWO) || (aw_coh_q == `RNF_AW_IMMEDIATE_STASH_OWO)) &&
+                  (ctag_q != chie_pkg::TAGOP_MATCH);
+    // The same on a Non-cacheable write, where Table 4-13 (p.4-178) gives Order 10 to
+    // Normal memory and Device with EWA, but only Endpoint Order to Device without.
+    wire nc_owo = (aw_coh_q == `RNF_AW_IMMEDIATE_OWO) && (!dev_q || ewa_q);
 
     // The displaced way as the snoop port leaves it: cache_vic_state_i is read
     // combinationally, so a snoop writing that way on the very edge the victim is
@@ -1653,10 +1667,10 @@ module rnf_ctl `RNF_PARAM
                             // the next Size boundary, so the beat's own address is kept.
                             off_q      <= ARADDR[5:0];
                             acq_op_q   <= chie_pkg::REQ_READNOSNP;
-                            ord_q      <= ARCACHE[1] ? chie_pkg::ORDER_NONE : chie_pkg::ORDER_END_POINT;
+                            ord_q      <= ar_nc_ord;
                             kind_q     <= K_READ;
                             alloc_q    <= 1'b0;
-                            ack_q      <= 1'b0;
+                            ack_q      <= ar_ack_nc;
                             st_q       <= S_REQ;
                         end
                         else if (lu_hit_now && !is_short(lu_state) && !(ar_want_tags && !lu_tv)) begin
@@ -1703,7 +1717,7 @@ module rnf_ctl `RNF_PARAM
                             ord_q        <= ar_ord;
                             kind_q       <= K_READ;
                             alloc_q      <= ar_alloc;
-                            ack_q        <= ar_alloc;
+                            ack_q        <= ar_alloc || ar_ack_once;
                             vic_addr_q   <= ar_line;
                             vic_way_q    <= cache_lu_way_i;
                             vic_state_q  <= lu_state;
@@ -1726,7 +1740,7 @@ module rnf_ctl `RNF_PARAM
                             ord_q    <= ar_ord;
                             kind_q   <= K_READ;
                             alloc_q  <= ar_alloc;
-                            ack_q    <= ar_alloc;
+                            ack_q    <= ar_alloc || ar_ack_once;
                             vic_addr_q <= cache_vic_addr_i;
                             vic_way_q  <= cache_vic_way_i;
                             vic_state_q<= vic_sel_state;
@@ -2022,7 +2036,7 @@ module rnf_ctl `RNF_PARAM
                             else if (nc_q) begin
                                 hit_q    <= 1'b0;
                                 alloc_q  <= 1'b0;
-                                ack_q    <= 1'b0;
+                                ack_q    <= nc_owo;
                                 acq_cs_q <= `RNF_CS_I;
                                 kind_q   <= K_WU;
                                 sz_q     <= wr_full ? chie_pkg::SIZE_64B : size_spanning(aw_lo_q, aw_hi_q);
@@ -2035,10 +2049,11 @@ module rnf_ctl `RNF_PARAM
                                             (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
                                                 ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP
                                                            : chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP) :
-                                            wr_zero ? chie_pkg::REQ_WRITENOSNPZERO :
+                                            (wr_zero && !nc_owo) ? chie_pkg::REQ_WRITENOSNPZERO :
                                             wr_full ? chie_pkg::REQ_WRITENOSNPFULL
                                                     : chie_pkg::REQ_WRITENOSNPPTL;
-                                ord_q    <= dev_q ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
+                                ord_q    <= nc_owo ? chie_pkg::ORDER_REQ_WR_OBS :
+                                            dev_q  ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
                                 st_q     <= S_REQ;
                             end
                             // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
@@ -2135,6 +2150,7 @@ module rnf_ctl `RNF_PARAM
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_STASH) ||
+                                         (aw_coh_q == `RNF_AW_IMMEDIATE_STASH_OWO) ||
                                          (aw_coh_q == `RNF_AW_IMMEDIATE_OWO)) begin
                                     // Table 4-16 (SS4.2.3 p.4-181): WriteUnique writes a
                                     // line that is Invalid here, and leaves it so. Table
@@ -2165,7 +2181,8 @@ module rnf_ctl `RNF_PARAM
                                         else if (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
                                             acq_op_q <= wr_full ? chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP
                                                                 : chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP;
-                                        else if (aw_coh_q == `RNF_AW_IMMEDIATE_STASH)
+                                        else if ((aw_coh_q == `RNF_AW_IMMEDIATE_STASH) ||
+                                                 (aw_coh_q == `RNF_AW_IMMEDIATE_STASH_OWO))
                                             acq_op_q <= wu_full_tags ? chie_pkg::REQ_WRITEUNIQUEFULLSTASH
                                                                      : chie_pkg::REQ_WRITEUNIQUEPTLSTASH;
                                         else
