@@ -315,7 +315,9 @@ module hnf_mshr `HNF_PARAM
     // so a partial line cannot go in the array. A write carrying a persistent CMO
     // cannot either: Sec 4.2.2 (p.4-171, MUST) has a Home that is not the Point of
     // Persistence "send the request downstream", which a line parked in the L3 would
-    // outlive.
+    // outlive. Nor can any Combined Write: Sec 4.2.4 makes it behave as the write
+    // followed by the CMO, and Sec 4.2.2's CleanShared and CleanInvalid complete only
+    // once "any Dirty copy is written back to memory" -- which a Dirty L3 fill is not.
     // An Atomic takes the allocating arm whatever the hint says: SS4.2.5 (p.4-187,
     // MUST) makes the returned value "the original value at the addressed location",
     // so the Home has to hold the line to read it, operate on it and keep the result.
@@ -325,7 +327,7 @@ module hnf_mshr `HNF_PARAM
     // cache line in the system cache" -- and because the Read that SS7.1.1's (p.7-295)
     // Data Pull implies is served from that line. A non-allocating one would have to
     // fetch it a second time, under a downstream identifier the write leg still owns.
-    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0 | req_stash_s0) & ~req_wr_ptl_s0 & ~req_persist_s0 &
+    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0 | req_stash_s0) & ~req_wr_ptl_s0 & ~req_persist_s0 & ~req_cw_s0 &
                                     ~opennoc_hnf_pkg::hnf_l3_alloc_declined(req_opcode_serviced_s0, req_stash_s0, li_mshr_rxreq_tagop_s0);
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
