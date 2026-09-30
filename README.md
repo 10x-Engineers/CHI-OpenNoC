@@ -109,7 +109,7 @@ The **Issue** column tracks the work to reach 🟢.
 - `StashOnce*` as `Evict` plus a Stash snoop to the target, not sent while another peer holds the line;
 - Atomics as `WriteUniquePtl`, with the operation executed at the Home.
 
-**What the HN-F sends an SN-F:** `ReadNoSnp`, `ReadNoSnpSep` (with `HNF_SEP_RESP_EN_PARAM`), `WriteNoSnpFull`, `WriteNoSnpPtl`, and a `CleanSharedPersist` after any persistent CMO. A Write Zero leaves as `WriteNoSnpFull` of zeros, Combined Writes are split at the Home, and no Atomic, `WriteNoSnpZero` or other CMO goes downstream. So the SN-F's service of the other Table 4-14 / 4-18 requests is not reached from this HN-F.
+**What the HN-F sends an SN-F:** `ReadNoSnp`, `ReadNoSnpSep` (with `HNF_SEP_RESP_EN_PARAM`), `WriteNoSnpFull`, `WriteNoSnpPtl`, and a `CleanSharedPersist` after any persistent CMO. A Write Zero leaves as `WriteNoSnpFull` of zeros, Combined Writes are split at the Home and never allocated in the L3, so the write reaches the SN-F before the `CompCMO` (sections 4.2.2, 4.2.4), and no Atomic, `WriteNoSnpZero` or other CMO goes downstream. So the SN-F's service of the other Table 4-14 / 4-18 requests is not reached from this HN-F.
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
