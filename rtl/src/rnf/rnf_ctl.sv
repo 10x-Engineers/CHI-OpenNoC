@@ -432,6 +432,7 @@ module rnf_ctl `RNF_PARAM
     // The Persist of the request in flight, and whether S_CMO waits on the
     // CopyBack's tail or the request's.
     logic                                       persist_got_q;
+    logic                                       sd_got_q;       // a StashOnceSep's StashDone
     logic                                       cmo_cb_q;
 
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
@@ -525,9 +526,15 @@ module rnf_ctl `RNF_PARAM
                                              : (base[c] | ((|be[c*8 +: 8]) & wpois[c]));
     endfunction
 
+    // SS7.3 (p.7-297): the StashOnce forms answered by Comp and a separate StashDone.
+    function automatic bit is_stash_sep(chie_pkg::req_opcode_e op);
+        return (op == chie_pkg::REQ_STASHONCESEPSHARED) || (op == chie_pkg::REQ_STASHONCESEPUNIQUE);
+    endfunction
+
     function automatic bit is_stash_req(chie_pkg::req_opcode_e op);
         return (op == chie_pkg::REQ_WRITEUNIQUEFULLSTASH) || (op == chie_pkg::REQ_WRITEUNIQUEPTLSTASH) ||
-               (op == chie_pkg::REQ_STASHONCESHARED)      || (op == chie_pkg::REQ_STASHONCEUNIQUE);
+               (op == chie_pkg::REQ_STASHONCESHARED)      || (op == chie_pkg::REQ_STASHONCEUNIQUE) ||
+               is_stash_sep(op);
     endfunction
 
     function automatic bit is_read_once(chie_pkg::req_opcode_e op);
@@ -866,6 +873,8 @@ module rnf_ctl `RNF_PARAM
     // The same on a Non-cacheable write, where Table 4-13 (p.4-178) gives Order 10 to
     // Normal memory and Device with EWA, but only Endpoint Order to Device without.
     wire nc_owo = (aw_coh_q == `RNF_AW_IMMEDIATE_OWO) && (!dev_q || ewa_q);
+    // NOSNP on a Normal WriteBack write: a WriteNoSnp, SnpAttr 0 (Table 4-13 p.4-178).
+    wire nswb   = is_wr_q && !nc_q && (aw_coh_q == `RNF_AW_NOSNP);
 
     // The displaced way as the snoop port leaves it: cache_vic_state_i is read
     // combinationally, so a snoop writing that way on the very edge the victim is
@@ -913,9 +922,11 @@ module rnf_ctl `RNF_PARAM
         prot_txreqflit_o.qos          = qos_q;
         // SS2.7 (p.2-113): the LP the access was made by; the node's own requests (a
         // displaced line's CopyBack, the Table 15-1 flush, maintenance) use LP 0.
-        // SS13.10.16 (p.13-420): a Persist-owing request's LPID bits are its
-        // PGroupID, which this single-outstanding node keeps at 0.
-        prot_txreqflit_o.lpid         = (core_q && !chie_pkg::persist_response(acq_op_q)) ? lpid_q : 8'd0;
+        // SS13.10.16 (p.13-420) and SS13.10.12 (p.13-419): a Persist- or StashDone-owing
+        // request's LPID bits are its PGroupID or StashGroupID, which this
+        // single-outstanding node keeps at 0.
+        prot_txreqflit_o.lpid         = (core_q && !chie_pkg::persist_response(acq_op_q) &&
+                                         !is_stash_sep(acq_op_q)) ? lpid_q : 8'd0;
         // SS13.10.40 (p.13-435): a Match request's LPID bits are its TagGroupID.
         if (tagop_match) prot_txreqflit_o.lpid = tggid_q;
 `ifdef CHIE_MPAM_PRESENT
@@ -992,6 +1003,7 @@ module rnf_ctl `RNF_PARAM
                 prot_txreqflit_o.memattr.early_wr_ack = ewa_q;
                 prot_txreqflit_o.snpattr.snpattr      = 1'b0;
             end
+            if (nswb) prot_txreqflit_o.snpattr.snpattr = 1'b0;
             // SS3.3.1: "PrefetchTgt always targets a Subordinate Node", and SS2.11 gives it
             // no Retry sequence, so no AllowRetry.
             if (acq_op_q == chie_pkg::REQ_PREFETCHTGT) begin
@@ -1167,6 +1179,11 @@ module rnf_ctl `RNF_PARAM
     // PGroupID, in the DBID bits.
     wire rx_persist      = prot_rxrspflitv_i && (prot_rxrspflit_i.opcode == chie_pkg::RSP_PERSIST) &&
                            (prot_rxrspflit_i.dbid[7:0] == 8'd0);
+    // Table A-8 (p.A-488): a StashDone carries TxnID 0 and names its request by
+    // StashGroupID, in the DBID bits; CompStashDone is the Comp and the StashDone in one.
+    wire rx_stashdone     = prot_rxrspflitv_i && (prot_rxrspflit_i.opcode == chie_pkg::RSP_STASHDONE) &&
+                            (prot_rxrspflit_i.dbid[7:0] == 8'd0);
+    wire rx_compstashdone = rx_rsp_txn && (prot_rxrspflit_i.opcode == chie_pkg::RSP_COMPSTASHDONE);
     // Table A-8 (p.A-488): a TagMatch carries TxnID 0 and names its request by
     // TagGroupID, in the DBID bits; Table 13-35 (SS13.10.44 p.13-437) puts the
     // verdict in Resp[0].
@@ -1291,8 +1308,10 @@ module rnf_ctl `RNF_PARAM
     // A Match write's TagMatch is waited for alike, as the core's B carries it.
     wire cmo_got_now     = cmo_got_q || rx_compcmo;
     wire persist_got_now = persist_got_q || rx_persist || rx_comppersist;
+    wire sd_got_now      = sd_got_q || rx_stashdone || rx_compstashdone;
     wire wu_cmo_now  = (!chie_pkg::combined_write(acq_op_q) || cmo_got_now) &&
                        (!chie_pkg::persist_response(acq_op_q) || persist_got_now) &&
+                       (!is_stash_sep(acq_op_q) || sd_got_now) &&
                        (!tm_owed_q || tm_got_now);
     wire cb_cmo_now  = (!chie_pkg::combined_write(cb_op_q)  || cmo_got_now) &&
                        (!chie_pkg::persist_response(cb_op_q)  || persist_got_now);
@@ -1474,6 +1493,7 @@ module rnf_ctl `RNF_PARAM
             cmo_got_q     <= 1'b0;
             cmo_ret_st_q  <= S_IDLE;
             persist_got_q <= 1'b0;
+            sd_got_q      <= 1'b0;
             cmo_cb_q      <= 1'b0;
         end
         else begin
@@ -1506,6 +1526,7 @@ module rnf_ctl `RNF_PARAM
             if (((st_q == S_REQ) || (st_q == S_CB_REQ)) && prot_txreqflit_sent_i) begin
                 cmo_got_q     <= 1'b0;
                 persist_got_q <= 1'b0;
+                sd_got_q      <= 1'b0;
             end
             if ((st_q == S_REQ) && prot_txreqflit_sent_i) begin
                 tm_owed_q <= tagop_match;
@@ -1517,6 +1538,10 @@ module rnf_ctl `RNF_PARAM
                 tm_pass_q <= prot_rxrspflit_i.resp[0];
             end
             if (rx_persist || rx_comppersist) persist_got_q <= 1'b1;
+            // SS9.3 (p.9-336): StashDone stays owed after an errored Comp, and carries
+            // an error of its own (Table 9-5 p.9-339) that the core is owed.
+            if (rx_stashdone || rx_compstashdone) sd_got_q <= 1'b1;
+            if (rx_stashdone && is_err(prot_rxrspflit_i.resperr)) err_q <= 1'b1;
             if (rx_compcmo) begin
                 cmo_got_q <= 1'b1;
                 // SS9.4.3 (p.9-341): CompCMO carries the CMO leg's error, which the
@@ -1893,9 +1918,12 @@ module rnf_ctl `RNF_PARAM
                             end
                             // Table 4-10 (SS4.2.2 p.4-174): StashOnce from I only, so a
                             // Dirty line goes back and a Clean one is dropped first.
-                            `RNF_CM_STASH_ONCE_SHARED, `RNF_CM_STASH_ONCE_UNIQUE: begin
-                                acq_op_q <= (CMOP == `RNF_CM_STASH_ONCE_SHARED) ? chie_pkg::REQ_STASHONCESHARED
-                                                                                : chie_pkg::REQ_STASHONCEUNIQUE;
+                            `RNF_CM_STASH_ONCE_SHARED, `RNF_CM_STASH_ONCE_UNIQUE,
+                            `RNF_CM_STASH_ONCE_SEP_SHARED, `RNF_CM_STASH_ONCE_SEP_UNIQUE: begin
+                                acq_op_q <= (CMOP == `RNF_CM_STASH_ONCE_SHARED)     ? chie_pkg::REQ_STASHONCESHARED    :
+                                            (CMOP == `RNF_CM_STASH_ONCE_UNIQUE)     ? chie_pkg::REQ_STASHONCEUNIQUE    :
+                                            (CMOP == `RNF_CM_STASH_ONCE_SEP_SHARED) ? chie_pkg::REQ_STASHONCESEPSHARED
+                                                                                    : chie_pkg::REQ_STASHONCESEPUNIQUE;
                                 if (is_dirty(lu_state)) begin
                                     cb_op_q       <= back_op(lu_state);
                                     cb_then_req_q <= 1'b1;
@@ -2046,6 +2074,9 @@ module rnf_ctl `RNF_PARAM
                                 acq_op_q <= (aw_coh_q == `RNF_AW_IMMEDIATE_CLSH)
                                                 ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSH
                                                            : chie_pkg::REQ_WRITENOSNPPTLCLEANSH) :
+                                            (aw_coh_q == `RNF_AW_IMMEDIATE_CLINV)
+                                                ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANINV
+                                                           : chie_pkg::REQ_WRITENOSNPPTLCLEANINV) :
                                             (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
                                                 ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP
                                                            : chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP) :
@@ -2055,6 +2086,48 @@ module rnf_ctl `RNF_PARAM
                                 ord_q    <= nc_owo ? chie_pkg::ORDER_REQ_WR_OBS :
                                             dev_q  ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_NONE;
                                 st_q     <= S_REQ;
+                            end
+                            // Table 4-16 (SS4.2.3 p.4-181) issues WriteNoSnp from I, so a held
+                            // line leaves first, as a far Atomic's does; Table 12-2 (SS12.12
+                            // p.12-388) lets the core's Update or Match ride on it.
+                            else if (nswb) begin
+                                hit_q    <= 1'b0;
+                                alloc_q  <= 1'b0;
+                                ack_q    <= 1'b0;
+                                acq_cs_q <= `RNF_CS_I;
+                                kind_q   <= K_WU;
+                                sz_q     <= wr_full ? chie_pkg::SIZE_64B : size_spanning(aw_lo_q, aw_hi_q);
+                                off_q    <= wr_full ? '0 :
+                                            `RNF_LINE_OFFSET_W'(int'(aw_lo_q) &
+                                                                ~((32'd1 << size_spanning(aw_lo_q, aw_hi_q)) - 1));
+                                acq_op_q <= wu_full_tags ? chie_pkg::REQ_WRITENOSNPFULL : chie_pkg::REQ_WRITENOSNPPTL;
+                                tagop_q  <= ctag_q;
+                                ord_q    <= chie_pkg::ORDER_NONE;
+                                if (lu_hit_now) begin
+                                    vic_addr_q  <= addr_q;
+                                    vic_way_q   <= cache_lu_way_i;
+                                    vic_state_q <= lu_state;
+                                    vic_data_q  <= cache_lu_data_i;
+                                    vic_meta_q  <= cache_lu_meta_i;
+                                    if (is_dirty(lu_state)) begin
+                                        cb_op_q       <= back_op(lu_state);
+                                        cb_then_req_q <= 1'b1;
+                                        st_q          <= S_CB_REQ;
+                                    end
+                                    else begin
+                                        drop_q <= 1'b1;
+                                        st_q   <= S_REQ;
+                                    end
+                                end
+                                else st_q <= S_REQ;
+                            end
+                            // Table 4-17 (SS4.2.4 p.4-182): WriteUnique has no CleanInvalid
+                            // form, so a Snoopable write asking for one is refused.
+                            else if (aw_coh_q == `RNF_AW_IMMEDIATE_CLINV) begin
+                                hit_q   <= 1'b1;
+                                apply_q <= 1'b0;
+                                err_q   <= 1'b1;
+                                st_q    <= S_BRESP;
                             end
                             // SS6.3.3 (p.6-290, MUST): an Exclusive Store whose monitor
                             // is reset fails, and issues no transaction.
@@ -2396,7 +2469,7 @@ module rnf_ctl `RNF_PARAM
                             end
                         end
                         K_NOTE: begin
-                            if (rx_comp || rx_comppersist) begin
+                            if (rx_comp || rx_comppersist || rx_compstashdone) begin
                                 if (wu_cmo_now) begin
                                     txnid_q <= txnid_q + 12'd1;
                                     st_q    <= fin_st;

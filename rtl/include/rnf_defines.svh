@@ -89,6 +89,10 @@
 // Normal Non-cacheable or Device-with-EWA write it gives WriteNoSnp{Full,Ptl} with the
 // same Order and ExpCompAck (Table 4-13 p.4-178), and a Device write without EWA keeps
 // Endpoint Order. IMMEDIATE_STASH_OWO is IMMEDIATE_STASH with the same.
+// IMMEDIATE_CLINV gives a Device or Non-cacheable write as WriteNoSnp{Full,Ptl}CleanInv;
+// Table 4-17 (p.4-182) has no WriteUnique form, so a Snoopable one is refused. NOSNP
+// writes a Normal WriteBack line Non-snoopable, as WriteNoSnp{Full,Ptl} with MemAttr
+// 1101 and the core's TagOp (Table 12-2 p.12-388), from I (Table 4-16 p.4-181).
 `define RNF_AW_COH_W          4
 `define RNF_AW_CACHED         4'd0
 `define RNF_AW_READ_UNIQUE    4'd1
@@ -99,31 +103,37 @@
 `define RNF_AW_IMMEDIATE_STASH  4'd6
 `define RNF_AW_IMMEDIATE_OWO    4'd7
 `define RNF_AW_IMMEDIATE_STASH_OWO 4'd8
+`define RNF_AW_IMMEDIATE_CLINV    4'd9
+`define RNF_AW_NOSNP              4'd10
 
 // Cache maintenance port: one operation on one line, answered on CMDONE/CMRESP.
-`define RNF_CM_OP_W               4
-`define RNF_CM_EVICT_SILENT       4'd0
-`define RNF_CM_EVICT_NOTIFY       4'd1
-`define RNF_CM_EVICT_RETURN       4'd2
-`define RNF_CM_EVICT_OFFER        4'd3
-`define RNF_CM_CLEAN              4'd4
-`define RNF_CM_CLEAN_SHARED       4'd5
-`define RNF_CM_CLEAN_SHARED_EVICT 4'd6
-`define RNF_CM_CLEAN_INVALID      4'd7
-`define RNF_CM_MAKE_INVALID       4'd8
+`define RNF_CM_OP_W               5
+`define RNF_CM_EVICT_SILENT       5'd0
+`define RNF_CM_EVICT_NOTIFY       5'd1
+`define RNF_CM_EVICT_RETURN       5'd2
+`define RNF_CM_EVICT_OFFER        5'd3
+`define RNF_CM_CLEAN              5'd4
+`define RNF_CM_CLEAN_SHARED       5'd5
+`define RNF_CM_CLEAN_SHARED_EVICT 5'd6
+`define RNF_CM_CLEAN_INVALID      5'd7
+`define RNF_CM_MAKE_INVALID       5'd8
 // SS4.2.2 (p.4-171): CleanSharedPersist and CleanSharedPersistSep, a Dirty line
 // cleaned first -- into WriteCleanFullCleanShPerSep, or WriteBackFullCleanShPerSep
 // when the line leaves (Table 4-17 SS4.2.4 p.4-182).
-`define RNF_CM_CLEAN_SHARED_PERSIST           4'd9
-`define RNF_CM_CLEAN_SHARED_PERSIST_SEP       4'd10
-`define RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT 4'd11
+`define RNF_CM_CLEAN_SHARED_PERSIST           5'd9
+`define RNF_CM_CLEAN_SHARED_PERSIST_SEP       5'd10
+`define RNF_CM_CLEAN_SHARED_PERSIST_SEP_EVICT 5'd11
 // SS7.3 (p.7-297): StashOnceShared / StashOnceUnique to STASHNID. Table 4-10
 // (SS4.2.2 p.4-174) issues them from I only, so a held line leaves first.
-`define RNF_CM_STASH_ONCE_SHARED              4'd12
-`define RNF_CM_STASH_ONCE_UNIQUE              4'd13
+`define RNF_CM_STASH_ONCE_SHARED              5'd12
+`define RNF_CM_STASH_ONCE_UNIQUE              5'd13
 // SS4.2.6: PrefetchTgt to the Subordinate, a hint with no response; CMDONE follows
 // the request, and the line's state here is untouched.
-`define RNF_CM_PREFETCH_TGT                   4'd14
+`define RNF_CM_PREFETCH_TGT                   5'd14
+// SS7.3 (p.7-297): StashOnceSepShared / StashOnceSepUnique, answered by Comp and a
+// separate StashDone, or by CompStashDone, from I as StashOnce is.
+`define RNF_CM_STASH_ONCE_SEP_SHARED          5'd15
+`define RNF_CM_STASH_ONCE_SEP_UNIQUE          5'd16
 
 // AWATOP qualifies AWVALID with an atomic operation, in AMBA AXI5's AWATOP encoding:
 // [5:4] 01 AtomicStore and 10 AtomicLoad, [3] the Endian bit and [2:0] the Table
