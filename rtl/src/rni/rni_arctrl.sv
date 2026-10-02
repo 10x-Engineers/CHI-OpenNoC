@@ -78,6 +78,9 @@ module rni_arctrl
     wire                                 ar_lpid_alias_w;
     logic                                ar_lpid_alias_r;
     wire  [`AXI4_TAGOP_WIDTH-1:0]        ar_tagop_w;
+    logic [`RNI_AROP_WIDTH-1:0]          ar_op_r;
+    wire                                 ar_once_clinv_w;
+    wire                                 ar_once_mkinv_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_alloc_ptr_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_rdy_s1_w;
     wire [RNI_AR_ENTRIES_NUM_PARAM-1:0]  arctrl_entry_v_ns_w;
@@ -724,7 +727,19 @@ module rni_arctrl
     end
     assign ar_lpid_alias_w = ar_lpid_alias_r;
 
-    assign ar_tagop_w = (ar_cacheable_w & (ar_axtagop_r == 2'b01)) ? 2'b01 : 2'b00;
+    // AROP picks a ReadOnce variant for a Cacheable read (rni_defines.svh). Table B-1
+    // (p.B-492) lets an RN-I send ReadOnceCleanInvalid and ReadOnceMakeInvalid, and
+    // Table 4-1 (SS4.2.1 p.4-165) gives them ReadOnce's Snoopable rows.
+    always_comb begin: ar_op_sel_t
+        ar_op_r = '0;
+        for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
+            ar_op_r = ar_op_r | ({`RNI_AROP_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].op[`RNI_AROP_WIDTH-1:0]);
+    end
+    assign ar_once_clinv_w  = ar_cacheable_w & (ar_op_r == `RNI_AROP_READ_ONCE_CLEAN_INV);
+    assign ar_once_mkinv_w  = ar_cacheable_w & (ar_op_r == `RNI_AROP_READ_ONCE_MAKE_INV);
+
+    // Table 12-2 (SS12.12 p.12-388): ReadOnce*Invalid takes TagOp Invalid only.
+    assign ar_tagop_w = (ar_cacheable_w & (ar_axtagop_r == 2'b01) & ~ar_once_clinv_w & ~ar_once_mkinv_w) ? 2'b01 : 2'b00;
 
     // The same Device decode, held per entry rather than for the one currently
     // selected: Table 2-11 (Sec 2.9.4 p.2-129) gives every Device row
@@ -740,7 +755,10 @@ module rni_arctrl
         ar_txreqflit_info_r.tgtid = ar_tx_send_nid_w[CHIE_NID_WIDTH_PARAM-1:0];
         ar_txreqflit_info_r.srcid = RNI_NID_PARAM;
         ar_txreqflit_info_r.txnid = ar_txreq_txnid_r[11:0];
-        ar_txreqflit_info_r.opcode = ar_cacheable_w ? chie_pkg::REQ_READONCE : chie_pkg::REQ_READNOSNP;
+        ar_txreqflit_info_r.opcode = ~ar_cacheable_w  ? chie_pkg::REQ_READNOSNP :
+                                     ar_once_clinv_w  ? chie_pkg::REQ_READONCECLEANINVALID :
+                                     ar_once_mkinv_w  ? chie_pkg::REQ_READONCEMAKEINVALID :
+                                                        chie_pkg::REQ_READONCE;
         ar_txreqflit_info_r.tagop = ar_tagop_w[`AXI4_TAGOP_WIDTH-1:0];
         ar_txreqflit_info_r.allowretry = ~arctrl_entry_req_select_retry_flag_q;
         // Table 2-11's Device rows carry Order=EndpointOrder; every Normal row
@@ -788,7 +806,8 @@ module rni_arctrl
             ar_txreqflit_info_r.pcrdtype = ~arctrl_entry_req_select_retry_flag_q ? '0 :
                                ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);
             // Table 2-11 gives no non-cacheable row an Allocate value.
-            ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i].cache[2]);
+            // Table 4-1 (SS4.2.1 p.4-165): ReadOnceMakeInvalid is MemAttr 0101 only.
+            ar_txreqflit_info_r.memattr.allocate = ar_txreqflit_info_r.memattr.allocate | (ar_cacheable_w & ~ar_once_mkinv_w & arctrl_entry_req_ptr_q[i] & arctrl_entry_info_q[i].cache[2]);
 `ifdef CHIE_MPAM_PRESENT
             // Sec 11.3 (p.11-365, MUST): the whole MPAM label is the sender's, so it
             // crosses verbatim from ARUSER -- see axi4_defines.svh for the layout.

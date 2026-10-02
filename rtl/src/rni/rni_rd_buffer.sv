@@ -150,14 +150,16 @@ module rni_rd_buffer `RNI_PARAM
     assign rdata_bc_d4_w   = arctrl_rb_bc_d4_i;
 
     //forward to rni_arctrl
-    assign rxdatflitv_d1_o       = rxdatflitv_d1_i;
+    // TxnID bit 11 marks a write-side request (rni_awctrl): an Atomic's CompData is the
+    // write controller's, not a read entry's.
+    assign rxdatflitv_d1_o       = rxdatflitv_d1_i & ~txnid_d1_w[11];
     assign rxdatflit_txnid_d1_o  = txnid_d1_w;
     assign rxdatflit_dataid_d1_o = dataid_d1_w;
     assign rxdatflit_opcode_d1_o = rxdatflit_d1_i.opcode;
 
     //forward to d2
     always_ff @(posedge clk_i) begin
-        rxdatflitv_d2_q  <= rxdatflitv_d1_i;
+        rxdatflitv_d2_q  <= rxdatflitv_d1_i & ~txnid_d1_w[11];
     end
 
     always_ff @(posedge clk_i) begin

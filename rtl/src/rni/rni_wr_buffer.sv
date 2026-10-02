@@ -61,6 +61,8 @@ module rni_wr_buffer `RNI_PARAM
     input  wire                                brsp_last_v_d2_q_i,
     input  wire [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_i,
     input  chie_pkg::resp_err_e                brsp_resperr_d2_i,
+    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_atom_i,
+    input  wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0] awctrl_entry_atom_be_i[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     input  wire [`AXI4_BUSER_WIDTH-1:0]        brsp_buser_d2_i,
 
     // W Channel Interface
@@ -417,7 +419,8 @@ module rni_wr_buffer `RNI_PARAM
     always_comb begin
         txdat_be_d2_r = {(`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH){1'b0}};
         for (int i = 0; i < RNI_AW_ENTRIES_NUM_PARAM; i = i + 1)
-            txdat_be_d2_r = txdat_be_d2_r | ({(`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH){txdat_rdy_entry_d2_q_i[i]}} & w_strb_d2_q[i]);
+            txdat_be_d2_r = txdat_be_d2_r | ({(`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH){txdat_rdy_entry_d2_q_i[i]}} &
+                            (awctrl_entry_atom_i[i] ? awctrl_entry_atom_be_i[i] : w_strb_d2_q[i]));
     end
 
     // get index(TxnID) from ready entry vec

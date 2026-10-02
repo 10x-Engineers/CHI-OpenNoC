@@ -58,6 +58,13 @@ package opennoc_rni_pkg;
   parameter int B_USER_WIDTH  = `AXI4_BUSER_WIDTH;
 
   typedef struct packed {
+    // AW only: the AXI5 Atomic (AWATOP), the stash target (AWSTASHNID/AWSTASHNIDEN), and
+    // the request and Combined-Write selects (AWOP/AWCMO; AROP on AR) -- rni_defines.svh.
+    logic [5:0]           atop;
+    logic                 stashniden;
+    logic [chie_pkg::NID_WIDTH-1:0] stashnid;
+    logic [1:0]           cmo;
+    logic [3:0]           op;
     logic [AX_USER_WIDTH-1:0] user;
     logic [3:0]           region;
     logic [3:0]           qos;

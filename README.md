@@ -194,7 +194,25 @@ the HN-F's `SYSCO_SNP_PEND` input, in the same Requester order.
   (`[0]` TagMatch received, `[1]` pass). Only Normal WriteBack (Cacheable) accesses carry a `TagOp`
   (section 12.1); any other, or one the chosen opcode cannot carry, goes out as `Invalid`.
 - Write data goes as `NCBWrDataCompAck` when the write owes a CompAck, and as `NonCopyBackWrData` otherwise.
-- Also sends `PCrdReturn` for unused P-Credits. Issues no CMO, Atomic or `ReadNoSnpSep`.
+- Also sends `PCrdReturn` for unused P-Credits.
+
+Beyond AxCACHE, request-select ports name the rest of what Table B-1 (p.B-492/493) lets an RN-I send. Each is tied to 0 by an integrator that does not use it, which keeps the rows above (`rni_defines.svh` has the codes):
+
+| Port | Code | Request |
+| :--- | :--- | :--- |
+| `AROP` | 1, 2 | `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` (Cacheable reads; otherwise the row above) |
+| `AWOP` | 1 | `WriteUnique{Full,Ptl}Stash` to `AWSTASHNID` when `AWSTASHNIDEN` (Cacheable; otherwise a plain write) |
+| | 2 | `WriteUniqueZero` (Cacheable) or `WriteNoSnpZero`; a whole line, the W data ignored |
+| | 3-6 | `StashOnceShared`, `StashOnceUnique`, `StashOnceSepShared`, `StashOnceSepUnique` (Cacheable) |
+| | 7-11 | `CleanShared`, `CleanSharedPersist`, `CleanSharedPersistSep`, `CleanInvalid`, `MakeInvalid` |
+| | 12 | `PrefetchTgt`, sent to `SNF_NID_PARAM` (not Device) |
+| `AWCMO` | 1-3 | `WriteNoSnp{Full,Ptl}` combined with `CleanSharedPersistSep`/`CleanShared`/`CleanInvalid` → `…CleanSh`, `…CleanInv`, `…CleanShPerSep` (Device or Non-cacheable) |
+| `AWATOP` | AXI5 | The 18 Atomics: one aligned beat of 1-8 bytes (AtomicCompare 2-8, aligned to half its size), not Exclusive and with no other select; Size is `AWSIZE` (Table 4-21). Data returns on R with the AWID, the completion on B |
+
+- A dataless request (`AWOP` 3-12) takes one W beat (`AWLEN` 0), which is drained; B follows its completion: Comp, plus StashDone for a StashOnceSep, Persist for a `CleanSharedPersistSep`, CompCMO for a Combined Write. `PrefetchTgt` has no response, so B follows its sending.
+- A combination the spec refuses is completed on B with `SLVERR` and sends nothing: a StashOnce to non-WriteBack memory, a `PrefetchTgt` to Device, a Write Zero narrower than a line, an `AWCMO` on a Cacheable write.
+- An Atomic's byte enables are its operand window (section 2.10.5), whatever `WSTRB` holds. A StashOnceSep's StashGroupID and a persistent CMO's PGroupID are the request's own entry.
+- Issues no `ReadNoSnpSep` (Home-to-Subordinate only) and no `DVMOp` (an RN-I may not, Table B-1).
 
 ### What the RN-F generates
 
