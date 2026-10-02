@@ -740,6 +740,8 @@ module tb_hnf;
       .SYSCOREQ       (SYSCOREQ),
       .SYSCOACK       (SYSCOACK),
       .SYSCO_SNP_PEND ('0),
+      .BROADCASTCACHEMAINTENANCE (1'b0),
+      .BROADCASTPERSIST (1'b1),
       .RXSACTIVE      (RXLINKACTIVEREQ),
       .TXSACTIVE      (),
       .RXREQFLITV   (RXREQFLITV),

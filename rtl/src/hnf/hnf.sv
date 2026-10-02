@@ -37,6 +37,11 @@ module hnf `HNF_PARAM
     // A Snoop another node sent to that Requester is unanswered, e.g. the MN's
     // SYSCO_SNP_PEND; tie LOW where no other node snoops it.
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCO_SNP_PEND,
+    // SS16.2 (p.16-474): the broadcast pins of this Home's Subordinate interface, stable
+    // out of reset. That interface is Non-snoopable throughout, so these two alone decide
+    // which CMOs and Combined Writes it issues (SS16.2.2, SS16.2.3 p.16-475).
+    input  wire                                     BROADCASTCACHEMAINTENANCE,
+    input  wire                                     BROADCASTPERSIST,
     output wire                                     TXSACTIVE,
     input  wire                                     RXSACTIVE,
     input  wire                                     RXREQFLITV,
@@ -700,6 +705,8 @@ module hnf `HNF_PARAM
                  .clk                                          (CLK                               ),
                  .rst                                          (RST                               ),
                  .sysco_snp_gen_en                             (hnf_sysco_snp_gen_en              ),
+                 .bcast_cmo                                    (BROADCASTCACHEMAINTENANCE         ),
+                 .bcast_persist                                (BROADCASTPERSIST                  ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
                  .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
                  .li_mshr_rxreq_snpq_s0                        (li_mshr_rxreq_snpq_s0             ),

@@ -43,6 +43,7 @@ module hnf_mshr_bypass `HNF_PARAM
     // chie_pkg::write_zero() of the request as sent, alongside the
     // opcode this stage services it as (opennoc_hnf_pkg::hnf_serviced_as()).
     input  wire                                li_mshr_rxreq_wrzero_s0,
+    input  wire                                li_mshr_rxreq_cw_merge_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
@@ -354,6 +355,17 @@ module hnf_mshr_bypass `HNF_PARAM
             tx_wrnosnpful_wuf_s1_q <= tx_wrnosnpful_wuf_s0;
     end
 
+    // A Write Zero leaves as WriteNoSnpZero (Figure 2-17 p.2-79) and a Combined Write as
+    // one when it is passed on (SS16.2.2 p.16-475); hnf_mshr_ctl forms both, so neither
+    // takes this path's plain WriteNoSnp.
+    logic tx_wr_by_mshr_s1_q;
+    always_ff @(posedge clk or posedge rst)begin :pass_tx_wr_by_mshr
+        if (rst)
+            tx_wr_by_mshr_s1_q <= 'd0;
+        else
+            tx_wr_by_mshr_s1_q <= li_mshr_rxreq_wrzero_s0 | li_mshr_rxreq_cw_merge_s0;
+    end
+
     //dwt judgment
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // write data this Home sources itself and so has nothing to direct. Table 2-9
@@ -408,7 +420,10 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txrsp_bypass_qos_s1      = li_mshr_rxreq_qos_s1_q;
     assign mshr_txrsp_bypass_tgtid_s1    = li_mshr_rxreq_srcid_s1_q;
     assign mshr_txrsp_bypass_txnid_s1    = li_mshr_rxreq_txnid_s1_q;
-    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?(do_sep_s1_q?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(wr_compdbid_s1_q?chie_pkg::RSP_COMPDBIDRESP:(wr_dbid_s1_q?chie_pkg::RSP_DBIDRESP:chie_pkg::RSP_RSPLCRDRETURN));
+    // Sec 2.8.5 (p.2-120): DBIDRespOrd also orders every later same-address request from
+    // the source behind this one, which the address CAM's sleep chain already does for any
+    // request, so an ordered write is granted with it.
+    assign mshr_txrsp_bypass_opcode_s1   = rd_receipt_s1_q?(do_sep_s1_q?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(wr_compdbid_s1_q?chie_pkg::RSP_COMPDBIDRESP:(wr_dbid_s1_q?(opennoc_hnf_pkg::hnf_ordered(li_mshr_rxreq_order_s1_q)?chie_pkg::RSP_DBIDRESPORD:chie_pkg::RSP_DBIDRESP):chie_pkg::RSP_RSPLCRDRETURN));
     assign mshr_txrsp_bypass_resperr_s1  = (wr_compdbid_s1_q&&li_mshr_rxreq_excl_s1_q&&excl_pass_s1)?chie_pkg::RESP_ERR_EX_OK:chie_pkg::RESP_ERR_NORM_OK;
     assign mshr_txrsp_bypass_dbid_s1     = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     assign mshr_txrsp_bypass_tracetag_s1 = li_mshr_rxreq_tracetag_s1_q;
@@ -417,7 +432,7 @@ module hnf_mshr_bypass `HNF_PARAM
     // Sec 4.11 (p.4-242, MUST): the arrival-time CAM stops guarding a line once an SLC
     // eviction rewrites the entry's address to the victim's, so the bypass asks the MSHR
     // whether this line's downstream access is still open rather than only that CAM.
-    assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!rxreq_cam_hazard_s1_q&&!mshr_dn_line_hold_s1&&!excl_fail_s1;
+    assign mshr_txreq_bypass_valid_s1       = (tx_rdnosnp_s1_q||((tx_wrnosnpful_s1||tx_wrnosnpptl_s1)&&!tx_wr_by_mshr_s1_q))&&!rxreq_cam_hazard_s1_q&&!mshr_dn_line_hold_s1&&!excl_fail_s1;
     assign mshr_txreq_bypass_qos_s1         = li_mshr_rxreq_qos_s1_q;
     assign mshr_txreq_bypass_txnid_s1       = {{(12-`MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};
     // SS2.5.3 (p.2-88): a WriteNoSnp with TagOp Match names the Requester as ReturnNID
@@ -450,7 +465,8 @@ module hnf_mshr_bypass `HNF_PARAM
     assign mshr_txreq_bypass_rsvdc_s1       = li_mshr_rxreq_rsvdc_s1_q;
 
     //bypass_lost
-    assign txreq_mshr_bypass_lost_s1 = (mshr_txreq_bypass_valid_s1&&!txreq_mshr_bypass_won_s1)||((rxreq_cam_hazard_s1_q||mshr_dn_line_hold_s1)&&(tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1));
+    assign txreq_mshr_bypass_lost_s1 = (mshr_txreq_bypass_valid_s1&&!txreq_mshr_bypass_won_s1)||((rxreq_cam_hazard_s1_q||mshr_dn_line_hold_s1)&&(tx_rdnosnp_s1_q||tx_wrnosnpful_s1||tx_wrnosnpptl_s1))||
+                                       (tx_wr_by_mshr_s1_q&&(tx_wrnosnpful_s1||tx_wrnosnpptl_s1));
     assign txrsp_mshr_bypass_lost_s1 = (mshr_txrsp_bypass_valid_s1&&!txrsp_mshr_bypass_won_s1)||(rxreq_cam_hazard_s1_q&&(rd_receipt_s1_q||wr_compdbid_s1_q||wr_dbid_s1_q));
 
 endmodule

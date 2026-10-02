@@ -25,6 +25,8 @@ module hnf_mshr `HNF_PARAM
     input  wire                                clk,
     input  wire                                rst,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_gen_en,
+    input  wire                                bcast_cmo,
+    input  wire                                bcast_persist,
     input  wire                                li_mshr_rxreq_valid_s0,
     input  wire                                li_mshr_rxreq_seq_s0,
     input  wire                                li_mshr_rxreq_snpq_s0,
@@ -272,6 +274,9 @@ module hnf_mshr `HNF_PARAM
     wire                           req_wr_ptl_s0;
     wire                           req_persist_s0;
     wire                           req_persist_rsp_s0;
+    chie_pkg::req_opcode_e         req_dn_cmo_op_s0;
+    wire                           req_dn_cmo_s0;
+    wire                           req_cw_merge_s0;
     wire                           req_l3_alloc_s0;
     wire                           req_rdshared_s0;
     wire                           req_prefunq_s0;
@@ -296,7 +301,17 @@ module hnf_mshr `HNF_PARAM
     assign req_cw_s0              = chie_pkg::combined_write(li_mshr_rxreq_opcode_s0);
     assign req_wr_ptl_s0          = opennoc_hnf_pkg::hnf_write_partial(li_mshr_rxreq_opcode_s0);
     assign req_persist_s0         = opennoc_hnf_pkg::hnf_persist_cmo(li_mshr_rxreq_opcode_s0);
-    assign req_persist_rsp_s0     = chie_pkg::persist_response(li_mshr_rxreq_opcode_s0);
+    assign req_dn_cmo_op_s0       = opennoc_hnf_pkg::hnf_dn_cmo_of(li_mshr_rxreq_opcode_s0, bcast_cmo, bcast_persist);
+    assign req_dn_cmo_s0          = (req_dn_cmo_op_s0 != chie_pkg::REQ_REQLCRDRETURN);
+    // SS16.2.2 (p.16-475): a Combined Write leaves this Home as one -- its write leg and its
+    // CMO leg in a single WriteNoSnp Combined Write -- only with BROADCASTCACHEMAINTENANCE asserted.
+    assign req_cw_merge_s0        = req_cw_s0 & bcast_cmo & req_dn_cmo_s0;
+    // SS2.6.2 step 6 (p.2-102): a persistent CMO passed on as CleanSharedPersistSep, alone
+    // or as a Combined Write, names the Requester as ReturnNID, so the Subordinate sends it
+    // the Persist and this Home owes only the Comp or CompCMO.
+    assign req_persist_rsp_s0     = chie_pkg::persist_response(li_mshr_rxreq_opcode_s0) &
+                                    (req_dn_cmo_op_s0 != chie_pkg::REQ_CLEANSHAREDPERSISTSEP) &
+                                    ~(req_cw_merge_s0 & (req_dn_cmo_op_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST));
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
     assign req_atomic_s0          = chie_pkg::atomic_req(li_mshr_rxreq_opcode_s0);
@@ -355,6 +370,7 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_excl_s0                           (req_excl_s0                          ),
                         .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0          ),
                         .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                        ),
+                        .li_mshr_rxreq_cw_merge_s0                       (req_cw_merge_s0                      ),
                         .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                      ),
                         .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0            ),
                         .li_mshr_rxreq_mpam_s0                           (li_mshr_rxreq_mpam_s0                ),
@@ -513,7 +529,9 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_stashlpidvalid_s0                 (li_mshr_rxreq_stashlpidvalid_s0   ),
                      .li_mshr_rxreq_stash_snpcode_s0                  (req_stash_snpcode_s0              ),
                      .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
-                     .li_mshr_rxreq_persist_s0                        (req_persist_s0                    ),
+                     .li_mshr_rxreq_dn_cmo_s0                         (req_dn_cmo_s0                     ),
+                     .li_mshr_rxreq_dn_cmo_op_s0                      (req_dn_cmo_op_s0                  ),
+                     .li_mshr_rxreq_cw_merge_s0                       (req_cw_merge_s0                   ),
                      .li_mshr_rxreq_persist_rsp_s0                    (req_persist_rsp_s0                ),
                      .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                   ),
                      .li_mshr_rxreq_rdshared_s0                       (req_rdshared_s0                   ),
