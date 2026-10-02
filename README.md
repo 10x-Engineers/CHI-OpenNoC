@@ -310,7 +310,7 @@ and are overridden at instantiation.
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
 | `HNF_SNPQUERY_EN_PARAM` | 0 | 1: `SNPQ_REQ_*` sends a `SnpQuery` for one line to one `RNF_NID_LIST_PARAM` entry and `SNPQ_RSP_*` reports its state, or `SENT=0` where that interface is out of the coherency domain |
 | `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
-| `HNI_SEP_RESP_EN_PARAM` | 0 | 1: an unordered `ReadNoSnp` is answered `RespSepData` and then `DataSepResp` by the HN-I (section 2.3.1 alternative 2) |
+| `HNI_SEP_RESP_EN_PARAM` | 0 | 1: an unordered, non-Exclusive `ReadNoSnp` is answered `RespSepData` and then `DataSepResp` by the HN-I (section 2.3.1 alternative 2). An Exclusive one keeps `CompData`: Table 9-3 allows EXOK in neither separate response |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` / `MN_NID_PARAM` | 8 / 0 / 4 | `MN_NID_PARAM`: where the RN-F sends its `DVMOp`s |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | One monitor per LP |
