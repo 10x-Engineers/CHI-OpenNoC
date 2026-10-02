@@ -82,12 +82,12 @@ The **Issue** column tracks the work to reach 🟢.
 | `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
 | `WriteBackPtl`, `WriteEvictOrEvict` | — | 🟢 | 🟢 | |
 | `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
-| `StashOnceSep*` | — | 🟢 hint ignored, `CompStashDone` | 🟢 | ¹ |
+| `StashOnceSep*` | — | 🟢 hint ignored, `CompStashDone` | 🟢 `Comp` then `StashDone` when a Stash snoop is sent, else `CompStashDone` | ¹ |
 | Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
 | Combined Writes, others (9) | 🟢 as the `WriteNoSnp` form ² | 🟢 | 🟢 | |
 | `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
 | `CleanUnique`, `MakeUnique`, `Evict` | — | 🟢 | 🟢 | |
-| Atomics (18) | 🟢 AXI read-modify-write | 🟢 Normal memory; Device NDERR ³ | 🟢 executed at the Home | |
+| Atomics (18) | 🟢 AXI read-modify-write | 🟢 Normal memory; Device NDERR ³ | 🟢 executed at the Home; with `BROADCASTATOMIC`, a Non-cacheable one is passed to the SN-F | |
 | `DVMOp` | ⚪ | ⚪ | ⚪ | serviced by the MN (§1), the one Completer Table B-1 (p.B-493) names |
 | `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
 
@@ -103,13 +103,23 @@ The **Issue** column tracks the work to reach 🟢.
 
 **The other requests the HN-F services as another** (`hnf_serviced_as()`):
 - `MakeInvalid` as `CleanInvalid`: Dirty data is written back rather than discarded, and the snoop is `SnpCleanInvalid`;
-- `CleanSharedPersist[Sep]` as `CleanShared`, followed by a `CleanSharedPersist` downstream;
+- `CleanSharedPersist[Sep]` as `CleanShared`, followed by the downstream CMO below;
 - `WriteBackPtl` as `WriteBackFull`, never allocated, forwarded as `WriteNoSnpPtl`;
 - `WriteEvictOrEvict` as `WriteEvictFull`, answered `CompDBIDResp`;
 - `StashOnce*` as `Evict` plus a Stash snoop to the target, not sent while another peer holds the line;
 - Atomics as `WriteUniquePtl`, with the operation executed at the Home.
 
-**What the HN-F sends an SN-F:** `ReadNoSnp`, `ReadNoSnpSep` (with `HNF_SEP_RESP_EN_PARAM`), `WriteNoSnpFull`, `WriteNoSnpPtl`, and a `CleanSharedPersist` after any persistent CMO. A Write Zero leaves as `WriteNoSnpFull` of zeros, Combined Writes are split at the Home and never allocated in the L3, so the write reaches the SN-F before the `CompCMO` (sections 4.2.2, 4.2.4), and no Atomic, `WriteNoSnpZero` or other CMO goes downstream. So the SN-F's service of the other Table 4-14 / 4-18 requests is not reached from this HN-F.
+**What the HN-F sends an SN-F:** `ReadNoSnp`, `ReadNoSnpSep` (with `HNF_SEP_RESP_EN_PARAM`), `WriteNoSnpFull`, `WriteNoSnpPtl`, and `WriteNoSnpZero` for a Write Zero not allocated in the L3 (Figure 2-17). Three broadcast pins on its Subordinate interface (section 16.2), tied by the integrator and stable out of reset, decide the rest:
+- `BROADCASTCACHEMAINTENANCE` asserted: `CleanShared`, `CleanInvalid` and `MakeInvalid` follow the Home's own clean. A Combined Write leaves as one `WriteNoSnp{Full,Ptl}{CleanSh,CleanInv,CleanShPerSep}`, completed on the SN-F's `CompCMO`. Deasserted (section 16.2.2), neither is sent: a Combined Write's write leg goes alone and the Home answers `CompCMO`.
+- `BROADCASTPERSIST` asserted:
+  - a `CleanSharedPersist` is followed by one downstream;
+  - a `CleanSharedPersistSep` is passed on as one, naming the Requester as `ReturnNID`, so the SN-F sends it the `Persist` (section 2.6.2);
+  - a `*CleanShPerSep` Combined Write's leg goes as `CleanSharedPersist` after its write, or inside the merged Combined Write when `BROADCASTCACHEMAINTENANCE` is also asserted.
+
+  Deasserted (section 16.2.3), each becomes a `CleanShared`, and the Home answers the `Persist` itself.
+- `BROADCASTATOMIC` asserted: a Non-cacheable Atomic with TagOp `Invalid` is passed on as itself (Table 4-22, Device bit cleared). The SN-F's `CompData` or `Comp` is relayed to the Requester. A cacheable one is always executed at the Home.
+
+A persistent CMO still waiting on the SN-F's `Comp` is answered `Comp`/`CompCMO` and then `Persist`, or `CompPersist` when both are ready together. An ordered write or Atomic is granted with `DBIDRespOrd`, at the HN-F and the HN-I (section 2.8.5). The HN-I answers a `CleanSharedPersistSep` with `Comp` and then `Persist`.
 
 Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
@@ -141,7 +151,7 @@ Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 make
 | Snoop filter, L3 | — | — | — | — | 🟢 | |
 | Snoop handling | — | — | — | 🟢 | — | Forwarding snoops per Tables 4-51..4-56, Stash snoops with a Data Pull per Tables 4-46..4-48; a `SnpDVMOp` pair with one `SnpResp_I` once both parts are in |
 | Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
-| CMOs | 🟢 | 🟢 | — | 🟢 | 🟢 | |
+| CMOs | 🟢 | 🟢 | — | 🟢 | 🟢 | HN-F sends them downstream per `BROADCASTCACHEMAINTENANCE`/`BROADCASTPERSIST` |
 | Combined Writes | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
 | Write Zero | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
 | Atomics | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F declares `Atomic_Transactions` (section 16.3.3) for its whole space; HN-I `Atomic_Transactions` True ³; RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
@@ -300,6 +310,7 @@ and are overridden at instantiation.
 | `HNF_SF_ENTRIES_NUM_PARAM` / `HNF_SF_WAY_NUM_PARAM` | 131072 / 16 | |
 | `HNF_SNPQUERY_EN_PARAM` | 0 | 1: `SNPQ_REQ_*` sends a `SnpQuery` for one line to one `RNF_NID_LIST_PARAM` entry and `SNPQ_RSP_*` reports its state, or `SENT=0` where that interface is out of the coherency domain |
 | `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
+| `HNI_SEP_RESP_EN_PARAM` | 0 | 1: an unordered `ReadNoSnp` is answered `RespSepData` and then `DataSepResp` by the HN-I (section 2.3.1 alternative 2) |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` / `MN_NID_PARAM` | 8 / 0 / 4 | `MN_NID_PARAM`: where the RN-F sends its `DVMOp`s |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | One monitor per LP |
