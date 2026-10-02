@@ -152,6 +152,10 @@ for n in "${NODES[@]}"; do
     # SS2.3.1 (p.2-46) flow 4 and SS4.3's (p.4-192) SnpQuery port are parameter-enabled.
     lint_node   "$n" "optional Home features" -GHNF_SEP_RESP_EN_PARAM=1 -GHNF_SNPQUERY_EN_PARAM=1 || rc=1
   fi
+  # SS2.8.5 (p.2-120): the HN-I's RespSepData-for-ReadReceipt option is parameter-enabled.
+  if [ "$n" = hni ]; then
+    lint_node   "$n" "optional Home features" -GHNI_SEP_RESP_EN_PARAM=1 || rc=1
+  fi
   # SS16.1 (p.16-471) makes Data_Width 128, 256 or 512, and every node packetises
   # by it, so each is elaborated at the other two widths as well.
   for w in 128 512; do

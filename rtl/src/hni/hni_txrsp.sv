@@ -106,6 +106,7 @@ module hni_txrsp `HNI_PARAM
     wire                                  rxreq_tracetag_s0;
     wire                                  req_wrnosnp_s0;
     wire                                  rd_receipt_s0;
+    wire                                  rd_sep_s0;
     wire                                  wr_grant_s0;
     wire                                  rxreq_ewa_s0;
 
@@ -162,7 +163,10 @@ module hni_txrsp `HNI_PARAM
     assign req_wrnosnp_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL) || (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL);
 
     //fp readreceipt
-    assign rd_receipt_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)&&(rxreq_order_s0 != 2'b0)&&rxreq_alloc_en_s0;
+    // Sec 2.3.1 alternative 2 (p.2-46): with HNI_SEP_RESP_EN_PARAM an unordered ReadNoSnp
+    // takes RespSepData here, as hni_mshr elects; an ordered one its ReadReceipt.
+    assign rd_sep_s0            = HNI_SEP_RESP_EN_PARAM && (rxreq_order_s0 == 2'b0);
+    assign rd_receipt_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)&&((rxreq_order_s0 != 2'b0)||rd_sep_s0)&&rxreq_alloc_en_s0;
 
     //fp write grant
     // Sec 2.9.3 (p.2-126): a write completion may come "from an intermediate point
@@ -227,6 +231,14 @@ module hni_txrsp `HNI_PARAM
             wr_ewa_s1_q <= rxreq_ewa_s0;
     end
 
+    logic rd_sep_s1_q;
+    always_ff @(posedge clk or posedge rst) begin:pass_rd_sep
+        if (rst)
+            rd_sep_s1_q <= 1'b0;
+        else
+            rd_sep_s1_q <= rd_sep_s0;
+    end
+
     logic wr_ord_s1_q;
     always_ff @(posedge clk or posedge rst) begin:pass_wr_ord
         if (rst)
@@ -248,7 +260,7 @@ module hni_txrsp `HNI_PARAM
     assign txrsp_fp_tgtid_s1    = rxreq_srcid_s1_q;
     assign txrsp_fp_txnid_s1    = rxreq_txnid_s1_q;
     // Sec 2.8.5 (p.2-120): an ordered write is granted with DBIDRespOrd, as in hni_mshr.
-    assign txrsp_fp_opcode_s1   = rd_receipt_s1_q?chie_pkg::RSP_READRECEIPT:
+    assign txrsp_fp_opcode_s1   = rd_receipt_s1_q?(rd_sep_s1_q?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):
                                   wr_grant_s1_q?(wr_ewa_s1_q?chie_pkg::RSP_COMPDBIDRESP
                                                             :(wr_ord_s1_q?chie_pkg::RSP_DBIDRESPORD:chie_pkg::RSP_DBIDRESP))
                                                :chie_pkg::RSP_RSPLCRDRETURN;
