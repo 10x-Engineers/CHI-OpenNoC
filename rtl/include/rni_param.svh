@@ -34,6 +34,7 @@
     parameter RNI_AR_ENTRIES_NUM_PARAM   = 32,  \
     parameter RNI_AW_ENTRIES_NUM_PARAM   = 32,  \
     parameter HNF_NID_PARAM              = 0,   \
+    parameter SNF_NID_PARAM              = 32,  \
     parameter RNI_NID_PARAM              = 6    )
 
 `define RNI_PARAM_INST #( \
@@ -53,6 +54,7 @@
     .RNI_AR_ENTRIES_NUM_PARAM       (RNI_AR_ENTRIES_NUM_PARAM    ), \
     .RNI_AW_ENTRIES_NUM_PARAM       (RNI_AW_ENTRIES_NUM_PARAM    ), \
     .HNF_NID_PARAM                  (HNF_NID_PARAM               ), \
+    .SNF_NID_PARAM                  (SNF_NID_PARAM               ), \
     .RNI_NID_PARAM                  (RNI_NID_PARAM               ))
 
 `endif

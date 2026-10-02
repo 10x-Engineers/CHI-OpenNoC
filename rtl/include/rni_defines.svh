@@ -75,5 +75,32 @@
 `define RNI_RD_FIFO_WIDTH               $bits(opennoc_rni_pkg::r_ch_s)
 //cacheline
 `define L3_CACHELINE_OFFSET             6
+// AROP/AWOP/AWCMO: the CHI request an AXI access becomes, beyond what AxCACHE decides.
+// 0 keeps the AxCACHE-derived ReadNoSnp/ReadOnce and WriteNoSnp/WriteUnique; an
+// integrator that does not use a port ties it to 0. Codes not listed are reserved and
+// behave as 0.
+`define RNI_AROP_WIDTH                  2
+`define RNI_AROP_READ                   2'd0  // ReadNoSnp / ReadOnce by AxCACHE
+`define RNI_AROP_READ_ONCE_CLEAN_INV    2'd1  // ReadOnceCleanInvalid (Cacheable)
+`define RNI_AROP_READ_ONCE_MAKE_INV     2'd2  // ReadOnceMakeInvalid (Cacheable)
+`define RNI_AWOP_WIDTH                  4
+`define RNI_AWOP_WRITE                  4'd0  // WriteNoSnp / WriteUnique by AxCACHE
+`define RNI_AWOP_WRITE_STASH            4'd1  // WriteUnique{Full,Ptl}Stash (Cacheable)
+`define RNI_AWOP_WRITE_ZERO             4'd2  // WriteUniqueZero / WriteNoSnpZero
+`define RNI_AWOP_STASH_ONCE_SHARED      4'd3  // StashOnceShared        (dataless)
+`define RNI_AWOP_STASH_ONCE_UNIQUE      4'd4  // StashOnceUnique        (dataless)
+`define RNI_AWOP_STASH_ONCE_SEP_SHARED  4'd5  // StashOnceSepShared     (dataless)
+`define RNI_AWOP_STASH_ONCE_SEP_UNIQUE  4'd6  // StashOnceSepUnique     (dataless)
+`define RNI_AWOP_CLEAN_SHARED           4'd7  // CleanShared            (dataless)
+`define RNI_AWOP_CLEAN_SHARED_PERSIST   4'd8  // CleanSharedPersist     (dataless)
+`define RNI_AWOP_CLEAN_SHARED_PERSIST_SEP 4'd9 // CleanSharedPersistSep (dataless)
+`define RNI_AWOP_CLEAN_INVALID          4'd10 // CleanInvalid           (dataless)
+`define RNI_AWOP_MAKE_INVALID           4'd11 // MakeInvalid            (dataless)
+`define RNI_AWOP_PREFETCH_TGT           4'd12 // PrefetchTgt            (dataless, no response)
+`define RNI_AWCMO_WIDTH                 2
+`define RNI_AWCMO_NONE                  2'd0
+`define RNI_AWCMO_CLEAN_SHARED          2'd1  // WriteNoSnp{Full,Ptl}CleanSh
+`define RNI_AWCMO_CLEAN_INVALID         2'd2  // WriteNoSnp{Full,Ptl}CleanInv
+`define RNI_AWCMO_CLEAN_SH_PERSIST_SEP  2'd3  // WriteNoSnp{Full,Ptl}CleanShPerSep
 
 `endif

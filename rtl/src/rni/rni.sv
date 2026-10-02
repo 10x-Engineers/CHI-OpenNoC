@@ -70,6 +70,13 @@ module rni `RNI_PARAM
     // Section 11.3 (p.11-365): the MPAM label this access is made under. AXI4 has no
     // MPAM signal; see axi4_defines.svh for the sideband's layout.
     input  wire [`AXI4_AWUSER_WIDTH-1:0]   AWUSER0,
+    // The CHI request an AXI write becomes beyond AWCACHE's (rni_defines.svh), the AXI5
+    // Atomic, and a stash target. Tie to 0 when unused.
+    input  wire [`RNI_AWOP_WIDTH-1:0]      AWOP0,
+    input  wire [`RNI_AWCMO_WIDTH-1:0]     AWCMO0,
+    input  wire [5:0]                      AWATOP0,
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0] AWSTASHNID0,
+    input  wire                            AWSTASHNIDEN0,
     input  wire                            AWVALID0,
     output wire                            AWREADY0,
     input  wire [`AXI4_WDATA_WIDTH-1:0]    WDATA0,
@@ -97,6 +104,8 @@ module rni `RNI_PARAM
     input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0,
     input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
     input  wire [`AXI4_ARUSER_WIDTH-1:0]   ARUSER0,
+    // The ReadOnce variant an AXI read becomes (rni_defines.svh). Tie to 0 when unused.
+    input  wire [`RNI_AROP_WIDTH-1:0]      AROP0,
     input  wire                            ARVALID0,
     output wire                            ARREADY0,
     output wire [`AXI4_RID_WIDTH-1:0]      RID0,
@@ -114,6 +123,15 @@ module rni `RNI_PARAM
     opennoc_rni_pkg::b_ch_s             B_CH_S0;
     opennoc_rni_pkg::ax_ch_s            AR_CH_S0;
     opennoc_rni_pkg::r_ch_s             R_CH_S0;
+    // R comes from the read buffer or, for an Atomic, from the write controller.
+    opennoc_rni_pkg::r_ch_s             r_rd_w;
+    wire                                rvalid_rd_w;
+    wire                                rready_rd_w;
+    opennoc_rni_pkg::r_ch_s             r_at_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_atom;
+    wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0] awctrl_entry_atom_be[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    wire                                rvalid_at_w;
+    wire                                rready_at_w;
     wire                                rxrspflitv_d1;
     chie_pkg::rsp_flit_s                rxrspflit_d1_q;
     wire                                rxdatflitv_d1;
@@ -204,6 +222,32 @@ module rni `RNI_PARAM
     wire                                wb_txdatflitv_d3;
     wire                                wb_txdatflit_sent_d3;
 
+    // AXI R arbitration between the read buffer and an Atomic's returned beat. A source
+    // keeps R while its beat waits for RREADY (AXI4 A3.2.1: the payload holds until the
+    // handshake) and while a read burst is part-sent, so an Atomic's beat never splits one.
+    logic r_sel_at_q;
+    logic r_beat_pend_q;
+    logic r_burst_open_q;
+    wire  r_hold_w   = r_beat_pend_q | r_burst_open_q;
+    wire  r_sel_at_w = r_hold_w ? r_sel_at_q : (~rvalid_rd_w & rvalid_at_w);
+    assign RVALID0     = r_sel_at_w ? rvalid_at_w : rvalid_rd_w;
+    assign R_CH_S0     = r_sel_at_w ? r_at_w      : r_rd_w;
+    assign rready_rd_w = RREADY0 & ~r_sel_at_w;
+    assign rready_at_w = RREADY0 &  r_sel_at_w;
+    always_ff @(posedge CLK or posedge RST) begin
+        if (RST) begin
+            r_sel_at_q     <= 1'b0;
+            r_beat_pend_q  <= 1'b0;
+            r_burst_open_q <= 1'b0;
+        end
+        else begin
+            r_sel_at_q    <= r_sel_at_w;
+            r_beat_pend_q <= RVALID0 & ~RREADY0;
+            if (rvalid_rd_w & rready_rd_w)
+                r_burst_open_q <= ~r_rd_w.last;
+        end
+    end
+
     rni_axi_bus `RNI_PARAM_INST
                 rni_axi_bus_inst(
                     // AW Channel0
@@ -218,6 +262,11 @@ module rni `RNI_PARAM
                     ,.AWQOS0                                ( AWQOS0                        )
                     ,.AWREGION0                             ( AWREGION0                     )
                     ,.AWUSER0                               ( AWUSER0                       )
+                    ,.AWOP0                                 ( AWOP0                         )
+                    ,.AWCMO0                                ( AWCMO0                        )
+                    ,.AWATOP0                               ( AWATOP0                       )
+                    ,.AWSTASHNID0                           ( AWSTASHNID0                   )
+                    ,.AWSTASHNIDEN0                         ( AWSTASHNIDEN0                 )
                     ,.AW_CH_S0                              ( AW_CH_S0                      )
 
                     // W Channel0
@@ -245,6 +294,7 @@ module rni `RNI_PARAM
                     ,.ARQOS0                                ( ARQOS0                        )
                     ,.ARREGION0                             ( ARREGION0                     )
                     ,.ARUSER0                               ( ARUSER0                       )
+                    ,.AROP0                                 ( AROP0                         )
                     ,.AR_CH_S0                              ( AR_CH_S0                      )
 
                     // R Channel0
@@ -274,9 +324,9 @@ module rni `RNI_PARAM
                       ,.arctrl_rb_rlast_d4_i                  ( arctrl_rb_rlast_d4            )
                       ,.arctrl_rb_rid_d4_i                    ( arctrl_rb_rid_d4              )
                       ,.arctrl_rb_bc_d4_i                     ( arctrl_rb_bc_d4               )
-                      ,.R_CH_S0                               ( R_CH_S0                       )
-                      ,.RVALID0                               ( RVALID0                       )
-                      ,.RREADY0                               ( RREADY0                       )
+                      ,.R_CH_S0                               ( r_rd_w                        )
+                      ,.RVALID0                               ( rvalid_rd_w                   )
+                      ,.RREADY0                               ( rready_rd_w                   )
                   );
 
     rni_arctrl `RNI_PARAM_INST
@@ -397,6 +447,13 @@ module rni `RNI_PARAM
                    ,.awctrl_brsp_resperr_d2_o              ( awctrl_brsp_resperr_d2        )
                    ,.awctrl_device_ordered_pending_o       ( awctrl_device_ordered_pending )
                    ,.arctrl_device_ordered_pending_i       ( arctrl_device_ordered_pending )
+                   ,.awctrl_rxdatflitv_d1_i                ( rxdatflitv_d1                 )
+                   ,.awctrl_rxdatflit_d1_i                 ( rxdatflit_d1                  )
+                   ,.awctrl_entry_atom_o                   ( awctrl_entry_atom             )
+                   ,.awctrl_entry_atom_be_o                ( awctrl_entry_atom_be          )
+                   ,.awctrl_atr_valid_o                    ( rvalid_at_w                   )
+                   ,.awctrl_atr_o                          ( r_at_w                        )
+                   ,.awctrl_atr_ready_i                    ( rready_at_w                   )
                );
 
     rni_wr_buffer `RNI_PARAM_INST
@@ -429,6 +486,8 @@ module rni `RNI_PARAM
                       ,.brsp_last_v_d2_q_i                    ( awctrl_brsp_last_v_d2         )
                       ,.brsp_axid_d2_i                        ( awctrl_brsp_axid_d2           )
                       ,.brsp_resperr_d2_i                     ( awctrl_brsp_resperr_d2        )
+                      ,.awctrl_entry_atom_i                   ( awctrl_entry_atom             )
+                      ,.awctrl_entry_atom_be_i                ( awctrl_entry_atom_be          )
                       ,.brsp_buser_d2_i                       ( awctrl_brsp_buser_d2          )
                       ,.W_CH_S0                               ( W_CH_S0                       )
                       ,.WVALID0                               ( WVALID0                       )

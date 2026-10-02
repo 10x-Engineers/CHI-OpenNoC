@@ -16,6 +16,7 @@
 
 `include "rni_param.svh"
 `include "axi4_defines.svh"
+`include "rni_defines.svh"
 
 module rni_axi_bus `RNI_PARAM
     (
@@ -31,6 +32,11 @@ module rni_axi_bus `RNI_PARAM
     input  wire [`AXI4_AWQOS_WIDTH-1:0]    AWQOS0,
     input  wire [`AXI4_AWREGION_WIDTH-1:0] AWREGION0,
     input  wire [`AXI4_AWUSER_WIDTH-1:0]   AWUSER0,
+    input  wire [`RNI_AWOP_WIDTH-1:0]      AWOP0,
+    input  wire [`RNI_AWCMO_WIDTH-1:0]     AWCMO0,
+    input  wire [5:0]                      AWATOP0,
+    input  wire [CHIE_NID_WIDTH_PARAM-1:0] AWSTASHNID0,
+    input  wire                            AWSTASHNIDEN0,
     output opennoc_rni_pkg::ax_ch_s        AW_CH_S0,
 
     // W Channel0
@@ -58,6 +64,7 @@ module rni_axi_bus `RNI_PARAM
     input  wire [`AXI4_ARQOS_WIDTH-1:0]    ARQOS0,
     input  wire [`AXI4_ARREGION_WIDTH-1:0] ARREGION0,
     input  wire [`AXI4_ARUSER_WIDTH-1:0]   ARUSER0,
+    input  wire [`RNI_AROP_WIDTH-1:0]      AROP0,
     output opennoc_rni_pkg::ax_ch_s        AR_CH_S0,
 
     // R Channel0
@@ -81,6 +88,11 @@ module rni_axi_bus `RNI_PARAM
     assign AW_CH_S0.qos       = AWQOS0;
     assign AW_CH_S0.region    = AWREGION0;
     assign AW_CH_S0.user      = AWUSER0;
+    assign AW_CH_S0.op        = AWOP0;
+    assign AW_CH_S0.cmo       = AWCMO0;
+    assign AW_CH_S0.atop      = AWATOP0;
+    assign AW_CH_S0.stashnid  = AWSTASHNID0;
+    assign AW_CH_S0.stashniden = AWSTASHNIDEN0;
 
     assign W_CH_S0.data        = WDATA0;
     assign W_CH_S0.strb        = WSTRB0;
@@ -98,6 +110,11 @@ module rni_axi_bus `RNI_PARAM
     assign AR_CH_S0.qos       = ARQOS0;
     assign AR_CH_S0.region    = ARREGION0;
     assign AR_CH_S0.user      = ARUSER0;
+    assign AR_CH_S0.op        = {{(4-`RNI_AROP_WIDTH){1'b0}}, AROP0};
+    assign AR_CH_S0.cmo       = '0;
+    assign AR_CH_S0.atop      = '0;
+    assign AR_CH_S0.stashnid  = '0;
+    assign AR_CH_S0.stashniden = 1'b0;
 
     assign BID0   = B_CH_S0.id;
     assign BRESP0 = B_CH_S0.resp;

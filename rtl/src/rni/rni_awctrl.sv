@@ -101,7 +101,19 @@ module rni_awctrl `RNI_PARAM
 
     // rni_ar_ctl Interface -- Sec 2.9.4's (p.2-130) cross-kind Device ordering
     output wire                                awctrl_device_ordered_pending_o,
-    input  wire                                arctrl_device_ordered_pending_i
+    input  wire                                arctrl_device_ordered_pending_i,
+
+    // An Atomic's returned data: CHI CompData in, one AXI R beat out (AXI5 atomics
+    // answer on R with the AWID as well as on B).
+    input  wire                                awctrl_rxdatflitv_d1_i,
+    input  chie_pkg::dat_flit_s                awctrl_rxdatflit_d1_i,
+    // SS2.10.5 (p.2-137): an Atomic's byte enables are exactly its operand window, so the
+    // write buffer takes them from here rather than from WSTRB.
+    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_atom_o,
+    output wire [`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH-1:0] awctrl_entry_atom_be_o[RNI_AW_ENTRIES_NUM_PARAM-1:0],
+    output wire                                awctrl_atr_valid_o,
+    output opennoc_rni_pkg::r_ch_s             awctrl_atr_o,
+    input  wire                                awctrl_atr_ready_i
     );
 
     opennoc_rni_pkg::ax_ch_s             awlink_awbus_s1_w;
@@ -322,6 +334,38 @@ module rni_awctrl `RNI_PARAM
     wire                                 rxrsp_tagmatch_pass_w;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_recv_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_tagmatch_pass_q;
+    // Per-entry request class from AWOP/AWCMO (rni_defines.svh)
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_stashw_w;      // WriteUnique*Stash
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_zero_w;        // Write*Zero
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_so_w;          // StashOnce*
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_sosep_w;       // StashOnceSep*
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_cmo_w;         // standalone CMO
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_pft_w;         // PrefetchTgt
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_comb_w;        // WriteNoSnp + CMO
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_lerr_w;        // refused, completed locally
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_dl_w;          // sends no write data
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_unordered_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_persist_owed_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_compcmo_owed_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_stashdone_owed_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_chain_rel_vec_w;
+    wire                                 awctrl_chain_rel_flag_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_synth_comp_vec_w;
+    wire                                 awctrl_synth_comp_flag_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_data_done_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_compcmo_recv_vec_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_persist_hit_w;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxrsp_stashdone_hit_w;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_compcmo_recv_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_persist_recv_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_stashdone_recv_q;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_atom_w;        // AtomicStore/Load/Swap/Compare
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_atom_rd_w;     // ... that returns data
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] rxdat_atom_vec_w;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_atom_rdata_v_q;
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_atom_r_sent_q;
+    logic [opennoc_rni_pkg::DATA_WIDTH-1:0] awctrl_atom_rdata_q [RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    logic [1:0]                          awctrl_atom_rresp_q  [RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     genvar                               entry;
 
@@ -475,8 +519,13 @@ module rni_awctrl `RNI_PARAM
     // every Device row Order=EndpointOrder -- under which SS2.8.5 (p.2-119) names
     // the DBIDResp, not a CompAck, as what orders the next request. So a Device
     // write orders on its own Order field and never joins the CompAck chain.
+    // Tables 4-7 (p.4-172) and 4-13 (p.4-178): no Dataless request and no Write Zero takes
+    // ExpCompAck, so those never join the CompAck chain either.
     assign aw_txreq_expcompack_w = awctrl_new_entry_compack_dep_w &
-           ~|(awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+           ~|(awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           ~|(awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           // Table 4-21 (p.4-188): an Atomic takes no ExpCompAck.
+           ~|(awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_atom_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
 
     always_comb begin
         awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] = '0;
@@ -558,9 +607,16 @@ module rni_awctrl `RNI_PARAM
                 end
                 else begin
                     if(awctrl_alloc_ptr_s2_q[entry] == 1'b1)begin
-                        awctrl_entry_resperr_q[entry][2-1:0] <= '0;
+                        awctrl_entry_resperr_q[entry][2-1:0] <= awctrl_entry_lerr_w[entry] ? chie_pkg::RESP_ERR_DATA : chie_pkg::RESP_ERR_NORM_OK;
                     end
                     else if(rxrsp_comp_recv_vec_w[entry] == 1'b1)begin
+                        awctrl_entry_resperr_q[entry][2-1:0] <= awctrl_entry_rxrsp_resperr_w[2-1:0];
+                    end
+                    else if(rxdat_atom_vec_w[entry] == 1'b1)begin
+                        awctrl_entry_resperr_q[entry][2-1:0] <= awctrl_rxdatflit_d1_i.resperr;
+                    end
+                    // SS9.3: the CMO half of a Combined Write reports its own error on CompCMO.
+                    else if(rxrsp_compcmo_recv_vec_w[entry] & awctrl_entry_rxrsp_resperr_w[1])begin
                         awctrl_entry_resperr_q[entry][2-1:0] <= awctrl_entry_rxrsp_resperr_w[2-1:0];
                     end
                 end
@@ -570,14 +626,14 @@ module rni_awctrl `RNI_PARAM
 
     //request chain
     assign awctrl_new_entry_req_dep_w = |awctrl_sameid_req_chain_vec_d2_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign awctrl_entry_is_req_dep_v_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_is_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_sameid_req_chain_vec_d2_r[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign awctrl_entry_is_req_dep_v_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_is_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_sameid_req_chain_vec_d2_r[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_dep_v_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{(awctrl_new_entry_req_dep_w)}} & awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign awctrl_req_dep_chain_young_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = ((awctrl_req_dep_chain_young_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_sameid_req_chain_vec_d2_r[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign awctrl_req_dep_chain_young_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = ((awctrl_req_dep_chain_young_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_sameid_req_chain_vec_d2_r[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     generate
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:axid_req_same
             always_comb begin
-                if((awctrl_alloc_ptr_s2_q[entry] == 1'b0) && (awctrl_entry_v_q[entry] == 1'b1) && (rxrsp_dbid_recv_vec_w[entry] == 1'b0))begin
+                if((awctrl_alloc_ptr_s2_q[entry] == 1'b0) && (awctrl_entry_v_q[entry] == 1'b1) && (awctrl_chain_rel_vec_w[entry] == 1'b0))begin
                     awctrl_sameid_req_chain_vec_d2_r[entry] = (awlink_valid_s2_q && awctrl_awid_s2_r[`AXI4_AWID_WIDTH-1:0] == awctrl_entry_info_q[entry].id) && awctrl_req_dep_chain_young_q[entry];
                 end
                 else begin
@@ -590,7 +646,7 @@ module rni_awctrl `RNI_PARAM
     always_comb begin
         awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
-            awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{rxrsp_dbid_recv_vec_w[i]}} & awctrl_entry_is_req_dep_num_q[i][RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+            awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_is_req_dep_num_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_chain_rel_vec_w[i]}} & awctrl_entry_is_req_dep_num_q[i][RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     end
 
     always_ff @(posedge clk_i or posedge rst_i) begin
@@ -598,7 +654,7 @@ module rni_awctrl `RNI_PARAM
             awctrl_entry_is_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
         else begin
-            if(awlink_valid_s2_q | rxrsp_dbid_recv_flag_w)begin
+            if(awlink_valid_s2_q | awctrl_chain_rel_flag_w)begin
                 awctrl_entry_is_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= awctrl_entry_is_req_dep_v_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
         end
@@ -609,7 +665,7 @@ module rni_awctrl `RNI_PARAM
             awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
         else begin
-            if((awlink_valid_s2_q && awctrl_new_entry_req_dep_w) | rxrsp_dbid_recv_flag_w)begin
+            if((awlink_valid_s2_q && awctrl_new_entry_req_dep_w) | awctrl_chain_rel_flag_w)begin
                 awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= awctrl_entry_req_dep_v_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
         end
@@ -622,7 +678,7 @@ module rni_awctrl `RNI_PARAM
                     awctrl_entry_is_req_dep_num_q[entry][RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
                 end
                 else begin
-                    if(rxrsp_dbid_recv_vec_w[entry])begin
+                    if(awctrl_chain_rel_vec_w[entry])begin
                         awctrl_entry_is_req_dep_num_q[entry][RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
                     end
                     else if((awlink_valid_s2_q && awctrl_sameid_req_chain_vec_d2_r[entry]))begin
@@ -638,7 +694,7 @@ module rni_awctrl `RNI_PARAM
             awctrl_req_dep_chain_young_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
         else begin
-            if(awlink_valid_s2_q | rxrsp_dbid_recv_flag_w)begin
+            if(awlink_valid_s2_q | awctrl_chain_rel_flag_w)begin
                 awctrl_req_dep_chain_young_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= awctrl_req_dep_chain_young_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
         end
@@ -818,7 +874,11 @@ module rni_awctrl `RNI_PARAM
     // write at all.
     generate
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_line_sized
-            assign aw_line_sized_w[entry] = (awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0] == chie_pkg::SIZE_64B);
+            // awctrl_entry_size_q lands a cycle after allocation; the request class, which
+            // the allocation cycle already reads, takes the size from the pipe until then.
+            assign aw_line_sized_w[entry] = ((awctrl_alloc_ptr_s2_q[entry] ? awlink_size_s2_w[`AXI4_AWSIZE_WIDTH-1:0]
+                                                                           : awctrl_entry_size_q[entry][`AXI4_AWSIZE_WIDTH-1:0])
+                                             == chie_pkg::SIZE_64B);
         end
     endgenerate
 
@@ -835,7 +895,8 @@ module rni_awctrl `RNI_PARAM
 
     assign awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_req_select_rdy_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~rxrsp_retryack_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_req_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~aw_full_pending_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]
              & ~({RNI_AW_ENTRIES_NUM_PARAM{awctrl_ordered_pending_any_w}} & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])
-             & ~({RNI_AW_ENTRIES_NUM_PARAM{arctrl_device_ordered_pending_i}} & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+             & ~({RNI_AW_ENTRIES_NUM_PARAM{arctrl_device_ordered_pending_i}} & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])
+             & ~awctrl_entry_lerr_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_hi_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_entry_req_lo_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_req_new_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_qos_hi_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     //deassert select_vec when receiving retryack
@@ -1012,7 +1073,7 @@ module rni_awctrl `RNI_PARAM
     // Order election below ever does. It gives a Device row EndpointOrder and
     // every other row RequestOrder/OWO (Table 2-11, Sec 2.9.4 p.2-129), so every
     // write this bridge sends carries a non-zero Order today.
-    assign awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{1'b1}};
+    assign awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = ~awctrl_entry_unordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     // The same AxCACHE[1] decode as aw_device_w above, held per entry: AXI4
     // (IHI 0022) Table A4-5's two Device rows are the ones Table 2-11 (p.2-129)
@@ -1022,6 +1083,85 @@ module rni_awctrl `RNI_PARAM
             assign awctrl_entry_device_w[entry] = ~awctrl_entry_info_q[entry].cache[1];
         end
     endgenerate
+
+    // AWOP and AWCMO (rni_defines.svh) name the CHI request beyond AWCACHE's, per entry.
+    // Table B-1 (p.B-492/493) lists what an RN-I may send; a combination it or the
+    // attribute tables refuse is completed locally with an error and sends nothing:
+    // a StashOnce off Normal WriteBack (Table 4-7 p.4-172), a PrefetchTgt to Device
+    // (SS2.9.6 p.2-133), a CMO combined with a WriteUnique (Table B-1: RN-F only), and a
+    // Write Zero narrower than a line (Table 4-13 p.4-178: Size 64).
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:aw_entry_class
+            wire [3:0] op_w  = awctrl_entry_info_q[entry].op;
+            wire [1:0] cmo_w = awctrl_entry_info_q[entry].cmo;
+            wire       wb_w  = opennoc_rni_pkg::axi_cacheable(awctrl_entry_info_q[entry].cache);
+            // AXI5 AWATOP[5:4]: 01 AtomicStore, 10 AtomicLoad, 11 AtomicSwap (0000) or
+            // AtomicCompare (0001); 00 is not atomic.
+            assign awctrl_entry_atom_w[entry]    = |awctrl_entry_info_q[entry].atop[5:4];
+            assign awctrl_entry_atom_rd_w[entry] = awctrl_entry_info_q[entry].atop[5];
+            assign awctrl_entry_stashw_w[entry] = (op_w == `RNI_AWOP_WRITE_STASH) & wb_w & ~awctrl_entry_atom_w[entry];
+            assign awctrl_entry_zero_w[entry]   = (op_w == `RNI_AWOP_WRITE_ZERO);
+            assign awctrl_entry_sosep_w[entry]  = (op_w == `RNI_AWOP_STASH_ONCE_SEP_SHARED) | (op_w == `RNI_AWOP_STASH_ONCE_SEP_UNIQUE);
+            assign awctrl_entry_so_w[entry]     = (op_w == `RNI_AWOP_STASH_ONCE_SHARED) | (op_w == `RNI_AWOP_STASH_ONCE_UNIQUE) |
+                                                  awctrl_entry_sosep_w[entry];
+            assign awctrl_entry_cmo_w[entry]    = (op_w >= `RNI_AWOP_CLEAN_SHARED) & (op_w <= `RNI_AWOP_MAKE_INVALID);
+            assign awctrl_entry_pft_w[entry]    = (op_w == `RNI_AWOP_PREFETCH_TGT);
+            assign awctrl_entry_comb_w[entry]   = ~(|op_w) & (cmo_w != `RNI_AWCMO_NONE) & ~wb_w;
+            assign awctrl_entry_lerr_w[entry]   = (awctrl_entry_so_w[entry] & ~wb_w) |
+                                                  (awctrl_entry_pft_w[entry] & awctrl_entry_device_w[entry]) |
+                                                  (~(|op_w) & (cmo_w != `RNI_AWCMO_NONE) & wb_w) |
+                                                  (awctrl_entry_zero_w[entry] & ~aw_line_sized_w[entry]);
+            assign awctrl_entry_dl_w[entry]     = awctrl_entry_zero_w[entry] | awctrl_entry_so_w[entry] |
+                                                  awctrl_entry_cmo_w[entry] | awctrl_entry_pft_w[entry] |
+                                                  awctrl_entry_lerr_w[entry];
+            assign awctrl_entry_unordered_w[entry] = awctrl_entry_so_w[entry] | awctrl_entry_cmo_w[entry] |
+                                                     awctrl_entry_pft_w[entry] | awctrl_entry_lerr_w[entry];
+            // SS2.3.3/SS4.2.4 (p.4-182): a CleanSharedPersistSep, alone or combined with a
+            // write, owes a Persist besides its completion; a Combined Write owes CompCMO; a
+            // StashOnceSep owes StashDone (SS2.3.4 p.2-72).
+            assign awctrl_entry_persist_owed_w[entry]   = ~awctrl_entry_lerr_w[entry] &
+                   ((op_w == `RNI_AWOP_CLEAN_SHARED_PERSIST_SEP) |
+                    (awctrl_entry_comb_w[entry] & (cmo_w == `RNI_AWCMO_CLEAN_SH_PERSIST_SEP)));
+            assign awctrl_entry_compcmo_owed_w[entry]   = awctrl_entry_comb_w[entry];
+            assign awctrl_entry_stashdone_owed_w[entry] = awctrl_entry_sosep_w[entry] & ~awctrl_entry_lerr_w[entry];
+        end
+    endgenerate
+
+    // The class of the entry being sent
+    logic aw_sel_stashw_r, aw_sel_zero_r, aw_sel_so_r, aw_sel_sosep_r, aw_sel_cmo_r, aw_sel_pft_r, aw_sel_comb_r;
+    logic [3:0] aw_sel_op_r;
+    logic [1:0] aw_sel_cmoop_r;
+    logic       aw_sel_stashniden_r;
+    logic       aw_sel_atom_r;
+    logic [5:0] aw_sel_atop_r;
+    logic [2:0] aw_sel_asize_r;
+    logic [CHIE_NID_WIDTH_PARAM-1:0] aw_sel_stashnid_r;
+    logic [7:0] aw_sel_grpid_r;
+    always_comb begin: aw_class_sel_t
+        aw_sel_stashw_r = 1'b0; aw_sel_zero_r = 1'b0; aw_sel_so_r = 1'b0; aw_sel_sosep_r = 1'b0;
+        aw_sel_cmo_r = 1'b0; aw_sel_pft_r = 1'b0; aw_sel_comb_r = 1'b0;
+        aw_sel_op_r = '0; aw_sel_cmoop_r = '0; aw_sel_stashniden_r = 1'b0; aw_sel_stashnid_r = '0; aw_sel_grpid_r = '0;
+        aw_sel_atom_r = 1'b0; aw_sel_atop_r = '0; aw_sel_asize_r = '0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
+            aw_sel_stashw_r     = aw_sel_stashw_r | (awctrl_entry_req_ptr_q[i] & awctrl_entry_stashw_w[i]);
+            aw_sel_zero_r       = aw_sel_zero_r   | (awctrl_entry_req_ptr_q[i] & awctrl_entry_zero_w[i]);
+            aw_sel_so_r         = aw_sel_so_r     | (awctrl_entry_req_ptr_q[i] & awctrl_entry_so_w[i]);
+            aw_sel_sosep_r      = aw_sel_sosep_r  | (awctrl_entry_req_ptr_q[i] & awctrl_entry_sosep_w[i]);
+            aw_sel_cmo_r        = aw_sel_cmo_r    | (awctrl_entry_req_ptr_q[i] & awctrl_entry_cmo_w[i]);
+            aw_sel_pft_r        = aw_sel_pft_r    | (awctrl_entry_req_ptr_q[i] & awctrl_entry_pft_w[i]);
+            aw_sel_comb_r       = aw_sel_comb_r   | (awctrl_entry_req_ptr_q[i] & awctrl_entry_comb_w[i]);
+            aw_sel_atom_r       = aw_sel_atom_r   | (awctrl_entry_req_ptr_q[i] & awctrl_entry_atom_w[i]);
+            aw_sel_atop_r       = aw_sel_atop_r   | ({6{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].atop);
+            aw_sel_asize_r      = aw_sel_asize_r  | ({3{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].size);
+            aw_sel_op_r         = aw_sel_op_r     | ({4{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].op);
+            aw_sel_cmoop_r      = aw_sel_cmoop_r  | ({2{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].cmo);
+            aw_sel_stashniden_r = aw_sel_stashniden_r | (awctrl_entry_req_ptr_q[i] & awctrl_entry_info_q[i].stashniden);
+            aw_sel_stashnid_r   = aw_sel_stashnid_r | ({CHIE_NID_WIDTH_PARAM{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].stashnid);
+            // A StashOnceSep's StashGroupID and a persistent CMO's PGroupID: the entry
+            // itself, which no other outstanding request of this RN-I holds.
+            aw_sel_grpid_r      = aw_sel_grpid_r  | ({8{awctrl_entry_req_ptr_q[i]}} & 8'(i));
+        end
+    end
 
     always_comb begin
         aw_excl_r = 1'b0;
@@ -1082,7 +1222,7 @@ module rni_awctrl `RNI_PARAM
         // SS13.10.27 (p.13-432, MUST) gives WriteNoSnp the Excl bit and
         // WriteUnique none; see rni_arctrl.sv for the Cacheable case.
         // The write half of the same declaration; see rni_arctrl.sv.
-        aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w & ~aw_lpid_alias_w;
+        aw_txreqflit_info_r.excl.excl = aw_excl_r & ~aw_cacheable_w & ~aw_lpid_alias_w & ~(|aw_sel_op_r) & (aw_sel_cmoop_r == `RNI_AWCMO_NONE);
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.lpid = aw_txreqflit_info_r.lpid |
@@ -1100,6 +1240,91 @@ module rni_awctrl `RNI_PARAM
             aw_txreqflit_info_r.mpam = chie_pkg::mpam_s'(aw_txreqflit_info_r.mpam |
                 ({chie_pkg::MPAM_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].user[`AXI4_USER_MPAM_RANGE]));
 `endif
+        end
+        // ---- the requests AWOP/AWCMO select (rni_defines.svh)
+        if (aw_sel_stashw_r) begin
+            // Table 4-13 (p.4-178): the Stash forms take WriteUnique's rows. SS13.10.8/9
+            // (p.13-419): the stash target, with no StashLPID.
+            aw_txreqflit_info_r.opcode = aw_full_write_r ? chie_pkg::REQ_WRITEUNIQUEFULLSTASH : chie_pkg::REQ_WRITEUNIQUEPTLSTASH;
+            aw_txreqflit_info_r.stashnidvalid.stashnidvalid = aw_sel_stashniden_r;
+            aw_txreqflit_info_r.returnnid = aw_sel_stashniden_r ? aw_sel_stashnid_r : '0;
+        end
+        if (aw_sel_zero_r) begin
+            // Table 4-13: Size 64, Excl 0, ExpCompAck 0; Device nE Order 11, Normal 00/10
+            // (Request Order here, as this bridge orders its other Normal writes), and
+            // Table 12-2 (p.12-389) no tags.
+            aw_txreqflit_info_r.opcode     = aw_cacheable_w ? chie_pkg::REQ_WRITEUNIQUEZERO : chie_pkg::REQ_WRITENOSNPZERO;
+            aw_txreqflit_info_r.size       = chie_pkg::SIZE_64B;
+            aw_txreqflit_info_r.tagop      = 2'b00;
+            aw_txreqflit_info_r.expcompack = 1'b0;
+        end
+        if (aw_sel_so_r) begin
+            // Table 4-7 (p.4-172): Size 64, Excl 0, SnpAttr 1, MemAttr 0101/1101, Order 00,
+            // ExpCompAck 0; Table 12-2 (p.12-388): TagOp Invalid is permitted.
+            aw_txreqflit_info_r.opcode     = (aw_sel_op_r == `RNI_AWOP_STASH_ONCE_SHARED)     ? chie_pkg::REQ_STASHONCESHARED :
+                                             (aw_sel_op_r == `RNI_AWOP_STASH_ONCE_UNIQUE)     ? chie_pkg::REQ_STASHONCEUNIQUE :
+                                             (aw_sel_op_r == `RNI_AWOP_STASH_ONCE_SEP_SHARED) ? chie_pkg::REQ_STASHONCESEPSHARED :
+                                                                                                chie_pkg::REQ_STASHONCESEPUNIQUE;
+            aw_txreqflit_info_r.stashnidvalid.stashnidvalid = aw_sel_stashniden_r;
+            aw_txreqflit_info_r.returnnid  = aw_sel_stashniden_r ? aw_sel_stashnid_r : '0;
+            // SS13.10.7 (p.13-418): a StashOnceSep's StashGroupID occupies the LPID bits.
+            aw_txreqflit_info_r.lpid       = aw_sel_sosep_r ? aw_sel_grpid_r : 8'h00;
+        end
+        if (aw_sel_cmo_r) begin
+            // Table 4-7: Size 64, Excl 0, Order 00, ExpCompAck 0, SnpAttr with the memory
+            // type; Table 12-2: TagOp Invalid.
+            aw_txreqflit_info_r.opcode     = (aw_sel_op_r == `RNI_AWOP_CLEAN_SHARED)             ? chie_pkg::REQ_CLEANSHARED :
+                                             (aw_sel_op_r == `RNI_AWOP_CLEAN_SHARED_PERSIST)     ? chie_pkg::REQ_CLEANSHAREDPERSIST :
+                                             (aw_sel_op_r == `RNI_AWOP_CLEAN_SHARED_PERSIST_SEP) ? chie_pkg::REQ_CLEANSHAREDPERSISTSEP :
+                                             (aw_sel_op_r == `RNI_AWOP_CLEAN_INVALID)            ? chie_pkg::REQ_CLEANINVALID :
+                                                                                                   chie_pkg::REQ_MAKEINVALID;
+            // SS13.10.7: a CleanSharedPersistSep's PGroupID occupies the LPID bits.
+            aw_txreqflit_info_r.lpid       = (aw_sel_op_r == `RNI_AWOP_CLEAN_SHARED_PERSIST_SEP) ? aw_sel_grpid_r : 8'h00;
+        end
+        if (aw_sel_so_r | aw_sel_cmo_r | aw_sel_pft_r) begin
+            aw_txreqflit_info_r.size       = chie_pkg::SIZE_64B;
+            aw_txreqflit_info_r.tagop      = 2'b00;
+            aw_txreqflit_info_r.order      = chie_pkg::ORDER_NONE;
+            aw_txreqflit_info_r.expcompack = 1'b0;
+            aw_txreqflit_info_r.excl.excl  = 1'b0;
+        end
+        if (aw_sel_pft_r) begin
+            // SS3.3.1: "PrefetchTgt always targets a Subordinate Node"; SS2.11 (p.2-145)
+            // gives it no Retry sequence.
+            aw_txreqflit_info_r.opcode     = chie_pkg::REQ_PREFETCHTGT;
+            aw_txreqflit_info_r.tgtid      = CHIE_NID_WIDTH_PARAM'(SNF_NID_PARAM);
+            aw_txreqflit_info_r.allowretry = 1'b0;
+            aw_txreqflit_info_r.lpid       = 8'h00;
+        end
+        if (aw_sel_comb_r) begin
+            // Table 4-17 (p.4-182): a WriteNoSnp combines with CleanShared, CleanInvalid or
+            // a persistent CMO, which SS4.2.4 makes a CleanSharedPersistSep; Excl and a
+            // TagOp Match are not permitted on a Combined Write.
+            aw_txreqflit_info_r.opcode     = aw_full_write_r ?
+                ((aw_sel_cmoop_r == `RNI_AWCMO_CLEAN_SHARED)  ? chie_pkg::REQ_WRITENOSNPFULLCLEANSH :
+                 (aw_sel_cmoop_r == `RNI_AWCMO_CLEAN_INVALID) ? chie_pkg::REQ_WRITENOSNPFULLCLEANINV :
+                                                                chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP) :
+                ((aw_sel_cmoop_r == `RNI_AWCMO_CLEAN_SHARED)  ? chie_pkg::REQ_WRITENOSNPPTLCLEANSH :
+                 (aw_sel_cmoop_r == `RNI_AWCMO_CLEAN_INVALID) ? chie_pkg::REQ_WRITENOSNPPTLCLEANINV :
+                                                                chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP);
+            aw_txreqflit_info_r.excl.excl  = 1'b0;
+            aw_txreqflit_info_r.lpid       = (aw_sel_cmoop_r == `RNI_AWCMO_CLEAN_SH_PERSIST_SEP) ? aw_sel_grpid_r : 8'h00;
+        end
+        if (aw_sel_atom_r) begin
+            // AXI5 AWATOP[2:0] orders ADD, CLR, EOR, SET, SMAX, SMIN, UMAX, UMIN as CHI's
+            // AtomicStore/AtomicLoad encodings do (Tables 4-19/4-20). Table 4-21 (p.4-188):
+            // ExpCompAck 0, SnoopMe 0 here, Order 11 on Device and Request Order on Normal;
+            // SS13.10.28 (p.13-432): AWATOP[3] is the Endian of a Store or Load.
+            aw_txreqflit_info_r.opcode     = (aw_sel_atop_r[5:4] == 2'b01) ? chie_pkg::req_opcode_e'(7'h28 | 7'(aw_sel_atop_r[2:0])) :
+                                             (aw_sel_atop_r[5:4] == 2'b10) ? chie_pkg::req_opcode_e'(7'h30 | 7'(aw_sel_atop_r[2:0])) :
+                                             aw_sel_atop_r[0]              ? chie_pkg::REQ_ATOMICCOMPARE : chie_pkg::REQ_ATOMICSWAP;
+            aw_txreqflit_info_r.stashnidvalid.endian = (aw_sel_atop_r[5:4] != 2'b11) & aw_sel_atop_r[3];
+            // Table 4-21: Size is the operand size, AWSIZE, not the write's 16-byte container.
+            aw_txreqflit_info_r.size       = chie_pkg::size_e'(aw_sel_asize_r);
+            aw_txreqflit_info_r.excl.snoopme = 1'b0;
+            aw_txreqflit_info_r.expcompack = 1'b0;
+            aw_txreqflit_info_r.tagop      = 2'b00;
+            aw_txreqflit_info_r.order      = aw_device_w ? chie_pkg::ORDER_END_POINT : chie_pkg::ORDER_REQ_WR_OBS;
         end
     end
 
@@ -1152,9 +1377,102 @@ module rni_awctrl `RNI_PARAM
     // the write never sends its data.
     assign rxrsp_dbid_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_DBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_DBIDRESPORD));
     assign rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_dbid_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMP));
+    // Table 4-38 (p.4-218): a StashOnceSep may complete with CompStashDone, and a
+    // CleanSharedPersistSep with CompPersist (SS2.3.3), each also its other half.
+    assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMP) |
+                                                          (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST));
     assign rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_comp_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_retryack_recv_flag_w = aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
+
+    // A request that sends no write data is ordered by its Comp, as a write is by its DBID.
+    assign awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
+           ((rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+    assign awctrl_chain_rel_flag_w = |awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // PrefetchTgt has no response (SS2.3.5): its completion is its sending. A refused
+    // request completes at allocation, with an error.
+    assign awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] =
+           rxdat_atom_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
+           ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_entry_req_select_success_flag_w}} & awctrl_entry_req_ptr_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_pft_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) |
+           (awctrl_alloc_ptr_s2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_lerr_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+    assign awctrl_synth_comp_flag_w = |awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
+    // An Atomic that returns data completes with CompData (Table 2-7 SS2.3.3), on DAT
+    // under its write-side TxnID; it carries the original value.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:atom_rdata
+            assign rxdat_atom_vec_w[entry] = awctrl_rxdatflitv_d1_i & awctrl_rxdatflit_d1_i.txnid[11] &
+                   (awctrl_rxdatflit_d1_i.opcode == chie_pkg::DAT_COMPDATA) &
+                   (awctrl_rxdatflit_d1_i.tgtid == RNI_NID_PARAM) &
+                   (awctrl_rxdatflit_d1_i.txnid[`RNI_AW_ENTRIES_WIDTH-1:0] == `RNI_AW_ENTRIES_WIDTH'(entry)) &
+                   awctrl_entry_v_q[entry] & awctrl_entry_atom_rd_w[entry];
+            // The AXI beat is the 16-byte lane holding the address: SS2.10.4's DataID names
+            // where the CHI packet starts, in 16-byte units.
+            logic [1:0] lane_w;
+            assign lane_w = awctrl_entry_addr_q[entry][5:4] - awctrl_rxdatflit_d1_i.dataid;
+            // The window: Size bytes from an aligned address, or for an AtomicCompare whose
+            // address names its second operand, the Size bytes centred on it.
+            logic [6:0] nbytes_w, lo_w;
+            assign nbytes_w = 7'd1 << awctrl_entry_info_q[entry].size;
+            assign lo_w     = ((awctrl_entry_addr_q[entry][5:0] & 6'(nbytes_w - 7'd1)) == 6'd0) ?
+                              {1'b0, awctrl_entry_addr_q[entry][5:0]} :
+                              ({1'b0, awctrl_entry_addr_q[entry][5:0]} - (nbytes_w >> 1));
+            assign awctrl_entry_atom_o[entry]    = awctrl_entry_atom_w[entry];
+            assign awctrl_entry_atom_be_o[entry] = (((`WR_BUFFER_DATA_BANK_NUM*`AXI4_WSTRB_WIDTH)'(1) << nbytes_w) - 1'b1) << lo_w;
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i) begin
+                    awctrl_atom_rdata_v_q[entry] <= 1'b0;
+                    awctrl_atom_rdata_q[entry]   <= '0;
+                    awctrl_atom_rresp_q[entry]   <= '0;
+                end
+                else if (awctrl_entry_dealloc_vec_w[entry]) begin
+                    awctrl_atom_rdata_v_q[entry] <= 1'b0;
+                end
+                else if (rxdat_atom_vec_w[entry]) begin
+                    awctrl_atom_rdata_v_q[entry] <= 1'b1;
+                    awctrl_atom_rdata_q[entry]   <= awctrl_rxdatflit_d1_i.data[lane_w*opennoc_rni_pkg::DATA_WIDTH +: opennoc_rni_pkg::DATA_WIDTH];
+                    awctrl_atom_rresp_q[entry]   <= awctrl_rxdatflit_d1_i.resperr;
+                end
+            end
+        end
+    endgenerate
+
+    assign rxrsp_compcmo_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] =
+           {RNI_AW_ENTRIES_NUM_PARAM{aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPCMO)}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // Persist and StashDone carry TxnID 0 and the group in the DBID bits (Table A-8,
+    // p.A-488), like TagMatch below; CompPersist and CompStashDone are TxnID-matched.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:group_rsp_track
+            assign rxrsp_persist_hit_w[entry] =
+                   (awctrl_rxrspflitv_d1_i & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_PERSIST) &
+                    (awctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] == RNI_NID_PARAM) &
+                    awctrl_entry_v_q[entry] & awctrl_entry_persist_owed_w[entry] &
+                    (awctrl_rxrspflit_d1_i.dbid[7:0] == 8'(entry))) |
+                   (aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST) & awctrl_rxrsp_ptr_r[entry]);
+            assign rxrsp_stashdone_hit_w[entry] =
+                   (awctrl_rxrspflitv_d1_i & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_STASHDONE) &
+                    (awctrl_entry_rxrsp_tgtid_w[chie_pkg::NID_WIDTH-1:0] == RNI_NID_PARAM) &
+                    awctrl_entry_v_q[entry] & awctrl_entry_stashdone_owed_w[entry] &
+                    (awctrl_rxrspflit_d1_i.dbid[7:0] == 8'(entry))) |
+                   (aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) & awctrl_rxrsp_ptr_r[entry]);
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i) begin
+                    awctrl_compcmo_recv_q[entry]   <= 1'b0;
+                    awctrl_persist_recv_q[entry]   <= 1'b0;
+                    awctrl_stashdone_recv_q[entry] <= 1'b0;
+                end
+                else if (awctrl_entry_dealloc_vec_w[entry]) begin
+                    awctrl_compcmo_recv_q[entry]   <= 1'b0;
+                    awctrl_persist_recv_q[entry]   <= 1'b0;
+                    awctrl_stashdone_recv_q[entry] <= 1'b0;
+                end
+                else begin
+                    if (rxrsp_compcmo_recv_vec_w[entry]) awctrl_compcmo_recv_q[entry]   <= 1'b1;
+                    if (rxrsp_persist_hit_w[entry])      awctrl_persist_recv_q[entry]   <= 1'b1;
+                    if (rxrsp_stashdone_hit_w[entry])    awctrl_stashdone_recv_q[entry] <= 1'b1;
+                end
+            end
+        end
+    endgenerate
 
     // Table A-8 (p.A-488) gives TagMatch TxnID = 0, so it is not admitted by the
     // TxnID[11] convention the other write responses use: Sec 13.10.40 (p.13-435)
@@ -1201,7 +1519,7 @@ module rni_awctrl `RNI_PARAM
     // Set when the ordered write is actually sent, cleared only by its own
     // DBIDResp/DBIDRespOrd/CompDBIDResp or by dealloc -- so a RetryAck'd ordered
     // write keeps blocking the next one, which is Figure 2-34 step 5 (p.2-121).
-    assign awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_entry_req_select_success_flag_w}} & awctrl_entry_req_ptr_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_entry_req_select_success_flag_w}} & awctrl_entry_req_ptr_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_ordered_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_ordered_pending_any_w = |awctrl_ordered_pending_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // Sec 2.9.4 (p.2-130, MUST): the Device nRnE and Device nRE required behaviour
     // is that "All Read and Write transactions from the same source to the same
@@ -1219,7 +1537,7 @@ module rni_awctrl `RNI_PARAM
     // loop the two gates would otherwise form; which side wins a same-cycle tie is
     // arbitrary, and Sec 2.9.4 (p.2-130) constrains only that one of them backs off.
     assign awctrl_device_ordered_pending_o = |(awctrl_ordered_pending_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_device_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
-    assign rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     assign rxrsp_pcrdgrant_recv_flag_w = pcrdgnt_pkt_v_d2_i;
     // SS2.11 (p.2-145, MUST): a credit may arrive before the RetryAck it belongs
@@ -1467,7 +1785,7 @@ module rni_awctrl `RNI_PARAM
             rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
         else begin
-            if(rxrsp_comp_recv_flag_w | awctrl_entry_dealloc_v_w)begin
+            if(rxrsp_comp_recv_flag_w | awctrl_synth_comp_flag_w | awctrl_entry_dealloc_v_w)begin
                 rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= rxrsp_comp_recv_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
             end
         end
@@ -1477,7 +1795,12 @@ module rni_awctrl `RNI_PARAM
     // txdat
     /////////////////////////////////////////////////////////////
     //req is sent in two beats and txdat is sent in three beats
-    assign txdat_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = rxrsp_dbid_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    assign txdat_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = rxrsp_dbid_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+           ~awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+    // A request with no CHI write data is done with its data once the AXI beat it was
+    // given has been drained, so B still follows every W beat (AXI4 A3.3.1).
+    assign awctrl_data_done_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
+           (awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign wdata_recv_done_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (wdata_recv_done_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{wb_req_done_d3_i}} & wb_req_entry_d3_i[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // An entry with packets left after this one stays selectable, so it is sent again next.
     assign txdat_select_more_w = wb_not_busy_d1_i & txdat_select_success_w & (|(txdat_pend_sel_r & ~txdat_ctmask_d1_r));
@@ -1782,7 +2105,13 @@ module rni_awctrl `RNI_PARAM
     /////////////////////////////////////////////////////////////
     // bresp
     /////////////////////////////////////////////////////////////
-    assign bresp_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+    assign bresp_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_data_done_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+           // The other halves a request may owe: CompCMO, Persist, StashDone.
+           (awctrl_compcmo_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_compcmo_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           (awctrl_persist_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_persist_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           (awctrl_stashdone_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_stashdone_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           // An Atomic's R beat leaves before its entry, which holds the data, is freed.
+           (awctrl_atom_r_sent_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_atom_rd_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            (txrsp_compack_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            ~awctrl_entry_bresp_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~bresp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every Match write, and
@@ -1921,6 +2250,50 @@ module rni_awctrl `RNI_PARAM
     // dealloc
     /////////////////////////////////////////////////////////////
     assign awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{awctrl_brsp_fifo_pop_d3_i}} & bresp_send_ptr_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
+    /////////////////////////////////////////////////////////////
+    // Atomic R beat: one at a time, lowest entry first, held until accepted
+    /////////////////////////////////////////////////////////////
+    logic                                atr_v_q;
+    logic [`RNI_AW_ENTRIES_WIDTH-1:0]    atr_idx_q;
+    logic                                atr_pick_v_r;
+    logic [`RNI_AW_ENTRIES_WIDTH-1:0]    atr_pick_idx_r;
+    always_comb begin: atr_pick_t
+        atr_pick_v_r = 1'b0; atr_pick_idx_r = '0;
+        for (int i = RNI_AW_ENTRIES_NUM_PARAM-1; i >= 0; i--)
+            if (awctrl_atom_rdata_v_q[i] & ~awctrl_atom_r_sent_q[i] & ~(atr_v_q & (atr_idx_q == `RNI_AW_ENTRIES_WIDTH'(i)))) begin
+                atr_pick_v_r = 1'b1; atr_pick_idx_r = `RNI_AW_ENTRIES_WIDTH'(i);
+            end
+    end
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i) begin
+            atr_v_q   <= 1'b0;
+            atr_idx_q <= '0;
+        end
+        else if (atr_v_q & awctrl_atr_ready_i) begin
+            atr_v_q   <= 1'b0;
+        end
+        else if (~atr_v_q & atr_pick_v_r) begin
+            atr_v_q   <= 1'b1;
+            atr_idx_q <= atr_pick_idx_r;
+        end
+    end
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin:atom_r_sent
+            always_ff @(posedge clk_i or posedge rst_i) begin
+                if (rst_i)                                   awctrl_atom_r_sent_q[entry] <= 1'b0;
+                else if (awctrl_entry_dealloc_vec_w[entry])  awctrl_atom_r_sent_q[entry] <= 1'b0;
+                else if (atr_v_q & awctrl_atr_ready_i & (atr_idx_q == `RNI_AW_ENTRIES_WIDTH'(entry)))
+                                                             awctrl_atom_r_sent_q[entry] <= 1'b1;
+            end
+        end
+    endgenerate
+    assign awctrl_atr_valid_o   = atr_v_q;
+    assign awctrl_atr_o.id      = awctrl_entry_info_q[atr_idx_q].id;
+    assign awctrl_atr_o.data    = awctrl_atom_rdata_q[atr_idx_q];
+    assign awctrl_atr_o.resp    = awctrl_atom_rresp_q[atr_idx_q];
+    assign awctrl_atr_o.user    = '0;
+    assign awctrl_atr_o.last    = 1'b1;
     assign awctrl_entry_dealloc_v_w = |awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_dealloc_entry_o[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 endmodule
