@@ -44,6 +44,7 @@ module hnf_mshr_bypass `HNF_PARAM
     // opcode this stage services it as (opennoc_hnf_pkg::hnf_serviced_as()).
     input  wire                                li_mshr_rxreq_wrzero_s0,
     input  wire                                li_mshr_rxreq_cw_merge_s0,
+    input  wire                                li_mshr_rxreq_atm_fwd_s0,
     input  wire                                li_mshr_rxreq_l3_alloc_s0,
     input  wire                                li_mshr_rxreq_tracetag_s0,
     input  chie_pkg::mpam_s                    li_mshr_rxreq_mpam_s0,
@@ -295,14 +296,15 @@ module hnf_mshr_bypass `HNF_PARAM
     //valid judgment
     // A read taking separate responses owes its RespSepData at acceptance, as an ordered one its ReadReceipt.
     assign rd_receipt_s0        = ((req_rd_s0&&req_ord_s0)||(req_rdnosnp_s0&&do_sep_s0))&&mshr_alloc_en_s0;
-    assign wr_compdbid_s0       = (req_cb_s0||(req_wrnosnp_s0&&(li_mshr_rxreq_excl_s0 == 1||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0 == 1))))&&mshr_alloc_en_s0;
+    assign wr_compdbid_s0       = (req_cb_s0||(req_wrnosnp_s0&&!li_mshr_rxreq_atm_fwd_s0&&(li_mshr_rxreq_excl_s0 == 1||(li_mshr_rxreq_order_s0 == 2'b10&&li_mshr_rxreq_expcompack_s0 == 1))))&&mshr_alloc_en_s0;
     // Table 4-39 (p.4-219) still gives a Write Zero a DBID -- "DBIDResp + Comp or
     // CompDBIDResp" -- even though its WriteData response is None. It cannot come
     // from the Subordinate the way a DWT write's does (Sec 4.2.3 p.4-176 forbids
     // DWT here), so this Home sources it, and Sec 2.5.9 (p.2-91) leaves its value
     // free: "not required to utilize the DBID field" in a Write Zero.
     // Under DWT the Subordinate grants the buffer instead (Table 13-21 p.13-430).
-    assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||req_wup_s0||(req_wuf_s0&&!do_dwt_wuf_s0))&&mshr_alloc_en_s0;
+    // An Atomic passed on is granted here too: Table 4-22 (p.4-188) gives it DoDWT 0.
+    assign wr_dbid_s0           = (li_mshr_rxreq_wrzero_s0||li_mshr_rxreq_atm_fwd_s0||req_wup_s0||(req_wuf_s0&&!do_dwt_wuf_s0))&&mshr_alloc_en_s0;
     assign tx_rdnosnp_s0        = req_rdnosnp_s0&&mshr_alloc_en_s0;
     // SS12.3 (p.12-374, MUST): a WriteUniqueFull that does not Update the tags of memory
     // that holds them (SS12.1 p.12-372) owes memory any Dirty ones, so hnf_mshr_ctl issues it.
@@ -355,15 +357,15 @@ module hnf_mshr_bypass `HNF_PARAM
             tx_wrnosnpful_wuf_s1_q <= tx_wrnosnpful_wuf_s0;
     end
 
-    // A Write Zero leaves as WriteNoSnpZero (Figure 2-17 p.2-79) and a Combined Write as
-    // one when it is passed on (SS16.2.2 p.16-475); hnf_mshr_ctl forms both, so neither
-    // takes this path's plain WriteNoSnp.
+    // A Write Zero leaves as WriteNoSnpZero (Figure 2-17 p.2-79), a Combined Write as one
+    // when it is passed on (SS16.2.2 p.16-475) and an Atomic as itself (SS16.3.2 p.16-479);
+    // hnf_mshr_ctl forms all three, so none takes this path's plain WriteNoSnp.
     logic tx_wr_by_mshr_s1_q;
     always_ff @(posedge clk or posedge rst)begin :pass_tx_wr_by_mshr
         if (rst)
             tx_wr_by_mshr_s1_q <= 'd0;
         else
-            tx_wr_by_mshr_s1_q <= li_mshr_rxreq_wrzero_s0 | li_mshr_rxreq_cw_merge_s0;
+            tx_wr_by_mshr_s1_q <= li_mshr_rxreq_wrzero_s0 | li_mshr_rxreq_cw_merge_s0 | li_mshr_rxreq_atm_fwd_s0;
     end
 
     //dwt judgment

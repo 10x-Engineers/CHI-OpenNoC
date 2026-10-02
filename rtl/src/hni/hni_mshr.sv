@@ -513,6 +513,7 @@ module hni_mshr `HNI_PARAM
     // this Home has issued the AXI access; with EWA deasserted the write owes the
     // split DBIDResp, and a Comp released on the endpoint's own B response.
     assign rxreq_wrgrant_s0     = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0;
+    wire   rxreq_grant_ord_s0;
     // Sec 12.11.3 (p.12-387, MUST): with no Allocation Tag here, a TagOp Match write
     // or Atomic is still owed a TagMatch, reporting Fail. Table 12-2 (p.12-388) gives
     // Match to the standalone WriteNoSnp/WriteUnique forms and the Atomics alone.
@@ -528,9 +529,15 @@ module hni_mshr `HNI_PARAM
     assign rxreq_comp_owed_s0   = rxreq_rsp1_owed_s0 && (~rxreq_rdshape_s0)
                                && ((~rxreq_errdat_s0 && rxreq_wrgrant_s0 && ((~rxreq_ewa_s0) | rxreq_dvm_s0))
                                    | (rxreq_atm_s0 & ~rxreq_atomicdat_s0));
+    // Sec 2.8.5 (p.2-120): DBIDRespOrd also orders every later same-address request from the
+    // source behind this one; the AXI-ID sleep chain below orders every request of a region,
+    // so an ordered write or Atomic is granted with it. It is not permitted for DVMOp.
+    assign rxreq_grant_ord_s0   = (rxreq_order_s0 inside {chie_pkg::ORDER_REQ_WR_OBS, chie_pkg::ORDER_END_POINT}) & ~rxreq_dvm_s0;
     assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? chie_pkg::RSP_READRECEIPT
-                                : (rxreq_errdat_s0 | rxreq_atm_s0) ? chie_pkg::RSP_DBIDRESP
+                                : (rxreq_errdat_s0 | rxreq_atm_s0) ? ((rxreq_atm_s0 & rxreq_grant_ord_s0) ? chie_pkg::RSP_DBIDRESPORD
+                                                                                                           : chie_pkg::RSP_DBIDRESP)
                                 : rxreq_wrgrant_s0 ? ((rxreq_ewa_s0 & ~rxreq_dvm_s0) ? chie_pkg::RSP_COMPDBIDRESP
+                                                                  : rxreq_grant_ord_s0 ? chie_pkg::RSP_DBIDRESPORD
                                                                   : chie_pkg::RSP_DBIDRESP)
                                 : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMPPERSIST
                                 : rxreq_stashsep_s0 ? chie_pkg::RSP_COMPSTASHDONE
@@ -1256,6 +1263,7 @@ module hni_mshr `HNI_PARAM
                                   | (rxreq_atm_s1_q[txrsp_entry_idx_s1_q] & dbf_rd_err_sx[txrsp_entry_idx_s1_q]))
                                  && (txrsp_opcode_sx == chie_pkg::RSP_COMP)))
                              && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
+                             && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESPORD)
                              && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                              && (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RESP_ERR_NON_DATA
                              : ((txrsp_opcode_sx inside {chie_pkg::RSP_COMPDBIDRESP, chie_pkg::RSP_COMP}) & rxreq_excl_s1_q[txrsp_entry_idx_s1_q] & ((rxreq_excl_pass_s2_q[txrsp_entry_idx_s1_q]) | (excl_pass_s1 & (mshr_entry_idx_alloc_s1_q == txrsp_entry_idx_s1_q))))? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;

@@ -227,6 +227,14 @@ module hni_txrsp `HNI_PARAM
             wr_ewa_s1_q <= rxreq_ewa_s0;
     end
 
+    logic wr_ord_s1_q;
+    always_ff @(posedge clk or posedge rst) begin:pass_wr_ord
+        if (rst)
+            wr_ord_s1_q <= 1'b0;
+        else
+            wr_ord_s1_q <= rxreq_order_s0 inside {chie_pkg::ORDER_REQ_WR_OBS, chie_pkg::ORDER_END_POINT};
+    end
+
     always_ff @(posedge clk or posedge rst) begin:pass_alloc_entry_idx
         if (rst)
             mshr_entry_idx_alloc_s1_q <= {`HNI_MSHR_ENTRIES_WIDTH{1'b0}};
@@ -239,9 +247,10 @@ module hni_txrsp `HNI_PARAM
     assign txrsp_fp_qos_s1      = rxreq_qos_s1_q;
     assign txrsp_fp_tgtid_s1    = rxreq_srcid_s1_q;
     assign txrsp_fp_txnid_s1    = rxreq_txnid_s1_q;
+    // Sec 2.8.5 (p.2-120): an ordered write is granted with DBIDRespOrd, as in hni_mshr.
     assign txrsp_fp_opcode_s1   = rd_receipt_s1_q?chie_pkg::RSP_READRECEIPT:
                                   wr_grant_s1_q?(wr_ewa_s1_q?chie_pkg::RSP_COMPDBIDRESP
-                                                            :chie_pkg::RSP_DBIDRESP)
+                                                            :(wr_ord_s1_q?chie_pkg::RSP_DBIDRESPORD:chie_pkg::RSP_DBIDRESP))
                                                :chie_pkg::RSP_RSPLCRDRETURN;
     assign txrsp_fp_resperr_s1  = (wr_grant_s1_q&&wr_ewa_s1_q&&rxreq_excl_s1_q&&excl_pass_s1)? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;
     assign txrsp_fp_dbid_s1     = {{(12-`HNI_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s1_q};

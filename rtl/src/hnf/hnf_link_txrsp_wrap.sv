@@ -207,7 +207,8 @@ module hnf_link_txrsp_wrap `HNF_PARAM
         txrspflit_mshr_sx1.srcid      = HNF_NID_PARAM;
         // Table A-8 (p.A-488) gives TagMatch no TxnID: it is matched by the
         // TagGroupID in the DBID bits (Sec 13.10.40 p.13-435) instead.
-        txrspflit_mshr_sx1.txnid      = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
+        // SS2.6.2 (p.2-102, p.2-103): a TagMatch, Persist or StashDone carries TxnID zero.
+        txrspflit_mshr_sx1.txnid      = (mshr_txrsp_opcode_sx1 inside {chie_pkg::RSP_TAGMATCH, chie_pkg::RSP_PERSIST, chie_pkg::RSP_STASHDONE})
                                       ? '0 : mshr_txrsp_txnid_sx1_q;
         txrspflit_mshr_sx1.opcode     = mshr_txrsp_opcode_sx1;
         txrspflit_mshr_sx1.resperr    = mshr_txrsp_resperr_sx1;

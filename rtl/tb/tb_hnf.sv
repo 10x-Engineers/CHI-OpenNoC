@@ -742,6 +742,7 @@ module tb_hnf;
       .SYSCO_SNP_PEND ('0),
       .BROADCASTCACHEMAINTENANCE (1'b0),
       .BROADCASTPERSIST (1'b1),
+      .BROADCASTATOMIC (1'b0),
       .RXSACTIVE      (RXLINKACTIVEREQ),
       .TXSACTIVE      (),
       .RXREQFLITV   (RXREQFLITV),

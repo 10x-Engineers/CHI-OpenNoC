@@ -65,6 +65,8 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                li_mshr_rxreq_cw_s0,
     // ... and whether it leaves for the Subordinate as one Combined Write (SS16.2.2).
     input  wire                                li_mshr_rxreq_cw_merge_s0,
+    // ... and whether it is an Atomic passed to the Subordinate (SS16.3.2), serviced as WriteNoSnpPtl.
+    input  wire                                li_mshr_rxreq_atm_fwd_s0,
     // opennoc_hnf_pkg::hnf_dn_cmo_of() of the request as sent: whether it owes the
     // Subordinate a CMO and which; and whether its deferred response is a CompPersist
     // rather than a Comp or CompCMO.
@@ -198,6 +200,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output logic [6:0]                         mshr_dbf_atm_len_s0,
     output logic                               mshr_dbf_atm_end_s0,
     output logic                               mshr_dbf_rd_atm_sx1,
+    output logic                               mshr_dbf_rd_atm_fwd_sx1,
     output logic [`CACHE_BE_WIDTH-1:0]         mshr_dbf_rd_atm_be_sx1,
     output logic [`HNF_PKTS-1:0]               mshr_dbf_rd_atm_pe_sx1,
     output logic [`HNF_PKTS-1:0]               mshr_dbf_rd_pe_sx1,
@@ -228,6 +231,7 @@ module hnf_mshr_ctl `HNF_PARAM
     output chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     output wire                                mshr_txreq_dodwt_sx1,
     output wire                                mshr_txreq_tracetag_sx1,
+    output wire                                mshr_txreq_endian_sx1  ,
     output chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
     output chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
 
@@ -369,6 +373,9 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wrzero_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_merge_s1_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_fwd_s1_q;
+    // The Subordinate's CompData for a passed-on AtomicLoad/Swap/Compare has arrived.
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_atm_fwd_rd_done_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_compcmo_entry_vec_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_cmo_s1_q;
     chie_pkg::req_opcode_e               mshr_dn_cmo_op_s1_q[0:`MSHR_ENTRIES_NUM-1];
@@ -382,6 +389,14 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_mem_cmo_sent_sx_q;
     // The entry's write went to the Subordinate as a WriteNoSnpZero, which takes no data.
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_zero_dn_sent_sx_q;
+    // SS2.3.4 Alt 3b1 (p.2-72): a StashOnceSep's Comp, sent apart from its StashDone.
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sd_comp_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_sd_comp_sent_sx_q;
+    // SS2.6.2 step 4 (p.2-102): a persistent CMO's Comp or CompCMO, sent apart from its Persist.
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_ps_half_rdy_sx_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_ps_half_sent_sx_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_ps_half_rdy_set_sx;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_txrsp_won_entry_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_owed_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_cw_rdy_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_tagmatch_owed_sx_q;
@@ -828,6 +843,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                           mshr_txreq_cmo_sep_sx1;
     wire                           mshr_txreq_zero_sx1;
     wire                           mshr_txreq_cw_sx1;
+    wire                           mshr_txreq_atm_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_cw_merge_sent_sx;
     wire                           mshr_txrsp_persist_rsp_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_busy_clr_sx;
@@ -1633,10 +1649,25 @@ module hnf_mshr_ctl `HNF_PARAM
             end
 
             always_ff @(posedge clk)begin : mshr_cw_merge_s1_q_timing_logic
-                if(mshr_req_clr_sx1[entry] == 1'b1)
+                if(mshr_req_clr_sx1[entry] == 1'b1) begin
                     mshr_cw_merge_s1_q[entry] <= 1'b0;
-                else if(mshr_req_set_s0[entry] == 1'b1)
+                    mshr_atm_fwd_s1_q[entry]  <= 1'b0;
+                end
+                else if(mshr_req_set_s0[entry] == 1'b1) begin
                     mshr_cw_merge_s1_q[entry] <= li_mshr_rxreq_cw_merge_s0;
+                    mshr_atm_fwd_s1_q[entry]  <= li_mshr_rxreq_atm_fwd_s0;
+                end
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_atm_fwd_rd_done_sx_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_atm_fwd_rd_done_sx_q[entry] <= 1'b0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_atm_fwd_rd_done_sx_q[entry] <= 1'b0;
+                else if(mshr_dat_to_rn_s1[entry] & mshr_atm_fwd_s1_q[entry])
+                    mshr_atm_fwd_rd_done_sx_q[entry] <= 1'b1;
                 else
                     ;
             end
@@ -1852,7 +1883,7 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_alloc_snp_s1        = (mshr_can_alloc_entry_s1_q) & (mshr_ro_s1_q | mshr_roinv_s1_q | mshr_rdnosd_s1_q | mshr_ru_s1_q | mshr_rc_s1_q | mshr_wu_s1_q | mshr_mu_s1_q | mshr_cu_s1_q | mshr_evi_s1_q | mshr_cs_s1_q | mshr_ci_s1_q | mshr_seq_snp_s1 | mshr_snpq_snp_s1);
     assign mshr_alloc_memrd_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_rdnosnp_s1_q);
     assign mshr_alloc_memwr_s1      = (mshr_can_alloc_entry_s1_q) & (mshr_wrnosnp_s1_q | (mshr_wu_s1_q & ~mshr_wup_s1_q & ~mshr_memattr_allocate_s1 & ~mshr_wuf_seq));
-    assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
+    assign mshr_alloc_datbuf_sn_s1  = (mshr_can_alloc_entry_s1_q) & ((({`MSHR_ENTRIES_NUM{mshr_excl_or_owo}} | mshr_wrzero_s1_q | mshr_atm_fwd_s1_q) & mshr_wrnosnp_s1_q) | (mshr_wc_s1_q) | ((mshr_wb_s1_q) & ~mshr_memattr_allocate_s1) | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & ({`MSHR_ENTRIES_NUM{mshr_order_owo}} | mshr_wrzero_s1_q | mshr_wuf_seq)));
     // Sec 4.2.2 (p.4-171, MUST) has a persistent CMO's completion reach the Point of
     // Persistence first, a CMO this Home passes on completes on the Subordinate's Comp,
     // and one owed a CompPersist answers with that -- each on the deferred slot instead of here.
@@ -1873,7 +1904,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 4.2.3 (p.4-176, MUST): DWT "is never permitted" for a Write Zero, whose
     // line the Home sources itself -- so it relays that line downstream and holds
     // the buffer entry until it has, the way an Exclusive or OWO write does.
-    assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & mshr_wuf_tags_free)) & ~mshr_wrzero_s1_q & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
+    assign mshr_alloc_dwt_s1        = (mshr_can_alloc_entry_s1_q) & ((mshr_wrnosnp_s1_q | (mshr_wuf_s1_q & ~mshr_memattr_allocate_s1 & mshr_wuf_tags_free)) & ~mshr_wrzero_s1_q & ~mshr_atm_fwd_s1_q & ~{`MSHR_ENTRIES_NUM{mshr_order_owo}} & ~{`MSHR_ENTRIES_NUM{mshr_request_excl}});
 
     //************************************************************************//
 
@@ -2172,6 +2203,7 @@ module hnf_mshr_ctl `HNF_PARAM
                                                       (mshr_size_s1_q[entry] != chie_pkg::SIZE_64B))) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
                                                     (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & !mshr_dct_s1_q[entry] &
                                                     (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
+                                                     (mshr_atm_fwd_s1_q[entry] & mshr_atomicrd_s1_q[entry]) |
                                                      (mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry])));
             assign mshr_new_dat_l3fill_s1[entry] = (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry]) & (((mshr_wb_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]) |
                                                     mshr_we_s1_q[entry])) |
@@ -2938,7 +2970,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // Sec 4.5.1 (p.4-199) lets a Subordinate combine Comp with the DBID grant,
             // so a Comp can arrive before the Home has sent a byte. Sec 2.5.2 (p.2-87,
             // MUST) keeps the TxnID taken until the write is really done.
-            assign mshr_mem_wr_busy_clr_sx[entry]    = (mshr_get_comp_s1_q[entry] & (~mshr_sn_data_busy_sx_q[entry]));
+            assign mshr_mem_wr_busy_clr_sx[entry]    = ((mshr_get_comp_s1_q[entry] | mshr_atm_fwd_rd_done_sx_q[entry]) & (~mshr_sn_data_busy_sx_q[entry]));
             assign mshr_mem_rd_rdy_set_sx[entry]     = (mshr_alloc_memrd_s1[entry] && txreq_mshr_bypass_lost_s1) ||
                    (mshr_l3_memrd_sx7[entry]) ||
                    (mshr_snp_memrd_s1[entry]) ||
@@ -3050,11 +3082,11 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_rd_receipt_rdy_clr_s2[entry] = (mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1);
             assign mshr_comp_rdy_set_s2[entry]       = (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) & mshr_get_comp_s1_q[entry] & mshr_dwt_s2_q[entry] & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_comp_entry_vec_s1_q[entry] | mshr_wuf_neednosnp_vec_sx8_q[entry])) ||
                    (mshr_wu_s1_q[entry] & ~mshr_atomicrd_s1_q[entry] & ~mshr_dwt_s2_q[entry] & (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx7[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry] & ~l3_sfhit_sx7_q & l3_rd_busy_s2_q[entry]))) ||
-                   ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry] | mshr_we_s1_q[entry] | (mshr_wrnosnp_s1_q[entry] & ~mshr_wrzero_s1_q[entry])) & mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1 & (~mshr_dwt_s2_q[entry])) ||
+                   ((mshr_wb_s1_q[entry] | mshr_wc_s1_q[entry] | mshr_we_s1_q[entry] | (mshr_wrnosnp_s1_q[entry] & ~mshr_wrzero_s1_q[entry] & ~mshr_atm_fwd_s1_q[entry])) & mshr_alloc_comp_s1[entry] & txrsp_mshr_bypass_lost_s1 & (~mshr_dwt_s2_q[entry])) ||
                    // A Write Zero owes its Comp on the Subordinate's, not at allocation:
                    // it sources its own line, so the arm above -- which releases the
                    // Comp with the grant -- would answer twice.
-                   ((mshr_wrnosnp_s1_q[entry]) & (mshr_get_comp_s1_q[entry]) & mshr_comp_entry_vec_s1_q[entry] & (mshr_dwt_s2_q[entry] | mshr_wrzero_s1_q[entry])) ||
+                   ((mshr_wrnosnp_s1_q[entry]) & (mshr_get_comp_s1_q[entry]) & mshr_comp_entry_vec_s1_q[entry] & (mshr_dwt_s2_q[entry] | mshr_wrzero_s1_q[entry] | mshr_atm_fwd_s1_q[entry])) ||
                    ((mshr_cu_s1_q[entry] | mshr_cs_comp_s1[entry] | mshr_ci_comp_s1[entry] | mshr_mu_s1_q[entry] | mshr_evi_s1_q[entry]) & (mshr_neednosnp_sx7[entry] | mshr_snp_getall_s1[entry]) & (mshr_snprsp_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | (mshr_l3_entry_vec_sx7[entry] & ~mshr_stash_pull_issued_sx_q[entry]))) ||
                    (mshr_cu_s1_q[entry] & excl_fail_s1 & mshr_can_alloc_entry_s1_q[entry]) ||
                    (mshr_err_s1_q[entry] & ~mshr_errrd_s1_q[entry] & ~mshr_errwrdat_s1_q[entry] & mshr_can_alloc_entry_s1_q[entry]) ||
@@ -3522,7 +3554,7 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_datbuf_busy_sx[entry]   = mshr_rn_data_busy_sx_q[entry] | mshr_sn_data_busy_sx_q[entry];
             assign mshr_rsp_busy_wr_sx[entry]   = mshr_comp_busy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry];
             assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry] |
-                   mshr_tagmatch_owed_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry];
+                   mshr_tagmatch_owed_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry] | mshr_sd_comp_rdy_sx_q[entry] | mshr_ps_half_rdy_sx_q[entry];
             // Sec 4.2.4 (p.4-183): a receiver that separates the two legs must order
             // "the CMO request ... behind the write", and Sec 2.3.2 (p.2-58) lets the
             // Home wait for the write before returning CompCMO. Armed at the one
@@ -3544,7 +3576,8 @@ module hnf_mshr_ctl `HNF_PARAM
             // The CompCMO owns the slot where an entry owes both, so the two sent
             // terms name disjoint cycles and neither clears the other's debt.
             assign mshr_tagmatch_win_sx[entry]  = mshr_tagmatch_rdy_sx_q[entry] & ~mshr_cw_rdy_sx_q[entry] &
-                   ~mshr_comp_rdy_s2_q[entry] & ~mshr_dbid_rdy_s2_q[entry] & ~mshr_rd_receipt_rdy_s2_q[entry];
+                   ~mshr_comp_rdy_s2_q[entry] & ~mshr_dbid_rdy_s2_q[entry] & ~mshr_rd_receipt_rdy_s2_q[entry] &
+                   ~mshr_sd_comp_rdy_sx_q[entry] & ~mshr_ps_half_rdy_sx_q[entry];
             assign mshr_tagmatch_sent_sx[entry] = mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1 & mshr_tagmatch_win_sx[entry];
             assign mshr_txdat_rdy_sx[entry]     = mshr_txdat_rn_rdy_sx_q[entry] | mshr_txdat_sn_rdy_sx_q[entry];
             // SS2.5.2 (p.2-87, MUST): one entry is one downstream TxnID, so a read and a
@@ -3552,7 +3585,60 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_txreq_rdy_sx[entry]     = (mshr_mem_rd_rdy_sx_q[entry] & ~mshr_dn_wr_sent_sx[entry]) |
                                                   (mshr_mem_wr_rdy_sx_q[entry] & ~mshr_dn_rd_sent_sx[entry]) | mshr_mem_cmo_rdy_sx_q[entry];
             assign mshr_pipeline_rdy_sx[entry]  = l3_rd_rdy_s2_q[entry] | l3_fill_rdy_s2_q[entry];
-            assign mshr_txrsp_rdy_sx[entry]     = mshr_comp_rdy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry] | mshr_cw_rdy_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry];
+            assign mshr_txrsp_rdy_sx[entry]     = mshr_comp_rdy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry] | mshr_cw_rdy_sx_q[entry] | mshr_tagmatch_rdy_sx_q[entry] |
+                                                  mshr_sd_comp_rdy_sx_q[entry] | mshr_ps_half_rdy_sx_q[entry];
+            assign mshr_txrsp_won_entry_sx[entry] = mshr_txrsp_entry_vec_sx1[entry] & txrsp_mshr_won_sx1;
+            // SS7.3 (p.7-297): a StashOnceSep's Comp needs only the guarantee of no RetryAck,
+            // which allocation gave, so it goes as the Stash snoop does and StashDone follows
+            // the Snoop response. With no Stash snoop sent the two still go as CompStashDone.
+            // A win clears every ready bit of the entry; the opcode select below then sends
+            // the combined form where both halves are ready at once.
+            always_ff @(posedge clk or posedge rst) begin : mshr_sd_comp_timing_logic
+                if (rst == 1'b1) begin
+                    mshr_sd_comp_rdy_sx_q[entry]  <= 1'b0;
+                    mshr_sd_comp_sent_sx_q[entry] <= 1'b0;
+                end
+                else if (mshr_can_retire_entry_sx1[entry]) begin
+                    mshr_sd_comp_rdy_sx_q[entry]  <= 1'b0;
+                    mshr_sd_comp_sent_sx_q[entry] <= 1'b0;
+                end
+                else begin
+                    if (mshr_txrsp_won_entry_sx[entry])
+                        mshr_sd_comp_rdy_sx_q[entry]  <= 1'b0;
+                    else if (mshr_stash_sep_s1_q[entry] & mshr_txsnp_rdy_clr_sx[entry] & mshr_txsnp_rdy_sx_q[entry] &
+                             ~mshr_sd_comp_sent_sx_q[entry] & ~mshr_comp_rdy_s2_q[entry])
+                        mshr_sd_comp_rdy_sx_q[entry]  <= 1'b1;
+                    if (mshr_txrsp_won_entry_sx[entry] & mshr_sd_comp_rdy_sx_q[entry] & ~mshr_comp_rdy_s2_q[entry])
+                        mshr_sd_comp_sent_sx_q[entry] <= 1'b1;
+                end
+            end
+            // SS2.6.2 step 4 (p.2-102): the Comp or CompCMO of a persistent CMO goes once only the
+            // downstream CleanSharedPersist is outstanding, and the Persist when that completes;
+            // ready together, they go as CompPersist.
+            assign mshr_ps_half_rdy_set_sx[entry] = mshr_cw_owed_sx_q[entry] & mshr_persist_rsp_s1_q[entry] & mshr_dn_cmo_s1_q[entry] &
+                   ~mshr_cw_merge_s1_q[entry] & mshr_mem_cmo_sent_sx_q[entry] & mshr_mem_cmo_busy_sx_q[entry] &
+                   ~mshr_ps_half_sent_sx_q[entry] & ~mshr_ps_half_rdy_sx_q[entry] & ~mshr_cw_rdy_sx_q[entry] &
+                   mshr_entry_valid_sx_q[entry] & ~sleep_sx_q[entry] &
+                   ~(mshr_pipeline_busy_sx[entry] | mshr_mem_rd_busy_sx_q[entry] | mshr_mem_wr_busy_sx_q[entry] | mshr_datbuf_busy_sx[entry] |
+                     mshr_rsp_busy_wr_sx[entry] | mshr_snp_busy_sx_q[entry] | mshr_compack_busy_sx_q[entry]);
+            always_ff @(posedge clk or posedge rst) begin : mshr_ps_half_timing_logic
+                if (rst == 1'b1) begin
+                    mshr_ps_half_rdy_sx_q[entry]  <= 1'b0;
+                    mshr_ps_half_sent_sx_q[entry] <= 1'b0;
+                end
+                else if (mshr_can_retire_entry_sx1[entry]) begin
+                    mshr_ps_half_rdy_sx_q[entry]  <= 1'b0;
+                    mshr_ps_half_sent_sx_q[entry] <= 1'b0;
+                end
+                else begin
+                    if (mshr_txrsp_won_entry_sx[entry])
+                        mshr_ps_half_rdy_sx_q[entry]  <= 1'b0;
+                    else if (mshr_ps_half_rdy_set_sx[entry])
+                        mshr_ps_half_rdy_sx_q[entry]  <= 1'b1;
+                    if (mshr_txrsp_won_entry_sx[entry] & mshr_ps_half_rdy_sx_q[entry] & ~mshr_cw_rdy_sx_q[entry])
+                        mshr_ps_half_sent_sx_q[entry] <= 1'b1;
+                end
+            end
             // mshr_stash_pull_busy_sx_q is its own term rather than a claim on the data
             // buffer or the CompAck: SS7.3 (p.7-297) lets the Stash request's own Comp go
             // out before the Snoop response, so the entry would otherwise read as idle
@@ -4132,7 +4218,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // SS16.2.2 (p.16-475): a Combined Write passed on as one (Table 4-18 p.4-182).
     assign mshr_txreq_cw_sx1          = ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1 & ~mshr_txreq_evict_wr_sx1 & ~mshr_txreq_icn_wr_sx1 &
                                         mshr_cw_merge_s1_q[mshr_txreq_entry_idx_sx1];
+    // SS16.3.2 (p.16-479): an Atomic passed on as itself (Table 4-22 p.4-188).
+    assign mshr_txreq_atm_sx1         = ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1 & ~mshr_txreq_evict_wr_sx1 & ~mshr_txreq_icn_wr_sx1 &
+                                        mshr_atm_fwd_s1_q[mshr_txreq_entry_idx_sx1];
+    assign mshr_txreq_endian_sx1      = mshr_txreq_atm_sx1 & mshr_endian_s1_q[mshr_txreq_entry_idx_sx1];
     assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?mshr_dn_cmo_op_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_zero_sx1?chie_pkg::REQ_WRITENOSNPZERO:
+                                        mshr_txreq_atm_sx1?mshr_atomic_op_s1_q[mshr_txreq_entry_idx_sx1]:
                                         mshr_txreq_cw_sx1?opennoc_hnf_pkg::hnf_dn_combined_of(mshr_dn_cmo_op_s1_q[mshr_txreq_entry_idx_sx1],
                                                           (mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])):
                                         (mshr_txreq_is_rd_sx1?(mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
@@ -4266,9 +4357,12 @@ module hnf_mshr_ctl `HNF_PARAM
     // Sec 2.6.2 step 4 (p.2-102) lets the Home "send a combined CompPersist response
     // to the Requester, instead of separate Comp and Persist responses".
     assign mshr_txrsp_persist_rsp_sx1 = mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q] & mshr_persist_rsp_s1_q[mshr_txrsp_idx_sx1_q];
-    assign mshr_txrsp_opcode_sx1   = mshr_txrsp_persist_rsp_sx1?chie_pkg::RSP_COMPPERSIST:
+    assign mshr_txrsp_opcode_sx1   = mshr_txrsp_persist_rsp_sx1?(mshr_ps_half_sent_sx_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_PERSIST:chie_pkg::RSP_COMPPERSIST):
+                                     mshr_ps_half_rdy_sx_q[mshr_txrsp_idx_sx1_q]?
+                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):
                                      mshr_cw_rdy_sx_q[mshr_txrsp_idx_sx1_q]?
-                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_sep_rd_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPSTASHDONE:chie_pkg::RSP_COMP):(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:
+                                      (mshr_cw_s1_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMPCMO:chie_pkg::RSP_COMP):(mshr_rd_receipt_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_sep_rd_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_RESPSEPDATA:chie_pkg::RSP_READRECEIPT):(mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q] & mshr_dbid_rdy_s2_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_COMPDBIDRESP:mshr_comp_rdy_s2_q[mshr_txrsp_idx_sx1_q]?(mshr_stash_sep_s1_q[mshr_txrsp_idx_sx1_q]?(mshr_sd_comp_sent_sx_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_STASHDONE:chie_pkg::RSP_COMPSTASHDONE):chie_pkg::RSP_COMP):
+                                     mshr_sd_comp_rdy_sx_q[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_COMP:(mshr_tagmatch_win_sx[mshr_txrsp_idx_sx1_q]?chie_pkg::RSP_TAGMATCH:
                                       (opennoc_hnf_pkg::hnf_ordered(mshr_order_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RSP_DBIDRESPORD:chie_pkg::RSP_DBIDRESP)));
     // Sec 9.1 (p.9-334): NDERR for "an attempt to use a transaction type that is not
     // supported", which Sec 9.4.4 (p.9-342, MUST) makes a Non-data Error -- the
@@ -4285,7 +4379,8 @@ module hnf_mshr_ctl `HNF_PARAM
     // SS12.11.1 (p.12-386, MUST): TagMatch Resp is Fail for memory without MTE (SS12.11.3
     // p.12-387), Pass where the match was not performed, else accurate; Table 13-35
     // (p.13-437) reads Resp[0]=1 as Pass.
-    assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
+    assign mshr_txrsp_resp_sx1     = (mshr_txrsp_opcode_sx1 inside {chie_pkg::RSP_PERSIST, chie_pkg::RSP_STASHDONE}) ? chie_pkg::RESP_I :
+                                     (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH)
                                    ? (((dbf_mshr_tagmatch_pass_sx[mshr_txrsp_idx_sx1_q] | mshr_excl_fail_s2_q[mshr_txrsp_idx_sx1_q]) &
                                        mshr_mte_mem[mshr_txrsp_idx_sx1_q]) ? chie_pkg::RESP_SC : chie_pkg::RESP_I) :
                                      ((mshr_cu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_mu_s1_q[mshr_txrsp_idx_sx1_q] | mshr_cs_s1_q[mshr_txrsp_idx_sx1_q])?chie_pkg::RESP_UC_UD:chie_pkg::RESP_I);
@@ -4297,7 +4392,9 @@ module hnf_mshr_ctl `HNF_PARAM
     // CompStashDone's StashGroupID, like CompPersist's PGroupID, from the request's LPID bits.
     assign mshr_txrsp_dbid_sx1     = (mshr_txrsp_persist_rsp_sx1 ||
                                       (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_TAGMATCH) ||
-                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_COMPSTASHDONE))
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_COMPSTASHDONE) ||
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_PERSIST) ||
+                                      (mshr_txrsp_opcode_sx1 == chie_pkg::RSP_STASHDONE))
                                    ? {4'd0, mshr_pgroupid_s1_q[mshr_txrsp_idx_sx1_q]}
                                    : mshr_dwt_s2_q[mshr_txrsp_idx_sx1_q]
                                    ? mshr_dwt_dbid_s1_q[mshr_txrsp_idx_sx1_q]
@@ -4649,8 +4746,11 @@ module hnf_mshr_ctl `HNF_PARAM
                               mshr_atomicrd_s1_q[mshr_dbf_rd_idx_sx1_q];
         for (int unsigned b = 0; b < `CACHE_BE_WIDTH; b = b + 1)
             mshr_dbf_rd_atm_be_sx1[b] = (b >= atm_off) & (b < atm_off + atm_len);
+        // SS4.2.5 (p.4-187): the outbound operand of an Atomic passed on is its whole Size.
+        mshr_dbf_rd_atm_fwd_sx1 = mshr_dbf_rd_valid_sx1_q & ~mshr_dbf_rd_to_rn_sx1_q &
+                                  mshr_atm_fwd_s1_q[mshr_dbf_rd_idx_sx1_q];
         mshr_dbf_rd_atm_pe_sx1 = chie_pkg::pkt_mask(mshr_addr_s1_q[mshr_dbf_rd_idx_sx1_q][`CACHE_BLOCK_OFFSET-1:0],
-                                                    chie_pkg::SIZE_1B);
+                                                    mshr_dbf_rd_atm_fwd_sx1 ? mshr_size_s1_q[mshr_dbf_rd_idx_sx1_q] : chie_pkg::SIZE_1B);
     end
 
     // Sec 2.10.4 (p.2-136): the packets a read owes follow its Size and the data
