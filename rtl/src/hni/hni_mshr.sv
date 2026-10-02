@@ -539,8 +539,10 @@ module hni_mshr `HNI_PARAM
     // Sec 2.3.1 alternative 2 (p.2-46): a Home may answer a read with separate RespSepData
     // and DataSepResp, but "cannot ... if the request has an ordering requirement and a
     // completion acknowledge is not required". With HNI_SEP_RESP_EN_PARAM an unordered
-    // ReadNoSnp takes it; an ordered one keeps ReadReceipt and CompData.
-    assign rxreq_sep_s0         = HNI_SEP_RESP_EN_PARAM && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP) && (rxreq_order_s0 == 2'b00);
+    // ReadNoSnp takes it; an ordered one keeps ReadReceipt and CompData, and so does an
+    // Exclusive one, since Table 9-3 (p.9-338) gives neither separate response EXOK.
+    assign rxreq_sep_s0         = HNI_SEP_RESP_EN_PARAM && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP) && (rxreq_order_s0 == 2'b00)
+                                  && (~rxreq_excl_s0);
     assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? (rxreq_sep_s0 ? chie_pkg::RSP_RESPSEPDATA : chie_pkg::RSP_READRECEIPT)
                                 : (rxreq_errdat_s0 | rxreq_atm_s0) ? ((rxreq_atm_s0 & rxreq_grant_ord_s0) ? chie_pkg::RSP_DBIDRESPORD
                                                                                                            : chie_pkg::RSP_DBIDRESP)
@@ -1865,8 +1867,10 @@ module hni_mshr `HNI_PARAM
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign compack_ok_sx[entry]     = rxrsp_compack_s1_q[entry]|rxdat_compack_s1_q[entry];
             assign txdat_done_sx[entry]     = ((txdat_sent_sx_q[entry] & rxreq_txpkts_s1_q[entry]) == rxreq_txpkts_s1_q[entry]);
+            // The queued second response reads the entry's fields when it is sent, so the
+            // entry is held until it goes: a Combined Write's and a CleanSharedPersistSep's.
             assign txrsp_all_sent_sx[entry] = txrsp_sent_q[entry]
-                                            & (~(rxreq_cw_s1_q[entry] & (~txrsp_second_sent_q[entry])))
+                                            & (~((rxreq_cw_s1_q[entry] | rxreq_cmopsep_s1_q[entry]) & (~txrsp_second_sent_q[entry])))
                                             & (~(rxreq_comp_owed_s1_q[entry] & (~txrsp_comp_sent_q[entry])))
                                             & (~(rxreq_tagmatch_s1_q[entry] & (~txrsp_tm_sent_q[entry])));
             // Sec 4.5.1 (p.4-197): PrefetchTgt and PCrdReturn are owed no response, so

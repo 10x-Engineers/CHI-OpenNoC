@@ -164,8 +164,9 @@ module hni_txrsp `HNI_PARAM
 
     //fp readreceipt
     // Sec 2.3.1 alternative 2 (p.2-46): with HNI_SEP_RESP_EN_PARAM an unordered ReadNoSnp
-    // takes RespSepData here, as hni_mshr elects; an ordered one its ReadReceipt.
-    assign rd_sep_s0            = HNI_SEP_RESP_EN_PARAM && (rxreq_order_s0 == 2'b0);
+    // takes RespSepData here, as hni_mshr elects; an ordered or Exclusive one its ReadReceipt
+    // or nothing (Table 9-3, p.9-338: no EXOK in either separate response).
+    assign rd_sep_s0            = HNI_SEP_RESP_EN_PARAM && (rxreq_order_s0 == 2'b0) && (~rxreq_excl_s0);
     assign rd_receipt_s0        = (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP)&&((rxreq_order_s0 != 2'b0)||rd_sep_s0)&&rxreq_alloc_en_s0;
 
     //fp write grant
