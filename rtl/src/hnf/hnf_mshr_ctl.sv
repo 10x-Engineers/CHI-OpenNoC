@@ -4207,7 +4207,8 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_returnnid_sx1   = mshr_txreq_cmo_sep_sx1 ? mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]
                                       : mshr_txreq_is_cmo_sx1 ? '0
                                       : (mshr_txreq_fwd_sx1?mshr_srcid_s1_q[mshr_txreq_entry_idx_sx1]:HNF_NID_PARAM[chie_pkg::NID_WIDTH-1:0]);
-    assign mshr_txreq_returntxnid_sx1 = (mshr_txreq_is_cmo_sx1 | (mshr_txreq_cmo_sep_sx1 & ~mshr_txreq_fwd_sx1)) ? '0
+    // Table A-5 (p.A-486): a WriteNoSnpZero takes no DWT, so its ReturnTxnID is 0 (inapplicable).
+    assign mshr_txreq_returntxnid_sx1 = (mshr_txreq_is_cmo_sx1 | mshr_txreq_zero_sx1 | (mshr_txreq_cmo_sep_sx1 & ~mshr_txreq_fwd_sx1)) ? '0
                                       : (mshr_txreq_fwd_sx1?mshr_txnid_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_txnid_sx1_q);
     // Sec 2.10.3 (p.2-135, MUST): a WriteNoSnpFull must assert every byte enable, so
     // a write-back whose only source was a partial Snoop response is Ptl.
