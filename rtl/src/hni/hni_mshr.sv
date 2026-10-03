@@ -177,6 +177,8 @@ module hni_mshr `HNI_PARAM
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_atm_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       atm_wr_issued_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cwpersist_s1_q;
+    // A standalone CleanSharedPersistSep: Comp first, then Persist on the queued slot.
+    logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_cmopsep_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_rsp1_owed_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_comp_owed_s1_q;
     logic [`HNI_MSHR_ENTRIES_NUM-1:0]       rxreq_tagmatch_s1_q;
@@ -326,6 +328,7 @@ module hni_mshr `HNI_PARAM
     wire                                   rxreq_stashsep_s0;
     wire                                   rxreq_stashonce_s0;
     wire                                   rxreq_rdshape_s0;
+    wire                                   rxreq_sep_s0;
     wire                                   rxreq_rsp1_owed_s0;
     chie_pkg::rsp_opcode_e                 rxreq_rsp1_opcode_s0;
     wire [`AXI4_AWSIZE_WIDTH-1:0]          rxreq_axsize_s0;
@@ -504,7 +507,7 @@ module hni_mshr `HNI_PARAM
     // completion rides on the data. Everything else owes an RSP up front.
     assign rxreq_rdshape_s0    = rxreq_rd_s0 | rxreq_errrd_s0;
     assign rxreq_rsp1_owed_s0  = rxreq_alloc_en_s0 && (~rxreq_drop_s0)
-                              && (rxreq_rdshape_s0 ? (rxreq_order_s0 != 2'b00) : 1'b1);
+                              && (rxreq_rdshape_s0 ? ((rxreq_order_s0 != 2'b00) | rxreq_sep_s0) : 1'b1);
     // Table 9-9 (p.9-342) gives AtomicLoad/Swap/Compare no CompDBIDResp, so those take
     // the split grant and carry their error on CompData.
     // Sec 2.9.3 (p.2-126): a write completion may come "from an intermediate point in
@@ -513,6 +516,7 @@ module hni_mshr `HNI_PARAM
     // this Home has issued the AXI access; with EWA deasserted the write owes the
     // split DBIDResp, and a Comp released on the endpoint's own B response.
     assign rxreq_wrgrant_s0     = rxreq_wrf_s0 | rxreq_wrp_s0 | rxreq_errwr_s0;
+    wire   rxreq_grant_ord_s0;
     // Sec 12.11.3 (p.12-387, MUST): with no Allocation Tag here, a TagOp Match write
     // or Atomic is still owed a TagMatch, reporting Fail. Table 12-2 (p.12-388) gives
     // Match to the standalone WriteNoSnp/WriteUnique forms and the Atomics alone.
@@ -528,11 +532,26 @@ module hni_mshr `HNI_PARAM
     assign rxreq_comp_owed_s0   = rxreq_rsp1_owed_s0 && (~rxreq_rdshape_s0)
                                && ((~rxreq_errdat_s0 && rxreq_wrgrant_s0 && ((~rxreq_ewa_s0) | rxreq_dvm_s0))
                                    | (rxreq_atm_s0 & ~rxreq_atomicdat_s0));
-    assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? chie_pkg::RSP_READRECEIPT
-                                : (rxreq_errdat_s0 | rxreq_atm_s0) ? chie_pkg::RSP_DBIDRESP
+    // Sec 2.8.5 (p.2-120): DBIDRespOrd also orders every later same-address request from the
+    // source behind this one; the AXI-ID sleep chain below orders every request of a region,
+    // so an ordered write or Atomic is granted with it. It is not permitted for DVMOp.
+    assign rxreq_grant_ord_s0   = (rxreq_order_s0 inside {chie_pkg::ORDER_REQ_WR_OBS, chie_pkg::ORDER_END_POINT}) & ~rxreq_dvm_s0;
+    // Sec 2.3.1 alternative 2 (p.2-46): a Home may answer a read with separate RespSepData
+    // and DataSepResp, but "cannot ... if the request has an ordering requirement and a
+    // completion acknowledge is not required". With HNI_SEP_RESP_EN_PARAM an unordered
+    // ReadNoSnp takes it; an ordered one keeps ReadReceipt and CompData, and so does an
+    // Exclusive one, since Table 9-3 (p.9-338) gives neither separate response EXOK.
+    assign rxreq_sep_s0         = HNI_SEP_RESP_EN_PARAM && (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP) && (rxreq_order_s0 == 2'b00)
+                                  && (~rxreq_excl_s0);
+    assign rxreq_rsp1_opcode_s0 = rxreq_rdshape_s0 ? (rxreq_sep_s0 ? chie_pkg::RSP_RESPSEPDATA : chie_pkg::RSP_READRECEIPT)
+                                : (rxreq_errdat_s0 | rxreq_atm_s0) ? ((rxreq_atm_s0 & rxreq_grant_ord_s0) ? chie_pkg::RSP_DBIDRESPORD
+                                                                                                           : chie_pkg::RSP_DBIDRESP)
                                 : rxreq_wrgrant_s0 ? ((rxreq_ewa_s0 & ~rxreq_dvm_s0) ? chie_pkg::RSP_COMPDBIDRESP
+                                                                  : rxreq_grant_ord_s0 ? chie_pkg::RSP_DBIDRESPORD
                                                                   : chie_pkg::RSP_DBIDRESP)
-                                : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMPPERSIST
+                                // Sec 2.6.2 step 4 (p.2-102): a CleanSharedPersistSep is answered Comp
+                                // and then Persist; a Combined Write's persistent leg stays CompPersist.
+                                : (rxreq_cmo_s0 & rxreq_cmopersist_s0) ? chie_pkg::RSP_COMP
                                 : rxreq_stashsep_s0 ? chie_pkg::RSP_COMPSTASHDONE
                                 : chie_pkg::RSP_COMP;
 
@@ -626,6 +645,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_cb_s1_q[entry]         <= 1'b0;
                     rxreq_atm_s1_q[entry]        <= 1'b0;
                     rxreq_cwpersist_s1_q[entry]  <= 1'b0;
+                    rxreq_cmopsep_s1_q[entry]    <= 1'b0;
                     rxreq_rsp1_owed_s1_q[entry]  <= 1'b0;
                     rxreq_comp_owed_s1_q[entry]  <= 1'b0;
                     rxreq_tagmatch_s1_q[entry]   <= 1'b0;
@@ -641,6 +661,7 @@ module hni_mshr `HNI_PARAM
                     rxreq_cb_s1_q[entry]         <= rxreq_cb_s0;
                     rxreq_atm_s1_q[entry]        <= rxreq_atm_s0;
                     rxreq_cwpersist_s1_q[entry]  <= rxreq_cwpersist_s0;
+                    rxreq_cmopsep_s1_q[entry]    <= rxreq_cmo_s0 & rxreq_cmopersist_s0;
                     rxreq_rsp1_owed_s1_q[entry]  <= rxreq_rsp1_owed_s0;
                     rxreq_comp_owed_s1_q[entry]  <= rxreq_comp_owed_s0;
                     rxreq_tagmatch_s1_q[entry]   <= rxreq_tagmatch_s0;
@@ -1061,6 +1082,7 @@ module hni_mshr `HNI_PARAM
     assign txrsp_opcode3_sx = txrsp_third_is_comp_sx ? chie_pkg::RSP_COMP
                             : txrsp_third_is_tm_sx ? chie_pkg::RSP_TAGMATCH
                             : rxreq_cwpersist_s1_q[txrsp_third_idx_sx] ? chie_pkg::RSP_COMPPERSIST
+                            : rxreq_cmopsep_s1_q[txrsp_third_idx_sx] ? chie_pkg::RSP_PERSIST
                             : chie_pkg::RSP_COMPCMO;
 
     assign txrsp_third_vec_sx = txrsp_third_is_comp_sx ? txrsp_comp_rdy_sx
@@ -1167,9 +1189,9 @@ module hni_mshr `HNI_PARAM
                 if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
                     txrsp_second_pend_q[entry] <= 1'b0;
                 else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))
-                    txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry];
+                    txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry] | rxreq_cmopsep_s1_q[entry];
                 else if (txrsp_en2_s1 && (entry == wakeup_idx_sx))
-                    txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry];
+                    txrsp_second_pend_q[entry] <= rxreq_cw_s1_q[entry] | rxreq_cmopsep_s1_q[entry];
                 else if (txrsp_en3_sx && (~txrsp_third_is_comp_sx) && (~txrsp_third_is_tm_sx) && (entry == txrsp_third_idx_sx))
                     txrsp_second_pend_q[entry] <= 1'b0;
             end
@@ -1247,7 +1269,8 @@ module hni_mshr `HNI_PARAM
     assign txrsp_qos_sx      = (rxreq_qos_s1_q[txrsp_entry_idx_s1_q]);
     assign txrsp_tgtid_sx    = (rxreq_srcid_s1_q[txrsp_entry_idx_s1_q]);
     // Table A-8 (p.A-488): TagMatch carries TxnID 0 and its TagGroupID in the DBID bits.
-    assign txrsp_txnid_sx    = (txrsp_opcode_sx == chie_pkg::RSP_TAGMATCH) ? 12'd0 : (rxreq_txnid_s1_q[txrsp_entry_idx_s1_q]);
+    // SS2.6.2 (p.2-102): a TagMatch or Persist carries TxnID zero.
+    assign txrsp_txnid_sx    = (txrsp_opcode_sx inside {chie_pkg::RSP_TAGMATCH, chie_pkg::RSP_PERSIST}) ? 12'd0 : (rxreq_txnid_s1_q[txrsp_entry_idx_s1_q]);
     assign txrsp_opcode_sx   = txrsp_fifo_opcode_s1_q[txrsp_fifo_cnt_sx_q];
     // Table 9-9 (p.9-342) pins DBIDResp to OK and Sec 4.5.4 (p.4-207) pins the
     // ReadReceipt's Resp/RespErr to zero, so only the completion carries the error.
@@ -1256,6 +1279,8 @@ module hni_mshr `HNI_PARAM
                                   | (rxreq_atm_s1_q[txrsp_entry_idx_s1_q] & dbf_rd_err_sx[txrsp_entry_idx_s1_q]))
                                  && (txrsp_opcode_sx == chie_pkg::RSP_COMP)))
                              && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
+                             && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESPORD)
+                             && (txrsp_opcode_sx != chie_pkg::RSP_RESPSEPDATA)
                              && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
                              && (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RESP_ERR_NON_DATA
                              : ((txrsp_opcode_sx inside {chie_pkg::RSP_COMPDBIDRESP, chie_pkg::RSP_COMP}) & rxreq_excl_s1_q[txrsp_entry_idx_s1_q] & ((rxreq_excl_pass_s2_q[txrsp_entry_idx_s1_q]) | (excl_pass_s1 & (mshr_entry_idx_alloc_s1_q == txrsp_entry_idx_s1_q))))? chie_pkg::RESP_ERR_EX_OK : chie_pkg::RESP_ERR_NORM_OK;
@@ -1265,7 +1290,7 @@ module hni_mshr `HNI_PARAM
                              ? chie_pkg::RESP_UC_UD : chie_pkg::RESP_I;
     // Sec 13.10: the request's LPID bits carry PGroupID, TagGroupID or StashGroupID, and the
     // response's DBID bits return it; Sec 2.6.2 sets CompStashDone's StashGroupID from the request.
-    assign txrsp_dbid_sx     = (txrsp_opcode_sx inside {chie_pkg::RSP_COMPPERSIST, chie_pkg::RSP_TAGMATCH,
+    assign txrsp_dbid_sx     = (txrsp_opcode_sx inside {chie_pkg::RSP_COMPPERSIST, chie_pkg::RSP_PERSIST, chie_pkg::RSP_TAGMATCH,
                                                         chie_pkg::RSP_COMPSTASHDONE})
                              ? {{(12-8){1'b0}}, rxreq_lpid_s1_q[txrsp_entry_idx_s1_q]}
                              : {{(12-`HNI_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_s1_q};
@@ -1405,7 +1430,8 @@ module hni_mshr `HNI_PARAM
     assign mshr_txdat_en_sx         = txdat_en_sx_q; 
     assign mshr_txdat_dataid_sx     = txdat_fifo_dataid_s1_q[txdat_fifo_cnt_sx_q];
     assign mshr_txdat_txnid_sx      = rxreq_txnid_s1_q[txdat_entry_idx_sx_q];
-    assign mshr_txdat_opcode_sx     = chie_pkg::DAT_COMPDATA;
+    assign mshr_txdat_opcode_sx     = (rxreq_rsp1_opcode_s1_q[txdat_entry_idx_sx_q] == chie_pkg::RSP_RESPSEPDATA)
+                                    ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
     // Sec 3.3.1 (p.3-152): "It is legal for a Snoopable transaction to be targeted at
     // an HN-I ... the HN-I is required to respond to the transaction in a
     // protocol-compliant manner, but coherency is not guaranteed" -- so the
@@ -1841,8 +1867,10 @@ module hni_mshr `HNI_PARAM
         for(entry=0;entry<`HNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
             assign compack_ok_sx[entry]     = rxrsp_compack_s1_q[entry]|rxdat_compack_s1_q[entry];
             assign txdat_done_sx[entry]     = ((txdat_sent_sx_q[entry] & rxreq_txpkts_s1_q[entry]) == rxreq_txpkts_s1_q[entry]);
+            // The queued second response reads the entry's fields when it is sent, so the
+            // entry is held until it goes: a Combined Write's and a CleanSharedPersistSep's.
             assign txrsp_all_sent_sx[entry] = txrsp_sent_q[entry]
-                                            & (~(rxreq_cw_s1_q[entry] & (~txrsp_second_sent_q[entry])))
+                                            & (~((rxreq_cw_s1_q[entry] | rxreq_cmopsep_s1_q[entry]) & (~txrsp_second_sent_q[entry])))
                                             & (~(rxreq_comp_owed_s1_q[entry] & (~txrsp_comp_sent_q[entry])))
                                             & (~(rxreq_tagmatch_s1_q[entry] & (~txrsp_tm_sent_q[entry])));
             // Sec 4.5.1 (p.4-197): PrefetchTgt and PCrdReturn are owed no response, so

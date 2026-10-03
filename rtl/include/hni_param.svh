@@ -37,6 +37,7 @@
      parameter HNI_MSHR_ENTRIES_NUM_PARAM   = 32,    \
      parameter HNI_MSHR_ENTRIES_WIDTH_PARAM = ((HNI_MSHR_ENTRIES_NUM_PARAM > 1) ? $clog2(HNI_MSHR_ENTRIES_NUM_PARAM) : 1), \
      parameter HNI_NODEID_PARAM             = 0,     \
+     parameter HNI_SEP_RESP_EN_PARAM        = 0,     \
      parameter HNI_ADDR_REGION_NUM          = 16,    \
      parameter [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]HNI_ADDR_REGION_LSB[HNI_ADDR_REGION_NUM-1:0] = {44'hf000, 44'he000, 44'hd000, 44'hc000, 44'hb000, 44'ha000, 44'h9000, 44'h8000, 44'h7000, 44'h6000, 44'h5000, 44'h4000, 44'h3000, 44'h2000, 44'h1000, 44'h0000}, \
      parameter [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]HNI_ADDR_REGION_SIZE[HNI_ADDR_REGION_NUM-1:0] = {12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12})
@@ -60,6 +61,7 @@
     .HNI_MSHR_ENTRIES_NUM_PARAM         (HNI_MSHR_ENTRIES_NUM_PARAM        ), \
     .HNI_MSHR_ENTRIES_WIDTH_PARAM       (HNI_MSHR_ENTRIES_WIDTH_PARAM      ), \
     .HNI_NODEID_PARAM                   (HNI_NODEID_PARAM                  ), \
+    .HNI_SEP_RESP_EN_PARAM              (HNI_SEP_RESP_EN_PARAM             ), \
     .HNI_ADDR_REGION_NUM                (HNI_ADDR_REGION_NUM               ), \
     .HNI_ADDR_REGION_LSB                (HNI_ADDR_REGION_LSB               ), \
     .HNI_ADDR_REGION_SIZE               (HNI_ADDR_REGION_SIZE              )  )

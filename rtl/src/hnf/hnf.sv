@@ -37,6 +37,13 @@ module hnf `HNF_PARAM
     // A Snoop another node sent to that Requester is unanswered, e.g. the MN's
     // SYSCO_SNP_PEND; tie LOW where no other node snoops it.
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]        SYSCO_SNP_PEND,
+    // SS16.2 (p.16-474): the broadcast pins of this Home's Subordinate interface, stable
+    // out of reset. That interface is Non-snoopable throughout, so these two alone decide
+    // which CMOs and Combined Writes it issues (SS16.2.2, SS16.2.3 p.16-475).
+    input  wire                                     BROADCASTCACHEMAINTENANCE,
+    input  wire                                     BROADCASTPERSIST,
+    // SS16.2.4 (p.16-476): with BROADCASTATOMIC asserted this Home may pass an Atomic on.
+    input  wire                                     BROADCASTATOMIC,
     output wire                                     TXSACTIVE,
     input  wire                                     RXSACTIVE,
     input  wire                                     RXREQFLITV,
@@ -163,6 +170,7 @@ module hnf `HNF_PARAM
     chie_pkg::memattr_s                      mshr_txreq_memattr_sx1;
     wire                                     mshr_txreq_dodwt_sx1;
     wire                                     mshr_txreq_tracetag_sx1;
+    wire                                     mshr_txreq_endian_sx1  ;
     chie_pkg::mpam_s                         mshr_txreq_mpam_sx1;
     chie_pkg::req_rsvdc_t                    mshr_txreq_rsvdc_sx1;
     wire                                     mshr_txrsp_bypass_valid_s1;
@@ -334,6 +342,7 @@ module hnf `HNF_PARAM
     wire [6:0]                               mshr_dbf_atm_len_s0;
     wire                                     mshr_dbf_atm_end_s0;
     wire                                     mshr_dbf_rd_atm_sx1;
+    wire                                     mshr_dbf_rd_atm_fwd_sx1;
     wire [`CACHE_BE_WIDTH-1:0]               mshr_dbf_rd_atm_be_sx1;
     wire [`HNF_PKTS-1:0]                     mshr_dbf_rd_atm_pe_sx1;
     wire [`HNF_PKTS-1:0]                     mshr_dbf_rd_pe_sx1    ;
@@ -542,6 +551,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_memattr_sx1                       (mshr_txreq_memattr_sx1            ),
                  .mshr_txreq_dodwt_sx1                         (mshr_txreq_dodwt_sx1              ),
                  .mshr_txreq_tracetag_sx1                      (mshr_txreq_tracetag_sx1           ),
+                 .mshr_txreq_endian_sx1                        (mshr_txreq_endian_sx1             ),
                  .mshr_txreq_mpam_sx1                          (mshr_txreq_mpam_sx1               ),
                  .mshr_txreq_rsvdc_sx1                         (mshr_txreq_rsvdc_sx1              ),
                  .txrsp_lcrdv                                  (TXRSPLCRDV                        ),
@@ -700,6 +710,9 @@ module hnf `HNF_PARAM
                  .clk                                          (CLK                               ),
                  .rst                                          (RST                               ),
                  .sysco_snp_gen_en                             (hnf_sysco_snp_gen_en              ),
+                 .bcast_cmo                                    (BROADCASTCACHEMAINTENANCE         ),
+                 .bcast_persist                                (BROADCASTPERSIST                  ),
+                 .bcast_atomic                                 (BROADCASTATOMIC                   ),
                  .li_mshr_rxreq_valid_s0                       (li_mshr_rxreq_valid_s0            ),
                  .li_mshr_rxreq_seq_s0                         (li_mshr_rxreq_seq_s0              ),
                  .li_mshr_rxreq_snpq_s0                        (li_mshr_rxreq_snpq_s0             ),
@@ -851,6 +864,7 @@ module hnf `HNF_PARAM
                  .mshr_dbf_atm_len_s0                          (mshr_dbf_atm_len_s0),
                  .mshr_dbf_atm_end_s0                          (mshr_dbf_atm_end_s0),
                  .mshr_dbf_rd_atm_sx1                          (mshr_dbf_rd_atm_sx1),
+                 .mshr_dbf_rd_atm_fwd_sx1                          (mshr_dbf_rd_atm_fwd_sx1),
                  .mshr_dbf_rd_atm_be_sx1                       (mshr_dbf_rd_atm_be_sx1),
                  .mshr_dbf_rd_atm_pe_sx1                       (mshr_dbf_rd_atm_pe_sx1),
                  .mshr_dbf_rd_pe_sx1                           (mshr_dbf_rd_pe_sx1),
@@ -877,6 +891,7 @@ module hnf `HNF_PARAM
                  .mshr_txreq_memattr_sx1                       (mshr_txreq_memattr_sx1            ),
                  .mshr_txreq_dodwt_sx1                         (mshr_txreq_dodwt_sx1              ),
                  .mshr_txreq_tracetag_sx1                      (mshr_txreq_tracetag_sx1           ),
+                 .mshr_txreq_endian_sx1                        (mshr_txreq_endian_sx1             ),
                  .mshr_txreq_mpam_sx1                          (mshr_txreq_mpam_sx1               ),
                  .mshr_txreq_rsvdc_sx1                         (mshr_txreq_rsvdc_sx1              ),
                  .mshr_txrsp_valid_sx1_q                       (mshr_txrsp_valid_sx1_q            ),
@@ -1022,6 +1037,7 @@ module hnf `HNF_PARAM
                         .mshr_dbf_atm_len_s0                          (mshr_dbf_atm_len_s0),
                         .mshr_dbf_atm_end_s0                          (mshr_dbf_atm_end_s0),
                         .mshr_dbf_rd_atm_sx1                          (mshr_dbf_rd_atm_sx1),
+                        .mshr_dbf_rd_atm_fwd_sx1                          (mshr_dbf_rd_atm_fwd_sx1),
                         .mshr_dbf_rd_atm_be_sx1                       (mshr_dbf_rd_atm_be_sx1),
                         .mshr_dbf_rd_atm_pe_sx1                       (mshr_dbf_rd_atm_pe_sx1),
                         .mshr_dbf_rd_pe_sx1                           (mshr_dbf_rd_pe_sx1),

@@ -146,6 +146,53 @@ package opennoc_hnf_pkg;
     return op == chie_pkg::REQ_CLEANSHAREDPERSIST || chie_pkg::persist_response(op);
   endfunction
 
+  // SS4.2.2 (p.4-171): the CMO this Home sends the Subordinate for op -- the request's own,
+  // or a Combined Write's CMO leg -- and REQ_REQLCRDRETURN for none. SS16.2.2 (p.16-475):
+  // with BROADCASTCACHEMAINTENANCE deasserted no CleanShared, CleanInvalid or MakeInvalid
+  // is issued; SS16.2.3 (p.16-475): with BROADCASTPERSIST deasserted a persistent CMO,
+  // standalone or combined, becomes a CleanShared. A Combined Write's persistent leg is
+  // the CleanSharedPersist this Home answers CompPersist for (SS2.6.2 step 4, p.2-102).
+  // Table 4-18 (p.4-182): the WriteNoSnp Combined Write carrying a write leg of the given
+  // extent and the CMO hnf_dn_cmo_of() chose -- a persistent one as CleanShPerSep.
+  function automatic chie_pkg::req_opcode_e hnf_dn_combined_of(chie_pkg::req_opcode_e cmo, logic ptl);
+    case (cmo)
+      chie_pkg::REQ_CLEANINVALID:       return ptl ? chie_pkg::REQ_WRITENOSNPPTLCLEANINV : chie_pkg::REQ_WRITENOSNPFULLCLEANINV;
+      chie_pkg::REQ_CLEANSHAREDPERSIST: return ptl ? chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP : chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP;
+      default:                          return ptl ? chie_pkg::REQ_WRITENOSNPPTLCLEANSH : chie_pkg::REQ_WRITENOSNPFULLCLEANSH;
+    endcase
+  endfunction
+
+  function automatic chie_pkg::req_opcode_e hnf_dn_cmo_of(chie_pkg::req_opcode_e op, logic bcm, logic bp);
+    chie_pkg::req_opcode_e cmo;
+    case (op)
+      chie_pkg::REQ_CLEANSHARED,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSH,  chie_pkg::REQ_WRITENOSNPPTLCLEANSH,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH, chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSH,   chie_pkg::REQ_WRITECLEANFULLCLEANSH:
+        cmo = chie_pkg::REQ_CLEANSHARED;
+      chie_pkg::REQ_CLEANINVALID,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANINV, chie_pkg::REQ_WRITENOSNPPTLCLEANINV,
+      chie_pkg::REQ_WRITEBACKFULLCLEANINV:
+        cmo = chie_pkg::REQ_CLEANINVALID;
+      chie_pkg::REQ_MAKEINVALID:
+        cmo = chie_pkg::REQ_MAKEINVALID;
+      chie_pkg::REQ_CLEANSHAREDPERSISTSEP:
+        cmo = chie_pkg::REQ_CLEANSHAREDPERSISTSEP;
+      chie_pkg::REQ_CLEANSHAREDPERSIST,
+      chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP,  chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP, chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP,
+      chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP,   chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP:
+        cmo = chie_pkg::REQ_CLEANSHAREDPERSIST;
+      default:
+        return chie_pkg::REQ_REQLCRDRETURN;
+    endcase
+    if (!bp && (cmo inside {chie_pkg::REQ_CLEANSHAREDPERSIST, chie_pkg::REQ_CLEANSHAREDPERSISTSEP}))
+      cmo = chie_pkg::REQ_CLEANSHARED;
+    if (!bcm && (cmo inside {chie_pkg::REQ_CLEANSHARED, chie_pkg::REQ_CLEANINVALID, chie_pkg::REQ_MAKEINVALID}))
+      return chie_pkg::REQ_REQLCRDRETURN;
+    return cmo;
+  endfunction
+
   // Table 2-9 (SS2.8.5 p.2-119): Request Order and Endpoint Order, the two a Requester
   // may ask of this Home.
   function automatic logic hnf_ordered(chie_pkg::order_e order);

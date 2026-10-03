@@ -44,6 +44,7 @@ module hnf_data_buffer `HNF_PARAM
     input  wire [6:0]                         mshr_dbf_atm_len_s0,
     input  wire                               mshr_dbf_atm_end_s0,
     input  wire                               mshr_dbf_rd_atm_sx1,
+    input  wire                               mshr_dbf_rd_atm_fwd_sx1,
     input  wire [`CACHE_BE_WIDTH-1:0]         mshr_dbf_rd_atm_be_sx1,
     input  wire [`HNF_PKTS-1:0]               mshr_dbf_rd_atm_pe_sx1,
     input  wire [`HNF_PKTS-1:0]               mshr_dbf_rd_pe_sx1,
@@ -606,7 +607,10 @@ module hnf_data_buffer `HNF_PARAM
     // (half for AtomicCompare) with "byte enables asserted for all valid data", so
     // its CompData carries that extent and nothing else. dbf_data_q still holds the
     // line as fetched, which is the original value that MUST returns.
-    assign dbf_txdat_be_sx1    = mshr_dbf_rd_atm_sx1 ? (dbf_be_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_atm_be_sx1)
+    // SS4.2.5 (p.4-187): an Atomic passed to the Subordinate carries the Requester's
+    // operand, which is held apart from the line in dbf_atm_data_q.
+    assign dbf_txdat_be_sx1    = mshr_dbf_rd_atm_fwd_sx1 ? dbf_atm_be_q[mshr_dbf_rd_idx_sx1_q] :
+                                 mshr_dbf_rd_atm_sx1 ? (dbf_be_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_atm_be_sx1)
                                                      :  dbf_be_q[mshr_dbf_rd_idx_sx1_q];
 
     generate
@@ -615,10 +619,10 @@ module hnf_data_buffer `HNF_PARAM
         end
     endgenerate
     assign dbf_mshr_be_full_s0 = &temp_li_be;
-    assign dbf_txdat_data_sx1  = dbf_data_q[mshr_dbf_rd_idx_sx1_q];
+    assign dbf_txdat_data_sx1  = mshr_dbf_rd_atm_fwd_sx1 ? dbf_atm_data_q[mshr_dbf_rd_idx_sx1_q] : dbf_data_q[mshr_dbf_rd_idx_sx1_q];
     // Sec 2.10.4 (p.2-136): what the completion owes, intersected with what the
     // buffer actually holds.
-    assign dbf_txdat_pe_sx1    = mshr_dbf_rd_atm_sx1 ? mshr_dbf_rd_atm_pe_sx1
+    assign dbf_txdat_pe_sx1    = (mshr_dbf_rd_atm_sx1 | mshr_dbf_rd_atm_fwd_sx1) ? mshr_dbf_rd_atm_pe_sx1
                                                     : (dbf_pe_q[mshr_dbf_rd_idx_sx1_q] & mshr_dbf_rd_pe_sx1);
     assign dbf_txdat_poison_sx1 = dbf_poison_q[mshr_dbf_rd_idx_sx1_q];
     assign dbf_txdat_tagv_sx1   = dbf_tagv_q[mshr_dbf_rd_idx_sx1_q];

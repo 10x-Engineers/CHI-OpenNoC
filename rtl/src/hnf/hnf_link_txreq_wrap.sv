@@ -69,6 +69,7 @@ module hnf_link_txreq_wrap `HNF_PARAM
     input  chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     input  wire                                mshr_txreq_dodwt_sx1,
     input  wire                                mshr_txreq_tracetag_sx1,
+    input  wire                                mshr_txreq_endian_sx1  ,
     input  chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
     input  chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
 
@@ -180,7 +181,8 @@ module hnf_link_txreq_wrap `HNF_PARAM
         txreqflit_sx1.srcid          = HNF_NID_PARAM;
         txreqflit_sx1.txnid          = mshr_txreq_txnid_sx1_q;
         txreqflit_sx1.returnnid      = mshr_txreq_returnnid_sx1;
-        txreqflit_sx1.stashnidvalid.endian         = '0;
+        // SS13.10.28 (p.13-432): an Atomic passed on keeps the Requester's Endian.
+        txreqflit_sx1.stashnidvalid.endian         = mshr_txreq_endian_sx1;
         txreqflit_sx1.returntxnid    = mshr_txreq_returntxnid_sx1;
         txreqflit_sx1.opcode         = mshr_txreq_opcode_sx1;
         txreqflit_sx1.size           = mshr_txreq_size_sx1;

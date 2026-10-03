@@ -25,6 +25,9 @@ module hnf_mshr `HNF_PARAM
     input  wire                                clk,
     input  wire                                rst,
     input  wire [HNF_MSHR_RNF_NUM_PARAM-1:0]   sysco_snp_gen_en,
+    input  wire                                bcast_cmo,
+    input  wire                                bcast_persist,
+    input  wire                                bcast_atomic,
     input  wire                                li_mshr_rxreq_valid_s0,
     input  wire                                li_mshr_rxreq_seq_s0,
     input  wire                                li_mshr_rxreq_snpq_s0,
@@ -176,6 +179,7 @@ module hnf_mshr `HNF_PARAM
     output wire [6:0]                             mshr_dbf_atm_len_s0,
     output wire                                   mshr_dbf_atm_end_s0,
     output wire                                   mshr_dbf_rd_atm_sx1,
+    output wire                                   mshr_dbf_rd_atm_fwd_sx1,
     output wire [`CACHE_BE_WIDTH-1:0]             mshr_dbf_rd_atm_be_sx1,
     output wire [`HNF_PKTS-1:0]                   mshr_dbf_rd_atm_pe_sx1,
     output wire [`HNF_PKTS-1:0]                   mshr_dbf_rd_pe_sx1    ,
@@ -202,6 +206,7 @@ module hnf_mshr `HNF_PARAM
     output chie_pkg::memattr_s                 mshr_txreq_memattr_sx1,
     output wire                                mshr_txreq_dodwt_sx1,
     output wire                                mshr_txreq_tracetag_sx1,
+    output wire                                mshr_txreq_endian_sx1  ,
     output chie_pkg::mpam_s                    mshr_txreq_mpam_sx1,
     output chie_pkg::req_rsvdc_t               mshr_txreq_rsvdc_sx1,
     output wire                                mshr_txrsp_valid_sx1_q,
@@ -272,6 +277,11 @@ module hnf_mshr `HNF_PARAM
     wire                           req_wr_ptl_s0;
     wire                           req_persist_s0;
     wire                           req_persist_rsp_s0;
+    chie_pkg::req_opcode_e         req_dn_cmo_op_s0;
+    wire                           req_dn_cmo_s0;
+    wire                           req_cw_merge_s0;
+    wire                           req_atm_fwd_s0;
+    chie_pkg::req_opcode_e         req_opcode_as_s0;
     wire                           req_l3_alloc_s0;
     wire                           req_rdshared_s0;
     wire                           req_prefunq_s0;
@@ -282,10 +292,18 @@ module hnf_mshr `HNF_PARAM
     chie_pkg::snp_opcode_e         req_stash_snpcode_s0;
     wire                           req_stash_s0;
 
-    assign req_opcode_serviced_s0 = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
+    assign req_opcode_as_s0       = opennoc_hnf_pkg::hnf_serviced_as(li_mshr_rxreq_opcode_s0,
                                                                      req_excl_s0,
                                                                      excl_store_fail_s0,
                                                                      excl_seq_other_rn_s0);
+    // SS16.3.2 (p.16-479): "atomic operation execution can be supported at any point within
+    // an interconnect, including passing an Atomic transaction downstream". With
+    // BROADCASTATOMIC asserted a Non-cacheable one -- Non-snoopable, so it owes no snoop
+    // (Table 4-21 p.4-188) -- goes to the Subordinate, serviced as the WriteNoSnpPtl that
+    // carries its operand; a cacheable one is still executed in the L3. A Match is kept here.
+    assign req_atm_fwd_s0         = req_atomic_s0 & bcast_atomic & ~li_mshr_rxreq_memattr_s0[2] &
+                                    (li_mshr_rxreq_tagop_s0 == chie_pkg::TAGOP_INVALID);
+    assign req_opcode_serviced_s0 = req_atm_fwd_s0 ? chie_pkg::REQ_WRITENOSNPPTL : req_opcode_as_s0;
     // Table 7-1 (SS7.1.1 p.7-295) keys on the request as sent, not on the one
     // hnf_serviced_as() folds it to -- which is what every consumer below this
     // point sees.
@@ -296,7 +314,17 @@ module hnf_mshr `HNF_PARAM
     assign req_cw_s0              = chie_pkg::combined_write(li_mshr_rxreq_opcode_s0);
     assign req_wr_ptl_s0          = opennoc_hnf_pkg::hnf_write_partial(li_mshr_rxreq_opcode_s0);
     assign req_persist_s0         = opennoc_hnf_pkg::hnf_persist_cmo(li_mshr_rxreq_opcode_s0);
-    assign req_persist_rsp_s0     = chie_pkg::persist_response(li_mshr_rxreq_opcode_s0);
+    assign req_dn_cmo_op_s0       = opennoc_hnf_pkg::hnf_dn_cmo_of(li_mshr_rxreq_opcode_s0, bcast_cmo, bcast_persist);
+    assign req_dn_cmo_s0          = (req_dn_cmo_op_s0 != chie_pkg::REQ_REQLCRDRETURN);
+    // SS16.2.2 (p.16-475): a Combined Write leaves this Home as one -- its write leg and its
+    // CMO leg in a single WriteNoSnp Combined Write -- only with BROADCASTCACHEMAINTENANCE asserted.
+    assign req_cw_merge_s0        = req_cw_s0 & bcast_cmo & req_dn_cmo_s0;
+    // SS2.6.2 step 6 (p.2-102): a persistent CMO passed on as CleanSharedPersistSep, alone
+    // or as a Combined Write, names the Requester as ReturnNID, so the Subordinate sends it
+    // the Persist and this Home owes only the Comp or CompCMO.
+    assign req_persist_rsp_s0     = chie_pkg::persist_response(li_mshr_rxreq_opcode_s0) &
+                                    (req_dn_cmo_op_s0 != chie_pkg::REQ_CLEANSHAREDPERSISTSEP) &
+                                    ~(req_cw_merge_s0 & (req_dn_cmo_op_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST));
     assign req_rdshared_s0        = opennoc_hnf_pkg::hnf_read_shared(li_mshr_rxreq_opcode_s0);
     assign req_prefunq_s0         = opennoc_hnf_pkg::hnf_read_prefer_unique(li_mshr_rxreq_opcode_s0);
     assign req_atomic_s0          = chie_pkg::atomic_req(li_mshr_rxreq_opcode_s0);
@@ -327,7 +355,7 @@ module hnf_mshr `HNF_PARAM
     // cache line in the system cache" -- and because the Read that SS7.1.1's (p.7-295)
     // Data Pull implies is served from that line. A non-allocating one would have to
     // fetch it a second time, under a downstream identifier the write leg still owns.
-    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | req_atomic_s0 | req_stash_s0) & ~req_wr_ptl_s0 & ~req_persist_s0 & ~req_cw_s0 &
+    assign req_l3_alloc_s0        = (li_mshr_rxreq_memattr_s0[3] | (req_atomic_s0 & ~req_atm_fwd_s0) | req_stash_s0) & ~req_wr_ptl_s0 & ~req_persist_s0 & ~req_cw_s0 &
                                     ~opennoc_hnf_pkg::hnf_l3_alloc_declined(req_opcode_serviced_s0, req_stash_s0, li_mshr_rxreq_tagop_s0);
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_cam_hazard_entry_sx3_q;
     wire [`MSHR_ENTRIES_NUM-1:0]   pipe_sleep_entry_sx3_q;
@@ -355,6 +383,8 @@ module hnf_mshr `HNF_PARAM
                         .li_mshr_rxreq_excl_s0                           (req_excl_s0                          ),
                         .li_mshr_rxreq_expcompack_s0                     (li_mshr_rxreq_expcompack_s0          ),
                         .li_mshr_rxreq_wrzero_s0                         (req_wrzero_s0                        ),
+                        .li_mshr_rxreq_cw_merge_s0                       (req_cw_merge_s0                      ),
+                        .li_mshr_rxreq_atm_fwd_s0                        (req_atm_fwd_s0                       ),
                         .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                      ),
                         .li_mshr_rxreq_tracetag_s0                       (li_mshr_rxreq_tracetag_s0            ),
                         .li_mshr_rxreq_mpam_s0                           (li_mshr_rxreq_mpam_s0                ),
@@ -513,7 +543,10 @@ module hnf_mshr `HNF_PARAM
                      .li_mshr_rxreq_stashlpidvalid_s0                 (li_mshr_rxreq_stashlpidvalid_s0   ),
                      .li_mshr_rxreq_stash_snpcode_s0                  (req_stash_snpcode_s0              ),
                      .li_mshr_rxreq_cw_s0                             (req_cw_s0                         ),
-                     .li_mshr_rxreq_persist_s0                        (req_persist_s0                    ),
+                     .li_mshr_rxreq_dn_cmo_s0                         (req_dn_cmo_s0                     ),
+                     .li_mshr_rxreq_dn_cmo_op_s0                      (req_dn_cmo_op_s0                  ),
+                     .li_mshr_rxreq_cw_merge_s0                       (req_cw_merge_s0                   ),
+                     .li_mshr_rxreq_atm_fwd_s0                        (req_atm_fwd_s0                    ),
                      .li_mshr_rxreq_persist_rsp_s0                    (req_persist_rsp_s0                ),
                      .li_mshr_rxreq_l3_alloc_s0                       (req_l3_alloc_s0                   ),
                      .li_mshr_rxreq_rdshared_s0                       (req_rdshared_s0                   ),
@@ -610,6 +643,7 @@ module hnf_mshr `HNF_PARAM
                      .mshr_dbf_atm_len_s0                              (mshr_dbf_atm_len_s0),
                      .mshr_dbf_atm_end_s0                              (mshr_dbf_atm_end_s0),
                      .mshr_dbf_rd_atm_sx1                              (mshr_dbf_rd_atm_sx1),
+                     .mshr_dbf_rd_atm_fwd_sx1                              (mshr_dbf_rd_atm_fwd_sx1),
                      .mshr_dbf_rd_atm_be_sx1                           (mshr_dbf_rd_atm_be_sx1),
                      .mshr_dbf_rd_atm_pe_sx1                           (mshr_dbf_rd_atm_pe_sx1),
                      .mshr_dbf_rd_pe_sx1                               (mshr_dbf_rd_pe_sx1),
@@ -636,6 +670,7 @@ module hnf_mshr `HNF_PARAM
                      .mshr_txreq_memattr_sx1                          (mshr_txreq_memattr_sx1            ),
                      .mshr_txreq_dodwt_sx1                            (mshr_txreq_dodwt_sx1              ),
                      .mshr_txreq_tracetag_sx1                         (mshr_txreq_tracetag_sx1           ),
+                     .mshr_txreq_endian_sx1                           (mshr_txreq_endian_sx1             ),
                      .mshr_txreq_mpam_sx1                             (mshr_txreq_mpam_sx1               ),
                      .mshr_txreq_rsvdc_sx1                            (mshr_txreq_rsvdc_sx1              ),
                      .mshr_txrsp_valid_sx1_q                          (mshr_txrsp_valid_sx1_q            ),
