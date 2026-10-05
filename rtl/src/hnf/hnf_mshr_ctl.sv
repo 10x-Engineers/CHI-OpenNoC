@@ -492,6 +492,12 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_get_retry_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_retry_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_resent_s1_q;
+    // Sec 2.11 (p.2-146, MUST): "The transaction that is resent must have the same field
+    // values as the original request", Opcode included. The Full/Ptl choice of the write
+    // last sent with AllowRetry set is held for its resend.
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wr_sent_q;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_wr_ptl_q;
+    wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_wr_ptl_live_sx;
     logic [3:0]                          mshr_pcrdtype_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_pcrdtype_cnt_s1_q[0:`MSHR_PCRDTYPE_NUMS-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dmt_sx8_q;
@@ -844,6 +850,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire                           mshr_txreq_zero_sx1;
     wire                           mshr_txreq_cw_sx1;
     wire                           mshr_txreq_atm_sx1;
+    wire                           mshr_txreq_wr_ptl_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_cw_merge_sent_sx;
     wire                           mshr_txrsp_persist_rsp_sx1;
     wire [`MSHR_ENTRIES_NUM-1:0]   mshr_mem_wr_busy_clr_sx;
@@ -2424,6 +2431,27 @@ module hnf_mshr_ctl `HNF_PARAM
 
     generate
         for (entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // A first attempt leaves either through the bypass, Ptl exactly for a WriteNoSnpPtl
+            // (hnf_mshr_bypass tx_wrnosnpptl_s1), or through the MSHR path below.
+            assign mshr_wr_ptl_live_sx[entry] = mshr_wup_s1_q[entry] | mshr_wrnosnpp_s1_q[entry] | ~dbf_mshr_be_full_sx[entry];
+            always_ff @(posedge clk or posedge rst)begin : mshr_wr_ptl_q_timing_logic
+                if(rst == 1'b1) begin
+                    mshr_wr_sent_q[entry] <= 1'b0;
+                    mshr_wr_ptl_q[entry]  <= 1'b0;
+                end
+                else if(mshr_can_retire_entry_sx1[entry] || mshr_l3_evict_sx7[entry])
+                    mshr_wr_sent_q[entry] <= 1'b0;
+                else if(mshr_alloc_memwr_s1[entry] & ~txreq_mshr_bypass_lost_s1 & ~excl_fail_s1) begin
+                    mshr_wr_sent_q[entry] <= 1'b1;
+                    mshr_wr_ptl_q[entry]  <= mshr_wrnosnpp_s1_q[entry];
+                end
+                else if(txreq_mshr_won_sx1 & mshr_txreq_entry_vec_sx1[entry] & ~mshr_txreq_is_cmo_sx1 &
+                        ~mshr_txreq_is_rd_sx1 & mshr_txreq_allowretry_sx1) begin
+                    mshr_wr_sent_q[entry] <= 1'b1;
+                    mshr_wr_ptl_q[entry]  <= mshr_wr_ptl_live_sx[entry];
+                end
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_resent_s1_q_timing_logic
                 if(rst == 1'b1)
                     mshr_resent_s1_q[entry] <= 1'b0;
@@ -4223,11 +4251,14 @@ module hnf_mshr_ctl `HNF_PARAM
     assign mshr_txreq_atm_sx1         = ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1 & ~mshr_txreq_evict_wr_sx1 & ~mshr_txreq_icn_wr_sx1 &
                                         mshr_atm_fwd_s1_q[mshr_txreq_entry_idx_sx1];
     assign mshr_txreq_endian_sx1      = mshr_txreq_atm_sx1 & mshr_endian_s1_q[mshr_txreq_entry_idx_sx1];
+    // A resend (AllowRetry clear) of a write already sent repeats its Full/Ptl choice (Sec 2.11).
+    assign mshr_txreq_wr_ptl_sx1      = (mshr_retry_s1_q[mshr_txreq_entry_idx_sx1] & mshr_wr_sent_q[mshr_txreq_entry_idx_sx1]) ?
+                                        mshr_wr_ptl_q[mshr_txreq_entry_idx_sx1] : mshr_wr_ptl_live_sx[mshr_txreq_entry_idx_sx1];
     assign mshr_txreq_opcode_sx1      = mshr_txreq_is_cmo_sx1?mshr_dn_cmo_op_s1_q[mshr_txreq_entry_idx_sx1]:mshr_txreq_zero_sx1?chie_pkg::REQ_WRITENOSNPZERO:
                                         mshr_txreq_atm_sx1?mshr_atomic_op_s1_q[mshr_txreq_entry_idx_sx1]:
                                         mshr_txreq_cw_sx1?opennoc_hnf_pkg::hnf_dn_combined_of(mshr_dn_cmo_op_s1_q[mshr_txreq_entry_idx_sx1],
-                                                          (mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])):
-                                        (mshr_txreq_is_rd_sx1?(mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):(mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] | mshr_wrnosnpp_s1_q[mshr_txreq_entry_idx_sx1] | ~dbf_mshr_be_full_sx[mshr_txreq_entry_idx_sx1])?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
+                                                          mshr_txreq_wr_ptl_sx1):
+                                        (mshr_txreq_is_rd_sx1?(mshr_sep_rd_sx[mshr_txreq_entry_idx_sx1]?chie_pkg::REQ_READNOSNPSEP:chie_pkg::REQ_READNOSNP):mshr_txreq_wr_ptl_sx1?chie_pkg::REQ_WRITENOSNPPTL:chie_pkg::REQ_WRITENOSNPFULL);
     assign mshr_txreq_size_sx1        = mshr_txreq_is_cmo_sx1 ? chie_pkg::SIZE_64B :
                                         (((mshr_wup_s1_q[mshr_txreq_entry_idx_sx1] & ((mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1]) | (~mshr_l3_alloc_s1_q[mshr_txreq_entry_idx_sx1] & (mshr_l3hit_sx8_q[mshr_txreq_entry_idx_sx1] | mshr_dat_old_get_s1_q[mshr_txreq_entry_idx_sx1])))) | (mshr_seq_s1_q[mshr_txreq_entry_idx_sx1]) | mshr_txreq_evict_wr_sx1 | mshr_txreq_icn_wr_sx1 |
                                           (mshr_txreq_is_rd_sx1 & mshr_tagfetch_issued_sx_q[mshr_txreq_entry_idx_sx1]))? chie_pkg::SIZE_64B : mshr_size_s1_q[mshr_txreq_entry_idx_sx1]);
