@@ -449,10 +449,11 @@ module mn_ctl `MN_PARAM
                     E_SNP: begin
                         logic [R-1:0] todo_n, pend_n;
                         // Table 15-1 (p.15-468, MUST): no new snoop to a Requester
-                        // that has left the coherency domain. The pair being issued keeps
-                        // its bit until it is sent (SS15.2.2 p.15-468, MUST) or withdrawn.
+                        // that has left the coherency domain, and a target dropped stays
+                        // dropped. The pair being issued keeps its bit while it goes out
+                        // (SS15.2.2 p.15-468, MUST); a withdrawn one loses it like any other.
                         todo_n = todo_q[e] & sysco_snp_en_i;
-                        if (iss_v_q && (iss_e_q == IW'(e)))
+                        if (iss_v_q && ~iss_cancel && (iss_e_q == IW'(e)))
                             todo_n[iss_t_q] = todo_q[e][iss_t_q];
                         pend_n = pend_q[e];
                         if (iss_done && (iss_e_q == IW'(e))) begin
