@@ -264,6 +264,10 @@ module mn_ctl `MN_PARAM
     wire           iss_start   = ~iss_v_q & (iss_pick_e >= 0);
     wire [IW-1:0]  iss_pick_ei = IW'(iss_start ? iss_pick_e : 0);
     wire iss_done  = iss_v_q & iss_p2_q & txsnpflit_sent_i;
+    // Table 15-1 (p.15-468, MUST): no new snoop to a Requester that has left the coherency
+    // domain. A pair whose first part is still unsent is new, so it is withdrawn and the
+    // snoopee's place given back; once its first part is out, SS15.2.2 completes it.
+    wire iss_cancel = iss_v_q & ~iss_p2_q & ~sysco_snp_en_i[iss_t_q];
 
     opennoc_mn_pkg::dvm_snp_part_s snp_part;
     always_comb begin
@@ -280,7 +284,7 @@ module mn_ctl `MN_PARAM
         txsnpflit_o.flit.tracetag  = trace_q[iss_e_q];
         // Table 8-3 (p.8-311): NS, DoNotGoToSD and RetToSrc zero, MPAM all zeros.
     end
-    assign txsnpflitv_o = iss_v_q;
+    assign txsnpflitv_o = iss_v_q & ~iss_cancel;
 
     //*************************************************
     //                 Responses in
@@ -310,9 +314,24 @@ module mn_ctl `MN_PARAM
     int            rsp_pick;
     always_comb rsp_pick = rr_pick(ent_rsp, int'(rsp_ptr_q));
 
-    wire use_ent = (rsp_pick >= 0);
-    wire use_rtq = ~use_ent & ~rtq_empty;
-    wire use_pg  = ~use_ent & rtq_empty & pg_v_q;
+    // SS2.11 (p.2-145): RetryAck and PCrdGrant share TXRSP with the entries' DBIDResp and
+    // Comp. The three classes take turns, from the one after the class sent last, so steady
+    // traffic in one cannot hold back the others for ever.
+    logic [1:0] rsp_cls_q;     // class sent last: 0 entry, 1 RetryAck, 2 PCrdGrant
+    wire  [2:0] cls_v = {pg_v_q, ~rtq_empty, (rsp_pick >= 0)};
+    logic [1:0] cls_pick;      // 3: nothing to send
+    always_comb begin
+        cls_pick = 2'd3;
+        for (int k = 1; k <= 3; k++) begin
+            int c;
+            c = (int'(rsp_cls_q) + k) % 3;
+            if ((cls_pick == 2'd3) && cls_v[c]) cls_pick = 2'(c);
+        end
+    end
+
+    wire use_ent = (cls_pick == 2'd0);
+    wire use_rtq = (cls_pick == 2'd1);
+    wire use_pg  = (cls_pick == 2'd2);
     wire [IW-1:0] rsp_pick_e = IW'(use_ent ? rsp_pick : 0);
 
     always_comb begin
@@ -430,8 +449,8 @@ module mn_ctl `MN_PARAM
                     E_SNP: begin
                         logic [R-1:0] todo_n, pend_n;
                         // Table 15-1 (p.15-468, MUST): no new snoop to a Requester
-                        // that has left the coherency domain. A pair already on the
-                        // wire is not new: SS15.2.2 (p.15-468, MUST) completes it.
+                        // that has left the coherency domain. The pair being issued keeps
+                        // its bit until it is sent (SS15.2.2 p.15-468, MUST) or withdrawn.
                         todo_n = todo_q[e] & sysco_snp_en_i;
                         if (iss_v_q && (iss_e_q == IW'(e)))
                             todo_n[iss_t_q] = todo_q[e][iss_t_q];
@@ -476,6 +495,8 @@ module mn_ctl `MN_PARAM
             iss_t_q   <= iss_pick_t;
             iss_ptr_q <= IW'((iss_pick_e + 1) % N);
         end
+        else if (iss_cancel)
+            iss_v_q   <= 1'b0;
         else if (iss_v_q && txsnpflit_sent_i) begin
             iss_p2_q <= 1'b1;
             if (iss_p2_q)
@@ -483,7 +504,8 @@ module mn_ctl `MN_PARAM
         end
     end
 
-    // A snoopee's places are taken when its pair is chosen and given back by its SnpResp.
+    // A snoopee's places are taken when its pair is chosen and given back by its SnpResp,
+    // or by withdrawing a pair whose first part never went (iss_cancel).
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin
             for (int t = 0; t < R; t++) begin
@@ -493,16 +515,18 @@ module mn_ctl `MN_PARAM
         end
         else begin
             for (int t = 0; t < R; t++) begin
-                logic take, give, ns_take, ns_give;
+                logic take, give, back, ns_take, ns_give, ns_back;
                 take    = iss_start & (iss_pick_t == RW'(t));
                 give    = rsp_ok & (rsp_t == RW'(t));
+                back    = iss_cancel & (iss_t_q == RW'(t));
                 ns_take = take & ~sync_q[iss_pick_ei];
                 ns_give = give & ~sync_q[rsp_e];
+                ns_back = back & ~sync_q[iss_e_q];
                 if (take && sync_q[iss_pick_ei])
                     sync_out_q[t] <= 1'b1;
-                else if (give && sync_q[rsp_e])
+                else if ((give && sync_q[rsp_e]) || (back && sync_q[iss_e_q]))
                     sync_out_q[t] <= 1'b0;
-                ns_out_q[t] <= ns_out_q[t] + OW'(ns_take) - OW'(ns_give);
+                ns_out_q[t] <= ns_out_q[t] + OW'(ns_take) - OW'(ns_give) - OW'(ns_back);
             end
         end
     end
@@ -512,6 +536,13 @@ module mn_ctl `MN_PARAM
             rsp_ptr_q <= '0;
         else if (ent_rsp_sent)
             rsp_ptr_q <= IW'((rsp_pick + 1) % N);
+    end
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)
+            rsp_cls_q <= 2'd2;
+        else if (txrspflit_sent_i && (cls_pick != 2'd3))
+            rsp_cls_q <= cls_pick;
     end
 
     always_ff @(posedge clk_i or posedge rst_i) begin
