@@ -171,7 +171,9 @@ Sync and a Non-sync are credited apart (`PCrdType` 1 / 0), so Syncs never hold t
 section 8.1.3 (p.8-307) reserves for a Non-sync -- and every `Data_Width`. It forwards a
 DVM_v8.4 payload unexamined, sends no early Comp, carries the DVMOp's QoS without classes,
 and consolidates a DERR write or a snoop error into the Comp (section 9.4.5). It snoops a
-Requester only while that Requester's `SYSCO_SNP_EN` (its `SYSCOREQ`) is HIGH, and holds
+Requester only while that Requester's `SYSCO_SNP_EN` (its `SYSCOREQ`) is HIGH -- a pair whose
+first part is still unsent when it falls is withdrawn, one already started completes (section
+15.2.2) -- and gives RetryAck and PCrdGrant their turn among its responses, and holds
 `SYSCO_SNP_PEND` HIGH while a `SnpDVMOp` to it is unanswered, for whoever owns its `SYSCOACK` --
 the HN-F's `SYSCO_SNP_PEND` input, in the same Requester order.
 
