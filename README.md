@@ -17,9 +17,7 @@ An open-source **AMBA CHI Issue E.b** interconnect in synthesisable SystemVerilo
 A fork of [RV-BOSC/OpenNoC](https://github.com/RV-BOSC/OpenNoC) (taken at `4f57dda`,
 2025-06-25), maintained here. Original copyright headers are kept.
 
-**Status:** simulation-verified and formally checked against the
-[CHI E.b ABVIP](https://github.com/10x-Engineers/AMBA_CHI_E.b_ABVIP) every night (see
-[Formal verification](#formal-verification)). Not silicon-proven or synthesis-hardened (behavioural
+**Status:** simulation-verified, not silicon-proven or synthesis-hardened (behavioural
 SRAMs, no timing constraints, no DFT). MTE is partial. Only
 the default parameters are regularly exercised. Every non-🟢 cell in [§2](#2-chi-support)
 links its tracking issue; known defects are in the
@@ -276,28 +274,6 @@ cd rtl
 make com sim SIM=verilator             # 136-case HN-F regression (default: VCS)
 TOP_TB=tb_rni make com sim             # RN-I bench
 ```
-
-### Formal verification
-
-Every node is bound to the [CHI E.b ABVIP](https://github.com/10x-Engineers/AMBA_CHI_E.b_ABVIP), an
-assertion-based VIP that checks the protocol at the node's own CHI interface. Every night each node
-gets a 2-hour full proof in JasperGold, with the HN-F's cache arrays kept, not black-boxed. A
-counterexample is triaged against the spec, and a design defect is filed as an issue and fixed by PR.
-Recent examples: issues #414-#417 (MN) and #419 (HN-F), fixed by PRs #418 and #420.
-
-The night of 2026-10-06, on `master` `66fa3ea`:
-
-| Node | Proven | Undetermined | Counterexamples |
-| :-- | --: | --: | --: |
-| RN-F | 311 | 243 | 0 |
-| HN-F | 395 | 539 | 0 |
-| HN-I | 561 | 215 | 0 |
-| RN-I | 424 | 80 | 0 |
-| SN-F | 71 | 183 | 0 |
-| MN | 58 | 28 | 0 |
-
-"Undetermined" means the property held as deep as the engines reached in 2 hours. The ABVIP
-repository describes the bind, the configuration and the properties.
 
 ---
 
