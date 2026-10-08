@@ -375,7 +375,7 @@ module sni_mshr `SNI_PARAM
     assign rxreq_pgroupid_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.lpid         : '0;
     // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
     // in WriteNoSnpZero and WriteUniqueZero is never permitted." Sec 2.9.6 (p.2-132)
-    // gives the bit to DoDWT only on the writes Table 4-14 lists; elsewhere it is SnpAttr.
+    // gives the bit to DoDWT only on the writes Table 4-15 lists; elsewhere it is SnpAttr.
     assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (~rxreq_offtab_svc_s0)
                                                              && (rxreq_alloc_flit_s0.snpattr.dodwt) :1'b0;
     // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
@@ -411,8 +411,8 @@ module sni_mshr `SNI_PARAM
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEINVALID)
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST)
                                                               | rxreq_cmopersist_s0) :1'b0;
-    // Table 4-14 (p.4-179) and Table 4-18 (p.4-182) give a Home WriteNoSnp{Full,Ptl,Zero}
-    // and the six WriteNoSnp Combined Writes to send an SN-F. The other ten writes a
+    // Table 4-15 and Table 4-18 (p.4-182) give a Home WriteNoSnp{Full,Ptl,Zero}
+    // and the six WriteNoSnp Combined Writes to send an SN-I. The other ten writes a
     // Home might send are serviced as their WriteNoSnp equivalents: a Subordinate has
     // no coherence to preserve, SS4.2.4 (p.4-183) makes a Combined Write's behaviour
     // that of its write and CMO sent separately, and Table 4-39 (p.4-219) keeps a
@@ -441,7 +441,7 @@ module sni_mshr `SNI_PARAM
                                                               | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
                                                               | rxreq_cwpersist_s0 | rxreq_cw_cb_s0 | rxreq_cw_iw_s0) :1'b0;
     // SS16.3.3 (p.16-479): this Subordinate declares Atomic_Transactions and runs all
-    // four classes as an AXI read-modify-write. Table 4-22 (p.4-188) makes SnoopMe
+    // four classes as an AXI read-modify-write. Table 4-23 makes SnoopMe
     // inapplicable on this hop, so the shared Excl/SnoopMe bit is not read.
     assign rxreq_atomic_s0      = rxreq_alloc_en_s0 & chie_pkg::atomic_req(rxreq_opcode_s0);
     assign rxreq_atomicdat_s0   = rxreq_atomic_s0 & chie_pkg::atomic_returns_data(rxreq_opcode_s0);
@@ -506,13 +506,13 @@ module sni_mshr `SNI_PARAM
     // CopyBack Combined Writes take it whatever their EWA.
     assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_alloc_flit_s0.memattr.early_wr_ack | rxreq_cw_cb_s0) : 1'b0;
 
-    // Every write outside Table 4-14 (p.4-179) and Table 4-18 (p.4-182).
+    // Every write outside Table 4-15 and Table 4-18 (p.4-182).
     assign rxreq_offtab_wr_s0   = rxreq_offtab_svc_s0 | rxreq_errcb_s0 | rxreq_erriw_s0
                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
 `ifdef DISPLAY_FATAL
     `display_fatal_arm
     `display_fatal_sva(!(rxreq_alloc_en_s0 && rxreq_offtab_wr_s0),
-        $sformatf("Fatal info: [SNI_OFF_TABLE_WRITE] RXREQ received write opcode %h, which Tables 4-14/4-18 do not give a Home to send a Subordinate", $sampled(rxreq_opcode_s0)))
+        $sformatf("Fatal info: [SNI_OFF_TABLE_WRITE] RXREQ received write opcode %h, which Tables 4-15/4-18 do not give a Home to send a Subordinate", $sampled(rxreq_opcode_s0)))
 `endif
 
     generate
@@ -711,6 +711,10 @@ module sni_mshr `SNI_PARAM
             chie_pkg::SIZE_64B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],6'b0};
             default            : rxreq_axaddr_s0 = '0;
         endcase
+        // SS2.10.2 (p.2-134): a Device read accesses the bytes from its address up to the next
+        // Size boundary, not the aligned container, so ARADDR keeps the request address.
+        if (rxreq_rd_s0 & rxreq_memattr_s0.device)
+            rxreq_axaddr_s0 = rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:0];
 
         unique case (rxreq_size_s0)
             chie_pkg::SIZE_1B, chie_pkg::SIZE_2B, chie_pkg::SIZE_4B,
@@ -1492,7 +1496,9 @@ module sni_mshr `SNI_PARAM
                     sleep_s2_q[entry]               <= 1'b1;
             end
 
-            // Endpoint-order bookkeeping, captured at allocation and cleared at retirement.
+            // Endpoint-order bookkeeping, captured at allocation and cleared at retirement. A
+            // predecessor is dropped once its slot is no longer valid, before the slot can be
+            // re-allocated, so a waiting entry never inherits a younger request as its predecessor.
             always_ff @(posedge clk or posedge rst)begin : mshr_endpoint_order_logic
                 if (rst == 1'b1) begin
                     eo_q[entry]        <= 1'b0;
@@ -1509,8 +1515,11 @@ module sni_mshr `SNI_PARAM
                     eo_pred_q[entry]   <= eo_alloc_pred_s0;
                     line_wait_q[entry] <= |hazard_sx;
                 end
-                else if (line_wakeup_valid & (line_wakeup_idx_sx == entry))
-                    line_wait_q[entry] <= 1'b0;
+                else begin
+                    eo_pred_q[entry]   <= eo_pred_q[entry] & mshr_entry_valid_sx_q;
+                    if (line_wakeup_valid & (line_wakeup_idx_sx == entry))
+                        line_wait_q[entry] <= 1'b0;
+                end
             end
         end
     endgenerate

@@ -808,11 +808,9 @@ module sni_data_buffer `SNI_PARAM
         txdat_flit.tagop     = mshr_txdat_tag_return_sx ? 2'b01 : 2'b00;
         txdat_flit.tag       = mshr_txdat_tag_return_sx ? dbf_txdat_tag_sx : '0;
         txdat_flit.tu        = '0;
-        // CHI E.b section 11.1.1 (p.11-360, MUST): a memory SN-F that does not source a
-        // useful DataSource "must return 0b0111 as a default value", not the 0b0000 that
-        // section reserves for a responder which is not one. This Subordinate drops
-        // PrefetchTgt, so every read is a complete memory access -- 0b0111 exactly.
-        txdat_flit.datasource.datasource = 4'b0111;
+        // CHI E.b section 11.1.1 (p.11-360, MUST): a responder that does not source a useful
+        // DataSource, except a memory SN-F, "must return a 0b0000 value".
+        txdat_flit.datasource.datasource = 4'b0000;
     end
 
     //************************************************************************//
