@@ -1,0 +1,1627 @@
+/*
+* Copyright (c) 2024 Beijing Institute of Open Source Chip
+* OpenNoC is licensed under Mulan PSL v2.
+* You can use this software according to the terms and conditions of the Mulan PSL v2.
+* You may obtain a copy of Mulan PSL v2 at:
+*          http://license.coscl.org.cn/MulanPSL2
+* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+* EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+* MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+* See the Mulan PSL v2 for more details.
+*
+* Author:
+*    Nana Cai <cainana@bosc.ac.cn>
+*    Li Zhao <lizhao@bosc.ac.cn>
+*    Chunyan Lin <linchunyan@bosc.ac.cn>
+*    Xiaotian Cao <caoxiaotian@bosc.ac.cn>
+*    Guo Bing <guobing@bosc.ac.cn>
+*/
+
+`include "axi4_defines.svh"
+`include "sni_defines.svh"
+`include "sni_param.svh"
+
+module sni_mshr `SNI_PARAM
+    (
+        input  wire                                 clk,
+        input  wire                                 rst,
+        input  wire                                 rxreq_alloc_en_s0,
+        input  chie_pkg::req_flit_s                 rxreq_alloc_flit_s0,
+        input  wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_entry_idx_alloc_s0,
+
+        output wire                                 txrsp_valid_sx,
+        output logic [3:0]                          txrsp_qos_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      txrsp_tgtid_sx,
+        output logic [11:0]                         txrsp_txnid_sx,
+        output chie_pkg::rsp_opcode_e               txrsp_opcode_sx,
+        output chie_pkg::resp_err_e                 txrsp_resperr_sx,
+        output chie_pkg::resp_state_e               txrsp_resp_sx,
+        output logic [11:0]                         txrsp_dbid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      txrsp_srcid_sx,
+        output logic                                txrsp_tracetag_sx,
+
+        input  wire                                 txrsp_won_sx,
+        output wire                                 rxreq_dbf_en_s1,
+        output logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_dbf_addr_s1,
+        output wire                                 rxreq_dbf_wr_s1,
+        output wire                                 rxreq_dbf_wrzero_s1,
+        output chie_pkg::size_e                     rxreq_dbf_size_s1,
+        output wire [`AXI4_ARLEN_WIDTH-1:0]         rxreq_dbf_axlen_s1,
+        output wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   rxreq_dbf_entry_idx_s1,
+        output wire                                 rxreq_dbf_atomic_s1,
+        output chie_pkg::req_opcode_e               rxreq_dbf_opcode_s1,
+        output wire                                 rxreq_dbf_endian_s1,
+        input  wire [`SNI_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_atmrd_req_sx,
+        input  wire                                 dbf_mshr_atm_done_sx,
+        input  wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_atm_done_idx_sx,
+        input  wire                                 dbf_mshr_atm_nowr_sx,
+        input  wire                                 dbf_mshr_atm_err_sx,
+        input  wire                                 dbf_mshr_rdata_en_sx,
+        input  wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rdata_idx_sx,
+        input  wire [`SNI_MASK_CD_WIDTH-1:0]        dbf_mshr_rdata_cdmask_sx,
+        input  wire                                 dbf_mshr_rxdat_ok_sx,
+        input  wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rxdat_ok_idx_sx,
+        input  wire                                 dbf_mshr_rxdat_cancel_sx,
+        input  wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   dbf_mshr_rxdat_cancel_idx_sx,
+        output wire                                 mshr_txdat_en_sx,
+        output wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_txdat_entry_idx_sx,
+        output logic [1:0]                          mshr_txdat_dataid_sx,
+        // Sec 12.10 (p.12-385): this read asked for its tags, so Sec 12.4.1
+        // (p.12-376, MUST) has the completion carry them with TagOp=Transfer.
+        output wire                                 mshr_txdat_tag_return_sx,
+        output logic [11:0]                         mshr_txdat_txnid_sx,
+        output chie_pkg::dat_opcode_e               mshr_txdat_opcode_sx,
+        output chie_pkg::resp_state_e               mshr_txdat_resp_sx,
+        output chie_pkg::resp_err_e                 mshr_txdat_resperr_sx,
+        output logic [11:0]                         mshr_txdat_dbid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_tgtid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_srcid_sx,
+        output logic [chie_pkg::NID_WIDTH-1:0]      mshr_txdat_homenid_sx,
+        output logic                                mshr_txdat_tracetag_sx,
+        input  wire                                 mshr_txdat_won_sx,
+        output wire                                 mshr_wdat_en_sx,
+        output wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_wdat_entry_idx_sx,
+        output wire                                 mshr_retired_valid_sx,
+        output wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_retired_idx_sx,
+        output wire [`AXI4_ARID_WIDTH-1:0]          arid_sx,
+        output wire [`AXI4_ARADDR_WIDTH-1:0]        araddr_sx,
+        output wire [`AXI4_ARLEN_WIDTH-1:0]         arlen_sx,
+        output wire [`AXI4_ARSIZE_WIDTH-1:0]        arsize_sx,
+        output wire [`AXI4_ARBURST_WIDTH-1:0]       arburst_sx,
+        output wire [`AXI4_ARLOCK_WIDTH-1:0]        arlock_sx,
+        output wire [`AXI4_ARCACHE_WIDTH-1:0]       arcache_sx,
+        output wire [`AXI4_ARPROT_WIDTH-1:0]        arprot_sx,
+        output wire [`AXI4_ARQOS_WIDTH-1:0]         arqos_sx,
+        output wire [`AXI4_ARUSER_WIDTH-1:0]        aruser_sx,
+        output wire [`AXI4_ARREGION_WIDTH-1:0]      arregion_sx,
+        input  wire [`SNI_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagfetch_req_sx,
+        output wire                                 mshr_dbf_rdreq_ack_sx,
+        output wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   mshr_dbf_rdreq_idx_sx,
+        input  wire [`SNI_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_done_sx,
+        input  wire [`SNI_MSHR_ENTRIES_NUM-1:0]     dbf_mshr_tagmatch_pass_sx,
+        output logic                                arvalid_sx,
+        input  wire                                 arready_sx,
+        output wire [`AXI4_AWID_WIDTH-1:0]          awid_sx,
+        output wire [`AXI4_AWADDR_WIDTH-1:0]        awaddr_sx,
+        output wire [`AXI4_AWLEN_WIDTH-1:0]         awlen_sx,
+        output wire [`AXI4_AWSIZE_WIDTH-1:0]        awsize_sx,
+        output wire [`AXI4_AWBURST_WIDTH-1:0]       awburst_sx,
+        output wire [`AXI4_AWLOCK_WIDTH-1:0]        awlock_sx,
+        output wire [`AXI4_AWCACHE_WIDTH-1:0]       awcache_sx,
+        output wire [`AXI4_AWPROT_WIDTH-1:0]        awprot_sx,
+        output wire [`AXI4_AWQOS_WIDTH-1:0]         awqos_sx,
+        output wire [`AXI4_AWUSER_WIDTH-1:0]        awuser_sx,
+        output wire [`AXI4_AWREGION_WIDTH-1:0]      awregion_sx,
+        output logic                                awvalid_sx,
+        input  wire                                 awready_sx,
+        input  wire [`AXI4_BID_WIDTH-1:0]           bid_sx,
+        input  wire [`AXI4_BRESP_WIDTH-1:0]         bresp_sx,
+        input  wire                                 bvalid_sx,
+        output wire                                 bready_sx
+    );
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  mshr_entry_idx_alloc_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    mshr_entry_valid_sx_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    sleep_s2_q;
+    // SS2.8.5 Table 2-9 (p.2-119): an HN-I may send an SN-I Endpoint Order (0b11), which
+    // must keep requests from one source to one endpoint range in order. This SN-I treats
+    // its whole address space as one range, so an Endpoint-ordered request sleeps until
+    // every older Endpoint-ordered request from the same source has retired.
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    eo_q;                                   // entry is Endpoint-ordered
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    eo_pred_q[`SNI_MSHR_ENTRIES_NUM-1:0];  // older EO entries it waits for
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    line_wait_q;                            // still behind a same-line entry
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    eo_alloc_pred_s0;
+    logic                                eo_alloc_block_s0;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    eo_pending_sx;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    eo_ready_sx;
+    logic                                eo_ready_any_sx;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  eo_ready_idx_sx;
+    logic                                line_wakeup_valid;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  line_wakeup_idx_sx;
+    logic                                line_wakeup_fire;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  hazard_idx_s2_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    hazard_sx_q;
+    logic                                rxreq_alloc_en_s1_q;
+    // SS13.10.7 (p.13-418): in a request the PGroupID occupies the LPID bits.
+    localparam int PGROUPID_W = $bits(rxreq_alloc_flit_s0.lpid);
+
+    // One record per MSHR entry: every field is written at allocation and cleared
+    // at retirement, in one flop block.
+    typedef struct packed {
+        chie_pkg::req_opcode_e               opcode;
+        logic [3:0]                          qos;
+        chie_pkg::memattr_s                  memattr;
+        logic [chie_pkg::NID_WIDTH-1:0]      srcid;
+        logic [11:0]                         txnid;
+        chie_pkg::size_e                     size;
+        logic [chie_pkg::REQ_ADDR_WIDTH-1:0] addr;
+        logic                                ns;
+        chie_pkg::order_e                    order;
+        logic [11:0]                         returntxnid;
+        logic                                tracetag;
+        chie_pkg::mpam_s                     mpam;
+        logic [chie_pkg::NID_WIDTH-1:0]      returnnid;
+        logic [PGROUPID_W-1:0]               pgroupid;
+        logic [1:0]                          ccid;
+        logic                                endian;
+        logic [`AXI4_AXID_WIDTH-1:0]         axid;
+        logic [`AXI4_ARLEN_WIDTH-1:0]        axlen;
+        logic [`AXI4_ARSIZE_WIDTH-1:0]       axsize;
+        logic [`AXI4_AXADDR_WIDTH-1:0]       axaddr;
+    } mshr_entry_s;
+
+    mshr_entry_s                         mshr_entry_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_wr_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_wrzero_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_rd_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_dodwt_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_ewa_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_comp_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_comp_sent_sx_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_rdreceipt_valid_sx_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_rdy_sx_q;
+    chie_pkg::rsp_opcode_e               txrsp_opcode_rdy_sx_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  txrsp_entry_idx_sx;
+    logic [`SNI_PKTS-1:0]                txdat_rdy_sx_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx;
+    logic                                txdat_en_sx_q;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  txdat_entry_idx_sx_q;
+    logic [`SNI_PKTS-1:0]                txdat_sent_sx_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    arvalid_fifo_tagfetch_q;
+    logic                                arvalid_tagfetch_s1_q;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_idx_sx_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_set_vec;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  arvalid_fifo_vec;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  arvalid_entry_idx_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rdat_valid_s1_q;
+    logic [3:0]                          rdat_pdmask_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    awvalid_fifo_valid_s2_q;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_idx_s2_q[`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_cnt_sx_q;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  awvalid_fifo_vec_sx;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  awvalid_entry_idx_s2_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    bresp_ok_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    bresp_err_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    retired_entry_sx1_q;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  retired_entry_idx_sx1_q;
+    logic                                mshr_wdat_en_rst;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxdat_cancel_s1_q;
+
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     mshr_entry_alloc_sx;
+    logic [3:0]                          rxreq_qos_s0;
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_srcid_s0;
+    logic [11:0]                         rxreq_txnid_s0;
+    chie_pkg::req_opcode_e               rxreq_opcode_s0;
+    chie_pkg::size_e                     rxreq_size_s0;
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:0] rxreq_addr_s0;
+    logic [chie_pkg::NID_WIDTH-1:0]      rxreq_returnnid_s0;
+    logic [11:0]                         rxreq_returntxnid_s0;
+    logic [$bits(rxreq_alloc_flit_s0.lpid)-1:0] rxreq_pgroupid_s0;
+    wire                                 rxreq_persist_fold_s0;
+    wire                                 txrsp_persist_sx;
+    wire                                 txrsp_dwt_grant_sx;
+    wire                                 rxreq_dodwt_s0;
+    logic                                rxreq_ns_s0;
+    chie_pkg::order_e                    rxreq_order_s0;
+    logic [3:0]                          rxreq_pcrdtype_s0;
+    chie_pkg::memattr_s                  rxreq_memattr_s0;
+    logic                                rxreq_tracetag_s0;
+    chie_pkg::mpam_s                     rxreq_mpam_s0;
+    wire                                 rxreq_ewa_s0;
+    wire                                 rxreq_rd_s0;
+    wire                                 rxreq_wr_s0;
+    wire                                 rxreq_rdsep_s0;
+    wire                                 rxreq_cmo_s0;
+    wire                                 rxreq_cmopersist_s0;
+    wire                                 rxreq_cw_s0;
+    wire                                 rxreq_cwpersist_s0;
+    wire                                 rxreq_atomic_s0;
+    wire                                 rxreq_atomicdat_s0;
+    wire                                 rxreq_wrzero_s0;
+    wire                                 rxreq_drop_s0;
+    wire                                 rxreq_errwr_s0;
+    wire                                 rxreq_errcb_s0;
+    wire                                 rxreq_erriw_s0;
+    wire                                 rxreq_cw_cb_s0;
+    wire                                 rxreq_cw_iw_s0;
+    wire                                 rxreq_offtab_svc_s0;
+    wire                                 rxreq_offtab_wr_s0;
+    wire                                 rxreq_errstash_s0;
+    wire                                 rxreq_errdvm_s0;
+    wire                                 rxreq_errrd_s0;
+    wire                                 rxreq_errrsp_s0;
+    wire                                 rxreq_err_s0;
+    wire                                 rxreq_rsponly_s0;
+    chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s0;
+    wire                                 txrsp_rsponly_en_s1;
+    wire                                 txrsp_errgrant_en_s1;
+    wire                                 txrsp_rsponly_en_sx;
+    wire                                 txrsp_errgrant_en_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txdat_errrd_rdy_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     all_rsp_sent_sx;
+    wire                                 txrsp_sent_sx;
+    wire                                 txrsp_en_s1;
+    wire                                 txrsp_en_sx;
+    wire                                 txrsp_readreceipt_en_s1;
+    wire                                 txrsp_compdbidresp_en_s1;
+    wire                                 txrsp_dbidresp_en_s1;
+    chie_pkg::rsp_opcode_e               txrsp_opcode_en_s1;
+    wire                                 txrsp_compdbidresp_en_sx;
+    wire                                 txrsp_dbidresp_en_sx;
+    wire                                 txrsp_ewa_dwt_rdy_sx;
+    wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   txrsp_ewa_dwt_rdy_entry_sx;
+    wire                                 txrsp_noewa_rdy_sx;
+    wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   txrsp_noewa_rdy_entry_sx;
+    chie_pkg::rsp_opcode_e               txrsp_opcode_en_sx;
+    wire                                 txrsp_update_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txrsp_valid_idx_sx;
+    wire                                 txrsp_comp_wrdatcancel_sx;
+    wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   txrsp_comp_wrcancel_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     rdat_ready_sx;
+    wire [3:0]                           rdat_chunks_sx[`SNI_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNI_PKTS-1:0]                 rdat_pkts_sx[`SNI_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNI_PKTS-1:0]                 crit_pkt_sx[`SNI_MSHR_ENTRIES_NUM-1:0];
+    wire [`SNI_PKTS-1:0]                 txdat_pkt_avail_sx;
+    wire [1:0]                           txdat_crit_pkt_sx;
+    wire [2*`SNI_PKTS-1:0]               txdat_pkt_avail2_sx;
+    wire [`SNI_PKTS-1:0]                 txdat_pkt_rot_sx;
+    logic [1:0]                          txdat_pkt_rank_sx;
+    wire [1:0]                           txdat_pkt_sx;
+    wire [`SNI_PKTS-1:0]                 txdat_pkt_onehot_sx;
+    wire                                 arvalid_en_s1;
+    wire                                 arvalid_en2_s1;
+    wire                                 tagfetch_push_sx;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  tagfetch_idx_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txrsp_tagmatch_armable_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     bresp_ok_sx;
+    wire                                 wakeup_valid;
+    wire [`SNI_MSHR_ENTRIES_WIDTH-1:0]   wakeup_idx_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     retired_entry_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txdat_valid_sx;
+    wire                                 mshr_txdat_update;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     mshr_txdat_idx_vec;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     hazard_sx;
+    wire                                 sel_idx_valid;
+
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_rdsep_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_errwr_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_atm_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_atmdat_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_atmcmp_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    atm_wr_pend_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    atm_nowr_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    atm_err_q;
+    wire  [`SNI_MSHR_ENTRIES_NUM-1:0]    atm_mem_done_sx;
+    wire  [`SNI_MSHR_ENTRIES_NUM-1:0]    atm_mem_done_q;
+    wire                                 txrsp_atmgrant_en_s1;
+    wire                                 txrsp_atmgrant_en_sx;
+    wire  [`SNI_MSHR_ENTRIES_NUM-1:0]    dbfrd_req_sx;
+    wire                                 aw_push_wr_sx;
+    wire                                 aw_push_atm_sx;
+    wire                                 aw_push_sx;
+    wire  [`SNI_MSHR_ENTRIES_WIDTH-1:0]  aw_push_idx_sx;
+    logic [`SNI_MSHR_ENTRIES_WIDTH-1:0]  atmwr_idx_sx;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_errdvm_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_errrd_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_err_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_rsponly_s1_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    errwr_data_done_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    rxreq_drop_s1_q;
+    chie_pkg::rsp_opcode_e               rxreq_rsponly_opcode_s1_q [`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_q2_valid_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_cmo_owed_q;
+    chie_pkg::rsp_opcode_e               txrsp_cmo_opcode_q [`SNI_MSHR_ENTRIES_NUM-1:0];
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_persist_owed_q;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_tagmatch_owed_q;
+    wire                                 rxreq_tagmatch_s0;
+    wire                                 rxreq_tagreturn_s0;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    mshr_tagreturn_q;
+    wire                                 txrsp_tagmatch_sx;
+    logic [`SNI_MSHR_ENTRIES_NUM-1:0]    txrsp_any_sent_q;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_rdy_sx;
+    wire [`SNI_MSHR_ENTRIES_NUM-1:0]     txrsp_comp_queued_sx;
+
+    genvar                               entry;
+
+    localparam [31:0]                          ENTRIES_M1 = `SNI_MSHR_ENTRIES_NUM-1;
+    localparam [31:0]                          ENTRIES_M2 = `SNI_MSHR_ENTRIES_NUM-2;
+    localparam [`SNI_MSHR_ENTRIES_WIDTH-1:0]   IDX_ONE    = {{(`SNI_MSHR_ENTRIES_WIDTH-1){1'b0}}, 1'b1};
+    localparam [`SNI_MSHR_ENTRIES_WIDTH-1:0]   IDX_TWO    = {{(`SNI_MSHR_ENTRIES_WIDTH-2){1'b0}}, 2'd2};
+    localparam [`SNI_MSHR_ENTRIES_WIDTH-1:0]   IDX_LAST   = ENTRIES_M1[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+    localparam [`SNI_MSHR_ENTRIES_WIDTH-1:0]   IDX_LAST_M1= ENTRIES_M2[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+
+    //************************************************************************//
+    //                     request fields decode logic                        //
+    //************************************************************************//
+
+    assign rxreq_qos_s0         = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.qos          : '0;
+    assign rxreq_srcid_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.srcid        : '0;
+    assign rxreq_txnid_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.txnid        : '0;
+    assign rxreq_opcode_s0      = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.opcode       : chie_pkg::REQ_REQLCRDRETURN;
+    assign rxreq_size_s0        = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.size         : chie_pkg::SIZE_1B;
+    assign rxreq_addr_s0        = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.addr         : '0;
+    assign rxreq_ns_s0          = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.ns           : '0;
+    assign rxreq_order_s0       = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.order        : chie_pkg::ORDER_NONE;
+    assign rxreq_pcrdtype_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.pcrdtype     : '0;
+    assign rxreq_memattr_s0     = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.memattr      : '0;
+    assign rxreq_tracetag_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.tracetag     : '0;
+    assign rxreq_mpam_s0        = (rxreq_alloc_en_s0 == 1'b1)? chie_pkg::req_mpam_of(rxreq_alloc_flit_s0)
+                                                             : chie_pkg::mpam_default(1'b0);
+    assign rxreq_returnnid_s0   = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returnnid    : '0;
+    assign rxreq_returntxnid_s0 = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.returntxnid  : '0;
+    // Sec 13.10.7 (p.13-418): in a request the PGroupID occupies the bits the
+    // packet otherwise gives LPID; Sec 13.10.16 (p.13-420) puts it in the DBID
+    // bits of the Persist and CompPersist that reflect it.
+    assign rxreq_pgroupid_s0    = (rxreq_alloc_en_s0 == 1'b1)? rxreq_alloc_flit_s0.lpid         : '0;
+    // Sec 4.2.3 (p.4-176): "DWT flow between a Request Node and a Subordinate Node
+    // in WriteNoSnpZero and WriteUniqueZero is never permitted." Sec 2.9.6 (p.2-132)
+    // gives the bit to DoDWT only on the writes Table 4-14 lists; elsewhere it is SnpAttr.
+    assign rxreq_dodwt_s0       = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_wr_s0 == 1'b1) && (~rxreq_wrzero_s0) && (~rxreq_offtab_svc_s0)
+                                                             && (rxreq_alloc_flit_s0.snpattr.dodwt) :1'b0;
+    // CHI E.b Sec 4.5.1 (p.4-197, MUST): "A completion response is required for all
+    // transactions except PCrdReturn and PrefetchTgt." Every inbound request is
+    // therefore classified here, and every class below owns a response programme.
+    assign rxreq_rdsep_s0       = (rxreq_opcode_s0 == chie_pkg::REQ_READNOSNPSEP);
+    assign rxreq_rd_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_READNOSNP) | rxreq_rdsep_s0) :1'b0;
+    // A Combined Write carries a real write leg: Sec 2.3.9 (p.2-80) has the
+    // Subordinate grant a DBID, take NCBWrData and complete it exactly as a plain
+    // WriteNoSnp*, with the CMO leg's CompCMO/CompPersist owed on top.
+    assign rxreq_wr_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)|(rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)|rxreq_cw_s0|rxreq_wrzero_s0):1'b0;
+    assign rxreq_cmopersist_s0  = (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSISTSEP);
+    // Table 13-32 (Sec 13.10.37 p.13-435) shares the 0b11 encoding between Match and
+    // Fetch, and the direction tells them apart: on a Write or an Atomic it is Match,
+    // which Sec 12.11.1 (p.12-386, MUST) owes a TagMatch. Table 12-2 (Sec 12.12
+    // p.12-389) gives Match to the standalone WriteNoSnp forms and to Atomic* -- every
+    // Combined Write row and both Write Zero rows are N -- and Sec 12.10 (p.12-385)
+    // permits it on an Atomic to the Subordinate.
+    assign rxreq_tagmatch_s0    = rxreq_alloc_en_s0
+                                & ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULL)
+                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTL)
+                                 | rxreq_atomic_s0)
+                                & (rxreq_alloc_flit_s0.tagop == 2'b11);
+    // Table 13-32 shares 0b11 between Match and Fetch: on a Read it is Fetch, which
+    // Sec 12.10 (p.12-385) joins Transfer in asking for the location's tags.
+    assign rxreq_tagreturn_s0   = rxreq_rd_s0 & ((rxreq_alloc_flit_s0.tagop == 2'b01) |
+                                                 (rxreq_alloc_flit_s0.tagop == 2'b11));
+    // A CMO at a Subordinate holding no cached copy is a no-op that owes only its
+    // completion (Sec 2.3.9 p.2-81); Sec 2.3.5 (p.2-74) lets the *PersistSep one
+    // fold its Persist into CompPersist.
+    assign rxreq_cmo_s0         = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHARED)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_CLEANINVALID)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_MAKEINVALID)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_CLEANSHAREDPERSIST)
+                                                              | rxreq_cmopersist_s0) :1'b0;
+    // Table 4-14 (p.4-179) and Table 4-18 (p.4-182) give a Home WriteNoSnp{Full,Ptl,Zero}
+    // and the six WriteNoSnp Combined Writes to send an SN-F. The other ten writes a
+    // Home might send are serviced as their WriteNoSnp equivalents: a Subordinate has
+    // no coherence to preserve, SS4.2.4 (p.4-183) makes a Combined Write's behaviour
+    // that of its write and CMO sent separately, and Table 4-39 (p.4-219) keeps a
+    // CopyBack base's CompDBIDResp. The DISPLAY_FATAL below still flags the Home.
+    assign rxreq_cw_cb_s0       = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANINV)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
+    assign rxreq_cw_iw_s0       = (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSH)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP);
+    assign rxreq_offtab_svc_s0  = rxreq_cw_cb_s0 | rxreq_cw_iw_s0 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO);
+    // Every Combined Write with a persistent CMO leg: what Sec 2.6.2 step 7's fold
+    // and the Persist it otherwise owes are decided over.
+    assign rxreq_cwpersist_s0   = (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULLCLEANSHPERSEP)
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULLCLEANSHPERSEP);
+    assign rxreq_cw_s0          = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANSH)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPFULLCLEANINV)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANSH)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPPTLCLEANINV)
+                                                              | rxreq_cwpersist_s0 | rxreq_cw_cb_s0 | rxreq_cw_iw_s0) :1'b0;
+    // SS16.3.3 (p.16-479): this Subordinate declares Atomic_Transactions and runs all
+    // four classes as an AXI read-modify-write. Table 4-22 (p.4-188) makes SnoopMe
+    // inapplicable on this hop, so the shared Excl/SnoopMe bit is not read.
+    assign rxreq_atomic_s0      = rxreq_alloc_en_s0 & chie_pkg::atomic_req(rxreq_opcode_s0);
+    assign rxreq_atomicdat_s0   = rxreq_atomic_s0 & chie_pkg::atomic_returns_data(rxreq_opcode_s0);
+    assign rxreq_wrzero_s0      = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_WRITENOSNPZERO)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEZERO)) :1'b0;
+    // Sec 2.3.6 (p.2-74), Sec 4.5.4 (p.4-207): given no response, so no entry.
+    assign rxreq_drop_s0        = (rxreq_alloc_en_s0 == 1'b1)? ((rxreq_opcode_s0 == chie_pkg::REQ_PREFETCHTGT)
+                                                              | (rxreq_opcode_s0 == chie_pkg::REQ_PCRDRETURN)) :1'b0;
+    // Sec 9.1 (p.9-334): NDERR is what a Completer reports for "an attempt to use a
+    // transaction type that is not supported", and Sec 9.3 (p.9-336, MUST) keeps the
+    // whole transaction structure -- grant, write data, read data -- so the class
+    // carries its shape as well as its error.
+    assign rxreq_err_s0         = rxreq_alloc_en_s0 && ~(rxreq_rd_s0 | rxreq_wr_s0 | rxreq_cmo_s0 | rxreq_drop_s0 | rxreq_atomic_s0);
+    // Sec 9.3 (p.9-336, MUST): "All transactions must complete in a protocol-compliant
+    // manner, even if they include an error response", and the source of the data
+    // packets "is required to send the correct number of packets" -- which a write
+    // given no DBID has no buffer identifier to send against. Table 4-39 (p.4-219)
+    // fixes the shape per class, so each errored write carries its own.
+    // Table 4-39 gives the CopyBack writes CompDBIDResp and no split form.
+    // WriteEvictOrEvict is not here: footnote c gives it a data-less arm completed
+    // by a bare Comp, which is what this Subordinate elects.
+    assign rxreq_errcb_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKFULL)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEBACKPTL)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITECLEANFULL)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTFULL));
+    // The Immediate Writes, which take DBIDResp + Comp or, under EWA, CompDBIDResp.
+    assign rxreq_erriw_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULL)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTL)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEFULLSTASH)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEUNIQUEPTLSTASH));
+    // Sec 16.1.1 (p.16-473, MUST) owes a DVMOp a protocol-compliant answer, and
+    // Sec 2.3.7 (p.2-76) gives a Sync one DBIDResp, NCBWrData, then Comp.
+    assign rxreq_errdvm_s0      = rxreq_err_s0 && (rxreq_opcode_s0 == chie_pkg::REQ_DVMOP);
+    // Table 9-2 (p.9-337): a read carries its error on the CompData packets.
+    assign rxreq_errrd_s0       = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_READONCE)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCECLEANINVALID)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READONCEMAKEINVALID)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READCLEAN)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READSHARED)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READNOTSHAREDDIRTY)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READUNIQUE)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_READPREFERUNIQUE));
+    assign rxreq_errwr_s0       = rxreq_errcb_s0 | rxreq_erriw_s0 | rxreq_errdvm_s0;
+    // Table 4-38 (p.4-218) completes StashOnceSep* with "Comp + StashDone or
+    // CompStashDone"; a bare Comp leaves the Requester's outstanding-StashDone
+    // count (Sec 7.3 p.7-297) never satisfied.
+    assign rxreq_errstash_s0    = rxreq_err_s0 && ((rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPSHARED)
+                                                 | (rxreq_opcode_s0 == chie_pkg::REQ_STASHONCESEPUNIQUE));
+    assign rxreq_errrsp_s0      = rxreq_err_s0 && ~rxreq_errwr_s0 && ~rxreq_errrd_s0;
+    assign rxreq_rsponly_s0     = rxreq_cmo_s0 | rxreq_errrsp_s0;
+    // Sec 2.6.2 step 7 (p.2-102): the Subordinate may fold Comp and Persist into a
+    // combined CompPersist "if the ReturnNID and SrcID of the request are the same
+    // value" -- otherwise step 6 owes the Persist to ReturnNID, which a CompPersist
+    // addressed to SrcID never reaches (Table B-3 p.B-495 gives it no other target).
+    // Sec 4.2.4 (p.4-182, MUST) makes a Write*CleanShPerSep's CMO leg a
+    // CleanSharedPersistSep, so step 7's condition binds it as well.
+    assign rxreq_persist_fold_s0   = (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) && (rxreq_returnnid_s0 == rxreq_srcid_s0);
+    assign rxreq_rsponly_opcode_s0 = rxreq_persist_fold_s0 ? chie_pkg::RSP_COMPPERSIST
+                                   : rxreq_errstash_s0     ? chie_pkg::RSP_COMPSTASHDONE
+                                                           : chie_pkg::RSP_COMP;
+    // Table 4-39 (p.4-219) completes a CopyBack write with CompDBIDResp alone, so the
+    // CopyBack Combined Writes take it whatever their EWA.
+    assign rxreq_ewa_s0         = (rxreq_alloc_en_s0 == 1'b1)? (rxreq_alloc_flit_s0.memattr.early_wr_ack | rxreq_cw_cb_s0) : 1'b0;
+
+    // Every write outside Table 4-14 (p.4-179) and Table 4-18 (p.4-182).
+    assign rxreq_offtab_wr_s0   = rxreq_offtab_svc_s0 | rxreq_errcb_s0 | rxreq_erriw_s0
+                                | (rxreq_opcode_s0 == chie_pkg::REQ_WRITEEVICTOREVICT);
+`ifdef DISPLAY_FATAL
+    `display_fatal_arm
+    `display_fatal_sva(!(rxreq_alloc_en_s0 && rxreq_offtab_wr_s0),
+        $sformatf("Fatal info: [SNI_OFF_TABLE_WRITE] RXREQ received write opcode %h, which Tables 4-14/4-18 do not give a Home to send a Subordinate", $sampled(rxreq_opcode_s0)))
+`endif
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign mshr_entry_alloc_sx[entry] = (rxreq_alloc_en_s0 == 1'b1) && (mshr_entry_idx_alloc_s0 == entry);
+        end
+    endgenerate
+
+    //************************************************************************//
+    //                             FIELD REG                                  //
+    //************************************************************************//
+
+    always_ff @(posedge clk)begin : mshr_rxreq_alloc_s1_q_timing_logic
+            if(rst)begin
+                rxreq_alloc_en_s1_q         <= 1'b0;
+                mshr_entry_idx_alloc_s1_q   <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+            end
+            else begin
+                rxreq_alloc_en_s1_q         <= rxreq_alloc_en_s0;
+                mshr_entry_idx_alloc_s1_q   <= mshr_entry_idx_alloc_s0;
+            end
+        end
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk)begin : mshr_entry_valid_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_entry_valid_sx_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    mshr_entry_valid_sx_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    mshr_entry_valid_sx_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_wr_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_wr_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_wr_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1 && rxreq_wr_s0)
+                    rxreq_wr_s1_q[entry] <= 1'b1;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_wrzero_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_wrzero_s1_q[entry] <= rxreq_wrzero_s0;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_rd_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_rd_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_rd_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1 && rxreq_rd_s0)
+                    rxreq_rd_s1_q[entry] <= 1'b1;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_class_s1_q_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
+                    rxreq_rdsep_s1_q[entry]    <= 1'b0;
+                    rxreq_errwr_s1_q[entry]    <= 1'b0;
+                    rxreq_atm_s1_q[entry]      <= 1'b0;
+                    rxreq_atmdat_s1_q[entry]   <= 1'b0;
+                    rxreq_atmcmp_s1_q[entry]   <= 1'b0;
+                    rxreq_errdvm_s1_q[entry]   <= 1'b0;
+                    rxreq_errrd_s1_q[entry]    <= 1'b0;
+                    rxreq_err_s1_q[entry]      <= 1'b0;
+                    rxreq_rsponly_s1_q[entry]  <= 1'b0;
+                    rxreq_drop_s1_q[entry]     <= 1'b0;
+                    rxreq_rsponly_opcode_s1_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
+                end
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
+                    rxreq_rdsep_s1_q[entry]    <= rxreq_rd_s0 & rxreq_rdsep_s0;
+                    rxreq_errwr_s1_q[entry]    <= rxreq_errwr_s0;
+                    rxreq_atm_s1_q[entry]      <= rxreq_atomic_s0;
+                    rxreq_atmdat_s1_q[entry]   <= rxreq_atomicdat_s0;
+                    rxreq_atmcmp_s1_q[entry]   <= rxreq_opcode_s0 == chie_pkg::REQ_ATOMICCOMPARE;
+                    rxreq_errdvm_s1_q[entry]   <= rxreq_errdvm_s0;
+                    rxreq_errrd_s1_q[entry]    <= rxreq_errrd_s0;
+                    rxreq_err_s1_q[entry]      <= rxreq_err_s0;
+                    rxreq_rsponly_s1_q[entry]  <= rxreq_rsponly_s0;
+                    rxreq_drop_s1_q[entry]     <= rxreq_drop_s0;
+                    rxreq_rsponly_opcode_s1_q[entry] <= rxreq_rsponly_opcode_s0;
+                end
+            end
+
+            // The RSP the entry sends after the one currently armed, and the CMO
+            // leg a Combined Write owes on top of its write completion
+            // (Sec 2.3.9 p.2-80, Sec 9.4.3 p.9-341).
+            always_ff @(posedge clk or posedge rst)begin : txrsp_queue_alloc_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)begin
+                    txrsp_q2_valid_q[entry]     <= 1'b0;
+                    txrsp_cmo_owed_q[entry]     <= 1'b0;
+                    txrsp_cmo_opcode_q[entry]   <= chie_pkg::RSP_RSPLCRDRETURN;
+                    txrsp_persist_owed_q[entry] <= 1'b0;
+                    txrsp_tagmatch_owed_q[entry] <= 1'b0;
+                    mshr_tagreturn_q[entry]      <= 1'b0;
+                end
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)begin
+                    txrsp_q2_valid_q[entry]   <= rxreq_errwr_s0 & ~rxreq_errdvm_s0
+                                               & ~rxreq_ewa_s0 & ~rxreq_errcb_s0;
+                    txrsp_cmo_owed_q[entry]   <= rxreq_cw_s0;
+                    txrsp_cmo_opcode_q[entry] <= (rxreq_cwpersist_s0 & rxreq_persist_fold_s0) ? chie_pkg::RSP_COMPPERSIST
+                                                                                             : chie_pkg::RSP_COMPCMO;
+                    // Sec 2.6.2 step 6 (p.2-102): an unfolded persistent CMO owes a
+                    // Persist of its own, and a Combined Write owes it on top of the
+                    // write leg's Comp and the CMO leg's CompCMO -- three responses,
+                    // so the Persist holds a slot of its own.
+                    txrsp_persist_owed_q[entry] <= (rxreq_cmopersist_s0 | rxreq_cwpersist_s0) & ~rxreq_persist_fold_s0;
+                    // Sec 12.11.1 (p.12-386): the TagMatch is owed on top of the
+                    // transaction's own completion, and "must be sent even if the WriteData
+                    // is canceled or a Tag Match is not performed" -- so it is owed
+                    // from allocation, not from the data.
+                    txrsp_tagmatch_owed_q[entry] <= rxreq_tagmatch_s0;
+                    mshr_tagreturn_q[entry]      <= rxreq_tagreturn_s0;
+                end
+                else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
+                    if (txrsp_comp_queued_sx[entry])
+                        txrsp_q2_valid_q[entry]     <= 1'b0;
+                    else if (txrsp_cmo_owed_q[entry])
+                        txrsp_cmo_owed_q[entry]     <= 1'b0;
+                    else if (txrsp_persist_owed_q[entry])
+                        txrsp_persist_owed_q[entry] <= 1'b0;
+                    // Keyed to the TagMatch actually going out, not to any send by
+                    // this entry: its verdict can still be in flight when the write's
+                    // own grant is sent, and a bare `else` retires the debt there.
+                    else if (txrsp_opcode_sx == chie_pkg::RSP_TAGMATCH)
+                        txrsp_tagmatch_owed_q[entry] <= 1'b0;
+                end
+                else if(txrsp_comp_rdy_sx[entry] && txrsp_rdy_sx_q[entry])
+                    txrsp_q2_valid_q[entry]   <= 1'b1;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : txrsp_any_sent_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    txrsp_any_sent_q[entry] <= 1'b0;
+                else if(txrsp_sent_sx && (entry == txrsp_entry_idx_sx))
+                    txrsp_any_sent_q[entry] <= 1'b1;
+            end
+
+            // Sec 9.4.4 (p.9-342, MUST): an errored request still transfers its
+            // write data, so the entry is only freed once that data has landed.
+            always_ff @(posedge clk or posedge rst)begin : errwr_data_done_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    errwr_data_done_q[entry] <= 1'b0;
+                else if(dbf_mshr_rxdat_ok_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                    errwr_data_done_q[entry] <= 1'b1;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_dodwt_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_dodwt_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_dodwt_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_dodwt_s1_q[entry] <= rxreq_dodwt_s0;
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : rxreq_ewa_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxreq_ewa_s1_q[entry] <= 1'b0;
+                else if(retired_entry_sx[entry] == 1'b1)
+                    rxreq_ewa_s1_q[entry] <= 1'b0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    rxreq_ewa_s1_q[entry] <= rxreq_ewa_s0;
+            end
+        end
+    endgenerate
+
+    //************************************************************************//
+    //                            AXI SIGNAL                                  //
+    //************************************************************************//
+
+    // The AXI mapping of a request depends only on that request, so it is
+    // decoded once here rather than rebuilt inside each of the N entry slots.
+    // unique: Table 2-16 (SS2.10.5 p.2-137) gives Size seven encodings and they
+    // are mutually exclusive, so the arms are a parallel mux, not a chain.
+    logic [`AXI4_AXADDR_WIDTH-1:0] rxreq_axaddr_s0;
+    logic [`AXI4_ARLEN_WIDTH-1:0]  rxreq_axlen_s0;
+    logic [`AXI4_AWSIZE_WIDTH-1:0] rxreq_axsize_s0;
+
+    always_comb begin : rxreq_axi_map_t
+        unique case (rxreq_size_s0)
+            chie_pkg::SIZE_1B  : rxreq_axaddr_s0 =  rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:0];
+            chie_pkg::SIZE_2B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:1],1'b0};
+            chie_pkg::SIZE_4B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:2],2'b0};
+            chie_pkg::SIZE_8B  : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:3],3'b0};
+            chie_pkg::SIZE_16B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:4],4'b0};
+            chie_pkg::SIZE_32B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],rxreq_addr_s0[5:5],5'b0};
+            chie_pkg::SIZE_64B : rxreq_axaddr_s0 = {rxreq_addr_s0[`AXI4_AXADDR_WIDTH-1:6],6'b0};
+            default            : rxreq_axaddr_s0 = '0;
+        endcase
+
+        unique case (rxreq_size_s0)
+            chie_pkg::SIZE_1B, chie_pkg::SIZE_2B, chie_pkg::SIZE_4B,
+            chie_pkg::SIZE_8B, chie_pkg::SIZE_16B : begin
+                rxreq_axlen_s0  = '0;
+                rxreq_axsize_s0 = rxreq_size_s0;
+            end
+            chie_pkg::SIZE_32B : begin
+                rxreq_axlen_s0  = (`AXI4_AXDATA_WIDTH == 128) ? 8'd1 : 8'd0;
+                rxreq_axsize_s0 = (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101;
+            end
+            chie_pkg::SIZE_64B : begin
+                rxreq_axlen_s0  = (`AXI4_AXDATA_WIDTH == 128) ? 8'd3 : 8'd1; //4len,2len
+                rxreq_axsize_s0 = (`AXI4_AXDATA_WIDTH == 128) ? 3'b100 : 3'b101; //16B,32B
+            end
+            default : begin
+                rxreq_axlen_s0  = '0;
+                rxreq_axsize_s0 = '0;
+            end
+        endcase
+    end
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_entry_record_timing_logic
+                if(rst == 1'b1 || retired_entry_sx[entry] == 1'b1)
+                    mshr_entry_q[entry] <= '0;
+                else if(mshr_entry_alloc_sx[entry] == 1'b1)
+                    mshr_entry_q[entry] <= '{ opcode      : rxreq_opcode_s0,
+                                              qos         : rxreq_qos_s0,
+                                              memattr     : rxreq_memattr_s0,
+                                              srcid       : rxreq_srcid_s0,
+                                              txnid       : rxreq_txnid_s0,
+                                              size        : rxreq_size_s0,
+                                              addr        : rxreq_addr_s0,
+                                              ns          : rxreq_ns_s0,
+                                              order       : rxreq_order_s0,
+                                              returntxnid : rxreq_returntxnid_s0,
+                                              tracetag    : rxreq_tracetag_s0,
+                                              mpam        : rxreq_mpam_s0,
+                                              returnnid   : rxreq_returnnid_s0,
+                                              // SS2.6.2 steps 6/7 (p.2-102, MUST): the PGroupID
+                                              // is set to the request's own.
+                                              pgroupid    : rxreq_pgroupid_s0,
+                                              ccid        : rxreq_addr_s0[5:4],
+                                              // SS13.10.28 (p.13-432): the byte order of an Atomic's data.
+                                              endian      : rxreq_alloc_flit_s0.stashnidvalid.endian,
+                                              axid       : {{(`AXI4_AXID_WIDTH-`SNI_MSHR_ENTRIES_WIDTH){1'b0}}, mshr_entry_idx_alloc_s0},
+                                              axlen       : rxreq_axlen_s0,
+                                              axsize      : rxreq_axsize_s0,
+                                              axaddr      : rxreq_axaddr_s0 };
+            end
+        end
+    endgenerate
+
+    // to databuffer
+    assign rxreq_dbf_en_s1         = rxreq_alloc_en_s1_q;
+    assign rxreq_dbf_addr_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].addr;
+    assign rxreq_dbf_wr_s1         = rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q]
+                                   | rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_atomic_s1     = rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_opcode_s1     = mshr_entry_q[mshr_entry_idx_alloc_s1_q].opcode;
+    assign rxreq_dbf_endian_s1     = mshr_entry_q[mshr_entry_idx_alloc_s1_q].endian;
+    assign rxreq_dbf_wrzero_s1     = rxreq_wrzero_s1_q[mshr_entry_idx_alloc_s1_q];
+    assign rxreq_dbf_size_s1       = mshr_entry_q[mshr_entry_idx_alloc_s1_q].size;
+    assign rxreq_dbf_axlen_s1      = mshr_entry_q[mshr_entry_idx_alloc_s1_q].axlen;
+    assign rxreq_dbf_entry_idx_s1  = mshr_entry_idx_alloc_s1_q;
+
+    //************************************************************************//
+    //                      mshr txrspflit wrap logic                         //
+    //************************************************************************//
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : txrsp_comp_timing_logic
+                if (rst == 1'b1)
+                    txrsp_comp_s1_q[entry] <= 1'b0;
+                else if ((mshr_entry_valid_sx_q[entry]) && txrsp_dbidresp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))
+                    txrsp_comp_s1_q[entry] <= 1'b1;
+                else if ((mshr_entry_valid_sx_q[entry]) && txrsp_dbidresp_en_sx && (entry == wakeup_idx_sx))
+                    txrsp_comp_s1_q[entry] <= 1'b1;
+                else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
+                    txrsp_comp_s1_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+        end
+    endgenerate
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_txrsp_comp_timing_logic
+                if(rst == 1'b1)
+                    txrsp_comp_sent_sx_q[entry] <= 1'b0;
+                else if(txrsp_won_sx && txrsp_valid_sx && (txrsp_opcode_sx == chie_pkg::RSP_COMP) & (entry == txrsp_entry_idx_sx))
+                    txrsp_comp_sent_sx_q[entry] <= 1'b1;
+                else if(mshr_retired_valid_sx & entry == mshr_retired_idx_sx)
+                    txrsp_comp_sent_sx_q[entry] <= 1'b0;
+            end
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : txrsp_comp_timing_logic
+                if (rst == 1'b1)
+                    txrsp_rdreceipt_valid_sx_q[entry] <= 1'b0;
+                else if (txrsp_readreceipt_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))
+                    txrsp_rdreceipt_valid_sx_q[entry] <= 1'b1;
+                else if (txrsp_won_sx && txrsp_valid_sx && (txrsp_opcode_sx == chie_pkg::RSP_READRECEIPT) && (entry == txrsp_entry_idx_sx))
+                    txrsp_rdreceipt_valid_sx_q[entry] <= 1'b0;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    //*****************************************************************************************//
+    //  1. ewa = 1  && dwt  : return DBIDRESP to RNF;rxdat finish ,return comp to HN
+    //  2. ewa = 1  && ！dwt： compdbidresp to HN
+    //  3. !ewa && dwt      : return DBIDRESP to RNF;bresp receive ,return comp to HN
+    //  4. !ewa && ！dwt    :  bresp receive ,return comp to HN
+    //*****************************************************************************************//
+    assign txrsp_en_s1                 = txrsp_dbidresp_en_s1 | txrsp_readreceipt_en_s1 | txrsp_compdbidresp_en_s1
+                                       | txrsp_rsponly_en_s1 | txrsp_errgrant_en_s1 | txrsp_atmgrant_en_s1;
+    // Sec 2.8.5 (p.2-120): the ReadReceipt is owed whenever Order is non-zero,
+    // whether or not the read data goes back direct to the Requester.
+    assign txrsp_readreceipt_en_s1     = rxreq_alloc_en_s1_q && (rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q] | rxreq_errrd_s1_q[mshr_entry_idx_alloc_s1_q]) && (mshr_entry_q[mshr_entry_idx_alloc_s1_q].order != 2'b00);
+    assign txrsp_rsponly_en_s1         = rxreq_alloc_en_s1_q && rxreq_rsponly_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    // Table 9-6 (p.9-340) keeps DBIDResp at OK, so an errored write still grants
+    // normally and carries its NDERR on the completion that follows. Table 9-9
+    // (p.9-342) gives AtomicLoad/Swap/Compare no CompDBIDResp, so those always
+    // take the split grant.
+    assign txrsp_errgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_errwr_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    // Table 4-40 (SS4.7.4 p.4-220): every Atomic takes DBIDResp for its operand; its
+    // completion waits for the read-modify-write (SS9.4.4 p.9-342's "delayed form").
+    assign txrsp_atmgrant_en_s1        = rxreq_alloc_en_s1_q && rxreq_atm_s1_q[mshr_entry_idx_alloc_s1_q] && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q]);
+    assign txrsp_atmgrant_en_sx        = wakeup_valid ? rxreq_atm_s1_q[wakeup_idx_sx] : 1'b0;
+    assign txrsp_compdbidresp_en_s1    = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && ((~rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q]) && rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q])) : 1'b0;
+    assign txrsp_dbidresp_en_s1        = (rxreq_alloc_en_s1_q && (~sleep_s2_q[mshr_entry_idx_alloc_s1_q])) ? (rxreq_wr_s1_q[mshr_entry_idx_alloc_s1_q] && (rxreq_dodwt_s1_q[mshr_entry_idx_alloc_s1_q] | (~rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q]))) : 1'b0;
+    assign txrsp_opcode_en_s1          = txrsp_dbidresp_en_s1 ? chie_pkg::RSP_DBIDRESP
+                                       : txrsp_readreceipt_en_s1 ? chie_pkg::RSP_READRECEIPT
+                                       : txrsp_compdbidresp_en_s1 ? chie_pkg::RSP_COMPDBIDRESP
+                                       : txrsp_rsponly_en_s1 ? rxreq_rsponly_opcode_s1_q[mshr_entry_idx_alloc_s1_q]
+                                       : txrsp_errgrant_en_s1 ? ((rxreq_ewa_s1_q[mshr_entry_idx_alloc_s1_q] && (~rxreq_errdvm_s1_q[mshr_entry_idx_alloc_s1_q])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_atmgrant_en_s1 ? chie_pkg::RSP_DBIDRESP
+                                       : chie_pkg::RSP_RSPLCRDRETURN;
+
+    // A request that hit a same-address hazard was put to sleep before its RSP was
+    // armed, so the wakeup path has to arm every class the S1 path does.
+    assign txrsp_en_sx                 = txrsp_dbidresp_en_sx | txrsp_compdbidresp_en_sx
+                                       | txrsp_rsponly_en_sx | txrsp_errgrant_en_sx | txrsp_atmgrant_en_sx;
+    assign txrsp_dbidresp_en_sx        = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx]&& (rxreq_dodwt_s1_q[wakeup_idx_sx] | (~rxreq_ewa_s1_q[wakeup_idx_sx]))) : 1'b0;
+    assign txrsp_compdbidresp_en_sx    = wakeup_valid ? (rxreq_wr_s1_q[wakeup_idx_sx] && ((~rxreq_dodwt_s1_q[wakeup_idx_sx]) && rxreq_ewa_s1_q[wakeup_idx_sx])) : 1'b0; //ewa&~dwt
+    assign txrsp_rsponly_en_sx         = wakeup_valid ? rxreq_rsponly_s1_q[wakeup_idx_sx]  : 1'b0;
+    assign txrsp_errgrant_en_sx        = wakeup_valid ? rxreq_errwr_s1_q[wakeup_idx_sx] : 1'b0;
+    assign txrsp_opcode_en_sx          = txrsp_dbidresp_en_sx ? chie_pkg::RSP_DBIDRESP
+                                       : txrsp_compdbidresp_en_sx ? chie_pkg::RSP_COMPDBIDRESP
+                                       : txrsp_rsponly_en_sx ? rxreq_rsponly_opcode_s1_q[wakeup_idx_sx]
+                                       : txrsp_errgrant_en_sx ? ((rxreq_ewa_s1_q[wakeup_idx_sx] && (~rxreq_errdvm_s1_q[wakeup_idx_sx])) ? chie_pkg::RSP_COMPDBIDRESP : chie_pkg::RSP_DBIDRESP)
+                                       : txrsp_atmgrant_en_sx ? chie_pkg::RSP_DBIDRESP
+                                       : chie_pkg::RSP_RSPLCRDRETURN;
+
+    assign txrsp_ewa_dwt_rdy_sx         = dbf_mshr_rxdat_ok_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_ewa_s1_q[dbf_mshr_rxdat_ok_idx_sx] && rxreq_dodwt_s1_q[dbf_mshr_rxdat_ok_idx_sx];
+    assign txrsp_ewa_dwt_rdy_entry_sx   = dbf_mshr_rxdat_ok_idx_sx ;
+    assign txrsp_noewa_rdy_sx           = (bvalid_sx & bready_sx) ? (~rxreq_ewa_s1_q[bid_sx[`SNI_MSHR_ENTRIES_WIDTH-1:0]]  & txrsp_comp_s1_q[bid_sx[`SNI_MSHR_ENTRIES_WIDTH-1:0]]) : 1'b0;
+    assign txrsp_noewa_rdy_entry_sx     = (bvalid_sx & bready_sx) ? bid_sx[`SNI_MSHR_ENTRIES_WIDTH-1:0] : {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+    assign txrsp_comp_wrdatcancel_sx    =  dbf_mshr_rxdat_cancel_sx && txrsp_comp_s1_q[dbf_mshr_rxdat_cancel_idx_sx];
+    assign txrsp_comp_wrcancel_sx       =  dbf_mshr_rxdat_cancel_idx_sx;
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin
+                if (rst)begin
+                    txrsp_rdy_sx_q[entry] <= 1'b0;
+                    txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_RSPLCRDRETURN;
+                end
+                else if (txrsp_sent_sx && (entry == txrsp_entry_idx_sx))begin
+                    // The debts are cleared by NBA in this same cycle, so the one
+                    // being sent still reads as owed here and must be excluded or the
+                    // entry arms it a second time.
+                    txrsp_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] | txrsp_cmo_owed_q[entry] | txrsp_persist_owed_q[entry]
+                                           | (txrsp_tagmatch_armable_sx[entry] & (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH));
+                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_comp_queued_sx[entry] ? chie_pkg::RSP_COMP
+                                                  : txrsp_cmo_owed_q[entry] ? txrsp_cmo_opcode_q[entry]
+                                                  : txrsp_persist_owed_q[entry] ? chie_pkg::RSP_PERSIST
+                                                  : (txrsp_tagmatch_armable_sx[entry] & (txrsp_opcode_sx != chie_pkg::RSP_TAGMATCH)) ? chie_pkg::RSP_TAGMATCH
+                                                  : chie_pkg::RSP_RSPLCRDRETURN;
+                end
+                else if (txrsp_en_s1 && (entry == mshr_entry_idx_alloc_s1_q))begin
+                    txrsp_rdy_sx_q[entry] <= 1'b1;
+                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_opcode_en_s1;
+                end
+                else if (txrsp_en_sx && (entry == wakeup_idx_sx))begin
+                    txrsp_rdy_sx_q[entry] <= 1'b1;
+                    txrsp_opcode_rdy_sx_q[entry] <= txrsp_opcode_en_sx;
+                end
+                // Only when the slot is free. A Comp arriving while the entry's
+                // grant is still queued is banked instead -- Sec 2.3.9 (p.2-79,
+                // MUST) gives a Home-to-Subordinate write DBIDResp + Comp or
+                // CompDBIDResp, and overwriting the grant leaves it neither.
+                else if (txrsp_comp_rdy_sx[entry] && (~txrsp_rdy_sx_q[entry])) begin
+                    txrsp_rdy_sx_q[entry] <= 1'b1;
+                    txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_COMP;
+                end
+                // The verdict can land after the entry's other responses have gone,
+                // leaving the slot idle with the TagMatch still owed. Lowest
+                // priority, so it never displaces a Comp that is ready this cycle.
+                else if (txrsp_tagmatch_armable_sx[entry] && (~txrsp_rdy_sx_q[entry])) begin
+                    txrsp_rdy_sx_q[entry] <= 1'b1;
+                    txrsp_opcode_rdy_sx_q[entry] <= chie_pkg::RSP_TAGMATCH;
+                end
+            end
+        end
+    endgenerate
+
+    // Sec 12.11.1 (p.12-386): "The TagMatch response can be sent as soon as the
+    // Completer can determine the result", so the debt is not armable until the data
+    // buffer has one.
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign txrsp_tagmatch_armable_sx[entry] = txrsp_tagmatch_owed_q[entry]
+                                                    & dbf_mshr_tagmatch_done_sx[entry];
+        end
+    endgenerate
+
+    // The three points a write's Comp becomes ready, per entry, and what the entry
+    // owes as a Comp once the currently armed response is sent.
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign txrsp_comp_rdy_sx[entry] = (txrsp_ewa_dwt_rdy_sx      && (entry == txrsp_ewa_dwt_rdy_entry_sx))
+                                            | (txrsp_noewa_rdy_sx        && (entry == txrsp_noewa_rdy_entry_sx))
+                                            | (txrsp_comp_wrdatcancel_sx && (entry == txrsp_comp_wrcancel_sx))
+                                            | (dbf_mshr_rxdat_ok_sx && rxreq_errdvm_s1_q[entry] && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                                            | (atm_mem_done_sx[entry] & ~rxreq_atmdat_s1_q[entry]);
+            assign txrsp_comp_queued_sx[entry] = txrsp_q2_valid_q[entry] | txrsp_comp_rdy_sx[entry];
+        end
+    endgenerate
+
+    poll_function #(.POLL_ENTRIES_NUM(`SNI_MSHR_ENTRIES_NUM)) 
+                    txrsp_entry_sel(
+                        .clk               (clk                 ),
+                        .rst               (rst                 ),
+                        .entry_vec         (txrsp_rdy_sx_q      ),
+                        .upd               (txrsp_update_sx     ),
+                        .found             (),
+                        .sel_entry         (txrsp_valid_idx_sx  ),
+                        .sel_index         (txrsp_entry_idx_sx  ) 
+                    );
+
+    assign txrsp_sent_sx                = txrsp_valid_sx & txrsp_won_sx;
+    assign txrsp_update_sx              = (|txrsp_rdy_sx_q) & (~txrsp_valid_sx);
+    assign txrsp_valid_sx               = (|txrsp_valid_idx_sx) & txrsp_rdy_sx_q[txrsp_entry_idx_sx];
+    assign txrsp_qos_sx                 = (mshr_entry_q[txrsp_entry_idx_sx].qos);
+    // Table 3-1 (p.3-153) routes a standalone Persist to Request.ReturnNID, and
+    // Table A-8 (p.A-488) makes its TxnID inapplicable and zero; DoDWT moves only
+    // the DBIDResp (Table 13-21 p.13-430).
+    assign txrsp_persist_sx             = (txrsp_opcode_sx == chie_pkg::RSP_PERSIST);
+    // Sec 12.11.1 (p.12-386, MUST): a Subordinate's TagMatch takes its TgtID from the
+    // request's ReturnNID (Table 3-1 Sec 3.3.2 p.3-153), Table A-8 (p.A-488) makes its
+    // TxnID inapplicable and zero, and Sec 13.10.40 (p.13-435) keys it by the
+    // TagGroupID the request carried in its LPID bits.
+    assign txrsp_tagmatch_sx            = (txrsp_opcode_sx == chie_pkg::RSP_TAGMATCH);
+    assign mshr_txdat_tag_return_sx     = mshr_tagreturn_q[mshr_txdat_entry_idx_sx];
+    assign txrsp_dwt_grant_sx           = rxreq_dodwt_s1_q[txrsp_entry_idx_sx] && (txrsp_opcode_sx == chie_pkg::RSP_DBIDRESP);
+    assign txrsp_tgtid_sx               = (txrsp_persist_sx | txrsp_tagmatch_sx | txrsp_dwt_grant_sx) ? mshr_entry_q[txrsp_entry_idx_sx].returnnid : mshr_entry_q[txrsp_entry_idx_sx].srcid;
+    assign txrsp_txnid_sx               = (txrsp_persist_sx | txrsp_tagmatch_sx) ? 12'd0
+                                        : txrsp_dwt_grant_sx ? mshr_entry_q[txrsp_entry_idx_sx].returntxnid
+                                                             : mshr_entry_q[txrsp_entry_idx_sx].txnid;
+    assign txrsp_opcode_sx              = txrsp_opcode_rdy_sx_q[txrsp_entry_idx_sx];
+    // Sec 9.1 (p.9-334): NDERR reports "an attempt to use a transaction type that
+    // is not supported". Table 9-6 (p.9-340) pins DBIDResp to OK and Sec 4.5.4
+    // (p.4-207) pins the ReadReceipt's Resp/RespErr to zero, so only the
+    // completion carries it.
+    assign txrsp_resperr_sx             = ((rxreq_err_s1_q[txrsp_entry_idx_sx] | bresp_err_q[txrsp_entry_idx_sx] | atm_err_q[txrsp_entry_idx_sx])
+                                        && (txrsp_opcode_sx != chie_pkg::RSP_DBIDRESP)
+                                        && (txrsp_opcode_sx != chie_pkg::RSP_READRECEIPT)
+                                        && ~txrsp_tagmatch_sx) ? chie_pkg::RESP_ERR_NON_DATA
+                                                                                   : chie_pkg::RESP_ERR_NORM_OK;
+    // Table 13-35 (p.13-437): Resp[0] is the Tag Match verdict, 0b001 Pass and
+    // 0b000 Fail. Sec 12.11.1 (p.12-386, MUST) fixes it three ways -- Fail when MTE
+    // is not supported, Pass when it is supported but the match was not performed,
+    // Accurate when it was. This Subordinate stores Allocation Tags, so the Fail arm
+    // describes it no longer and the verdict comes from the comparison.
+    assign txrsp_resp_sx                = (txrsp_tagmatch_sx & dbf_mshr_tagmatch_pass_sx[txrsp_entry_idx_sx])
+                                        ? chie_pkg::RESP_SC : chie_pkg::RESP_I;
+    // Table A-8 (p.A-488): Persist and CompPersist carry no DBID -- those bits are
+    // the PGroupID they reflect from the request (Sec 13.10.16 p.13-420).
+    assign txrsp_dbid_sx                = (txrsp_persist_sx || txrsp_tagmatch_sx || (txrsp_opcode_sx == chie_pkg::RSP_COMPPERSIST))
+                                        ? 12'(mshr_entry_q[txrsp_entry_idx_sx].pgroupid)
+                                        : {{(12-`SNI_MSHR_ENTRIES_WIDTH){1'b0}}, txrsp_entry_idx_sx};
+    assign txrsp_tracetag_sx            = mshr_entry_q[txrsp_entry_idx_sx].tracetag;
+    // Sec 2.6.1 (p.2-94, MUST): "the SrcID is a fixed value for the Subordinate.
+    // This also matches the TgtID received." Echoing the request's TgtID instead
+    // leaves the Subordinate answering under whatever identity it was addressed by.
+    assign txrsp_srcid_sx               = SNI_NID_PARAM;
+
+    //************************************************************************//
+    //                       mshr AR channel logic                            //
+    //************************************************************************//
+    assign arvalid_en_s1 = rxreq_alloc_en_s1_q ? ((~sleep_s2_q[mshr_entry_idx_alloc_s1_q]) && rxreq_rd_s1_q[mshr_entry_idx_alloc_s1_q]) : 1'b0;
+    assign arvalid_en2_s1 = wakeup_valid ? rxreq_rd_s1_q[wakeup_idx_sx] : 1'b0;
+
+    // A TagOp=Match write or Atomic fetches the location's Allocation Tags on the read channel
+    // so Sec 12.11.1's (p.12-386, MUST) verdict can be accurate. It is a third
+    // producer for the AR FIFO and takes the lowest priority of the three: the
+    // request is a level held in the data buffer until acknowledged, so losing the
+    // cycle costs a wait and never a fetch. It drains because an entry owing a
+    // TagMatch cannot retire, so a Subordinate whose MSHR has filled with them stops
+    // allocating and both higher-priority producers go quiet.
+    // An Atomic's own fetch of the original value shares the producer: the data buffer
+    // raises it only once any tag fetch of that entry is answered, so the two never
+    // meet on one entry.
+    assign dbfrd_req_sx = dbf_mshr_tagfetch_req_sx | dbf_mshr_atmrd_req_sx;
+    always_comb begin: tagfetch_idx_comb_logic
+        tagfetch_idx_sx = {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int i = `SNI_MSHR_ENTRIES_NUM-1; i >= 0; i--)
+            if (dbfrd_req_sx[i]) tagfetch_idx_sx = i[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+    end
+    assign tagfetch_push_sx      = (|dbfrd_req_sx) & (~arvalid_en_s1) & (~arvalid_en2_s1);
+    assign mshr_dbf_rdreq_ack_sx = tagfetch_push_sx;
+    assign mshr_dbf_rdreq_idx_sx = tagfetch_idx_sx;
+
+    always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
+        if(rst == 1'b1)
+            arvalid_fifo_set_vec <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        else if(arvalid_en_s1 && arvalid_en2_s1)
+            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST_M1) ? {`SNI_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec == IDX_LAST) ? IDX_ONE : (arvalid_fifo_set_vec + IDX_TWO);
+        else if ((arvalid_en_s1 && (~arvalid_en2_s1)) | ((~arvalid_en_s1) && arvalid_en2_s1) | tagfetch_push_sx)
+            arvalid_fifo_set_vec <= (arvalid_fifo_set_vec == IDX_LAST) ? {`SNI_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_set_vec + 1'b1);
+    end
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
+                if(rst == 1'b1)
+                    arvalid_fifo_s1_q[entry]        <= 1'b0;
+                else if ((arvalid_sx == 1'b1) && (arready_sx == 1'b1) && (arvalid_fifo_vec == entry))
+                    arvalid_fifo_s1_q[entry]        <= 1'b0;
+                else if (arvalid_en_s1 && arvalid_en2_s1 && (arvalid_fifo_set_vec == entry)) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= wakeup_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
+                end
+                else if (arvalid_en_s1 && arvalid_en2_s1 && (((arvalid_fifo_set_vec == IDX_LAST) & (entry == 0)) | ((arvalid_fifo_set_vec +1) == entry))) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= mshr_entry_idx_alloc_s1_q;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
+                end
+                else if (arvalid_en_s1 && (arvalid_fifo_set_vec == entry)) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= mshr_entry_idx_alloc_s1_q;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
+                end
+                else if (arvalid_en2_s1 && (arvalid_fifo_set_vec == entry)) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= wakeup_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= 1'b0;
+                end
+                else if (tagfetch_push_sx && (arvalid_fifo_set_vec == entry)) begin
+                    arvalid_fifo_s1_q[entry]        <= 1'b1;
+                    arvalid_fifo_idx_sx_q[entry]    <= tagfetch_idx_sx;
+                    arvalid_fifo_tagfetch_q[entry]  <= dbf_mshr_tagfetch_req_sx[tagfetch_idx_sx];
+                end
+            end
+        end
+    endgenerate
+
+    always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_cnt_comb_logic
+        if(rst == 1'b1)
+            arvalid_fifo_vec     <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        else if((arvalid_sx == 1'b1) && (arready_sx == 1'b1))
+            arvalid_fifo_vec     <= (arvalid_fifo_vec == IDX_LAST) ? {`SNI_MSHR_ENTRIES_WIDTH{1'b0}} : (arvalid_fifo_vec + 1'b1);
+    end
+
+    always_ff @(posedge clk or posedge rst)begin : mshr_arvalid_timing_logic
+        if(rst == 1'b1) begin
+            arvalid_sx                <= 1'b0;
+            arvalid_entry_idx_s1_q    <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else if((arvalid_sx == 1'b1) && (arready_sx == 1'b1))begin
+            arvalid_sx                <= 1'b0;
+            arvalid_entry_idx_s1_q    <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else if(arvalid_fifo_s1_q[arvalid_fifo_vec])begin
+            arvalid_sx                <= 1'b1;
+            arvalid_entry_idx_s1_q    <= arvalid_fifo_idx_sx_q[arvalid_fifo_vec];
+            arvalid_tagfetch_s1_q     <= arvalid_fifo_tagfetch_q[arvalid_fifo_vec];
+        end
+    end
+
+    assign arid_sx          = mshr_entry_q[arvalid_entry_idx_s1_q].axid;
+    assign araddr_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axaddr;
+    assign arcache_sx[0]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[0];
+    assign arcache_sx[1]    = ~mshr_entry_q[arvalid_entry_idx_s1_q].memattr[1];
+    assign arcache_sx[2]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[2];
+    assign arcache_sx[3]    = mshr_entry_q[arvalid_entry_idx_s1_q].memattr[3];
+    assign arburst_sx       = 2'b01;
+    assign arlock_sx        = 1'b0;
+    assign arprot_sx        = {1'b0,mshr_entry_q[arvalid_entry_idx_s1_q].ns,1'b0};
+    assign arqos_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].qos;
+    assign aruser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[arvalid_entry_idx_s1_q].mpam;
+    // The one tag operation this Subordinate sources for itself: the fetch that a
+    // TagOp=Match write or Atomic needs before Sec 12.11.1's (p.12-386, MUST) verdict can be
+    // accurate. Table 13-32 (Sec 13.10.37 p.13-435) makes Transfer the Clean-tag
+    // read, which is what memory holds (Sec 12.4.1 p.12-376).
+    assign aruser_sx[`AXI4_USER_TAGOP_RANGE] = arvalid_tagfetch_s1_q ? 2'b01 : '0;
+    assign aruser_sx[`AXI4_USER_TGGID_RANGE] = '0;
+    assign arregion_sx      = {`AXI4_ARREGION_WIDTH{1'b0}};
+    assign arlen_sx         = mshr_entry_q[arvalid_entry_idx_s1_q].axlen;
+    assign arsize_sx        = mshr_entry_q[arvalid_entry_idx_s1_q].axsize;
+
+    //************************************************************************//
+    //                                TXDAT                                   //
+    //************************************************************************//
+
+    // SS2.10.4 (p.2-136): the 16-byte chunks of the line a read of this Size returns --
+    // the Size-aligned container of its address, at most the line.
+    function automatic logic [3:0] read_chunks(chie_pkg::size_e size, logic [1:0] ccid);
+        case (size)
+            chie_pkg::SIZE_64B: read_chunks = 4'b1111;
+            chie_pkg::SIZE_32B: read_chunks = ccid[1] ? 4'b1100 : 4'b0011;
+            default:            read_chunks = 4'b0001 << ccid;
+        endcase
+    endfunction
+
+    // Table 2-15 (SS2.10.4 p.2-136): packet p holds chunks p*SNI_PKT_CHUNKS onward.
+    function automatic logic [`SNI_PKTS-1:0] chunk_pkts(logic [3:0] chunks);
+        for (int p = 0; p < `SNI_PKTS; p++)
+            chunk_pkts[p] = |chunks[p*`SNI_PKT_CHUNKS +: `SNI_PKT_CHUNKS];
+    endfunction
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin: rdat_valid_s1_q_logic
+                if(rst == 1'b1)
+                    rdat_valid_s1_q[entry] <= 1'b0;
+                else if (dbf_mshr_rdata_en_sx && (dbf_mshr_rdata_idx_sx == entry))
+                    rdat_valid_s1_q[entry] <= 1'b1;
+                else if (mshr_retired_valid_sx && (mshr_retired_idx_sx == entry))
+                    rdat_valid_s1_q[entry] <= 1'b0;
+            end
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin: arvalid_fifo_set_comb_logic
+                if(rst == 1'b1)
+                    rdat_pdmask_q[entry] <= 4'b0000;
+                else if (dbf_mshr_rdata_en_sx && (entry == dbf_mshr_rdata_idx_sx))
+                    rdat_pdmask_q[entry] <= dbf_mshr_rdata_cdmask_sx | rdat_pdmask_q[entry];
+                else if (mshr_retired_valid_sx && entry == mshr_retired_idx_sx)
+                    rdat_pdmask_q[entry] <= 4'b0000;
+            end
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // SS2.10.4 (p.2-136): a read returns the Size-aligned container of its
+            // address in 16-byte chunks, carried by the packets that hold them, the one
+            // with Addr[5:4] -- the critical chunk -- among them.
+            // Table 2-16 (SS2.10.5 p.2-137): an AtomicCompare returns half its Size.
+            assign rdat_chunks_sx[entry] = read_chunks(rxreq_atmcmp_s1_q[entry] ? chie_pkg::size_e'(mshr_entry_q[entry].size - 3'd1)
+                                                                                : mshr_entry_q[entry].size,
+                                                       mshr_entry_q[entry].ccid);
+            assign rdat_pkts_sx[entry]   = chunk_pkts(rdat_chunks_sx[entry]);
+            assign crit_pkt_sx[entry]    = chunk_pkts(4'b0001 << mshr_entry_q[entry].ccid);
+
+            // Sec 9.4.1 (p.9-337, MUST): a Read's data response carries a Non-data
+            // Error "either in none or in all data response packets", and the AXI
+            // error is not final until the last chunk is in. So every packet the read
+            // owes is armed together, once all of its chunks have arrived.
+            // An Atomic's fetch is the load half of its operation: an AtomicStore owes no
+            // data, and the other three return it as the completion once the store half
+            // has landed (SS9.4.4 p.9-342, the "delayed form of Comp or CompData").
+            assign rdat_ready_sx[entry] = rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry] == '0)
+                                        && ((rdat_pdmask_q[entry] & rdat_chunks_sx[entry]) == rdat_chunks_sx[entry])
+                                        && (~rxreq_atm_s1_q[entry] | (rxreq_atmdat_s1_q[entry] & atm_mem_done_q[entry]));
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin
+                if(rst == 1'b1)
+                    txdat_rdy_sx_q[entry]   <= '0;
+                else if (mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
+                    txdat_rdy_sx_q[entry]   <= '0;
+                else if (txdat_errrd_rdy_sx[entry])
+                    txdat_rdy_sx_q[entry]   <= rdat_pkts_sx[entry];
+                else if (rdat_ready_sx[entry])
+                    txdat_rdy_sx_q[entry]   <= rdat_pkts_sx[entry];
+            end
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin: txdat_sent_logic
+                if (rst)
+                    txdat_sent_sx_q[entry]      <= '0;
+                else if (mshr_txdat_won_sx && (mshr_txdat_entry_idx_sx == entry))
+                    txdat_sent_sx_q[entry]      <= txdat_sent_sx_q[entry] | txdat_pkt_onehot_sx;
+                else if (mshr_retired_valid_sx && entry == mshr_retired_idx_sx)
+                    txdat_sent_sx_q[entry]      <= '0;
+            end
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // Sec 9.4.4 (p.9-342, MUST): an errored read still returns every packet;
+            // nothing is fetched, so they are armed as soon as the entry is awake.
+            assign txdat_errrd_rdy_sx[entry]  = rxreq_errrd_s1_q[entry] && (~sleep_s2_q[entry])
+                                             && (txdat_rdy_sx_q[entry] == '0);
+            assign txdat_valid_sx[entry]  = (txdat_sent_sx_q[entry] != txdat_rdy_sx_q[entry]);
+        end
+    endgenerate
+    
+    poll_function #(.POLL_ENTRIES_NUM(`SNI_MSHR_ENTRIES_NUM))
+                    txdat_entry_sel(
+                        .clk               (clk                 ),
+                        .rst               (rst                 ),
+                        .entry_vec         (txdat_valid_sx      ),
+                        .upd               (mshr_txdat_update   ),
+                        .found             (sel_idx_valid       ),
+                        .sel_entry         (),
+                        .sel_index         (txdat_entry_idx_sx  ) 
+                    );
+
+    // poll_function's `upd` advances the round-robin pointer past the entry just
+    // consumed, so it is qualified by a selection having been made -- the contract
+    // sni_qos meets with h/l_present_win_sx. Asserting it when no entry is selected
+    // writes the next-entry mask from an all-zero vector, which pins the mask at 0
+    // and degenerates POLL_MODE=1 to fixed LSB-first priority.
+    assign mshr_txdat_update        = mshr_txdat_en_sx & mshr_txdat_won_sx;
+    assign mshr_txdat_entry_idx_sx  = txdat_entry_idx_sx;
+    assign mshr_txdat_en_sx         = sel_idx_valid;
+    // The selected entry's next packet: the one holding the critical chunk first, the
+    // rest in line order after it (CCID, SS13.10.51 p.13-440), and its DataID (Table
+    // 2-15 SS2.10.4 p.2-136). The ready packets are rotated so the critical one is
+    // bit 0, and the lowest ready bit is its rank from there.
+    assign txdat_pkt_avail_sx  = txdat_rdy_sx_q[mshr_txdat_entry_idx_sx] & ~txdat_sent_sx_q[mshr_txdat_entry_idx_sx];
+    assign txdat_crit_pkt_sx   = mshr_entry_q[mshr_txdat_entry_idx_sx].ccid >> `SNI_PKT_CHUNKS_LOG2;
+    assign txdat_pkt_avail2_sx = {txdat_pkt_avail_sx, txdat_pkt_avail_sx};
+    assign txdat_pkt_rot_sx    = `SNI_PKTS'(txdat_pkt_avail2_sx >> txdat_crit_pkt_sx);
+    always_comb begin: txdat_pkt_rank_comb_logic
+        txdat_pkt_rank_sx = 2'd0;
+        for (int r = `SNI_PKTS-1; r >= 0; r--)
+            if (txdat_pkt_rot_sx[r]) txdat_pkt_rank_sx = 2'(r);
+    end
+    assign txdat_pkt_sx          = (txdat_crit_pkt_sx + txdat_pkt_rank_sx) & 2'(`SNI_PKTS-1);
+    assign txdat_pkt_onehot_sx   = `SNI_PKTS'(1) << txdat_pkt_sx;
+    assign mshr_txdat_dataid_sx  = txdat_pkt_sx << `SNI_PKT_CHUNKS_LOG2;
+    // Sec 2.5.4: ReturnTxnID is "Used as the TxnID in the CompData and DataSepResp responses"
+    // of a ReadNoSnp(Sep) or Non-store Atomic -- copied as given, never re-derived. The field is
+    // inapplicable on the other reads, so their errored CompData answers the request's own TxnID.
+    assign mshr_txdat_txnid_sx      = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? mshr_entry_q[mshr_txdat_entry_idx_sx].txnid
+                                                                               : mshr_entry_q[mshr_txdat_entry_idx_sx].returntxnid;
+    // Sec 4.5.1 (p.4-197, MUST): "A Subordinate Node can send DataSepResp only in
+    // response to ReadNoSnpSep, and only CompData in response to ReadNoSnp."
+    assign mshr_txdat_opcode_sx     = rxreq_rdsep_s1_q[mshr_txdat_entry_idx_sx] ? chie_pkg::DAT_DATASEPRESP : chie_pkg::DAT_COMPDATA;
+    // Sec 9.3 (p.9-336): Resp I is legal on a read only alongside a Non-data Error.
+    // Table 4-40 (SS4.7.4 p.4-220) completes a Non-store Atomic with CompData_I.
+    assign mshr_txdat_resp_sx       = (rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] | rxreq_atm_s1_q[mshr_txdat_entry_idx_sx])
+                                    ? chie_pkg::RESP_I : chie_pkg::RESP_UC_UD;
+    assign mshr_txdat_resperr_sx    = (rxreq_err_s1_q[mshr_txdat_entry_idx_sx] | bresp_err_q[mshr_txdat_entry_idx_sx]
+                                     | atm_err_q[mshr_txdat_entry_idx_sx]) ? chie_pkg::RESP_ERR_NON_DATA
+                                                                           : chie_pkg::RESP_ERR_NORM_OK;
+    assign mshr_txdat_dbid_sx       = mshr_entry_q[mshr_txdat_entry_idx_sx].txnid;
+    assign mshr_txdat_tgtid_sx      = rxreq_errrd_s1_q[mshr_txdat_entry_idx_sx] ? mshr_entry_q[mshr_txdat_entry_idx_sx].srcid
+                                                                               : mshr_entry_q[mshr_txdat_entry_idx_sx].returnnid; // Sec 2.5.3, as the TxnID above
+    assign mshr_txdat_srcid_sx      = SNI_NID_PARAM; // Sec 2.6.1 (p.2-94, MUST), as txrsp_srcid_sx
+    assign mshr_txdat_homenid_sx    = mshr_entry_q[mshr_txdat_entry_idx_sx].srcid;
+    assign mshr_txdat_tracetag_sx   = mshr_entry_q[mshr_txdat_entry_idx_sx].tracetag;
+
+    //************************************************************************//
+    //                       mshr AW channel logic                            //
+    //************************************************************************//
+    // Two producers: a write whose data is in, and an Atomic whose result is ready.
+    // The first is a one-cycle event, so it wins; the second is held until pushed.
+    assign aw_push_wr_sx  = dbf_mshr_rxdat_ok_sx && !dbf_mshr_rxdat_cancel_sx
+                          && !rxreq_errwr_s1_q[dbf_mshr_rxdat_ok_idx_sx] && !rxreq_atm_s1_q[dbf_mshr_rxdat_ok_idx_sx];
+    always_comb begin: atmwr_idx_comb_logic
+        atmwr_idx_sx = {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int i = `SNI_MSHR_ENTRIES_NUM-1; i >= 0; i--)
+            if (atm_wr_pend_q[i]) atmwr_idx_sx = i[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+    end
+    assign aw_push_atm_sx = (|atm_wr_pend_q) & ~aw_push_wr_sx;
+    assign aw_push_sx     = aw_push_wr_sx | aw_push_atm_sx;
+    assign aw_push_idx_sx = aw_push_wr_sx ? dbf_mshr_rxdat_ok_idx_sx : atmwr_idx_sx;
+
+    always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_in_comb_logic
+        if(rst == 1'b1)
+            awvalid_fifo_cnt_sx_q   <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        else if(aw_push_sx)
+            awvalid_fifo_cnt_sx_q   <= (awvalid_fifo_cnt_sx_q == IDX_LAST) ? {`SNI_MSHR_ENTRIES_WIDTH{1'b0}} : (awvalid_fifo_cnt_sx_q + 1'b1);
+    end
+
+    always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_out_comb_logic
+        if(rst == 1'b1)
+            awvalid_fifo_vec_sx        <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        else if((awvalid_sx == 1'b1) && (awready_sx == 1'b1))
+            awvalid_fifo_vec_sx        <= (awvalid_fifo_vec_sx == IDX_LAST) ? {`SNI_MSHR_ENTRIES_WIDTH{1'b0}} : (awvalid_fifo_vec_sx + 1'b1);
+    end
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin: awvalid_fifo_set_comb_logic
+                if(rst == 1'b1)begin
+                    awvalid_fifo_valid_s2_q[entry]      <= 1'b0;
+                    awvalid_fifo_idx_s2_q[entry]        <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+                end
+                else if (aw_push_sx && (awvalid_fifo_cnt_sx_q == entry)) begin
+                    awvalid_fifo_valid_s2_q[entry]      <= 1'b1;
+                    awvalid_fifo_idx_s2_q[entry]        <= aw_push_idx_sx;
+                end
+                else if ((awvalid_sx == 1'b1) && (awready_sx == 1'b1) && (awvalid_fifo_vec_sx == entry))begin
+                    awvalid_fifo_valid_s2_q[entry]      <= 1'b0;
+                    awvalid_fifo_idx_s2_q[entry]        <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+                end
+                else begin
+                    ;
+                end
+            end
+        end
+    endgenerate
+
+    always_ff @(posedge clk or posedge rst)begin : mshr_aw_timing_logic
+        if(rst == 1'b1) begin
+            awvalid_sx              <= 1'b0;
+            awvalid_entry_idx_s2_q  <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else if((awvalid_sx == 1'b1) && (awready_sx == 1'b1))begin
+            awvalid_sx              <= 1'b0;
+            awvalid_entry_idx_s2_q  <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        end
+        else if(awvalid_fifo_valid_s2_q[awvalid_fifo_vec_sx])begin
+            awvalid_sx              <= 1'b1;
+            awvalid_entry_idx_s2_q  <= awvalid_fifo_idx_s2_q[awvalid_fifo_vec_sx];
+        end
+    end
+
+    assign awid_sx                = mshr_entry_q[awvalid_entry_idx_s2_q].axid;
+    assign awaddr_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axaddr;
+    assign awcache_sx[0]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[0];
+    assign awcache_sx[1]          = ~mshr_entry_q[awvalid_entry_idx_s2_q].memattr[1];
+    assign awcache_sx[2]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[2];
+    assign awcache_sx[3]          = mshr_entry_q[awvalid_entry_idx_s2_q].memattr[3];
+    assign awqos_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].qos;
+    assign awuser_sx[`AXI4_USER_MPAM_RANGE]  = mshr_entry_q[awvalid_entry_idx_s2_q].mpam;
+    assign awuser_sx[`AXI4_USER_TAGOP_RANGE] = '0;
+    assign awuser_sx[`AXI4_USER_TGGID_RANGE] = '0;
+    assign awprot_sx              = {1'b0,mshr_entry_q[awvalid_entry_idx_s2_q].ns,1'b0};
+    assign awlen_sx               = mshr_entry_q[awvalid_entry_idx_s2_q].axlen;
+    assign awsize_sx              = mshr_entry_q[awvalid_entry_idx_s2_q].axsize;
+    assign awburst_sx             = 2'b01;
+    assign awlock_sx              = 1'b0;
+    assign awregion_sx            = {`AXI4_AWREGION_WIDTH{1'b0}};
+
+    always_ff @(posedge clk or posedge rst)begin
+        if (rst)
+            mshr_wdat_en_rst   <= 1'b0;
+        else
+            mshr_wdat_en_rst   <= awvalid_sx;
+    end
+
+    assign mshr_wdat_en_sx        = awvalid_sx & (~mshr_wdat_en_rst);
+    assign mshr_wdat_entry_idx_sx = awvalid_entry_idx_s2_q;
+
+    //************************************************************************//
+    //                      Atomic read-modify-write                          //
+    //************************************************************************//
+    // What the data buffer reports once it has run the operation: whether the result
+    // is still owed to memory, or the location is left as it was -- Table 4-19/4-20's
+    // MAX/MIN rows update it only "if" their condition holds, and SS4.2.5 (p.4-187)
+    // has a failed AtomicCompare "not write the swap value" -- and whether the
+    // original value could not be read, which SS9.4.4 (p.9-342, MUST) answers NDERR.
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : atm_flags_timing_logic
+                if (rst || retired_entry_sx[entry]) begin
+                    atm_wr_pend_q[entry] <= 1'b0;
+                    atm_nowr_q[entry]    <= 1'b0;
+                    atm_err_q[entry]     <= 1'b0;
+                end
+                else if (dbf_mshr_atm_done_sx && (dbf_mshr_atm_done_idx_sx == entry)) begin
+                    atm_wr_pend_q[entry] <= ~dbf_mshr_atm_nowr_sx;
+                    atm_nowr_q[entry]    <= dbf_mshr_atm_nowr_sx;
+                    atm_err_q[entry]     <= dbf_mshr_atm_err_sx;
+                end
+                else if (aw_push_atm_sx && (atmwr_idx_sx == entry))
+                    atm_wr_pend_q[entry] <= 1'b0;
+            end
+            assign atm_mem_done_sx[entry] = rxreq_atm_s1_q[entry]
+                                          & (bresp_ok_sx[entry]
+                                            | (dbf_mshr_atm_done_sx & dbf_mshr_atm_nowr_sx & (dbf_mshr_atm_done_idx_sx == entry)));
+            assign atm_mem_done_q[entry]  = bresp_ok_q[entry] | atm_nowr_q[entry];
+        end
+    endgenerate
+
+    //************************************************************************//
+    //                      mshr B channel logic                              //
+    //************************************************************************//
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign bresp_ok_sx[entry] = bvalid_sx && bready_sx & (bid_sx == entry);
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin  //bresp received
+            always_ff @(posedge clk or posedge rst)begin : mshr_bresp_complete_flag_timing_logic
+                if (rst)
+                    bresp_ok_q[entry] <= 1'b0;
+                else if (retired_entry_sx[entry])
+                    bresp_ok_q[entry] <= 1'b0;
+                else if (bresp_ok_sx[entry])
+                    bresp_ok_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    // AMBA AXI4 (IHI 0022) Table A3-4 gives BRESP two error encodings, SLVERR and
+    // DECERR, which share bit 1. Sec 9.1 (p.9-334) names the access that failed a
+    // Non-data Error, and Sec 9.2 (p.9-335) requires the Completer report it.
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_bresp_err_flag_timing_logic
+                if (rst)
+                    bresp_err_q[entry] <= 1'b0;
+                else if (retired_entry_sx[entry])
+                    bresp_err_q[entry] <= 1'b0;
+                else if (bresp_ok_sx[entry] && bresp_sx[1])
+                    bresp_err_q[entry] <= 1'b1;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    assign bready_sx    = ~rst;
+
+    //************************************************************************//
+    //                      mshr check hazard ownership logic                 //
+    //************************************************************************//
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign hazard_sx[entry] = rxreq_alloc_en_s0 & (~hazard_sx_q[entry]) & mshr_entry_valid_sx_q[entry] & (mshr_entry_q[entry].addr[chie_pkg::REQ_ADDR_WIDTH-1:6] == rxreq_addr_s0[chie_pkg::REQ_ADDR_WIDTH-1:6]);
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : mshr_wakeup_logic
+                if (rst == 1'b1) begin
+                    hazard_sx_q[entry]     <= 1'b0;
+                    hazard_idx_s2_q[entry] <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+                end
+                else if (mshr_retired_valid_sx && (mshr_retired_idx_sx == entry)) begin
+                    hazard_sx_q[entry]     <= 1'b0;
+                    hazard_idx_s2_q[entry] <= {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+                end
+                else if (hazard_sx[entry]) begin
+                    hazard_sx_q[entry]     <= 1'b1;
+                    hazard_idx_s2_q[entry] <= mshr_entry_idx_alloc_s0;
+                end
+            end
+
+            always_ff @(posedge clk or posedge rst)begin : mshr_sleep_logic
+                if (rst == 1'b1)
+                    sleep_s2_q[entry]               <= 1'b0;
+                else if (wakeup_valid & (wakeup_idx_sx == entry))
+                    sleep_s2_q[entry]               <= 1'b0;
+                else if (rxreq_alloc_en_s0 & ((|hazard_sx) | eo_alloc_block_s0) & (mshr_entry_idx_alloc_s0 == entry))
+                    sleep_s2_q[entry]               <= 1'b1;
+            end
+
+            // Endpoint-order bookkeeping, captured at allocation and cleared at retirement.
+            always_ff @(posedge clk or posedge rst)begin : mshr_endpoint_order_logic
+                if (rst == 1'b1) begin
+                    eo_q[entry]        <= 1'b0;
+                    eo_pred_q[entry]   <= {`SNI_MSHR_ENTRIES_NUM{1'b0}};
+                    line_wait_q[entry] <= 1'b0;
+                end
+                else if (mshr_retired_valid_sx && (mshr_retired_idx_sx == entry)) begin
+                    eo_q[entry]        <= 1'b0;
+                    eo_pred_q[entry]   <= {`SNI_MSHR_ENTRIES_NUM{1'b0}};
+                    line_wait_q[entry] <= 1'b0;
+                end
+                else if (rxreq_alloc_en_s0 & (mshr_entry_idx_alloc_s0 == entry)) begin
+                    eo_q[entry]        <= (rxreq_order_s0 == chie_pkg::ORDER_END_POINT);
+                    eo_pred_q[entry]   <= eo_alloc_pred_s0;
+                    line_wait_q[entry] <= |hazard_sx;
+                end
+                else if (line_wakeup_valid & (line_wakeup_idx_sx == entry))
+                    line_wait_q[entry] <= 1'b0;
+            end
+        end
+    endgenerate
+
+    // Older live Endpoint-ordered entries from the requester's source.
+    always_comb begin: eo_alloc_pred_comb_logic
+        for (int e = 0; e < `SNI_MSHR_ENTRIES_NUM; e++)
+            eo_alloc_pred_s0[e] = (rxreq_order_s0 == chie_pkg::ORDER_END_POINT)
+                                  && mshr_entry_valid_sx_q[e] && eo_q[e]
+                                  && (mshr_entry_q[e].srcid == rxreq_srcid_s0);
+    end
+    assign eo_alloc_block_s0 = |eo_alloc_pred_s0;
+
+    // A same-line wakeup is held while the entry still waits for an older Endpoint-ordered
+    // entry; that entry is woken instead once the last of them retires, in a cycle with no
+    // same-line wakeup (the wakeup consumers take one entry per cycle).
+    always_comb begin: eo_ready_comb_logic
+        eo_ready_any_sx = 1'b0;
+        eo_ready_idx_sx = {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int e = 0; e < `SNI_MSHR_ENTRIES_NUM; e++) begin
+            eo_pending_sx[e] = |(eo_pred_q[e] & mshr_entry_valid_sx_q);
+            eo_ready_sx[e]   = mshr_entry_valid_sx_q[e] && sleep_s2_q[e] && eo_q[e]
+                               && !line_wait_q[e] && !eo_pending_sx[e];
+        end
+        for (int e = `SNI_MSHR_ENTRIES_NUM-1; e >= 0; e--)
+            if (eo_ready_sx[e]) begin
+                eo_ready_any_sx = 1'b1;
+                eo_ready_idx_sx = e[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+            end
+    end
+
+    assign line_wakeup_valid    = mshr_retired_valid_sx ? hazard_sx_q[mshr_retired_idx_sx] : 1'b0;
+    assign line_wakeup_idx_sx   = mshr_retired_valid_sx ? hazard_idx_s2_q[mshr_retired_idx_sx] : {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+    assign line_wakeup_fire     = line_wakeup_valid & ~(eo_q[line_wakeup_idx_sx] & eo_pending_sx[line_wakeup_idx_sx]);
+    assign wakeup_valid         = line_wakeup_fire | eo_ready_any_sx;
+    assign wakeup_idx_sx        = line_wakeup_fire ? line_wakeup_idx_sx : eo_ready_idx_sx;
+
+    //************************************************************************//
+    //                  rxdat logic : rxdat_cancel save                       //
+    //************************************************************************//
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst)begin : rxdat_cancel_s1_q_timing_logic
+                if(rst == 1'b1)
+                    rxdat_cancel_s1_q[entry]          <= 1'b0;
+                else if(dbf_mshr_rxdat_ok_sx && dbf_mshr_rxdat_cancel_sx && (entry == dbf_mshr_rxdat_ok_idx_sx))
+                    rxdat_cancel_s1_q[entry]          <= 1'b1;
+                else if(mshr_retired_valid_sx && (entry == mshr_retired_idx_sx))
+                    rxdat_cancel_s1_q[entry]          <= 1'b0;
+                else
+                    ;
+            end
+        end
+    endgenerate
+
+    //************************************************************************//
+    //                         mshr retire logic                              //
+    //************************************************************************//
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every TagOp=Match write and Atomic,
+            // so the debt holds the entry open the way the CMO and Persist legs do.
+            // txrsp_rdy_sx_q alone does not cover it: the verdict can still be in
+            // flight, and an entry freed then would drop the response.
+            assign all_rsp_sent_sx[entry] = txrsp_any_sent_q[entry] && (~txrsp_rdy_sx_q[entry])
+                                         && (~txrsp_comp_queued_sx[entry]) && (~txrsp_cmo_owed_q[entry])
+                                         && (~txrsp_persist_owed_q[entry]) && (~txrsp_tagmatch_owed_q[entry]);
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            assign retired_entry_sx[entry]  = (mshr_entry_valid_sx_q[entry] && (~sleep_s2_q[entry]))
+                                                && (((rxreq_wr_s1_q[entry]) && all_rsp_sent_sx[entry] && (((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && (~txrsp_comp_s1_q[entry])) | ((~rxdat_cancel_s1_q[entry]) && bresp_ok_q[entry] && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && txrsp_comp_s1_q[entry] && txrsp_comp_sent_sx_q[entry]) | ((rxdat_cancel_s1_q[entry]) && (~txrsp_comp_s1_q[entry]))))
+                                                    |((rxreq_rd_s1_q[entry] | rxreq_errrd_s1_q[entry]) && (~txrsp_rdreceipt_valid_sx_q[entry]) && (txdat_sent_sx_q[entry] == rdat_pkts_sx[entry]))
+                                                    // Sec 2.3.6 (p.2-74): PrefetchTgt and PCrdReturn owe nothing, so the
+                                                    // entry is freed at once rather than leaked.
+                                                    |(rxreq_drop_s1_q[entry])
+                                                    |((rxreq_rsponly_s1_q[entry] | rxreq_errwr_s1_q[entry]) && all_rsp_sent_sx[entry]
+                                                        && ((~rxreq_errwr_s1_q[entry])  | errwr_data_done_q[entry]))
+                                                    // SS4.2.5 (p.4-184): nothing reaches the location between the load
+                                                    // and the store, so the entry and its same-line hazard outlive both.
+                                                    |(rxreq_atm_s1_q[entry] && all_rsp_sent_sx[entry] && atm_mem_done_q[entry]
+                                                        && ((~rxreq_atmdat_s1_q[entry]) | (txdat_sent_sx_q[entry] == rdat_pkts_sx[entry]))));
+        end
+    endgenerate
+
+    generate
+        for(entry=0;entry<`SNI_MSHR_ENTRIES_NUM;entry=entry+1) begin
+            always_ff @(posedge clk or posedge rst) begin
+                if(rst == 1'b1)
+                    retired_entry_sx1_q[entry]  <=1'b0;
+                else if (retired_entry_sx[entry])
+                    retired_entry_sx1_q[entry]  <= 1'b1;
+                else if (mshr_retired_valid_sx && (mshr_retired_idx_sx == entry))
+                    retired_entry_sx1_q[entry]  <= 1'b0;
+            end
+        end
+    endgenerate
+
+    always_comb begin
+        retired_entry_idx_sx1_q = {`SNI_MSHR_ENTRIES_WIDTH{1'b0}};
+        for (int k=0; k < `SNI_MSHR_ENTRIES_NUM; k=k+1) begin
+            if(retired_entry_sx1_q[k])
+                retired_entry_idx_sx1_q = k[`SNI_MSHR_ENTRIES_WIDTH-1:0];
+        end
+    end
+
+    assign mshr_retired_valid_sx    = |retired_entry_sx1_q;
+    assign mshr_retired_idx_sx      = retired_entry_idx_sx1_q;
+
+endmodule
+
