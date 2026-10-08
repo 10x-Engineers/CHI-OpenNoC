@@ -17,7 +17,9 @@ An open-source **AMBA CHI Issue E.b** interconnect in synthesisable SystemVerilo
 A fork of [RV-BOSC/OpenNoC](https://github.com/RV-BOSC/OpenNoC) (taken at `4f57dda`,
 2025-06-25), maintained here. Original copyright headers are kept.
 
-**Status:** simulation-verified, not silicon-proven or synthesis-hardened (behavioural
+**Status:** simulation-verified, and formally verified with the
+[CHI E.b ABVIP](https://github.com/10x-Engineers/AMBA_CHI_E.b_ABVIP) (see
+[Formal verification](#formal-verification)). Not silicon-proven or synthesis-hardened (behavioural
 SRAMs, no timing constraints, no DFT). MTE is partial. Only
 the default parameters are regularly exercised. Every non-🟢 cell in [§2](#2-chi-support)
 links its tracking issue; known defects are in the
@@ -274,6 +276,14 @@ cd rtl
 make com sim SIM=verilator             # 136-case HN-F regression (default: VCS)
 TOP_TB=tb_rni make com sim             # RN-I bench
 ```
+
+### Formal verification
+
+Every node (RN-F, RN-I, HN-F, HN-I, SN-F and MN) is formally verified with the
+[CHI E.b ABVIP](https://github.com/10x-Engineers/AMBA_CHI_E.b_ABVIP), an assertion-based VIP bound at
+the node's own CHI interfaces. It checks the request, response, data and snoop channels, the link
+layer, and each transaction from request to completion. The ABVIP repository describes the bind and
+its configuration.
 
 ---
 
