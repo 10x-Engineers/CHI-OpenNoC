@@ -49,6 +49,7 @@ Each node is a standalone module; there is no SoC wrapper.
 | **RN-I** | `rtl/src/rni/rni.sv` | AXI4 subordinate | AXI4 → CHI bridge, bursts split at 64 B / 4 KB |
 | **RN-F** | `rtl/src/rnf/rnf.sv` | AXI4 subordinate + policy/CMO/DVM ports | Coherent Requester, set-associative cache, snoop port, Chapter 15 SYSCO, DVM |
 | **SN-F** | `rtl/src/snf/snf.sv` | AXI4 manager | Memory Subordinate |
+| **SN-I** | `rtl/src/sni/sni.sv` | AXI4 manager | I/O or memory Subordinate for a CHI HN-I, with Request Order kept per line and Endpoint Order per Requester (Table 2-9). The HN-I in this repo bridges to AXI4 itself, so no node here sends the SN-I requests |
 | **MN** | `rtl/src/mn/mn.sv` | per-Requester SYSCO snoop enable/pending | Miscellaneous Node: completes every `DVMOp`, sends its `SnpDVMOp` pair to every other DVM-capable Requester in `MN_RN_NID_LIST_PARAM`, and completes a Sync only after the Non-syncs it held |
 | **Crosspoint** | `rtl/misc/chi_xp_channel.sv`, `chi_ring_channel.sv` | — | One CHI channel per instance; four make a mesh/ring node |
 
@@ -70,38 +71,40 @@ The **Issue** column tracks the work to reach 🟢.
 
 ### Request opcodes (Completers)
 
-| Request | SN-F | HN-I | HN-F | Issue |
-| :--- | :---: | :---: | :---: | :--- |
-| `ReadNoSnp` | 🟢 | 🟢 | 🟢 | |
-| `ReadNoSnpSep` | 🟢 | ⚪ | ⚪ received, 🟢 issued | Home-to-SN only, so received from an RN it stays ⚪. With `HNF_SEP_RESP_EN_PARAM` set, the HN-F issues it with `RespSepData` in place of DMT, for an unordered read with TagOp `Invalid` that takes DMT: `ReadNoSnp`, `ReadOnce`, or an L3-miss `ReadClean` / `ReadNotSharedDirty` / `ReadUnique` |
-| `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | 🟢 | 🟢 | |
-| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | 🟢 | 🟢 | |
-| `ReadShared` | — | 🟢 `CompData_SC` | 🟢 as `ReadNotSharedDirty` | |
-| `ReadPreferUnique`, `MakeReadUnique` | — | 🟢 `CompData_UC` | 🟢 as `ReadUnique` ⁴ | |
-| `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 | |
-| `WriteUniqueFull`, `WriteUniquePtl` | — | 🟢 | 🟢 | |
-| `WriteUniqueZero` | 🟢 as `WriteNoSnpZero` ² | 🟢 | 🟢 | |
-| `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | 🟢 | 🟢 | |
-| `WriteBackPtl`, `WriteEvictOrEvict` | — | 🟢 | 🟢 | |
-| `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | 🟢 hint ignored | 🟢 | |
-| `StashOnceSep*` | — | 🟢 hint ignored, `CompStashDone` | 🟢 `Comp` then `StashDone` when a Stash snoop is sent, else `CompStashDone` | ¹ |
-| Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | |
-| Combined Writes, others (9) | 🟢 as the `WriteNoSnp` form ² | 🟢 | 🟢 | |
-| `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | |
-| `CleanUnique`, `MakeUnique`, `Evict` | — | 🟢 | 🟢 | |
-| Atomics (18) | 🟢 AXI read-modify-write | 🟢 Normal memory; Device NDERR ³ | 🟢 executed at the Home; with `BROADCASTATOMIC`, a Non-cacheable one is passed to the SN-F | |
-| `DVMOp` | ⚪ | ⚪ | ⚪ | serviced by the MN (§1), the one Completer Table B-1 (p.B-493) names |
-| `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | |
+| Request | SN-F | SN-I | HN-I | HN-F | Issue |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| `ReadNoSnp` | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `ReadNoSnpSep` | 🟢 | 🟢 | ⚪ | ⚪ received, 🟢 issued | Home-to-SN only, so received from an RN it stays ⚪. With `HNF_SEP_RESP_EN_PARAM` set, the HN-F issues it with `RespSepData` in place of DMT, for an unordered read with TagOp `Invalid` that takes DMT: `ReadNoSnp`, `ReadOnce`, or an L3-miss `ReadClean` / `ReadNotSharedDirty` / `ReadUnique` |
+| `ReadOnce`, `ReadClean`, `ReadNotSharedDirty`, `ReadUnique` | — | — | 🟢 | 🟢 | |
+| `ReadOnceCleanInvalid`, `ReadOnceMakeInvalid` | — | — | 🟢 | 🟢 | |
+| `ReadShared` | — | — | 🟢 `CompData_SC` | 🟢 as `ReadNotSharedDirty` | |
+| `ReadPreferUnique`, `MakeReadUnique` | — | — | 🟢 `CompData_UC` | 🟢 as `ReadUnique` ⁴ | |
+| `WriteNoSnpFull`, `WriteNoSnpPtl`, `WriteNoSnpZero` | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `WriteUniqueFull`, `WriteUniquePtl` | — | — | 🟢 | 🟢 | |
+| `WriteUniqueZero` | 🟢 as `WriteNoSnpZero` ² | 🟢 as `WriteNoSnpZero` ² | 🟢 | 🟢 | |
+| `WriteBackFull`, `WriteCleanFull`, `WriteEvictFull` | — | — | 🟢 | 🟢 | |
+| `WriteBackPtl`, `WriteEvictOrEvict` | — | — | 🟢 | 🟢 | |
+| `WriteUnique*Stash`, `StashOnceShared`, `StashOnceUnique` | — | — | 🟢 hint ignored | 🟢 | |
+| `StashOnceSep*` | — | — | 🟢 hint ignored, `CompStashDone` | 🟢 `Comp` then `StashDone` when a Stash snoop is sent, else `CompStashDone` | ¹ |
+| Combined Writes, `WriteNoSnp*` (6) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| Combined Writes, others (9) | 🟢 as the `WriteNoSnp` form ² | 🟢 as the `WriteNoSnp` form ² | 🟢 | 🟢 | |
+| `CleanShared`, `CleanInvalid`, `MakeInvalid`, `CleanSharedPersist`, `CleanSharedPersistSep` | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `CleanUnique`, `MakeUnique`, `Evict` | — | — | 🟢 | 🟢 | |
+| Atomics (18) | 🟢 AXI read-modify-write | 🟢 AXI read-modify-write, Device included ⁵ | 🟢 Normal memory; Device NDERR ³ | 🟢 executed at the Home; with `BROADCASTATOMIC`, a Non-cacheable one is passed to the SN-F | |
+| `DVMOp` | ⚪ | ⚪ | ⚪ | ⚪ | serviced by the MN (§1), the one Completer Table B-1 (p.B-493) names |
+| `PrefetchTgt`, `PCrdReturn`, `ReqLCrdReturn` | ⬛ | ⬛ | ⬛ | ⬛ | |
 
 ¹ Table B-3 (p.B-495) lists only ICN(HN-F) as a source of `StashDone`/`CompStashDone` and of a Home's `TagMatch`, yet Table B-1 routes these requests to an HN-I, and Sections 2.3.4 (p.2-72) and 12.11.3 (p.12-387, MUST) still owe those responses. The HN-I sends them; the section text is taken to govern.
 
-² Tables 4-14 (p.4-179) and 4-18 (p.4-182) give a Home only `WriteNoSnp{Full,Ptl,Zero}` and the six `WriteNoSnp` Combined Writes to send an SN-F. A Subordinate has no coherence to preserve, so the SN-F services the other ten as their `WriteNoSnp` equivalents, `RespErr` OK: `WriteUniqueZero` as `WriteNoSnpZero`, `WriteUnique{Full,Ptl}CleanSh[PerSep]` as `WriteNoSnp{Full,Ptl}CleanSh[PerSep]`, and `WriteBackFull*` / `WriteCleanFull*` as `WriteNoSnpFull` plus the same CMO leg, completed `CompDBIDResp` as Table 4-39 gives a CopyBack. Built with `DISPLAY_FATAL`, the SN-F still stops on any write outside the two tables (`SNF_OFF_TABLE_WRITE`), since only a misbehaving Home sends one.
+² Tables 4-14 (p.4-179), 4-15 and 4-18 (p.4-182) give a Home only `WriteNoSnp{Full,Ptl,Zero}` and the six `WriteNoSnp` Combined Writes to send an SN-F or SN-I. A Subordinate has no coherence to preserve, so the SN-F and SN-I service the other ten as their `WriteNoSnp` equivalents, `RespErr` OK: `WriteUniqueZero` as `WriteNoSnpZero`, `WriteUnique{Full,Ptl}CleanSh[PerSep]` as `WriteNoSnp{Full,Ptl}CleanSh[PerSep]`, and `WriteBackFull*` / `WriteCleanFull*` as `WriteNoSnpFull` plus the same CMO leg, completed `CompDBIDResp` as Table 4-39 gives a CopyBack. Built with `DISPLAY_FATAL`, either stops on any write outside the tables (`SNF_OFF_TABLE_WRITE`, `SNI_OFF_TABLE_WRITE`), since only a misbehaving Home sends one.
 
 ³ The HN-I performs an Atomic to Normal memory as an AXI read-modify-write, the AXI ID held until the write is acknowledged (section 16.3.2, p.16-479: "at a point ... where the transaction is visible to all other agents"). A Device Atomic "must be passed to the appropriate endpoint Subordinate", and an AXI4 endpoint takes none, so it is answered NDERR with the transaction structure intact (section 9.4.4).
 
 ⁴ The HN-F services a `ReadPreferUnique` as `ReadNotSharedDirty` (snooped `SnpPreferUnique` or `SnpPreferUniqueFwd`) while another RN holds an exclusive monitor on the line, and a failed `MakeReadUnique(Excl)` as `ReadNotSharedDirty` too. `MakeReadUnique` always returns data; the dataless `Comp_UC` form is never sent.
 
-**A request the SN-F is not a target for** (the `—` rows) is error-completed with NDERR, with the transaction structure intact, as `DVMOp` is.
+⁵ For a Device location the SN-I is the endpoint Subordinate that section 16.3.2 (p.16-479) sends the Atomic to, so it performs it: an AXI read of the location, then, unless the operation leaves the location unchanged, an AXI write of the element. Other requests to the line wait until both are done. The peripheral sees two accesses.
+
+**A request the SN-F or SN-I is not a target for** (the `—` rows) is error-completed with NDERR, with the transaction structure intact, as `DVMOp` is.
 
 **The other requests the HN-F services as another** (`hnf_serviced_as()`):
 - `MakeInvalid` as `CleanInvalid`: Dirty data is written back rather than discarded, and the snoop is `SnpCleanInvalid`;
@@ -123,7 +126,9 @@ The **Issue** column tracks the work to reach 🟢.
 
 A persistent CMO still waiting on the SN-F's `Comp` is answered `Comp`/`CompCMO` and then `Persist`, or `CompPersist` when both are ready together. An ordered write or Atomic is granted with `DBIDRespOrd`, at the HN-F and the HN-I (section 2.8.5). The HN-I answers a `CleanSharedPersistSep` with `Comp` and then `Persist`.
 
-Decode sites: `snf_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
+**Ordering at the SN-I** (section 2.8.5, Table 2-9). Every read with a non-zero Order gets its `ReadReceipt` on acceptance. With Request Order (`0b10`), a request waits behind every earlier request to the same 64-byte line. With Endpoint Order (`0b11`, required for Device-nGnRnE by Tables 4-3, 4-15 and 4-23), the whole SN-I is one endpoint range: a request starts only once every earlier Endpoint-ordered request from the same SrcID has completed, and an ordered write gets its `DBIDResp` only then. A Device read accesses exactly the bytes section 2.10.2 gives it, from `Addr` to the next Size boundary. A Device-nE write is completed after the AXI write response.
+
+Decode sites: `snf_mshr.sv` / `sni_mshr.sv` / `hni_mshr.sv` `rxreq_*_s0`; HN-F `opennoc_hnf_pkg.sv`
 `hnf_serviced_as()`, then the `op_*` chain in `hnf_mshr_ctl.sv`.
 
 ### Snoops (HN-F)
@@ -142,31 +147,31 @@ Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 make
 
 ### Features
 
-| Feature | SN-F | HN-I | RN-I | RN-F | HN-F | Notes |
-| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| Link activation (Ch. 14) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| QoS | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes SN-F/HN-I, 4 HN-F; RN-F carries `AxQOS` |
-| DMT / DWT | 🟢 | — | — | — | 🟢 | |
-| DCT | — | — | — | 🟢 | 🟢 | RN-F as a DCT target: forwards CompData to the Requester |
-| Snoop filter, L3 | — | — | — | — | 🟢 | |
-| Snoop handling | — | — | — | 🟢 | — | Forwarding snoops per Tables 4-51..4-56, Stash snoops with a Data Pull per Tables 4-46..4-48; a `SnpDVMOp` pair with one `SnpResp_I` once both parts are in |
-| Exclusives | — | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only |
-| CMOs | 🟢 | 🟢 | — | 🟢 | 🟢 | HN-F sends them downstream per `BROADCASTCACHEMAINTENANCE`/`BROADCASTPERSIST` |
-| Combined Writes | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
-| Write Zero | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F ² |
-| Atomics | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F declares `Atomic_Transactions` (section 16.3.3) for its whole space; HN-I `Atomic_Transactions` True ³; RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
-| Stash | — | 🟡 | — | 🟢 | 🟢 | HN-I completes without stashing (request table); RN-F is a source and a Data Pull target |
-| DVM | — | — | — | 🟢 | — | serviced by the MN (below); the RN-F issues `DVMOp` from its DVM port and answers `SnpDVMOp` |
-| System coherency (Ch. 15) | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F; the HN-F's `SYSCOACK` also waits on `SYSCO_SNP_PEND`, another node's snoop to that RN-F |
-| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | SN-F keeps tags in AXI memory over `W/RUSER`: `Update` writes install them per TU, `Transfer`/`Fetch` reads return them `Transfer`, and a `Match` write or Atomic fetches them and answers an accurate `TagMatch` to `ReturnNID`; `AR/AWUSER` carry `TagOp`/`TagGroupID` only on its own Match fetch. HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹. RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE` |
-| MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
-| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | HN-F propagates REQ and sends DAT with zero; SN-F and HN-I ignore what they receive and send zero |
-| DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
-| Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
-| `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
-| `Data_Width` 128 / 512 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | every node packetises by `Data_Width` |
+| Feature | SN-F | SN-I | HN-I | RN-I | RN-F | HN-F | Notes |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| Link activation (Ch. 14) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `TXSACTIVE` / `RXSACTIVE` (section 14.7) | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
+| Retry / P-Credits | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
+| QoS | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 2 classes SN-F/SN-I/HN-I, 4 HN-F; RN-F carries `AxQOS` |
+| DMT / DWT | 🟢 | 🟢 | — | — | — | 🟢 | |
+| DCT | — | — | — | — | 🟢 | 🟢 | RN-F as a DCT target: forwards CompData to the Requester |
+| Snoop filter, L3 | — | — | — | — | — | 🟢 | |
+| Snoop handling | — | — | — | — | 🟢 | — | Forwarding snoops per Tables 4-51..4-56, Stash snoops with a Data Pull per Tables 4-46..4-48; a `SnpDVMOp` pair with one `SnpResp_I` once both parts are in |
+| Exclusives | — | ⬜ | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only; SN-I: no monitor; an `Excl` request gets `OK`, an exclusive fail (section 6.3.1), and the store is still performed (IMPLEMENTATION DEFINED, p.6-287) |
+| CMOs | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | HN-F sends them downstream per `BROADCASTCACHEMAINTENANCE`/`BROADCASTPERSIST` |
+| Combined Writes | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F, SN-I ² |
+| Write Zero | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F, SN-I ² |
+| Atomics | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F and SN-I declare `Atomic_Transactions` (section 16.3.3) for their whole space, the SN-I Device included ⁵; HN-I `Atomic_Transactions` True ³; RN-F executes near in its cache or sends far, `BROADCASTATOMIC` suppresses |
+| Stash | — | — | 🟡 | — | 🟢 | 🟢 | HN-I completes without stashing (request table); RN-F is a source and a Data Pull target |
+| DVM | — | — | — | — | 🟢 | — | serviced by the MN (below); the RN-F issues `DVMOp` from its DVM port and answers `SnpDVMOp` |
+| System coherency (Ch. 15) | — | — | — | — | 🟢 | 🟢 | one SYSCO pair per RN-F; the HN-F's `SYSCOACK` also waits on `SYSCO_SNP_PEND`, another node's snoop to that RN-F |
+| MTE / `TagOp` | 🟡 | 🟡 | 🟡 | 🟡 | 🟢 | 🟡 | SN-F keeps tags in AXI memory over `W/RUSER`: `Update` writes install them per TU, `Transfer`/`Fetch` reads return them `Transfer`, and a `Match` write or Atomic fetches them and answers an accurate `TagMatch` to `ReturnNID`; `AR/AWUSER` carry `TagOp`/`TagGroupID` only on its own Match fetch. HN-I holds no tags: reads answer `Invalid`, a Match is answered `TagMatch` Fail ¹. RN-F caches tags per line and matches a cached store itself, with `BROADCASTMTE`. SN-I keeps tags in AXI memory as the SN-F does; Table B-3 gives it no `TagMatch`, so a Home sends it no `Match` |
+| MPAM | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | when `CHIE_MPAM_PRESENT` is defined |
+| RSVDC | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | HN-F propagates REQ and sends DAT with zero; SN-F, SN-I and HN-I ignore what they receive and send zero |
+| DataCheck | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | sourced, odd parity; **bit i covers byte lane i** |
+| Poison | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | over AXI via `WUSER`/`RUSER` |
+| `RespErr` propagation | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | |
+| `Data_Width` 128 / 512 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | 🟢 | every node packetises by `Data_Width` |
 
 The MN (§1) implements Chapter 14 link activation and `TXSACTIVE`, Retry / P-Credits -- a
 Sync and a Non-sync are credited apart (`PCrdType` 1 / 0), so Syncs never hold the entry
@@ -313,8 +318,8 @@ and are overridden at instantiation.
 | `CHIE_REQ_ADDR_WIDTH_PARAM` | 44 | 44..52 build; only 44 exercised |
 | `CHIE_NID_WIDTH_PARAM` | 7 | 7..11 build; only 7 exercised |
 | `CHIE_DATA_WIDTH_PARAM` | 256 | 128 / 256 / 512 on every node |
-| `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F |
-| `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F) | |
+| `AXI4_AXDATA_WIDTH_PARAM` | 128 | HN-I / RN-I / SN-F / SN-I |
+| `AXI4_PA_WIDTH_PARAM` | 44 (RN-I), 32 (HN-I, SN-F, SN-I) | |
 | `HNF_MSHR_RNF_NUM_PARAM`, `RNF_NID_LIST_PARAM` | 4, `{48,16,40,8}` | Coherent Requesters served by the HN-F |
 | `RNF_DCT_LIST_PARAM` | all False | Per-Requester `Direct_Cache_Transfer` (section 16.1) |
 | `RNF_STASH_LIST_PARAM` | all False | Per-Requester: receives Stash snoops (section 9.4.6) |
@@ -324,6 +329,8 @@ and are overridden at instantiation.
 | `HNF_SEP_RESP_EN_PARAM` | 0 | 1: an unordered read eligible for DMT is answered `RespSepData` by the HN-F and `DataSepResp` by the SN-F (`ReadNoSnpSep`, section 2.3.1 flow 4) |
 | `HNI_SEP_RESP_EN_PARAM` | 0 | 1: an unordered, non-Exclusive `ReadNoSnp` is answered `RespSepData` and then `DataSepResp` by the HN-I (section 2.3.1 alternative 2). An Exclusive one keeps `CompData`: Table 9-3 allows EXOK in neither separate response |
 | `RNF_CACHE_SETS_PARAM` / `RNF_CACHE_WAYS_PARAM` | 16 / 2 | |
+| `SNI_NID_PARAM` | 3 | The SN-I's NodeID. `SNF_NID_PARAM` has the same default, so set one of them |
+| `SNI_MSHR_HNI_NUM_PARAM` | 4 | Requesters (HN-Is) whose retries the SN-I tracks for `PCrdGrant`; at least the number of HN-Is that address it |
 | `RNF_NID_PARAM` / `HNF_NID_PARAM` / `MN_NID_PARAM` | 8 / 0 / 4 | `MN_NID_PARAM`: where the RN-F sends its `DVMOp`s |
 | `RNF_EXCL_LP_NUM_PARAM` | 4 | One monitor per LP |
 | `*_MSHR_ENTRIES_NUM_PARAM` | 32 | Multiple of 16 on the HN-F |
@@ -346,7 +353,7 @@ parameter. If you override one to a value that disagrees, elaboration refuses it
 rtl/
 ├── include/     chie_pkg.sv (flits, enums), per-node param/define headers
 ├── misc/        link handshake, crosspoint channels, FIFOs, arbiters, checkers
-├── src/         hnf/ hni/ rni/ rnf/ snf/ mn/
+├── src/         hnf/ hni/ rni/ rnf/ snf/ sni/ mn/
 ├── tb/          behavioural benches
 ├── case/        136 HN-F stimulus/response cases
 └── Makefile
