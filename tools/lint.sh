@@ -44,7 +44,7 @@ TOOLS=$(cd "$(dirname "$0")" && pwd) || exit 2
 RTL=$(cd "$TOOLS/../rtl" && pwd) || exit 2
 cd "$RTL" || exit 2
 
-ALL_NODES=(hnf hni rni rnf snf mn)
+ALL_NODES=(hnf hni rni rnf snf sni mn)
 if [ "$#" -gt 0 ]; then NODES=("$@"); else NODES=("${ALL_NODES[@]}"); fi
 
 # The version CI installs. Verilator's warning set moves between releases, so a
