@@ -43,7 +43,13 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     output chie_pkg::resp_err_e           li_mshr_rxrsp_resperr_s0,
     output wire [2:0]                     li_mshr_rxrsp_fwdstate_s0,
     output wire [11:0]                    li_mshr_rxrsp_dbid_s0,
-    output wire [3:0]                     li_mshr_rxrsp_pcrdtype_s0
+    output wire [3:0]                     li_mshr_rxrsp_pcrdtype_s0,
+
+    //a snoopee hnf_link_txsnp_wrap dropped, answered here with SnpResp_I
+    input  wire                           snp_drop_valid,
+    input  wire [chie_pkg::NID_WIDTH-1:0] snp_drop_srcid,
+    input  wire [11:0]                    snp_drop_txnid,
+    output wire                           snp_drop_ack
     );
 
     //internal reg signals
@@ -58,6 +64,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     wire [`HNF_LCRD_RSP_CNT_WIDTH-1:0]  rxrsp_crd_cnt_nxt_s0;
     wire                                rxrspcrdv_ns_s0;
     wire                                rxrsp_link_flit_s0;
+    wire                                rxrsp_real_s0;
 
     //main function
     //receive rxrspflitpend
@@ -76,15 +83,20 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     // credit accounting below is the only thing that may see it.
     assign rxrsp_link_flit_s0          = (rxrspflitv == 1'b1) &&
                                          (rxrspflit.opcode == chie_pkg::RSP_RSPLCRDRETURN);
-    assign li_mshr_rxrsp_valid_s0      = (rxrspflitv == 1'b1) && !rxrsp_link_flit_s0;
-    assign li_mshr_rxrsp_srcid_s0      = li_mshr_rxrsp_valid_s0? rxrspflit.srcid     :'0;
-    assign li_mshr_rxrsp_txnid_s0      = li_mshr_rxrsp_valid_s0? rxrspflit.txnid     :'0;
-    assign li_mshr_rxrsp_opcode_s0     = li_mshr_rxrsp_valid_s0? rxrspflit.opcode    :chie_pkg::RSP_RSPLCRDRETURN;
-    assign li_mshr_rxrsp_resp_s0       = li_mshr_rxrsp_valid_s0? rxrspflit.resp      :chie_pkg::RESP_I;
-    assign li_mshr_rxrsp_resperr_s0    = li_mshr_rxrsp_valid_s0? rxrspflit.resperr   :chie_pkg::RESP_ERR_NORM_OK;
-    assign li_mshr_rxrsp_fwdstate_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.fwdstate  :'0;
-    assign li_mshr_rxrsp_dbid_s0       = li_mshr_rxrsp_valid_s0? rxrspflit.dbid      :'0;
-    assign li_mshr_rxrsp_pcrdtype_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.pcrdtype  :'0;
+    assign rxrsp_real_s0               = (rxrspflitv == 1'b1) && !rxrsp_link_flit_s0;
+    // Table 15-1 (p.15-468): a snoopee that left coherency before its snoop was sent is
+    // not sent one, and holds no coherent data (Sec 15.2.1), so the MSHR is given the
+    // SnpResp_I it stands for, in a cycle with no response arriving.
+    assign snp_drop_ack                = snp_drop_valid & ~rxrsp_real_s0;
+    assign li_mshr_rxrsp_valid_s0      = rxrsp_real_s0 | snp_drop_ack;
+    assign li_mshr_rxrsp_srcid_s0      = rxrsp_real_s0? rxrspflit.srcid     : snp_drop_ack? snp_drop_srcid : '0;
+    assign li_mshr_rxrsp_txnid_s0      = rxrsp_real_s0? rxrspflit.txnid     : snp_drop_ack? snp_drop_txnid : '0;
+    assign li_mshr_rxrsp_opcode_s0     = rxrsp_real_s0? rxrspflit.opcode    : snp_drop_ack? chie_pkg::RSP_SNPRESP : chie_pkg::RSP_RSPLCRDRETURN;
+    assign li_mshr_rxrsp_resp_s0       = rxrsp_real_s0? rxrspflit.resp      :chie_pkg::RESP_I;
+    assign li_mshr_rxrsp_resperr_s0    = rxrsp_real_s0? rxrspflit.resperr   :chie_pkg::RESP_ERR_NORM_OK;
+    assign li_mshr_rxrsp_fwdstate_s0   = rxrsp_real_s0? rxrspflit.fwdstate  :'0;
+    assign li_mshr_rxrsp_dbid_s0       = rxrsp_real_s0? rxrspflit.dbid      :'0;
+    assign li_mshr_rxrsp_pcrdtype_s0   = rxrsp_real_s0? rxrspflit.pcrdtype  :'0;
 
     //if lcrd is zero
     assign rxrsp_crd_cnt_zero = (rxrsp_crd_cnt_s1_q == {`HNF_LCRD_RSP_CNT_WIDTH{1'b0}});
