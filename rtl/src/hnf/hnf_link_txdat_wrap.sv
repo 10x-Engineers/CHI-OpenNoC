@@ -101,6 +101,7 @@ module hnf_link_txdat_wrap `HNF_PARAM
         logic [1:0]                     rd_tagop;
         logic [1:0]                     dn_tagop;
         logic [`CACHE_TAG_WIDTH-1:0]    match_tag;
+        logic                           rsp_tags;   // tags held for every packet the response sends
     } txdat_sb_s;
     txdat_sb_s                          dbf_txdat_sb_sx1;
     txdat_sb_s                          dbf_txdat_sb_entry1_sx;
@@ -164,8 +165,18 @@ module hnf_link_txdat_wrap `HNF_PARAM
         end
     end
 
+    // SS12.4.1 (p.12-376, MUST): a read asking for tags gets them when they are held. A
+    // response carries the tags of the packets it sends, so those packets decide, and the
+    // decision is taken once per response, on all of its packets.
+    function automatic logic tagv_pkts_full(opennoc_hnf_pkg::hnf_tagv_s t, logic [`HNF_PKTS-1:0] pe);
+        tagv_pkts_full = 1'b1;
+        for (int p = 0; p < `HNF_PKTS; p++)
+            if (pe[p] && !(&t.valid[p*chie_pkg::TU_WIDTH +: chie_pkg::TU_WIDTH])) tagv_pkts_full = 1'b0;
+    endfunction
+
     assign dbf_txdat_sb_sx1 = '{poison: dbf_txdat_poison_sx1, tagv: dbf_txdat_tagv_sx1, rd_tagop: mshr_dbf_rd_tagop_sx1,
-                                dn_tagop: mshr_dbf_rd_dn_tagop_sx1, match_tag: dbf_txdat_match_tag_sx1};
+                                dn_tagop: mshr_dbf_rd_dn_tagop_sx1, match_tag: dbf_txdat_match_tag_sx1,
+                                rsp_tags: tagv_pkts_full(dbf_txdat_tagv_sx1, dbf_txdat_pe_sx1)};
 
     always_comb begin: txdat_sb_sel_comb_logic
         mshr_txdat_sb_sx_ns = '0;
@@ -200,9 +211,10 @@ module hnf_link_txdat_wrap `HNF_PARAM
             endcase
         end
         // SS12.4.1 (p.12-376, MUST): answered Update exactly where the response passes Dirty,
-        // else Transfer; with no tags held, Invalid (SS12.11.3 p.12-387).
+        // else Transfer, whenever the tags of the packets it sends are held; otherwise
+        // Invalid (SS12.11.3 p.12-387).
         else if(((mshr_txdat_sb_sx_ns.rd_tagop == chie_pkg::TAGOP_TRANSFER) || (mshr_txdat_sb_sx_ns.rd_tagop == chie_pkg::TAGOP_MATCH)) &&
-                opennoc_hnf_pkg::hnf_tagv_full(mshr_txdat_sb_sx_ns.tagv)) begin
+                mshr_txdat_sb_sx_ns.rsp_tags) begin
             mshr_txdat_rsp_tagop_sx_ns = mshr_txdat_resp_sx2[2] ? chie_pkg::TAGOP_UPDATE : chie_pkg::TAGOP_TRANSFER;
             mshr_txdat_tag_sx_ns       = pkt_tag;
             mshr_txdat_tu_sx_ns        = mshr_txdat_resp_sx2[2] ? '1 : '0;
