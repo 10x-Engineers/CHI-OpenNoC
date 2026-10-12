@@ -270,24 +270,27 @@ module hni_txrsp `HNI_PARAM
     assign txrsp_fp_tracetag_s1 = rxreq_tracetag_s1_q;
 
     //output to mshr
+    // Sec 1 "in a timely manner": a queued MSHR response goes before a newer fast-path
+    // grant, which then takes the queue behind it (hni_mshr txrsp_en_s1), or it can starve.
     assign txrsp_fp_won_s1       = txrsp_fp_valid_s1 &
+           (~txrsp_valid_sx_q) &
            ~txrsp_busy_sx;
 
     //output to qos
     assign txrsp_retryack_won_s1 = (qos_txrsp_retryack_valid_s1) &
-           (~txrsp_fp_valid_s1) &
+           (~txrsp_fp_won_s1) &
            ~txrsp_busy_sx;
 
     assign txrsp_pcrdgnt_won_s2  = (qos_txrsp_pcrdgnt_valid_s2) &
            (~qos_txrsp_retryack_valid_s1) &
-           (~txrsp_fp_valid_s1) &
+           (~txrsp_fp_won_s1) &
            ~txrsp_busy_sx;
 
     //output to mshr
     assign txrsp_won_sx         = (txrsp_valid_sx_q) &
            (~qos_txrsp_pcrdgnt_valid_s2) &
            (~qos_txrsp_retryack_valid_s1) &
-           (~txrsp_fp_valid_s1) &
+           (~txrsp_fp_won_s1) &
            ~txrsp_busy_sx;
 
     assign txrspcrdv_s0               = txrsp_lcrdv;
