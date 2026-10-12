@@ -105,6 +105,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  chie_pkg::resp_err_e                li_mshr_rxdat_resperr_s0,
     input  wire [3:0]                          li_mshr_rxdat_fwdstate_s0,
     input  wire [1:0]                          li_mshr_rxdat_dataid_s0,
+    input  wire                                li_mshr_rxdat_tracetag_s0,
 
     //inputs related to response handling from hnf_link_rxreq_parse
     input  wire                                li_mshr_rxrsp_valid_s0,
@@ -116,6 +117,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire [2:0]                          li_mshr_rxrsp_fwdstate_s0,
     input  wire [11:0]                         li_mshr_rxrsp_dbid_s0,
     input  wire [3:0]                          li_mshr_rxrsp_pcrdtype_s0,
+    input  wire                                li_mshr_rxrsp_tracetag_s0,
 
     //inputs from hnf_mshr_global_monitor
     input  wire                                excl_pass_s1,
@@ -361,6 +363,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [chie_pkg::NID_WIDTH-1:0]      mshr_stash_pull_srcid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [11:0]                         mshr_stash_pull_txnid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::req_opcode_e               mshr_stash_pull_rd_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_tracetag_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_set_s0;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_issued_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_pend_sx_q;
@@ -545,6 +548,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3hit_sx8_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_l3hit_d_sx8_q;
     logic [11:0]                         mshr_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_dbid_tracetag_s1_q;
     logic [11:0]                         mshr_dwt_dbid_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_WIDTH-1:0]      mshr_txrsp_idx_sx1_q;
     logic                                mshr_retire_busy_sx1_q;
@@ -1628,6 +1632,27 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            // Sec 11.5.1 (p.11-368, MUST): a TraceTag "set in every received packet" is
+            // reflected in the response. The Data Pull is the Stash target's whole Snoop
+            // response (SS7.1.1 p.7-295), so its read data is traced only if every packet
+            // of that response was. The entry snoops the target once, so every snoop
+            // response it gets from the target is that response.
+            always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_tracetag_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_stash_pull_tracetag_s1_q[entry] <= 1'b0;
+                else if(mshr_req_clr_sx1[entry] == 1'b1)
+                    mshr_stash_pull_tracetag_s1_q[entry] <= 1'b0;
+                else if(mshr_stash_pull_set_s0[entry] == 1'b1)
+                    mshr_stash_pull_tracetag_s1_q[entry] <= (mshr_snprsp_entry_vec_s0[entry] &
+                                                             (li_mshr_rxrsp_srcid_s0 == mshr_stash_nid_s1_q[entry])) ?
+                                                            li_mshr_rxrsp_tracetag_s0 : li_mshr_rxdat_tracetag_s0;
+                else if(mshr_stash_pull_s1_q[entry] & mshr_snpdat_entry_vec_s0[entry] &
+                        (li_mshr_rxdat_srcid_s0 == mshr_stash_nid_s1_q[entry]))
+                    mshr_stash_pull_tracetag_s1_q[entry] <= mshr_stash_pull_tracetag_s1_q[entry] & li_mshr_rxdat_tracetag_s0;
+                else
+                    ;
+            end
+
             always_ff @(posedge clk)begin : mshr_stash_sep_s1_q_timing_logic
                 if(mshr_req_clr_sx1[entry] == 1'b1)
                     mshr_stash_sep_s1_q[entry] <= 1'b0;
@@ -2492,6 +2517,18 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_dbid_s1_q[entry] <= li_mshr_rxrsp_dbid_s0;
                 else if(mshr_can_retire_entry_sx1[entry])
                     mshr_dbid_s1_q[entry] <= '0;
+            end
+
+            // Sec 11.5.1 (p.11-368, MUST): the write data answers the Subordinate's
+            // DBIDResp or CompDBIDResp, so it reflects that packet's TraceTag. One
+            // downstream write is outstanding per entry, so the latest one is the one.
+            always_ff @(posedge clk or posedge rst)begin : mshr_dn_dbid_tracetag_s1_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_dn_dbid_tracetag_s1_q[entry] <= 1'b0;
+                else if(mshr_rsp_entry_vec_s0[entry] && mshr_get_dbid_s0)
+                    mshr_dn_dbid_tracetag_s1_q[entry] <= li_mshr_rxrsp_tracetag_s0;
+                else if(mshr_can_retire_entry_sx1[entry])
+                    mshr_dn_dbid_tracetag_s1_q[entry] <= 1'b0;
             end
 
             // Under DWT the Subordinate grants the buffer, and Table 13-21
@@ -4666,7 +4703,13 @@ module hnf_mshr_ctl `HNF_PARAM
         // Sec 2.10.6 (p.2-139, MUST): "The CCID field must match the value of
         // Addr[5:4] of the original request."
         mshr_txdat_ccid_sx2    = mshr_addr_s1_q[txdat_mshr_rd_idx_sx2][5:4];
-        mshr_txdat_tracetag_sx2 = mshr_tracetag_s1_q[txdat_mshr_rd_idx_sx2];
+        // Sec 11.5.1 (p.11-368, MUST): each packet also reflects the received packet it
+        // answers -- write data the Subordinate's DBIDResp, a Data Pull's read data the
+        // Snoop response that asked for it. The request's own bit is kept.
+        mshr_txdat_tracetag_sx2 = mshr_tracetag_s1_q[txdat_mshr_rd_idx_sx2] |
+                                  (txdat_mshr_rd_to_rn_sx2 ?
+                                   (mshr_txdat_stash_pull_sx2 & mshr_stash_pull_tracetag_s1_q[txdat_mshr_rd_idx_sx2]) :
+                                   mshr_dn_dbid_tracetag_s1_q[txdat_mshr_rd_idx_sx2]);
     end
 
     always_comb begin: txdat_wrap_other_ptr_comb_logic

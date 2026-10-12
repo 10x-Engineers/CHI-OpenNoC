@@ -268,6 +268,7 @@ module hnf `HNF_PARAM
     wire [2:0]                               li_mshr_rxrsp_fwdstate_s0;
     wire [11:0]                              li_mshr_rxrsp_dbid_s0;
     wire [3:0]                               li_mshr_rxrsp_pcrdtype_s0;
+    wire                                     li_mshr_rxrsp_tracetag_s0;
     wire                                     li_mshr_rxdat_valid_s0;
     wire [11:0]                              li_mshr_rxdat_txnid_s0;
     wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxdat_srcid_s0;
@@ -277,6 +278,7 @@ module hnf `HNF_PARAM
     chie_pkg::resp_err_e                     li_mshr_rxdat_resperr_s0;
     wire [3:0]                               li_mshr_rxdat_fwdstate_s0;
     wire [1:0]                               li_mshr_rxdat_dataid_s0;
+    wire                                     li_mshr_rxdat_tracetag_s0;
     wire                                     li_dbf_rxdat_valid_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           li_dbf_rxdat_txnid_s0;
     chie_pkg::dat_opcode_e                   li_dbf_rxdat_opcode_s0;
@@ -657,6 +659,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxrsp_fwdstate_s0                    (li_mshr_rxrsp_fwdstate_s0         ),
                  .li_mshr_rxrsp_dbid_s0                        (li_mshr_rxrsp_dbid_s0             ),
                  .li_mshr_rxrsp_pcrdtype_s0                    (li_mshr_rxrsp_pcrdtype_s0         ),
+                 .li_mshr_rxrsp_tracetag_s0                    (li_mshr_rxrsp_tracetag_s0         ),
                  .rxdat_lcrdv                                  (RXDATLCRDV                        ),
                  .li_mshr_rxdat_valid_s0                       (li_mshr_rxdat_valid_s0            ),
                  .li_mshr_rxdat_txnid_s0                       (li_mshr_rxdat_txnid_s0            ),
@@ -667,6 +670,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
                  .li_mshr_rxdat_fwdstate_s0                    (li_mshr_rxdat_fwdstate_s0         ),
                  .li_mshr_rxdat_dataid_s0                      (li_mshr_rxdat_dataid_s0           ),
+                 .li_mshr_rxdat_tracetag_s0                    (li_mshr_rxdat_tracetag_s0         ),
                  .li_dbf_rxdat_valid_s0                        (li_dbf_rxdat_valid_s0             ),
                  .li_dbf_rxdat_txnid_s0                        (li_dbf_rxdat_txnid_s0             ),
                  .li_dbf_rxdat_opcode_s0                       (li_dbf_rxdat_opcode_s0            ),
@@ -762,6 +766,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
                  .li_mshr_rxdat_fwdstate_s0                    (li_mshr_rxdat_fwdstate_s0         ),
                  .li_mshr_rxdat_dataid_s0                      (li_mshr_rxdat_dataid_s0           ),
+                 .li_mshr_rxdat_tracetag_s0                    (li_mshr_rxdat_tracetag_s0         ),
                  .li_mshr_rxrsp_valid_s0                       (li_mshr_rxrsp_valid_s0            ),
                  .li_mshr_rxrsp_srcid_s0                       (li_mshr_rxrsp_srcid_s0            ),
                  .li_mshr_rxrsp_txnid_s0                       (li_mshr_rxrsp_txnid_s0            ),
@@ -771,6 +776,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxrsp_fwdstate_s0                    (li_mshr_rxrsp_fwdstate_s0         ),
                  .li_mshr_rxrsp_dbid_s0                        (li_mshr_rxrsp_dbid_s0             ),
                  .li_mshr_rxrsp_pcrdtype_s0                    (li_mshr_rxrsp_pcrdtype_s0         ),
+                 .li_mshr_rxrsp_tracetag_s0                    (li_mshr_rxrsp_tracetag_s0         ),
                  .txreq_mshr_won_sx1                           (txreq_mshr_won_sx1                ),
                  .txrsp_mshr_won_sx1                           (txrsp_mshr_won_sx1                ),
                  .txsnp_mshr_busy_sx1                          (txsnp_mshr_busy_sx1               ),

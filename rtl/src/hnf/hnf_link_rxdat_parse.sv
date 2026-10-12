@@ -44,6 +44,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     output chie_pkg::resp_err_e            li_mshr_rxdat_resperr_s0,
     output wire [3:0]                      li_mshr_rxdat_fwdstate_s0,
     output wire [1:0]                      li_mshr_rxdat_dataid_s0,
+    output wire                            li_mshr_rxdat_tracetag_s0,
 
     //outputs to hnf_data_buffer
     output wire                            li_dbf_rxdat_valid_s0,
@@ -97,6 +98,7 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_mshr_rxdat_resperr_s0  = li_mshr_rxdat_valid_s0? rxdatflit.resperr  : chie_pkg::RESP_ERR_NORM_OK;
     assign li_mshr_rxdat_fwdstate_s0 = li_mshr_rxdat_valid_s0? rxdatflit.datasource.fwdstate : '0;
     assign li_mshr_rxdat_dataid_s0   = li_mshr_rxdat_valid_s0? rxdatflit.dataid   : '0;
+    assign li_mshr_rxdat_tracetag_s0 = li_mshr_rxdat_valid_s0? rxdatflit.tracetag : '0;
 
     assign li_dbf_rxdat_valid_s0     = li_mshr_rxdat_valid_s0;
     assign li_dbf_rxdat_txnid_s0_raw = li_mshr_rxdat_valid_s0? rxdatflit.txnid    : '0;

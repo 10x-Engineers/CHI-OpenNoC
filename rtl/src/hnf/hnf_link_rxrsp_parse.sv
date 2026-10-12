@@ -43,7 +43,8 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     output chie_pkg::resp_err_e           li_mshr_rxrsp_resperr_s0,
     output wire [2:0]                     li_mshr_rxrsp_fwdstate_s0,
     output wire [11:0]                    li_mshr_rxrsp_dbid_s0,
-    output wire [3:0]                     li_mshr_rxrsp_pcrdtype_s0
+    output wire [3:0]                     li_mshr_rxrsp_pcrdtype_s0,
+    output wire                           li_mshr_rxrsp_tracetag_s0
     );
 
     //internal reg signals
@@ -85,6 +86,7 @@ module hnf_link_rxrsp_parse `HNF_PARAM
     assign li_mshr_rxrsp_fwdstate_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.fwdstate  :'0;
     assign li_mshr_rxrsp_dbid_s0       = li_mshr_rxrsp_valid_s0? rxrspflit.dbid      :'0;
     assign li_mshr_rxrsp_pcrdtype_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.pcrdtype  :'0;
+    assign li_mshr_rxrsp_tracetag_s0   = li_mshr_rxrsp_valid_s0? rxrspflit.tracetag  :'0;
 
     //if lcrd is zero
     assign rxrsp_crd_cnt_zero = (rxrsp_crd_cnt_s1_q == {`HNF_LCRD_RSP_CNT_WIDTH{1'b0}});
