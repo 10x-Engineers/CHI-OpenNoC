@@ -2764,8 +2764,11 @@ module rnf_ctl `RNF_PARAM
     assign txn_active_o = (st_q != S_IDLE) || surplus_v;
 
     // Idle and about to stay so: the S_IDLE arms above take a surplus P-Credit and
-    // the leaving-coherency flush ahead of a pull.
-    assign pull_ready_o = (st_q == S_IDLE) && !surplus_v && !flush_v;
+    // the leaving-coherency flush ahead of a pull. A pull fills a coherent line, which
+    // Table 15-1 (p.15-468, MUST) allows only in Coherency Enabled, so it takes the
+    // same coherency gate as a core request; a declined Stash snoop is answered
+    // without Data Pull.
+    assign pull_ready_o = (st_q == S_IDLE) && !surplus_v && !flush_v && coh_enabled_i && coh_req_i;
     assign pull_txnid_o = txnid_q;
 
     // A single-outstanding Requester draws at most one RetryAck at a time, so a
