@@ -476,11 +476,12 @@ module hnf `HNF_PARAM
 
     assign SYSCOACK = syscoack_q;
 
-    // Table 15-1 (p.15-468, MUST): only Coherency Disabled -- SYSCOREQ and SYSCOACK
-    // both LOW -- forbids sending a Snoop request outright. Coherency Disconnect
-    // keeps SYSCOACK HIGH and requires the interconnect to "complete outstanding
-    // Snoop requests", which is what an in-flight fan-out to that interface is.
-    assign hnf_sysco_snp_en     = syscoreq_q | syscoack_q;
+    // Table 15-1 (p.15-468, MUST): in Coherency Disconnect the interconnect "must
+    // complete outstanding Snoop requests but must not generate new Snoop requests",
+    // and in Disabled it sends none. A snoop flit not yet sent is a new one, so it may
+    // go only while SYSCOREQ is HIGH as sampled this cycle; hnf_link_txsnp_wrap drops
+    // the rest of the fan-out and has hnf_link_rxrsp_parse answer for it.
+    assign hnf_sysco_snp_en     = SYSCOREQ;
     // The same table's other half, which is about deciding to snoop rather than
     // about sending: no new Snoop request is generated in Disconnect or Disabled.
     assign hnf_sysco_snp_gen_en = syscoreq_q;

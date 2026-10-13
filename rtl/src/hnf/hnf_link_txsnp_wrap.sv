@@ -53,7 +53,13 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     output wire                                txsnpflitpend,
 
     //outputs to hnf_mshr_ctl
-    output wire                                txsnp_mshr_busy_sx1
+    output wire                                txsnp_mshr_busy_sx1,
+
+    //snoopees dropped from a fan-out, answered by hnf_link_rxrsp_parse
+    output wire                                snp_drop_valid,
+    output wire [chie_pkg::NID_WIDTH-1:0]      snp_drop_srcid,
+    output wire [11:0]                         snp_drop_txnid,
+    input  wire                                snp_drop_ack
     );
 
     //internal reg signals
@@ -78,10 +84,15 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     logic [`RNF_WIDTH-1:0]              found_tgt_vec_num;
     logic [CHIE_NID_WIDTH_PARAM-1:0]    rnid_list_array[0:HNF_MSHR_RNF_NUM_PARAM-1];
     logic [`RNF_WIDTH-1:0]              snp_tgt_idx;
+    logic                               drop_found;
+    logic [`RNF_WIDTH-1:0]              drop_num;
+    logic [11:0]                        drop_txnid_q;
     logic                               snp_tgt_is_stash;
 
     //internal wire signals
     wire                                txsnp_busy_sx;
+    wire                                drop_only_start;
+    wire [`MSHR_SNPCNT_WIDTH-1:0]       fanout_dec;
     wire                                snp_tgt_avail_sx;
     wire                                txsnp_req_s0;
     wire                                txsnpflitv_s0;
@@ -111,10 +122,10 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         end
     endgenerate
 
-    // Both selectors skip a snoopee whose interface Table 15-1 (p.15-468, MUST) says
-    // must not be sent a Snoop request. Skipped rather than dropped: the bit stays in
-    // the vector, so the fan-out Sec 4.4.1 (p.4-194, MUST) owes is still owed once
-    // that interface is coherent again, while the eligible snoopees go out meanwhile.
+    // Both selectors skip a snoopee whose SYSCOREQ is LOW: Table 15-1 (p.15-468, MUST)
+    // forbids a new Snoop request to it in Disconnect and in Disabled. Such a snoopee
+    // is dropped from the fan-out (drop_vec_comb_logic) instead of being held, since
+    // its interface leaves coherency rather than coming back to it.
     always_comb begin:found_rn_vec_comb_logic
         found_rn_vec     = 1'b0;
         found_rn_vec_num = {`RNF_WIDTH{1'b0}};
@@ -137,6 +148,28 @@ module hnf_link_txsnp_wrap `HNF_PARAM
         end
     end
 
+    always_comb begin: drop_vec_comb_logic
+        drop_found = 1'b0;
+        drop_num   = {`RNF_WIDTH{1'b0}};
+        for (int i = 0; i<`RNF_NUM; i=i+1)begin
+            if(tgt_vec_q[i] & ~sysco_snp_en[i] & ~drop_found)begin
+                drop_found = 1'b1;
+                drop_num   = i[`RNF_WIDTH-1:0];
+            end
+        end
+    end
+
+    // Sec 15.2.1: an interface that has left coherency holds no coherent data, so a
+    // dropped snoopee is answered SnpResp_I on its behalf (hnf_link_rxrsp_parse).
+    assign snp_drop_valid = (txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) & drop_found;
+    assign snp_drop_srcid = rnid_list_array[drop_num];
+    assign snp_drop_txnid = drop_txnid_q;
+
+    // A fan-out none of whose snoopees may be sent to is still accepted, and each of
+    // them is dropped; otherwise it would wait for an interface that is not coming back.
+    assign drop_only_start = mshr_txsnp_valid_sx1_q & (txsnp_cnt_q == {`MSHR_SNPCNT_WIDTH{1'b0}})
+                           & ~found_rn_vec & (|mshr_txsnp_rn_vec_sx1);
+
     always_comb begin: txsnp_wrap_compute_snp_cnt_comb_logic
         mshr_txsnp_rn_cnt = {`MSHR_SNPCNT_WIDTH{1'b0}};
         for (int i = 0; i < `RNF_NUM; i = i + 1) begin
@@ -155,7 +188,7 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     // DEACTIVATE must not be used until the link is in RUN, so retiring the snoop
     // from the MSHR takes the same gate the flit does -- otherwise the fan-out is
     // consumed with nothing sent and Sec 4.4.1 (p.4-194, MUST) is broken.
-    assign txsnp_mshr_busy_sx1 = ((mshr_txsnp_valid_sx1_q == 1'b1) && ((txsnp_cnt_q > 0) | (txsnp_busy_sx == 1'b1)));
+    assign txsnp_mshr_busy_sx1 = ((mshr_txsnp_valid_sx1_q == 1'b1) && ((txsnp_cnt_q > 0) | ((txsnp_busy_sx == 1'b1) & ~drop_only_start)));
 
     //read lcrd
     assign txsnpcrdv_s0            = txsnp_lcrdv;
@@ -275,6 +308,19 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             tgt_vec[found_rn_vec_num] = 1'b0;
     end
 
+    // Each cycle of a fan-out may send one snoopee and drop another (different bits:
+    // one is sendable, the other not).
+    assign fanout_dec = {{(`MSHR_SNPCNT_WIDTH-1){1'b0}}, ((txsnp_crd_avail_s1 == 1'b1) & (txsnpflitv_s0 == 1'b1) & (found_tgt_vec == 1'b1))}
+                      + {{(`MSHR_SNPCNT_WIDTH-1){1'b0}}, (snp_drop_valid & snp_drop_ack)};
+
+    // The TxnID every dropped snoopee of the fan-out is answered with.
+    always_ff @(posedge clk or posedge rst) begin: drop_txnid_q_logic_t
+        if(rst == 1'b1)
+            drop_txnid_q <= 12'b0;
+        else if((mshr_txsnp_valid_sx1_q == 1'b1) & (txsnp_cnt_q == {`MSHR_SNPCNT_WIDTH{1'b0}}) & (txsnp_mshr_busy_sx1 == 1'b0))
+            drop_txnid_q <= mshr_txsnp_txnid_sx1_q;
+    end
+
     //save the rn vector and snoopee cnt
     always_ff @(posedge clk or posedge rst) begin: txsnp_cnt_q_logic_t
         if(rst == 1'b1)begin
@@ -288,10 +334,17 @@ module hnf_link_txsnp_wrap `HNF_PARAM
             tgt_vec_q        <= tgt_vec;
             txsnp_cnt_q      <= txsnp_cnt_tmp - {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
         end
-        //if src match, clear its valid, rn cnt-1
-        else if((txsnp_crd_avail_s1 == 1'b1) & (txsnpflitv_s0 == 1'b1) & (txsnp_cnt_q > 0) & (found_tgt_vec == 1))begin
-            txsnp_cnt_q                   <= txsnp_cnt_q - {{(`MSHR_SNPCNT_WIDTH-1){1'b0}},1'b1};
-            tgt_vec_q[found_tgt_vec_num]  <= 1'b0;
+        else if(drop_only_start)begin
+            tgt_vec_q        <= mshr_txsnp_rn_vec_sx1;
+            txsnp_cnt_q      <= txsnp_cnt_tmp;
+        end
+        //a snoopee sent or dropped leaves the fan-out: clear its bit, rn cnt-1 each
+        else if(txsnp_cnt_q > 0)begin
+            if((txsnp_crd_avail_s1 == 1'b1) & (txsnpflitv_s0 == 1'b1) & (found_tgt_vec == 1'b1))
+                tgt_vec_q[found_tgt_vec_num]  <= 1'b0;
+            if(snp_drop_valid & snp_drop_ack)
+                tgt_vec_q[drop_num]           <= 1'b0;
+            txsnp_cnt_q                       <= txsnp_cnt_q - fanout_dec;
         end
     end
 
@@ -355,16 +408,9 @@ module hnf_link_txsnp_wrap `HNF_PARAM
     //-----------------------------------------------------------------------------
 `ifdef DISPLAY_FATAL
     `display_fatal_arm
-    // A fan-out is held only while none of its remaining snoopees may be sent to,
-    // and Table 15-1 (p.15-468) leaves a target unsendable only in Coherency
-    // Disabled -- which SS15.2.2 (p.15-468, MUST) keeps the interface out of while
-    // a snoop against it is outstanding. So this is a hold with no end.
-    `display_fatal_sva(!(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) ||
-                       (|(tgt_vec_q & sysco_snp_en)),
-                       $sformatf("Fatal info: snoop fan-out held with every remaining snoopee in Coherency Disabled: targets %b, coherent %b, TxnID %h", tgt_vec_q, sysco_snp_en, txsnpflit_s0_q.flit.txnid))
-    `display_fatal_sva(!(mshr_txsnp_valid_sx1_q & (txsnp_cnt_q == {`MSHR_SNPCNT_WIDTH{1'b0}}))
-                       || (|(mshr_txsnp_rn_vec_sx1 & sysco_snp_en)),
-                       $sformatf("Fatal info: snoop fan-out named only Requester interfaces in Coherency Disabled: targets %b, coherent %b, TxnID %h", mshr_txsnp_rn_vec_sx1, sysco_snp_en, mshr_txsnp_txnid_sx1_q))
+    // A fan-out still owed snoopees names them: the count and the vector agree.
+    `display_fatal_sva(!(txsnp_cnt_q > {`MSHR_SNPCNT_WIDTH{1'b0}}) || (|tgt_vec_q),
+                       $sformatf("Fatal info: snoop fan-out count %0d with an empty target vector, TxnID %h", txsnp_cnt_q, drop_txnid_q))
 `endif
 
 `ifdef DISPLAY_INFO

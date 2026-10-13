@@ -325,6 +325,12 @@ module hnf_link `HNF_PARAM
                              .li_mshr_rxreq_rsvdc_s0                         (li_mshr_rxreq_rsvdc_s0         )
                          );
 
+    // Table 15-1: snoopees the TXSNP fan-out drops, answered by the RXRSP parser.
+    wire                                snp_drop_valid;
+    wire [chie_pkg::NID_WIDTH-1:0]      snp_drop_srcid;
+    wire [11:0]                         snp_drop_txnid;
+    wire                                snp_drop_ack;
+
     hnf_link_rxrsp_parse `HNF_PARAM_INST
                          u_hnf_link_rxrsp_parse(
                              .clk                                            (clk                            ),
@@ -342,7 +348,11 @@ module hnf_link `HNF_PARAM
                              .li_mshr_rxrsp_resperr_s0                       (li_mshr_rxrsp_resperr_s0       ),
                              .li_mshr_rxrsp_fwdstate_s0                      (li_mshr_rxrsp_fwdstate_s0      ),
                              .li_mshr_rxrsp_dbid_s0                          (li_mshr_rxrsp_dbid_s0          ),
-                             .li_mshr_rxrsp_pcrdtype_s0                      (li_mshr_rxrsp_pcrdtype_s0      )
+                             .li_mshr_rxrsp_pcrdtype_s0                      (li_mshr_rxrsp_pcrdtype_s0      ),
+                             .snp_drop_valid                                 (snp_drop_valid                 ),
+                             .snp_drop_srcid                                 (snp_drop_srcid                 ),
+                             .snp_drop_txnid                                 (snp_drop_txnid                 ),
+                             .snp_drop_ack                                   (snp_drop_ack                   )
                          );
 
     hnf_link_rxdat_parse `HNF_PARAM_INST
@@ -500,7 +510,11 @@ module hnf_link `HNF_PARAM
                             .txsnpflitv                                     (txsnpflitv                        ),
                             .txsnpflit                                      (txsnpflit                         ),
                             .txsnpflitpend                                  (txsnpflitpend                     ),
-                            .txsnp_mshr_busy_sx1                            (txsnp_mshr_busy_sx1               )
+                            .txsnp_mshr_busy_sx1                            (txsnp_mshr_busy_sx1               ),
+                            .snp_drop_valid                                 (snp_drop_valid                    ),
+                            .snp_drop_srcid                                 (snp_drop_srcid                    ),
+                            .snp_drop_txnid                                 (snp_drop_txnid                    ),
+                            .snp_drop_ack                                   (snp_drop_ack                      )
                         );
 
     hnf_link_txdat_wrap `HNF_PARAM_INST
