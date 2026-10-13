@@ -257,7 +257,9 @@ whose write strobes are all clear, and that carries no `TagOp`, sends every pack
 
 As a Stash target the RN-F answers a Stash snoop with a Data Pull where Tables 4-46..4-48 permit one and the
 line has a way it can take without a write-back, and allocates the line the pull returns. While a
-`DVMOp` is outstanding it answers without a Data Pull.
+`DVMOp` is outstanding, outside Coherency Enabled, or once its integration has asked to leave coherency,
+it answers without a Data Pull (a pulled line would be cached coherently, which Table 15-1 allows only
+in Coherency Enabled).
 
 ---
 
