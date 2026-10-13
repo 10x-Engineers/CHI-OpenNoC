@@ -193,6 +193,7 @@ module hnf_link `HNF_PARAM
     output wire [2:0]                          li_mshr_rxrsp_fwdstate_s0,
     output wire [11:0]                         li_mshr_rxrsp_dbid_s0,
     output wire [3:0]                          li_mshr_rxrsp_pcrdtype_s0,
+    output wire                                li_mshr_rxrsp_tracetag_s0,
     output wire                                rxdat_lcrdv,
     output wire                                li_mshr_rxdat_valid_s0,
     output wire [11:0]                         li_mshr_rxdat_txnid_s0,
@@ -203,6 +204,7 @@ module hnf_link `HNF_PARAM
     output chie_pkg::resp_err_e                li_mshr_rxdat_resperr_s0,
     output wire [3:0]                          li_mshr_rxdat_fwdstate_s0,
     output wire [1:0]                          li_mshr_rxdat_dataid_s0,
+    output wire                                li_mshr_rxdat_tracetag_s0,
     output wire                                li_dbf_rxdat_valid_s0,
     output wire [`MSHR_ENTRIES_WIDTH-1:0]      li_dbf_rxdat_txnid_s0,
     output chie_pkg::dat_opcode_e              li_dbf_rxdat_opcode_s0,
@@ -352,7 +354,8 @@ module hnf_link `HNF_PARAM
                              .snp_drop_valid                                 (snp_drop_valid                 ),
                              .snp_drop_srcid                                 (snp_drop_srcid                 ),
                              .snp_drop_txnid                                 (snp_drop_txnid                 ),
-                             .snp_drop_ack                                   (snp_drop_ack                   )
+                             .snp_drop_ack                                   (snp_drop_ack                   ),
+                             .li_mshr_rxrsp_tracetag_s0                      (li_mshr_rxrsp_tracetag_s0      )
                          );
 
     hnf_link_rxdat_parse `HNF_PARAM_INST
@@ -373,6 +376,7 @@ module hnf_link `HNF_PARAM
                              .li_mshr_rxdat_resperr_s0                       (li_mshr_rxdat_resperr_s0       ),
                              .li_mshr_rxdat_fwdstate_s0                      (li_mshr_rxdat_fwdstate_s0      ),
                              .li_mshr_rxdat_dataid_s0                        (li_mshr_rxdat_dataid_s0        ),
+                             .li_mshr_rxdat_tracetag_s0                      (li_mshr_rxdat_tracetag_s0      ),
                              .li_dbf_rxdat_valid_s0                          (li_dbf_rxdat_valid_s0          ),
                              .li_dbf_rxdat_txnid_s0                          (li_dbf_rxdat_txnid_s0          ),
                              .li_dbf_rxdat_opcode_s0                         (li_dbf_rxdat_opcode_s0         ),
