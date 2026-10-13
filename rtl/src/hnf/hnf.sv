@@ -268,6 +268,7 @@ module hnf `HNF_PARAM
     wire [2:0]                               li_mshr_rxrsp_fwdstate_s0;
     wire [11:0]                              li_mshr_rxrsp_dbid_s0;
     wire [3:0]                               li_mshr_rxrsp_pcrdtype_s0;
+    wire                                     li_mshr_rxrsp_tracetag_s0;
     wire                                     li_mshr_rxdat_valid_s0;
     wire [11:0]                              li_mshr_rxdat_txnid_s0;
     wire [chie_pkg::NID_WIDTH-1:0]           li_mshr_rxdat_srcid_s0;
@@ -277,6 +278,7 @@ module hnf `HNF_PARAM
     chie_pkg::resp_err_e                     li_mshr_rxdat_resperr_s0;
     wire [3:0]                               li_mshr_rxdat_fwdstate_s0;
     wire [1:0]                               li_mshr_rxdat_dataid_s0;
+    wire                                     li_mshr_rxdat_tracetag_s0;
     wire                                     li_dbf_rxdat_valid_s0;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           li_dbf_rxdat_txnid_s0;
     chie_pkg::dat_opcode_e                   li_dbf_rxdat_opcode_s0;
@@ -476,11 +478,12 @@ module hnf `HNF_PARAM
 
     assign SYSCOACK = syscoack_q;
 
-    // Table 15-1 (p.15-468, MUST): only Coherency Disabled -- SYSCOREQ and SYSCOACK
-    // both LOW -- forbids sending a Snoop request outright. Coherency Disconnect
-    // keeps SYSCOACK HIGH and requires the interconnect to "complete outstanding
-    // Snoop requests", which is what an in-flight fan-out to that interface is.
-    assign hnf_sysco_snp_en     = syscoreq_q | syscoack_q;
+    // Table 15-1 (p.15-468, MUST): in Coherency Disconnect the interconnect "must
+    // complete outstanding Snoop requests but must not generate new Snoop requests",
+    // and in Disabled it sends none. A snoop flit not yet sent is a new one, so it may
+    // go only while SYSCOREQ is HIGH as sampled this cycle; hnf_link_txsnp_wrap drops
+    // the rest of the fan-out and has hnf_link_rxrsp_parse answer for it.
+    assign hnf_sysco_snp_en     = SYSCOREQ;
     // The same table's other half, which is about deciding to snoop rather than
     // about sending: no new Snoop request is generated in Disconnect or Disabled.
     assign hnf_sysco_snp_gen_en = syscoreq_q;
@@ -657,6 +660,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxrsp_fwdstate_s0                    (li_mshr_rxrsp_fwdstate_s0         ),
                  .li_mshr_rxrsp_dbid_s0                        (li_mshr_rxrsp_dbid_s0             ),
                  .li_mshr_rxrsp_pcrdtype_s0                    (li_mshr_rxrsp_pcrdtype_s0         ),
+                 .li_mshr_rxrsp_tracetag_s0                    (li_mshr_rxrsp_tracetag_s0         ),
                  .rxdat_lcrdv                                  (RXDATLCRDV                        ),
                  .li_mshr_rxdat_valid_s0                       (li_mshr_rxdat_valid_s0            ),
                  .li_mshr_rxdat_txnid_s0                       (li_mshr_rxdat_txnid_s0            ),
@@ -667,6 +671,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
                  .li_mshr_rxdat_fwdstate_s0                    (li_mshr_rxdat_fwdstate_s0         ),
                  .li_mshr_rxdat_dataid_s0                      (li_mshr_rxdat_dataid_s0           ),
+                 .li_mshr_rxdat_tracetag_s0                    (li_mshr_rxdat_tracetag_s0         ),
                  .li_dbf_rxdat_valid_s0                        (li_dbf_rxdat_valid_s0             ),
                  .li_dbf_rxdat_txnid_s0                        (li_dbf_rxdat_txnid_s0             ),
                  .li_dbf_rxdat_opcode_s0                       (li_dbf_rxdat_opcode_s0            ),
@@ -762,6 +767,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxdat_resperr_s0                     (li_mshr_rxdat_resperr_s0          ),
                  .li_mshr_rxdat_fwdstate_s0                    (li_mshr_rxdat_fwdstate_s0         ),
                  .li_mshr_rxdat_dataid_s0                      (li_mshr_rxdat_dataid_s0           ),
+                 .li_mshr_rxdat_tracetag_s0                    (li_mshr_rxdat_tracetag_s0         ),
                  .li_mshr_rxrsp_valid_s0                       (li_mshr_rxrsp_valid_s0            ),
                  .li_mshr_rxrsp_srcid_s0                       (li_mshr_rxrsp_srcid_s0            ),
                  .li_mshr_rxrsp_txnid_s0                       (li_mshr_rxrsp_txnid_s0            ),
@@ -771,6 +777,7 @@ module hnf `HNF_PARAM
                  .li_mshr_rxrsp_fwdstate_s0                    (li_mshr_rxrsp_fwdstate_s0         ),
                  .li_mshr_rxrsp_dbid_s0                        (li_mshr_rxrsp_dbid_s0             ),
                  .li_mshr_rxrsp_pcrdtype_s0                    (li_mshr_rxrsp_pcrdtype_s0         ),
+                 .li_mshr_rxrsp_tracetag_s0                    (li_mshr_rxrsp_tracetag_s0         ),
                  .txreq_mshr_won_sx1                           (txreq_mshr_won_sx1                ),
                  .txrsp_mshr_won_sx1                           (txrsp_mshr_won_sx1                ),
                  .txsnp_mshr_busy_sx1                          (txsnp_mshr_busy_sx1               ),
