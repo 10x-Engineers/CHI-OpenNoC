@@ -421,6 +421,7 @@ module hnf_mshr_ctl `HNF_PARAM
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_snp_tagfetch_s1;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagfetch_go_sx;
     logic [1:0]                          mshr_dn_wr_tagop_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_wr_full_q;
     wire                                 mshr_txreq_passthru_sx1;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_tagop_update;
     wire  [`MSHR_ENTRIES_NUM-1:0]        mshr_wuf_tags_free;
@@ -3468,6 +3469,17 @@ module hnf_mshr_ctl `HNF_PARAM
                     ;
             end
 
+            always_ff @(posedge clk or posedge rst)begin : mshr_dn_wr_full_q_timing_logic
+                if(rst == 1'b1)
+                    mshr_dn_wr_full_q[entry] <= 1'b0;
+                else if(mshr_txreq_entry_vec_sx1[entry] & txreq_mshr_won_sx1 & ~mshr_txreq_is_rd_sx1 & ~mshr_txreq_is_cmo_sx1)
+                    mshr_dn_wr_full_q[entry] <= ~mshr_txreq_wr_ptl_sx1;
+                else if(mshr_can_alloc_entry_s1_q[entry])
+                    mshr_dn_wr_full_q[entry] <= ~mshr_wrnosnpp_s1_q[entry];
+                else
+                    ;
+            end
+
             always_ff @(posedge clk or posedge rst)begin : mshr_stash_pull_issued_sx_q_timing_logic
                 if(rst == 1'b1)
                     mshr_stash_pull_issued_sx_q[entry] <= 1'b0;
@@ -4880,8 +4892,12 @@ module hnf_mshr_ctl `HNF_PARAM
                                    (mshr_stash_pull_s1_q[mshr_dbf_rd_idx_sx1_q] & mshr_stash_pull_issued_sx_q[mshr_dbf_rd_idx_sx1_q] &
                                     mshr_dbf_rd_to_rn_sx1_q & mshr_mte_mem[mshr_dbf_rd_idx_sx1_q]) ? chie_pkg::TAGOP_TRANSFER
                                                                                                    : chie_pkg::TAGOP_INVALID;
-        // SS12.5.1 (p.12-378): a Match request's data is Invalid when the write was canceled.
-        mshr_dbf_rd_dn_tagop_sx1 = ((mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::TAGOP_MATCH) && mshr_cancel_s1_q[mshr_dbf_rd_idx_sx1_q])
+        // SS12.5.1 (p.12-378): a Match request's data is Invalid when the write was canceled,
+        // and an Update request's may be Invalid. A Full write's Update asserts every TU bit
+        // (SS12.5.2 p.12-379), so a line whose tags are not all held goes Invalid.
+        mshr_dbf_rd_dn_tagop_sx1 = (((mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::TAGOP_MATCH) && mshr_cancel_s1_q[mshr_dbf_rd_idx_sx1_q]) ||
+                                    ((mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q] == chie_pkg::TAGOP_UPDATE) && mshr_dn_wr_full_q[mshr_dbf_rd_idx_sx1_q] &&
+                                     ~dbf_mshr_tags_full_sx[mshr_dbf_rd_idx_sx1_q]))
                                  ? chie_pkg::TAGOP_INVALID : mshr_dn_wr_tagop_q[mshr_dbf_rd_idx_sx1_q];
     end
 
