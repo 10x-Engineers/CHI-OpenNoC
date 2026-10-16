@@ -660,7 +660,9 @@ module rni_arctrl
         end
         else begin
             if(arctrl_entry_req_select_success_flag_w)begin
-                arctrl_entry_req_select_retry_flag_q <= arctrl_req_hi_retry_found_w | arctrl_req_lo_retry_found_w;
+                // Sec 2.11 (p.2-145): only the resend of a retried request goes without AllowRetry;
+                // follow the winner's priority, since a new high-QoS request beats a low-QoS resend.
+                arctrl_entry_req_select_retry_flag_q <= arctrl_req_hi_retry_found_w | (~arctrl_req_hi_new_found_w & arctrl_req_lo_retry_found_w);
             end
         end
     end

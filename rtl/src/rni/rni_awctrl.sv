@@ -201,6 +201,7 @@ module rni_awctrl `RNI_PARAM
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  txdat_select_rdy_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  wdata_recv_done_ns_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_line_sized_w;
+    wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_burst_writes_line_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_full_pending_w;
     wire [RNI_AW_ENTRIES_NUM_PARAM-1:0]  aw_entry_full_write_w;
     logic                                aw_full_write_r;
@@ -344,6 +345,7 @@ module rni_awctrl `RNI_PARAM
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_comb_w;        // WriteNoSnp + CMO
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_lerr_w;        // refused, completed locally
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_dl_w;          // sends no write data
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_dbid_owed_w;   // a sent Write*Zero: owes a DBID too
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_unordered_w;
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_persist_owed_w;
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_compcmo_owed_w;
@@ -881,6 +883,23 @@ module rni_awctrl `RNI_PARAM
                                              == chie_pkg::SIZE_64B);
         end
     endgenerate
+    // Table A-5 (p.A-486) gives a Write Zero Size 64 only, so one is sent only for a segment
+    // whose whole line the AXI burst writes; the line-sized test above rounds a part line up.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_burst_line
+            wire [15:0] total_w = ({8'b0, awctrl_entry_info_q[entry].len} + 16'd1) << awctrl_entry_info_q[entry].size;
+            wire [15:0] start_w = {4'b0, awctrl_entry_info_q[entry].addr[11:0]};
+            wire [15:0] beat_w  = start_w & ~((16'd1 << awctrl_entry_info_q[entry].size) - 16'd1);
+            // The bytes [lo, hi) the burst writes in its 4 KB page (AXI A3.4.1): a WRAP burst
+            // covers its whole aligned window, a FIXED one a single beat.
+            wire [15:0] lo_w    = (awctrl_entry_info_q[entry].burst == 2'b10) ? (start_w & ~(total_w - 16'd1)) : start_w;
+            wire [15:0] hi_w    = (awctrl_entry_info_q[entry].burst == 2'b10) ? ((start_w & ~(total_w - 16'd1)) + total_w) :
+                                  (awctrl_entry_info_q[entry].burst == 2'b00) ? (beat_w + (16'd1 << awctrl_entry_info_q[entry].size)) :
+                                                                                (beat_w + total_w);
+            wire [15:0] line_w  = {4'b0, awctrl_entry_addr_q[entry][11:6], 6'b0};
+            assign aw_burst_writes_line_w[entry] = (lo_w <= line_w) && (hi_w >= line_w + 16'd64);
+        end
+    endgenerate
 
     // SS2.10.3 (p.2-135, MUST) requires all byte enables asserted on a Full write,
     // and those live on the W channel -- so a whole-line entry holds its request
@@ -989,7 +1008,9 @@ module rni_awctrl `RNI_PARAM
         end
         else begin
             if(awctrl_entry_req_select_success_flag_w)begin
-                awctrl_entry_req_select_retry_flag_q <= awctrl_req_hi_retry_found_w | awctrl_req_lo_retry_found_w;
+                // Sec 2.11 (p.2-145): only the resend of a retried request goes without AllowRetry;
+                // follow the winner's priority, since a new high-QoS request beats a low-QoS resend.
+                awctrl_entry_req_select_retry_flag_q <= awctrl_req_hi_retry_found_w | (~awctrl_req_hi_new_found_w & awctrl_req_lo_retry_found_w);
             end
         end
     end
@@ -1110,10 +1131,12 @@ module rni_awctrl `RNI_PARAM
             assign awctrl_entry_lerr_w[entry]   = (awctrl_entry_so_w[entry] & ~wb_w) |
                                                   (awctrl_entry_pft_w[entry] & awctrl_entry_device_w[entry]) |
                                                   (~(|op_w) & (cmo_w != `RNI_AWCMO_NONE) & wb_w) |
-                                                  (awctrl_entry_zero_w[entry] & ~aw_line_sized_w[entry]);
+                                                  (awctrl_entry_zero_w[entry] & ~(aw_line_sized_w[entry] & aw_burst_writes_line_w[entry]));
             assign awctrl_entry_dl_w[entry]     = awctrl_entry_zero_w[entry] | awctrl_entry_so_w[entry] |
                                                   awctrl_entry_cmo_w[entry] | awctrl_entry_pft_w[entry] |
                                                   awctrl_entry_lerr_w[entry];
+            // Figure 2-4 (p.2-54): a Write Zero is answered DBIDResp + Comp or CompDBIDResp.
+            assign awctrl_entry_dbid_owed_w[entry] = awctrl_entry_zero_w[entry] & ~awctrl_entry_lerr_w[entry];
             assign awctrl_entry_unordered_w[entry] = awctrl_entry_so_w[entry] | awctrl_entry_cmo_w[entry] |
                                                      awctrl_entry_pft_w[entry] | awctrl_entry_lerr_w[entry];
             // SS2.3.3/SS4.2.4 (p.4-182): a CleanSharedPersistSep, alone or combined with a
@@ -1385,8 +1408,9 @@ module rni_awctrl `RNI_PARAM
     assign rxrsp_retryack_recv_flag_w = aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
 
     // A request that sends no write data is ordered by its Comp, as a write is by its DBID.
+    // A Write Zero is a write here: Sec 2.8.5 (p.2-119) needs its DBIDResp or DBIDRespOrd.
     assign awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
-           ((rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+           ((rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_synth_comp_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) & awctrl_entry_dl_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_dbid_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign awctrl_chain_rel_flag_w = |awctrl_chain_rel_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // PrefetchTgt has no response (SS2.3.5): its completion is its sending. A refused
     // request completes at allocation, with an error.
@@ -2106,7 +2130,8 @@ module rni_awctrl `RNI_PARAM
     // bresp
     /////////////////////////////////////////////////////////////
     assign bresp_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_data_done_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
-           // The other halves a request may owe: CompCMO, Persist, StashDone.
+           // The other halves a request may owe: DBIDResp (Sec 2.5.2, p.2-87), CompCMO, Persist, StashDone.
+           (rxrsp_dbid_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_dbid_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            (awctrl_compcmo_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_compcmo_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            (awctrl_persist_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_persist_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            (awctrl_stashdone_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_stashdone_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
