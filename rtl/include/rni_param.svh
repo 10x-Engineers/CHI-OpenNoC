@@ -35,7 +35,7 @@
     parameter RNI_AW_ENTRIES_NUM_PARAM   = 32,  \
     parameter HNF_NID_PARAM              = 0,   \
     parameter SNF_NID_PARAM              = 32,  \
-    parameter RNI_NID_PARAM              = 6    )
+    parameter RNI_NID_PARAM              = 1    )
 
 `define RNI_PARAM_INST #( \
     .AXI4_PA_WIDTH_PARAM            (AXI4_PA_WIDTH_PARAM         ), \
