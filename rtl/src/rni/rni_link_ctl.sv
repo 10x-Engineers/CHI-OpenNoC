@@ -91,6 +91,7 @@ module rni_link_ctl `RNI_PARAM
     wire                       txrsp_lcrd_avail_d0_w;
     wire                       txreq_lcrd_avail_s4_w;
     wire                       txdatflitv_en_w;
+    wire                       txdat_send_d3_w;            // a flit leaves on TXDAT: data or a credit return
     chie_pkg::dat_flit_s       txdatflit_d3_w;
     wire                       ax_txrspflitv_d0_w;
     wire                       ax_txrspflit_upd_d0_w;
@@ -343,19 +344,22 @@ module rni_link_ctl `RNI_PARAM
                       .clk               ( clk_i                  )
                       ,.rst               ( rst_i                  )
                       ,.lcrd_inc          ( TXDATLCRDV             ) // TXDATLCRDV -> txdatlcrdv_q ?
-                      ,.lcrd_dec          ( wb_txdatflit_sent_d3_o )
+                      ,.lcrd_dec          ( txdat_send_d3_w        )
                       ,.lcrd_full         (                        )
                       ,.lcrd_avail        ( txdat_lcrd_avail_d3_w  )
                   );
 
-    assign wb_txdatflit_sent_d3_o = (wb_txdatflitv_d3_i & txdat_lcrd_avail_d3_w & ~lcrd_return_en & txll_st_run) | txdatflit_lcrd_v;
-    assign txdatflitv_en_w = wb_txdatflit_sent_d3_o | txdatflitv_d4_q;
+    // A credit return leaves on TXDAT too but carries no data (SS14.2.3), so only the
+    // write buffer's own flit is acknowledged to it.
+    assign wb_txdatflit_sent_d3_o = wb_txdatflitv_d3_i & txdat_lcrd_avail_d3_w & ~lcrd_return_en & txll_st_run;
+    assign txdat_send_d3_w = wb_txdatflit_sent_d3_o | txdatflit_lcrd_v;
+    assign txdatflitv_en_w = txdat_send_d3_w | txdatflitv_d4_q;
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
             txdatflitv_d4_q <= 1'b0;
         else if (txdatflitv_en_w == 1'b1)
-            txdatflitv_d4_q <= wb_txdatflit_sent_d3_o;
+            txdatflitv_d4_q <= txdat_send_d3_w;
     end
 
     assign TXDATFLITV = txdatflitv_d4_q;
@@ -365,7 +369,7 @@ module rni_link_ctl `RNI_PARAM
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)
             txdatflit_d4_q <= '0;
-        else if (wb_txdatflit_sent_d3_o == 1'b1)
+        else if (txdat_send_d3_w == 1'b1)
             txdatflit_d4_q <= txdatflit_d3_w;
     end
 
@@ -406,8 +410,9 @@ module rni_link_ctl `RNI_PARAM
                       ,.sel_index         (                        )
                   );
 
-    assign aw_txrspflit_sent_d0_o = (ax_txrspflit_sel_d0_w & aw_txrspflitv_d0_i & txrsp_lcrd_avail_d0_w & ~lcrd_return_en & txll_st_run) | txrspflit_lcrd_v;
-    assign ax_txrspflit_sent_d0_w = aw_txrspflit_sent_d0_o;
+    // As on TXDAT: a credit return is sent, but it is not the AW path's response.
+    assign aw_txrspflit_sent_d0_o = ax_txrspflit_sel_d0_w & aw_txrspflitv_d0_i & txrsp_lcrd_avail_d0_w & ~lcrd_return_en & txll_st_run;
+    assign ax_txrspflit_sent_d0_w = aw_txrspflit_sent_d0_o | txrspflit_lcrd_v;
 
     assign txrspflitv_en_w = ax_txrspflit_sent_d0_w | txrspflitv_d1_q;
 
