@@ -448,8 +448,14 @@ module hnf `HNF_PARAM
     // the Protocol layer's outstanding work, not the link handshake. The tracker
     // occupancy covers a transaction still in progress; the outbound flit
     // availability covers one whose entry has retired with its last flit still
-    // queued.
-    assign TXSACTIVE = (hnf_qos_active_sx | hnf_txflit_avail) & (~RST);
+    // queued; and the output registers cover that last flit itself, which is on
+    // the wire in the cycle after it leaves the queue. An L-Credit return flit
+    // belongs to no transaction (Sec 14.2.3), so it does not hold TXSACTIVE.
+    wire hnf_txprot_flitv = (TXREQFLITV & (TXREQFLIT.opcode      != chie_pkg::REQ_REQLCRDRETURN))
+                          | (TXRSPFLITV & (TXRSPFLIT.opcode      != chie_pkg::RSP_RSPLCRDRETURN))
+                          | (TXSNPFLITV & (TXSNPFLIT.flit.opcode != chie_pkg::SNP_SNPLCRDRETURN))
+                          | (TXDATFLITV & (TXDATFLIT.opcode      != chie_pkg::DAT_DATLCRDRETURN));
+    assign TXSACTIVE = (hnf_qos_active_sx | hnf_txflit_avail | hnf_txprot_flitv) & (~RST);
 
     // CHI E.b Sec 15.2.2 (p.15-468, MUST). On SYSCOREQ HIGH the interconnect must
     // "set SYSCOACK HIGH without waiting for responses to any Snoop requests that it
