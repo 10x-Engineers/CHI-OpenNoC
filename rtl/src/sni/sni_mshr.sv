@@ -1190,7 +1190,9 @@ module sni_mshr `SNI_PARAM
             // An Atomic's fetch is the load half of its operation: an AtomicStore owes no
             // data, and the other three return it as the completion once the store half
             // has landed (SS9.4.4 p.9-342, the "delayed form of Comp or CompData").
-            assign rdat_ready_sx[entry] = rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry] == '0)
+            // The fetched-data flags clear on the reported retire, after the entry and its
+            // Atomic flag, so only a live entry may arm a data response (Sec 2.3.9 p.2-83).
+            assign rdat_ready_sx[entry] = mshr_entry_valid_sx_q[entry] && rdat_valid_s1_q[entry] && (txdat_rdy_sx_q[entry] == '0)
                                         && ((rdat_pdmask_q[entry] & rdat_chunks_sx[entry]) == rdat_chunks_sx[entry])
                                         && (~rxreq_atm_s1_q[entry] | (rxreq_atmdat_s1_q[entry] & atm_mem_done_q[entry]));
         end
