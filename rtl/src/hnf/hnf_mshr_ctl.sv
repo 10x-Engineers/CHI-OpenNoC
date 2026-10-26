@@ -365,6 +365,7 @@ module hnf_mshr_ctl `HNF_PARAM
     chie_pkg::req_opcode_e               mshr_stash_pull_rd_s1_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_tracetag_s1_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_set_s0;
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_on_rsp_s0;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_issued_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_pend_sx_q;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_stash_pull_busy_sx_q;
@@ -1622,10 +1623,10 @@ module hnf_mshr_ctl `HNF_PARAM
                     // SS2.6 step 6 (p.2-110): the data response's "TgtID is set to the
                     // same value as the SrcID of the Snoop response" and its "TxnID is
                     // set to the same value as the DBID of the Snoop response".
-                    mshr_stash_pull_srcid_s1_q[entry] <= mshr_snprsp_entry_vec_s0[entry] ? li_mshr_rxrsp_srcid_s0
-                                                                                        : li_mshr_rxdat_srcid_s0;
-                    mshr_stash_pull_txnid_s1_q[entry] <= mshr_snprsp_entry_vec_s0[entry] ? li_mshr_rxrsp_dbid_s0
-                                                                                        : li_mshr_rxdat_dbid_s0;
+                    mshr_stash_pull_srcid_s1_q[entry] <= mshr_stash_pull_on_rsp_s0[entry] ? li_mshr_rxrsp_srcid_s0
+                                                                                         : li_mshr_rxdat_srcid_s0;
+                    mshr_stash_pull_txnid_s1_q[entry] <= mshr_stash_pull_on_rsp_s0[entry] ? li_mshr_rxrsp_dbid_s0
+                                                                                         : li_mshr_rxdat_dbid_s0;
                     mshr_stash_pull_rd_s1_q[entry]    <= opennoc_hnf_pkg::hnf_stash_pull_read_of(
                                                              mshr_stash_snpcode_s1_q[entry]);
                 end
@@ -1644,8 +1645,7 @@ module hnf_mshr_ctl `HNF_PARAM
                 else if(mshr_req_clr_sx1[entry] == 1'b1)
                     mshr_stash_pull_tracetag_s1_q[entry] <= 1'b0;
                 else if(mshr_stash_pull_set_s0[entry] == 1'b1)
-                    mshr_stash_pull_tracetag_s1_q[entry] <= (mshr_snprsp_entry_vec_s0[entry] &
-                                                             (li_mshr_rxrsp_srcid_s0 == mshr_stash_nid_s1_q[entry])) ?
+                    mshr_stash_pull_tracetag_s1_q[entry] <= mshr_stash_pull_on_rsp_s0[entry] ?
                                                             li_mshr_rxrsp_tracetag_s0 : li_mshr_rxdat_tracetag_s0;
                 else if(mshr_stash_pull_s1_q[entry] & mshr_snpdat_entry_vec_s0[entry] &
                         (li_mshr_rxdat_srcid_s0 == mshr_stash_nid_s1_q[entry]))
@@ -1974,6 +1974,10 @@ module hnf_mshr_ctl `HNF_PARAM
     // MUST) sends the stash snoop to one RN-F only.
     generate
         for(entry=0;entry<`MSHR_ENTRIES_NUM;entry=entry+1) begin:stash_pull_set_comb_logic
+            // The target's one Snoop response is on RXRSP: another snoopee may answer on
+            // RXRSP while the target answers on RXDAT, so the channel is chosen by SrcID.
+            assign mshr_stash_pull_on_rsp_s0[entry] = mshr_snprsp_entry_vec_s0[entry] &
+                                                      (li_mshr_rxrsp_srcid_s0 == mshr_stash_nid_s1_q[entry]);
             assign mshr_stash_pull_set_s0[entry] =
                    mshr_stash_v_s1_q[entry] & ~mshr_stash_pull_s1_q[entry] &
                    ((mshr_snprsp_entry_vec_s0[entry] &
