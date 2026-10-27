@@ -2240,7 +2240,8 @@ module hnf_mshr_ctl `HNF_PARAM
                                                       (mshr_size_s1_q[entry] != chie_pkg::SIZE_64B))) & (mshr_snp_getnum_s1_q[entry] == mshr_snpcnt_sx_q[entry]) &
                                                     (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry]) & !mshr_dct_s1_q[entry] &
                                                     (mshr_rdnosnp_s1_q[entry] | mshr_ro_s1_q[entry] | mshr_roinv_s1_q[entry] | mshr_ru_s1_q[entry] | mshr_rc_s1_q[entry] | mshr_rdnosd_s1_q[entry] |
-                                                     (mshr_atm_fwd_s1_q[entry] & mshr_atomicrd_s1_q[entry]) |
+                                                     // SS2.3.9 (p.2-83): one CompData; the Requester's own write data arrives later.
+                                                     (mshr_atm_fwd_s1_q[entry] & mshr_atomicrd_s1_q[entry] & ~mshr_atm_fwd_rd_done_sx_q[entry]) |
                                                      (mshr_stash_pull_s1_q[entry] & mshr_stash_pull_issued_sx_q[entry])));
             assign mshr_new_dat_l3fill_s1[entry] = (mshr_dat_new_get_s1_q[entry] & (mshr_dat_entry_vec_s1_q[entry]) & (((mshr_wb_s1_q[entry]) & mshr_l3_alloc_s1_q[entry]) |
                                                     mshr_we_s1_q[entry])) |
