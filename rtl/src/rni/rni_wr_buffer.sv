@@ -48,6 +48,7 @@ module rni_wr_buffer `RNI_PARAM
     input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_rdy_entry_d2_q_i,
     input  wire [3:0]                          txdat_qos_d2_i,
     input  wire                                txdat_compack_d2_i,
+    input  wire                                txdat_cancel_d2_i,
     input  wire [11:0]                         txdat_dbid_d2_i,
     input  wire                                txdat_tracetag_d2_i,
     input  wire [chie_pkg::NID_WIDTH-1:0]      txdat_tgtid_d2_i,
@@ -83,6 +84,9 @@ module rni_wr_buffer `RNI_PARAM
     // Per entry: every Allocation Tag of the line is marked for update. Read with
     // the same timing as wb_entry_all_be_o.
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_tu_o,
+    // Per entry: no byte of the line has its write strobe asserted. Read with the same
+    // timing as wb_entry_all_be_o.
+    output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_no_be_o,
     input  wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_i[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output chie_pkg::dat_flit_s                wb_txdatflit_d3_o,
     output wire                                wb_txdatflitv_d3_o,
@@ -172,6 +176,7 @@ module rni_wr_buffer `RNI_PARAM
     logic [`AXI4_TAGOP_WIDTH-1:0]                                   txdat_tagop_d3_q;
     logic [3:0]                                                     txdat_qos_d3_q;
     logic                                                           txdat_compack_d3_q;
+    logic                                                           txdat_cancel_d3_q;
     logic [11:0]                                                    txdat_dbid_d3_q;
     logic                              txdat_tracetag_d3_q;
     logic [chie_pkg::NID_WIDTH-1:0]                                 txdat_tgtid_d3_q;
@@ -399,6 +404,7 @@ module rni_wr_buffer `RNI_PARAM
         for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: wr_entry_all
             assign wb_entry_all_be_o[entry] = &w_strb_d2_q[entry];
             assign wb_entry_all_tu_o[entry] = &w_tu_d2_q[entry];
+            assign wb_entry_no_be_o[entry]  = ~|w_strb_d2_q[entry];
         end
     endgenerate
 
@@ -468,6 +474,7 @@ module rni_wr_buffer `RNI_PARAM
             txdat_rdy_idx_d3_q  <= 0;
             txdat_qos_d3_q      <= 0;
             txdat_compack_d3_q  <= 0;
+            txdat_cancel_d3_q   <= 0;
             txdat_dbid_d3_q     <= 0;
             txdat_tgtid_d3_q    <= 0;
             txdat_ccid_d3_q     <= 0;
@@ -484,6 +491,7 @@ module rni_wr_buffer `RNI_PARAM
             txdat_rdy_idx_d3_q  <= txdat_rdy_idx_d2_r;
             txdat_qos_d3_q      <= txdat_qos_d2_i;
             txdat_compack_d3_q  <= txdat_compack_d2_i;
+            txdat_cancel_d3_q   <= txdat_cancel_d2_i;
             txdat_dbid_d3_q     <= txdat_dbid_d2_i;
             txdat_tracetag_d3_q <= txdat_tracetag_d2_i;
             txdat_tgtid_d3_q    <= txdat_tgtid_d2_i;
@@ -537,7 +545,10 @@ module rni_wr_buffer `RNI_PARAM
 
 
     // txdatflit Opcode
-    assign txdatflit_opcode_d3_w[4-1:0] = txdat_compack_d3_q? chie_pkg::DAT_NCBWRDATACOMPACK : chie_pkg::DAT_NONCOPYBACKWRDATA;
+    // SS4.5.2 (p.4-199): a canceled write's packets are WriteDataCancel, whose BE are all clear
+    // (SS2.10.3); otherwise SS2.3.2 Alt 3b2 lets the CompAck ride on the data as NCBWrDataCompAck.
+    assign txdatflit_opcode_d3_w[4-1:0] = txdat_cancel_d3_q  ? chie_pkg::DAT_WRITEDATACANCEL  :
+                                          txdat_compack_d3_q ? chie_pkg::DAT_NCBWRDATACOMPACK : chie_pkg::DAT_NONCOPYBACKWRDATA;
 
     always_comb begin
         wb_txdatflit_d3_o                                 = '0;

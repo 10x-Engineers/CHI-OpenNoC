@@ -212,7 +212,10 @@ the HN-F's `SYSCO_SNP_PEND` input, in the same Requester order.
 - MTE crosses on `AxUSER` (`TagOp`, `TagGroupID`), `W/RUSER` (`Tag`, `TU`) and `BUSER`
   (`[0]` TagMatch received, `[1]` pass). Only Normal WriteBack (Cacheable) accesses carry a `TagOp`
   (section 12.1); any other, or one the chosen opcode cannot carry, goes out as `Invalid`.
-- Write data goes as `NCBWrDataCompAck` when the write owes a CompAck, and as `NonCopyBackWrData` otherwise.
+- Write data goes as `NCBWrDataCompAck` when the write owes a CompAck and its `Comp` has already arrived
+  (section 2.3.2), and otherwise as `NonCopyBackWrData`, with any CompAck sent on its own.
+- A Normal-memory `WriteUniquePtl`, `WriteUniquePtlStash`, `WriteNoSnpPtl` or Combined form of them whose
+  write strobes are all clear, and that carries no `TagOp`, sends every packet as `WriteDataCancel` (section 4.5.2).
 - Also sends `PCrdReturn` for unused P-Credits.
 
 Beyond AxCACHE, request-select ports name the rest of what Table B-1 (p.B-492/493) lets an RN-I send. Each is tied to 0 by an integrator that does not use it, which keeps the rows above (`rni_defines.svh` has the codes):

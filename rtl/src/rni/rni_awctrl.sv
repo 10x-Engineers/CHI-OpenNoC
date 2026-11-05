@@ -77,12 +77,14 @@ module rni_awctrl `RNI_PARAM
     input  wire                                wb_not_busy_d1_i,
     input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_be_i,
     input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_all_tu_i,
+    input  wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] wb_entry_no_be_i,
     // Sec 12.13 (p.12-390, MUST): the write data carries its request's TagOp.
     output wire [`AXI4_TAGOP_WIDTH-1:0]        awctrl_entry_tagop_o[RNI_AW_ENTRIES_NUM_PARAM-1:0],
     output wire                                awctrl_txdat_rdy_v_d2_o,
     output wire [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_txdat_rdy_entry_d2_o,
     output logic [3:0]                         awctrl_txdat_qos_d2_o,
-    output wire                                awctrl_txdat_compack_d2_o,
+    output logic                               awctrl_txdat_compack_d2_o,
+    output logic                               awctrl_txdat_cancel_d2_o,
     output logic [11:0]                        awctrl_txdat_dbid_d2_o,
     output logic                               awctrl_txdat_tracetag_d2_o,
     output logic [chie_pkg::NID_WIDTH-1:0]     awctrl_txdat_tgtid_d2_o,
@@ -317,6 +319,10 @@ module rni_awctrl `RNI_PARAM
     logic                                aw_txrspflit_sent_d0_q;
     chie_pkg::rsp_flit_s                 aw_txrspflit_d0_q;
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txrsp_compack_send_vec_q;
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_wr_cancel_w;    // this write's data goes as WriteDataCancel
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_cack_dat_ok_w;  // its CompAck may ride on its data now
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_cack_dat_q;     // its data goes as NCBWrDataCompAck
+    wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_cack_dat_sent_vec_w;  // that data's first packet has gone
     logic                                txrsp_select_success_flag_q;
     logic                                brsp_last_v_d2_ns_r;
     logic [`AXI4_BID_WIDTH-1:0]          brsp_axid_d2_ns_r;
@@ -1402,8 +1408,12 @@ module rni_awctrl `RNI_PARAM
     assign rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_dbid_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // Table 4-38 (p.4-218): a StashOnceSep may complete with CompStashDone, and a
     // CleanSharedPersistSep with CompPersist (SS2.3.3), each also its other half.
+    // SS2.3.2 Alt 2a2 (p.2-67): on a Combined Write with a persist CMO, CompPersist is the CMO
+    // half (CompCMO with Persist) and the write's own Comp is separate.
+    wire aw_rxrsp_comb_w = |(awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_comb_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMP) |
-                                                          (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST));
+                                                          (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) |
+                                                          ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST) & ~aw_rxrsp_comb_w));
     assign rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_comp_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_retryack_recv_flag_w = aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
 
@@ -1461,7 +1471,9 @@ module rni_awctrl `RNI_PARAM
     endgenerate
 
     assign rxrsp_compcmo_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] =
-           {RNI_AW_ENTRIES_NUM_PARAM{aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPCMO)}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+           {RNI_AW_ENTRIES_NUM_PARAM{aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPCMO) |
+                                        ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST) & aw_rxrsp_comb_w))}} &
+           awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // Persist and StashDone carry TxnID 0 and the group in the DBID bits (Table A-8,
     // p.A-488), like TagMatch below; CompPersist and CompStashDone are TxnID-matched.
     generate
@@ -1831,7 +1843,47 @@ module rni_awctrl `RNI_PARAM
     assign txdat_select_new_entry_w = wb_not_busy_d1_i & txdat_select_success_w & ~txdat_select_more_w;
     assign txdat_select_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{txdat_select_new_entry_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txdat_not_busy_d2_i}} & txdat_rdy_entry_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & txdat_select_vec_d3_q[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];//txdat_select_vec_d3_q prevents a second packet
-    assign awctrl_txdat_compack_d2_o = 1'b0;
+    // SS4.5.2 (p.4-199): a Requester may send WriteDataCancel in place of the NonCopyBackWrData of
+    // a WriteNoSnpPtl, WriteUniquePtl, WriteUniquePtlStash or their Combined forms, never to Device
+    // memory. Used for a write with every byte strobe clear, which is always issued as the Ptl form.
+    generate
+        for (entry=0; entry < RNI_AW_ENTRIES_NUM_PARAM; entry=entry+1) begin: aw_entry_wr_cancel
+            assign awctrl_entry_wr_cancel_w[entry] = wb_entry_no_be_i[entry] & ~awctrl_entry_device_w[entry] &
+                   ~awctrl_entry_atom_w[entry] & ~awctrl_entry_dl_w[entry] &
+                   (awctrl_entry_tagop_o[entry] == chie_pkg::TAGOP_INVALID);
+        end
+    endgenerate
+
+    // SS2.3.2 Alt 3b2 (p.2-53): the CompAck rides on the data "only after it has received
+    // CompDBIDResp or both DBIDResp and Comp", behind the same earlier-write gate as a separate
+    // CompAck (SS2.8.3). Decided from registered Comp state when the data is first selected, so
+    // the TraceTag it reflects (SS11.5.1, rxrsp_tracetag_q) is already complete.
+    assign awctrl_entry_cack_dat_ok_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+           ~awctrl_entry_compack_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_wr_cancel_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
+    always_ff @(posedge clk_i or posedge rst_i) begin
+        if (rst_i == 1'b1)begin
+            awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
+        end
+        else begin
+            awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= (awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
+                   ({RNI_AW_ENTRIES_NUM_PARAM{txdat_select_new_entry_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_cack_dat_ok_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) &
+                   ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+        end
+    end
+    assign awctrl_cack_dat_sent_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+           awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+
+    always_comb begin
+        awctrl_txdat_compack_d2_o = 1'b0;
+        awctrl_txdat_cancel_d2_o  = 1'b0;
+        for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1) begin
+            if(txdat_rdy_v_d2_q && txdat_rdy_entry_d2_q[i]) begin
+                awctrl_txdat_compack_d2_o = awctrl_entry_cack_dat_q[i];
+                awctrl_txdat_cancel_d2_o  = awctrl_entry_wr_cancel_w[i];
+            end
+        end
+    end
     assign awctrl_txdat_rdy_v_d2_o = txdat_rdy_v_d2_q;
     assign awctrl_txdat_rdy_entry_d2_o[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_rdy_entry_d2_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_txdat_ctmask_d2_o[`RNI_DMASK_CT_WIDTH-1:0] = txdat_ctmask_d2_q[`RNI_DMASK_CT_WIDTH-1:0];
@@ -2012,16 +2064,18 @@ module rni_awctrl `RNI_PARAM
     // txrsp
     /////////////////////////////////////////////////////////////
     assign txrsp_select_rdy_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = txdat_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_compack_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
-           awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txrsp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+           awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~txrsp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign txrsp_select_success_flag_w = txrsp_select_success_w & (~awctrl_txrspflitv_d0_o | awctrl_txrspflit_sent_d0_i);
     assign txrsp_select_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txrsp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ({RNI_AW_ENTRIES_NUM_PARAM{txrsp_select_success_flag_w}} & txrsp_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) & ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign awctrl_txrspflitv_d0_o = txrsp_select_success_flag_q | (aw_txrspflitv_d0_q & ~aw_txrspflit_sent_d0_q);
     assign awctrl_txrspflit_d0_o = (aw_txrspflitv_d0_q & ~aw_txrspflit_sent_d0_q) ? aw_txrspflit_d0_q : aw_txrspflit_info_r;
     assign txrsp_compack_send_vec_ns_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = (txrsp_compack_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | (txrsp_select_ptr_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & {RNI_AW_ENTRIES_NUM_PARAM{(awctrl_txrspflitv_d0_o & awctrl_txrspflit_sent_d0_i)}})) &
            ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
-    assign awctrl_compack_chain_clean_flag_w = (awctrl_txrspflitv_d0_o & awctrl_txrspflit_sent_d0_i) | rxrsp_comp_recv_flag_w;
+    assign awctrl_compack_chain_clean_flag_w = (awctrl_txrspflitv_d0_o & awctrl_txrspflit_sent_d0_i) | rxrsp_comp_recv_flag_w |
+           (|awctrl_cack_dat_sent_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign awctrl_compack_chain_clean_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = ({RNI_AW_ENTRIES_NUM_PARAM{awctrl_txrspflitv_d0_o & awctrl_txrspflit_sent_d0_i}} & txrsp_select_ptr_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) |
-           (rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
+           (rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) |
+           awctrl_cack_dat_sent_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     poll_with_start_entry
         #(
@@ -2137,7 +2191,7 @@ module rni_awctrl `RNI_PARAM
            (awctrl_stashdone_recv_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_stashdone_owed_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            // An Atomic's R beat leaves before its entry, which holds the data, is freed.
            (awctrl_atom_r_sent_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_atom_rd_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
-           (txrsp_compack_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
+           (txrsp_compack_send_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] | ~awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]) &
            ~awctrl_entry_bresp_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~bresp_select_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
            // Sec 12.11.1 (p.12-386, MUST) owes a TagMatch to every Match write, and
            // Sec 12.1 (p.12-372) requires the failure reach the Requester -- which on
