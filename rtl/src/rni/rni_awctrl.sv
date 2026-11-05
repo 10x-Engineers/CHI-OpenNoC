@@ -1408,8 +1408,12 @@ module rni_awctrl `RNI_PARAM
     assign rxrsp_dbid_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_dbid_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // Table 4-38 (p.4-218): a StashOnceSep may complete with CompStashDone, and a
     // CleanSharedPersistSep with CompPersist (SS2.3.3), each also its other half.
+    // SS2.3.2 Alt 2a2 (p.2-67): on a Combined Write with a persist CMO, CompPersist is the CMO
+    // half (CompCMO with Persist) and the write's own Comp is separate.
+    wire aw_rxrsp_comb_w = |(awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_comb_w[RNI_AW_ENTRIES_NUM_PARAM-1:0]);
     assign rxrsp_comp_recv_flag_w = aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPDBIDRESP) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMP) |
-                                                          (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) | (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST));
+                                                          (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPSTASHDONE) |
+                                                          ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST) & ~aw_rxrsp_comb_w));
     assign rxrsp_comp_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = {RNI_AW_ENTRIES_NUM_PARAM{rxrsp_comp_recv_flag_w}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     assign rxrsp_retryack_recv_flag_w = aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_RETRYACK);
 
@@ -1467,7 +1471,9 @@ module rni_awctrl `RNI_PARAM
     endgenerate
 
     assign rxrsp_compcmo_recv_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] =
-           {RNI_AW_ENTRIES_NUM_PARAM{aw_rxrsp_correct_w & (awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPCMO)}} & awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+           {RNI_AW_ENTRIES_NUM_PARAM{aw_rxrsp_correct_w & ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPCMO) |
+                                        ((awctrl_entry_rxrsp_opcode_w[5-1:0] == chie_pkg::RSP_COMPPERSIST) & aw_rxrsp_comb_w))}} &
+           awctrl_rxrsp_ptr_r[RNI_AW_ENTRIES_NUM_PARAM-1:0];
     // Persist and StashDone carry TxnID 0 and the group in the DBID bits (Table A-8,
     // p.A-488), like TagMatch below; CompPersist and CompStashDone are TxnID-matched.
     generate
