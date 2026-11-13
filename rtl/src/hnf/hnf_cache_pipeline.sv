@@ -37,6 +37,7 @@ module hnf_cache_pipeline `HNF_PARAM
     input  wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_l3_entry_idx_sx1_q,
     input  wire                                     mshr_l3_fill_sx1_q,
     input  wire                                     mshr_l3_dn_err_sx1_q,
+    input  wire                                     mshr_l3_alloc_sx1_q,
     input  chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q,
     input  wire                                     mshr_l3_snoopme_sx1_q,
     input  wire [chie_pkg::NID_WIDTH-1:0]           mshr_l3_stash_nid_sx1_q,
@@ -159,6 +160,8 @@ module hnf_cache_pipeline `HNF_PARAM
     logic [CPL_STAGE-1:0]                    pipe_fill_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_dn_err_sx_q;
     wire                                     pipe_dn_err_sx1;
+    logic [CPL_STAGE-1:0]                    pipe_alloc_sx_q;
+    wire                                     pipe_alloc_sx1;
     logic [CPL_STAGE-1:0]                    pipe_fill_dirty_sx_q;
     logic [CPL_STAGE-1:0]                    pipe_snoopme_sx_q;
     logic [`RNF_NUM-1:0]                     pipe_stash_vec_sx_q[CPL_STAGE-1:0];
@@ -565,6 +568,7 @@ module hnf_cache_pipeline `HNF_PARAM
     assign pipe_rnf_idx_sx1        = pipe_req_bypass_sx1 ? mshr_l3_rnf_sx1_q        : {NID_WIDTH{1'b0}};
     assign pipe_fill_sx1           = pipe_req_bypass_sx1 ? mshr_l3_fill_sx1_q       : 1'b0;
     assign pipe_dn_err_sx1         = pipe_req_bypass_sx1 ? mshr_l3_dn_err_sx1_q     : 1'b0;
+    assign pipe_alloc_sx1          = pipe_req_bypass_sx1 ? mshr_l3_alloc_sx1_q      : 1'b0;
     assign pipe_fill_dirty_sx1     = pipe_req_bypass_sx1 ? mshr_l3_fill_dirty_sx1_q : 1'b0;
     assign pipe_snoopme_sx1        = pipe_req_bypass_sx1 ? mshr_l3_snoopme_sx1_q    : 1'b0;
 
@@ -604,6 +608,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_dn_err_sx_q[SX2]     <= 1'b0;
+            pipe_alloc_sx_q[SX2]      <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
             pipe_snoopme_sx_q[SX2] <= 1'b0;
             pipe_stash_vec_sx_q[SX2] <= {`RNF_NUM{1'b0}};
@@ -615,6 +620,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= pipe_mshr_idx_sx_q[SX6];
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx_q[SX6];
             pipe_dn_err_sx_q[SX2]     <= pipe_dn_err_sx_q[SX6];
+            pipe_alloc_sx_q[SX2]      <= pipe_alloc_sx_q[SX6];
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx_q[SX6];
             pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx_q[SX6];
             pipe_stash_vec_sx_q[SX2] <= pipe_stash_vec_sx_q[SX6];
@@ -626,6 +632,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= pipe_mshr_idx_sx1;
             pipe_fill_sx_q[SX2]       <= pipe_fill_sx1;
             pipe_dn_err_sx_q[SX2]     <= pipe_dn_err_sx1;
+            pipe_alloc_sx_q[SX2]      <= pipe_alloc_sx1;
             pipe_fill_dirty_sx_q[SX2] <= pipe_fill_dirty_sx1;
             pipe_snoopme_sx_q[SX2] <= pipe_snoopme_sx1;
             pipe_stash_vec_sx_q[SX2] <= pipe_stash_vec_sx1;
@@ -637,6 +644,7 @@ module hnf_cache_pipeline `HNF_PARAM
             pipe_mshr_idx_sx_q[SX2]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
             pipe_fill_sx_q[SX2]       <= 1'b0;
             pipe_dn_err_sx_q[SX2]     <= 1'b0;
+            pipe_alloc_sx_q[SX2]      <= 1'b0;
             pipe_fill_dirty_sx_q[SX2] <= 1'b0;
             pipe_snoopme_sx_q[SX2] <= 1'b0;
             pipe_stash_vec_sx_q[SX2] <= {`RNF_NUM{1'b0}};
@@ -770,6 +778,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_dn_err_sx_q[gi]     <= 1'b0;
+                    pipe_alloc_sx_q[gi]      <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
                     pipe_snoopme_sx_q[gi] <= 1'b0;
                     pipe_stash_vec_sx_q[gi] <= {`RNF_NUM{1'b0}};
@@ -782,6 +791,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= pipe_mshr_idx_sx_q[gi-1][`MSHR_ENTRIES_WIDTH-1:0];
                     pipe_fill_sx_q[gi]       <= pipe_fill_sx_q[gi-1];
                     pipe_dn_err_sx_q[gi]     <= pipe_dn_err_sx_q[gi-1];
+                    pipe_alloc_sx_q[gi]      <= pipe_alloc_sx_q[gi-1];
                     pipe_fill_dirty_sx_q[gi] <= pipe_fill_dirty_sx_q[gi-1];
                     pipe_snoopme_sx_q[gi] <= pipe_snoopme_sx_q[gi-1];
                     pipe_stash_vec_sx_q[gi] <= pipe_stash_vec_sx_q[gi-1];
@@ -793,6 +803,7 @@ module hnf_cache_pipeline `HNF_PARAM
                     pipe_mshr_idx_sx_q[gi]   <= {`MSHR_ENTRIES_WIDTH{1'b0}};
                     pipe_fill_sx_q[gi]       <= 1'b0;
                     pipe_dn_err_sx_q[gi]     <= 1'b0;
+                    pipe_alloc_sx_q[gi]      <= 1'b0;
                     pipe_fill_dirty_sx_q[gi] <= 1'b0;
                     pipe_snoopme_sx_q[gi] <= 1'b0;
                     pipe_stash_vec_sx_q[gi] <= {`RNF_NUM{1'b0}};
@@ -1322,7 +1333,10 @@ module hnf_cache_pipeline `HNF_PARAM
             // CleanUnique/MakeUnique will invalid all cache copies including SLC
             op_dl_cu_sx4_q | op_dl_mu_sx4_q |
             // CleanInvalid will invalid all cache copies include SLC
-            op_cmo_ci_sx4_q
+            op_cmo_ci_sx4_q |
+            // SS2.9.3 (p.2-128): a No-allocate WriteBackFull's data goes to memory
+            // and leaves the Clean copy here stale (SS1.5.1 p.1-26).
+            (~pipe_tag_match_dirty_sx4_q & op_wbfull_sx4_q & ~pipe_alloc_sx_q[SX4])
            );
     assign pipe_invalid_slc_fill_sx4 = 1'b0;
     assign pipe_invalid_slc_sx4 = (~pipe_fill_sx4 & pipe_invalid_slc_nofill_sx4)|(pipe_fill_sx4 & pipe_invalid_slc_fill_sx4);
