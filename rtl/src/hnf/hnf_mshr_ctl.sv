@@ -2234,10 +2234,12 @@ module hnf_mshr_ctl `HNF_PARAM
             assign mshr_dat_entry_vec_s0[entry]  = (mshr_dat_entry_s0 == entry) & (mshr_mem_dat_s0 | mshr_rn_dat_s0);
             // SS4.5.3 (p.4-201): a Snoopee's Pass Dirty hands the Home the line's memory
             // responsibility, so the merge waits for every Snoop response -- also when
-            // the write itself was cancelled.
+            // the write itself was cancelled. SS2.5.2 (p.2-87, MUST): an L3 hit's tag
+            // fetch holds the entry until its last packet, which sets dat_old_get.
             assign mshr_all_dat_alloc_s1[entry]  = (mshr_dat_new_get_s1_q[entry]) &
                    (mshr_dat_entry_vec_s1_q[entry] | mshr_snpdat_entry_vec_s1_q[entry] | mshr_snprsp_entry_vec_s1_q[entry] | mshr_l3_entry_vec_sx8_q[entry]) &
-                   (mshr_dat_old_get_s1_q[entry] | (mshr_l3hit_sx8_q[entry] & ~mshr_tagfetch_pend_sx_q[entry] & ~mshr_l3_tagfetch_sx7[entry])) &
+                   (mshr_dat_old_get_s1_q[entry] | (mshr_l3hit_sx8_q[entry] & ~mshr_tagfetch_pend_sx_q[entry] & ~mshr_tagfetch_issued_sx_q[entry] &
+                                                    ~mshr_l3_tagfetch_sx7[entry])) &
                    (mshr_snp_getall_s1[entry] | mshr_neednosnp_sx8_q[entry]) &
                    mshr_wup_s1_q[entry] & mshr_l3_alloc_s1_q[entry];
             assign mshr_dat_to_rn_s1[entry]      = ((mshr_dat_old_get_s1_q[entry] |
