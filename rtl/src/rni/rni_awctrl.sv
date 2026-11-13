@@ -1073,7 +1073,7 @@ module rni_awctrl `RNI_PARAM
         aw_lpid_alias_r = 1'b0;
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)
             aw_lpid_alias_r = aw_lpid_alias_r |
-                (awctrl_entry_req_ptr_q[i] & (|awctrl_entry_info_q[i].id[`AXI4_AWID_WIDTH-1:8]));
+                (awctrl_entry_req_ptr_q[i] & (|awctrl_entry_info_q[i].id[`AXI4_AWID_WIDTH-1:chie_pkg::LPID_WIDTH]));
     end
     assign aw_lpid_alias_w = aw_lpid_alias_r;
 
@@ -1255,7 +1255,7 @@ module rni_awctrl `RNI_PARAM
         for (int i =0; i < RNI_AW_ENTRIES_NUM_PARAM; i=i+1)begin
             aw_txreqflit_info_r.qos = aw_txreqflit_info_r.qos | ({`AXI4_AWQOS_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_info_q[i].qos);
             aw_txreqflit_info_r.lpid = aw_txreqflit_info_r.lpid |
-                ({8{awctrl_entry_req_ptr_q[i] & ~aw_cacheable_w & ~aw_tagop_match_w}} & awctrl_entry_info_q[i].id[7:0]) |
+                ({8{awctrl_entry_req_ptr_q[i] & ~aw_cacheable_w & ~aw_tagop_match_w}} & 8'(awctrl_entry_info_q[i].id[chie_pkg::LPID_WIDTH-1:0])) |
                 ({8{awctrl_entry_req_ptr_q[i] & aw_tagop_match_w}} & aw_axtggid_r[`AXI4_TAGGROUPID_WIDTH-1:0]);
             aw_txreqflit_info_r.size = chie_pkg::size_e'(aw_txreqflit_info_r.size | ({`AXI4_AWSIZE_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_size_q[i][`AXI4_AWSIZE_WIDTH-1:0]));
             aw_txreqflit_info_r.addr = aw_txreqflit_info_r.addr | ({`AXI4_AWADDR_WIDTH{awctrl_entry_req_ptr_q[i]}} & awctrl_entry_addr_q[i][`AXI4_AWADDR_WIDTH-1:0]);

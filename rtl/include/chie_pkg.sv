@@ -50,6 +50,8 @@ package chie_pkg;
   parameter int SNP_ADDR_WIDTH = REQ_ADDR_WIDTH - 3;   // Table 13-8: no line offset
   parameter int TAG_WIDTH      = DATA_WIDTH / 32;
   parameter int TU_WIDTH       = DATA_WIDTH / 128;
+  // Table 13-6 (p.13-411): the REQ packet's eight LPID bits are {3'b0, LPID[4:0]}.
+  parameter int LPID_WIDTH     = 5;
   // SS2.10.4 (p.2-136), Table 2-15: a 64-byte line is 512/Data_Width packets of
   // Data_Width/128 sixteen-byte chunks, and packet p carries DataID p x PKT_CHUNKS.
   parameter int LINE_PKTS       = 512 / DATA_WIDTH;
