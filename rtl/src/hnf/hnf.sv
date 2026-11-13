@@ -356,6 +356,7 @@ module hnf `HNF_PARAM
     wire                                     mshr_dbf_retired_valid_sx1_q;
     wire                                     mshr_l3_req_en_sx1_q;
     wire                                     mshr_l3_dn_err_sx1_q;
+    wire                                     mshr_l3_alloc_sx1_q;
     wire [`MSHR_ENTRIES_WIDTH-1:0]           mshr_l3_entry_idx_sx1_q;
     wire                                     mshr_l3_fill_sx1_q;
     chie_pkg::req_opcode_e                   mshr_l3_opcode_sx1_q;
@@ -949,6 +950,7 @@ module hnf `HNF_PARAM
                  .mshr_l3_opcode_sx1_q                         (mshr_l3_opcode_sx1_q              ),
                  .mshr_l3_req_en_sx1_q                         (mshr_l3_req_en_sx1_q              ),
                  .mshr_l3_dn_err_sx1_q                         (mshr_l3_dn_err_sx1_q              ),
+                 .mshr_l3_alloc_sx1_q                          (mshr_l3_alloc_sx1_q               ),
                  .mshr_l3_entry_idx_sx1_q                      (mshr_l3_entry_idx_sx1_q           ),
                  .mshr_l3_fill_dirty_sx1_q                     (mshr_l3_fill_dirty_sx1_q          )
              );
@@ -962,6 +964,7 @@ module hnf `HNF_PARAM
                            .pipe_snp_chosen_vec_sx                       (hnf_pipe_snp_chosen_vec_sx        ),
                            .mshr_l3_req_en_sx1_q                         (mshr_l3_req_en_sx1_q & (&notify_reg)),
                            .mshr_l3_dn_err_sx1_q                         (mshr_l3_dn_err_sx1_q              ),
+                           .mshr_l3_alloc_sx1_q                          (mshr_l3_alloc_sx1_q               ),
                            .mshr_l3_addr_sx1                             (mshr_l3_addr_sx1                  ),
                            .mshr_l3_entry_idx_sx1_q                      (mshr_l3_entry_idx_sx1_q           ),
                            .mshr_l3_fill_sx1_q                           (mshr_l3_fill_sx1_q                ),
