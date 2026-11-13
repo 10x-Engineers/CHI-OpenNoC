@@ -61,9 +61,10 @@
 // the returned bytes under its own (Table 4-33 fn c), and written back by
 // WriteBackPtl (Table 4-16 p.4-181).
 //
-// An AXI access with AxLOCK set and an AxID below 256 is an exclusive one for the
-// Logical Processor AxID[7:0] names (SS6.3 p.6-286); a larger AxID is served as a
-// plain access, since LPID is eight bits and IDs above it would alias. The Load
+// An AXI access with AxLOCK set and an AxID below 32 is an exclusive one for the
+// Logical Processor AxID[4:0] names (SS6.3 p.6-286); a larger AxID is served as a
+// plain access, since LPID is five bits (Table 13-6 p.13-411) and IDs above it
+// would alias. The Load
 // sets that LP's monitor on the line, and the monitor is reset by the line leaving
 // the cache -- an invalidating snoop among the ways -- or by a store to it
 // (SS6.2.1 p.6-283). The Store passes silently from a Unique line, issues
@@ -317,7 +318,7 @@ module rnf_ctl `RNF_PARAM
     logic [7:0]                                 wpoison_q;
 
     // The Logical Processor of the access, and whether it is exclusive.
-    logic [7:0]                                 lpid_q;
+    logic [chie_pkg::LPID_WIDTH-1:0]            lpid_q;
     logic                                       excl_q;
     logic                                       excl_pass_q;
     logic                                       exok_q;
@@ -438,7 +439,7 @@ module rnf_ctl `RNF_PARAM
     // SS6.2.1 (p.6-283, MUST): each LP's exclusive monitor on the line of its Load.
     localparam int MON = RNF_EXCL_LP_NUM_PARAM;
     logic                                       mon_v_q    [MON];
-    logic [7:0]                                 mon_lp_q   [MON];
+    logic [chie_pkg::LPID_WIDTH-1:0]            mon_lp_q   [MON];
     logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0]       mon_addr_q [MON];
     logic [`RNF_WAY_W-1:0]                      mon_way_q  [MON];
     logic [$clog2(MON+1)-1:0]                   mon_rr_q;
@@ -747,9 +748,9 @@ module rnf_ctl `RNF_PARAM
     // requested".
     wire chie_pkg::size_e ar_nc_sz =
         (ARSIZE > `AXI4_ARSIZE_WIDTH'(4)) ? chie_pkg::SIZE_16B : chie_pkg::size_e'(ARSIZE);
-    // SS6.3 (p.6-286): LPID is eight bits, so only an AxID that fits one names an LP.
-    wire ar_excl  = ARLOCK[0] && (ARID < `AXI4_ARID_WIDTH'(256));
-    wire aw_excl  = AWLOCK[0] && (AWID < `AXI4_AWID_WIDTH'(256));
+    // SS6.3 (p.6-286): only an AxID that fits LPID names an LP.
+    wire ar_excl  = ARLOCK[0] && !(|ARID[`AXI4_ARID_WIDTH-1:chie_pkg::LPID_WIDTH]);
+    wire aw_excl  = AWLOCK[0] && !(|AWID[`AXI4_AWID_WIDTH-1:chie_pkg::LPID_WIDTH]);
     // The CleanShared family on the maintenance port: which CMO, which Table 4-17
     // (SS4.2.4 p.4-182) Combined Write folds a Dirty line into it, and whether the
     // line is kept.
@@ -816,7 +817,7 @@ module rnf_ctl `RNF_PARAM
                                         lu_snp_sel  ? snp_upd_state_i : cache_lu_state_i;
 
     // Whether an LP's monitor is still set on a line.
-    function automatic bit mon_set(logic [7:0] lp, logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] line);
+    function automatic bit mon_set(logic [chie_pkg::LPID_WIDTH-1:0] lp, logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] line);
         mon_set = 1'b0;
         for (int i = 0; i < MON; i++)
             if (mon_v_q[i] && (mon_lp_q[i] == lp) && same_line(mon_addr_q[i], line))
@@ -926,7 +927,7 @@ module rnf_ctl `RNF_PARAM
         // request's LPID bits are its PGroupID or StashGroupID, which this
         // single-outstanding node keeps at 0.
         prot_txreqflit_o.lpid         = (core_q && !chie_pkg::persist_response(acq_op_q) &&
-                                         !is_stash_sep(acq_op_q)) ? lpid_q : 8'd0;
+                                         !is_stash_sep(acq_op_q)) ? 8'(lpid_q) : 8'd0;
         // SS13.10.40 (p.13-435): a Match request's LPID bits are its TagGroupID.
         if (tagop_match) prot_txreqflit_o.lpid = tggid_q;
 `ifdef CHIE_MPAM_PRESENT
@@ -1321,7 +1322,7 @@ module rnf_ctl `RNF_PARAM
         return a[`RNF_LINE_OFFSET_W +: `RNF_SET_W] == b[`RNF_LINE_OFFSET_W +: `RNF_SET_W];
     endfunction
 
-    function automatic bit mon_has_lp(logic [7:0] lp);
+    function automatic bit mon_has_lp(logic [chie_pkg::LPID_WIDTH-1:0] lp);
         mon_has_lp = 1'b0;
         for (int i = 0; i < MON; i++)
             if (mon_v_q[i] && (mon_lp_q[i] == lp)) mon_has_lp = 1'b1;
@@ -1334,7 +1335,7 @@ module rnf_ctl `RNF_PARAM
     endfunction
 
     // The LP's own entry, else a free one, else the round-robin victim.
-    function automatic int set_slot(logic [7:0] lp);
+    function automatic int set_slot(logic [chie_pkg::LPID_WIDTH-1:0] lp);
         set_slot = -1;
         for (int i = MON-1; i >= 0; i--)
             if (mon_v_q[i] && (mon_lp_q[i] == lp)) set_slot = i;
@@ -1403,7 +1404,7 @@ module rnf_ctl `RNF_PARAM
             base_udp_q    <= 1'b0;
             apply_q       <= 1'b1;
             wpoison_q     <= 8'h00;
-            lpid_q        <= 8'd0;
+            lpid_q        <= '0;
             excl_q        <= 1'b0;
             excl_pass_q   <= 1'b0;
             exok_q        <= 1'b0;
@@ -1441,7 +1442,7 @@ module rnf_ctl `RNF_PARAM
             tm_pass_q     <= 1'b0;
             for (int i = 0; i < MON; i++) begin
                 mon_v_q[i]    <= 1'b0;
-                mon_lp_q[i]   <= 8'd0;
+                mon_lp_q[i]   <= '0;
                 mon_addr_q[i] <= '0;
                 mon_way_q[i]  <= '0;
             end
@@ -1498,7 +1499,7 @@ module rnf_ctl `RNF_PARAM
         end
         else begin
             automatic logic                                 set_now  = 1'b0;
-            automatic logic [7:0]                           set_lp   = lpid_q;
+            automatic logic [chie_pkg::LPID_WIDTH-1:0]      set_lp   = lpid_q;
             automatic logic [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] set_addr = addr_q;
             automatic logic [`RNF_WAY_W-1:0]                set_way  = way_q;
             fill_v_q  <= 1'b0;
@@ -1660,7 +1661,7 @@ module rnf_ctl `RNF_PARAM
                         is_wr_q       <= 1'b0;
                         rsp_ch_q      <= CH_R;
                         core_q        <= 1'b1;
-                        lpid_q        <= ARID[7:0];
+                        lpid_q        <= ARID[chie_pkg::LPID_WIDTH-1:0];
                         excl_q        <= ar_excl;
                         mpam_q        <= ARUSER[`AXI4_USER_MPAM_RANGE];
                         qos_q         <= ARQOS;
@@ -1705,7 +1706,7 @@ module rnf_ctl `RNF_PARAM
                             // no transaction, and sets the monitor.
                             excl_pass_q <= ar_excl;
                             set_now      = ar_excl;
-                            set_lp       = ARID[7:0];
+                            set_lp       = ARID[chie_pkg::LPID_WIDTH-1:0];
                             set_addr     = ar_line;
                             set_way      = cache_lu_way_i;
                             st_q        <= S_RESP;
@@ -1784,7 +1785,7 @@ module rnf_ctl `RNF_PARAM
                         // A near atomic takes the line Unique as a plain store does.
                         aw_coh_q <= (AWATOP == `RNF_ATOP_NONE) ? AWCOH : `RNF_AW_CACHED;
                         core_q   <= 1'b1;
-                        lpid_q   <= AWID[7:0];
+                        lpid_q   <= AWID[chie_pkg::LPID_WIDTH-1:0];
                         // AMBA AXI5: an atomic write is never also exclusive.
                         excl_q   <= aw_excl && (AWATOP == `RNF_ATOP_NONE);
                         mpam_q   <= AWUSER[`AXI4_USER_MPAM_RANGE];

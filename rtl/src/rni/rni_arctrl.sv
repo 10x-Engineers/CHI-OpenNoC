@@ -725,7 +725,7 @@ module rni_arctrl
         ar_lpid_alias_r = 1'b0;
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)
             ar_lpid_alias_r = ar_lpid_alias_r |
-                (arctrl_entry_req_ptr_q[i] & (|arctrl_entry_info_q[i].id[`AXI4_ARID_WIDTH-1:8]));
+                (arctrl_entry_req_ptr_q[i] & (|arctrl_entry_info_q[i].id[`AXI4_ARID_WIDTH-1:chie_pkg::LPID_WIDTH]));
     end
     assign ar_lpid_alias_w = ar_lpid_alias_r;
 
@@ -785,8 +785,8 @@ module rni_arctrl
         // Normal OK it then earns is AXI4 A7.2.3's OKAY from a target that does
         // not support the exclusive access.
         // Sec 6.3.3 (p.6-291, MUST) binds the one-outstanding and the pairing rules
-        // to the LP, which Sec 13.10.20 (p.13-427) makes eight bits -- narrower than
-        // this port's AxID, so IDs differing only above bit 7 would present as one
+        // to the LP, which Table 13-6 (p.13-411) makes five bits -- narrower than
+        // this port's AxID, so IDs differing only above bit 4 would present as one
         // LP and their sequences would interleave. Sec 6.3 (p.6-287) leaves it
         // IMPLEMENTATION DEFINED whether a target supports Exclusive accesses, and
         // AXI4 (IHI 0022) A7.2.3 makes OKAY the answer from one that does not -- so
@@ -803,7 +803,7 @@ module rni_arctrl
         for (int i =0; i < RNI_AR_ENTRIES_NUM_PARAM; i=i+1)begin
             ar_txreqflit_info_r.qos = ar_txreqflit_info_r.qos | ({`AXI4_ARQOS_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_info_q[i].qos);
             ar_txreqflit_info_r.lpid = ar_txreqflit_info_r.lpid |
-                ({8{arctrl_entry_req_ptr_q[i] & ~ar_cacheable_w}} & arctrl_entry_info_q[i].id[7:0]);
+                ({8{arctrl_entry_req_ptr_q[i] & ~ar_cacheable_w}} & 8'(arctrl_entry_info_q[i].id[chie_pkg::LPID_WIDTH-1:0]));
             ar_txreqflit_info_r.addr = ar_txreqflit_info_r.addr | ({`AXI4_ARADDR_WIDTH{arctrl_entry_req_ptr_q[i]}} & arctrl_entry_addr_q[i][`AXI4_ARADDR_WIDTH-1:0]);
             ar_txreqflit_info_r.pcrdtype = ~arctrl_entry_req_select_retry_flag_q ? '0 :
                                ar_txreqflit_info_r.pcrdtype | ({4{arctrl_entry_req_ptr_q[i]}} & rxrsp_retryack_pcrdtype_q[i][3:0]);

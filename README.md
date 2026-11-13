@@ -157,7 +157,7 @@ Every snoop but `SnpQuery` is sent with `DoNotGoToSD = 1`; section 13.10.34 make
 | DCT | — | — | — | — | 🟢 | 🟢 | RN-F as a DCT target: forwards CompData to the Requester |
 | Snoop filter, L3 | — | — | — | — | — | 🟢 | |
 | Snoop handling | — | — | — | — | 🟢 | — | Forwarding snoops per Tables 4-51..4-56, Stash snoops with a Data Pull per Tables 4-46..4-48; a `SnpDVMOp` pair with one `SnpResp_I` once both parts are in |
-| Exclusives | — | ⬜ | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 256` only; SN-I: no monitor; an `Excl` request gets `OK`, an exclusive fail (section 6.3.1), and the store is still performed (IMPLEMENTATION DEFINED, p.6-287) |
+| Exclusives | — | ⬜ | 🟢 | 🟢 | 🟢 | 🟢 | RN-I / RN-F: `AxID < 32` only; SN-I: no monitor; an `Excl` request gets `OK`, an exclusive fail (section 6.3.1), and the store is still performed (IMPLEMENTATION DEFINED, p.6-287) |
 | CMOs | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | HN-F sends them downstream per `BROADCASTCACHEMAINTENANCE`/`BROADCASTPERSIST` |
 | Combined Writes | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F, SN-I ² |
 | Write Zero | 🟢 | 🟢 | 🟢 | — | 🟢 | 🟢 | SN-F, SN-I ² |
@@ -207,8 +207,9 @@ the HN-F's `SYSCO_SNP_PEND` input, in the same Requester order.
 | Normal Cacheable (`[1]=1`, `[3:2]!=00`) | `ReadOnce` | `WriteUniqueFull` / `WriteUniquePtl` |
 
 - `Full` is used only for a whole 64-byte line with every byte enable set.
-- `AxLOCK` becomes `Excl` only for `AxID < 256` (it must fit in `LPID`) on the Non-cacheable rows.
-  Other exclusives are bridged as plain accesses and answered `OKAY`.
+- `AxLOCK` becomes `Excl` only for `AxID < 32` (it must fit in the five-bit `LPID`, Table 13-6) on the Non-cacheable rows.
+  Other exclusives are bridged as plain accesses and answered `OKAY`. `LPID` is `AxID[4:0]`, and the
+  upper three bits of its REQ slot are zero.
 - MTE crosses on `AxUSER` (`TagOp`, `TagGroupID`), `W/RUSER` (`Tag`, `TU`) and `BUSER`
   (`[0]` TagMatch received, `[1]` pass). Only Normal WriteBack (Cacheable) accesses carry a `TagOp`
   (section 12.1); any other, or one the chosen opcode cannot carry, goes out as `Invalid`.
