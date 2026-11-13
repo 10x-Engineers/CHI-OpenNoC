@@ -322,6 +322,7 @@ module rni_awctrl `RNI_PARAM
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_wr_cancel_w;    // this write's data goes as WriteDataCancel
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_cack_dat_ok_w;  // its CompAck may ride on its data now
     logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_entry_cack_dat_q;     // its data goes as NCBWrDataCompAck
+    logic [RNI_AW_ENTRIES_NUM_PARAM-1:0] txdat_started_q;             // a packet of its data has been selected
     wire  [RNI_AW_ENTRIES_NUM_PARAM-1:0] awctrl_cack_dat_sent_vec_w;  // that data's first packet has gone
     logic                                txrsp_select_success_flag_q;
     logic                                brsp_last_v_d2_ns_r;
@@ -1857,17 +1858,23 @@ module rni_awctrl `RNI_PARAM
     // SS2.3.2 Alt 3b2 (p.2-53): the CompAck rides on the data "only after it has received
     // CompDBIDResp or both DBIDResp and Comp", behind the same earlier-write gate as a separate
     // CompAck (SS2.8.3). Decided from registered Comp state when the data is first selected, so
-    // the TraceTag it reflects (SS11.5.1, rxrsp_tracetag_q) is already complete.
+    // the TraceTag it reflects (SS11.5.1, rxrsp_tracetag_q) is already complete; SS2.10.4
+    // (p.2-136) gives every packet of the message that one Opcode.
     assign awctrl_entry_cack_dat_ok_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] = awctrl_entry_expcompack_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & rxrsp_comp_recv_vec_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
            ~awctrl_entry_compack_dep_v_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & ~awctrl_entry_wr_cancel_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1)begin
             awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
+            txdat_started_q[RNI_AW_ENTRIES_NUM_PARAM-1:0]         <= {RNI_AW_ENTRIES_NUM_PARAM{1'b0}};
         end
         else begin
             awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= (awctrl_entry_cack_dat_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
-                   ({RNI_AW_ENTRIES_NUM_PARAM{txdat_select_new_entry_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_cack_dat_ok_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) &
+                   ({RNI_AW_ENTRIES_NUM_PARAM{wb_not_busy_d1_i & txdat_select_success_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0] &
+                    ~txdat_started_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] & awctrl_entry_cack_dat_ok_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) &
+                   ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
+            txdat_started_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] <= (txdat_started_q[RNI_AW_ENTRIES_NUM_PARAM-1:0] |
+                   ({RNI_AW_ENTRIES_NUM_PARAM{wb_not_busy_d1_i & txdat_select_success_w}} & txdat_select_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0])) &
                    ~awctrl_entry_dealloc_vec_w[RNI_AW_ENTRIES_NUM_PARAM-1:0];
         end
     end
