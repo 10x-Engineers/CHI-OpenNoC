@@ -103,7 +103,9 @@ module hnf_link_rxdat_parse `HNF_PARAM
     assign li_dbf_rxdat_valid_s0     = li_mshr_rxdat_valid_s0;
     assign li_dbf_rxdat_txnid_s0_raw = li_mshr_rxdat_valid_s0? rxdatflit.txnid    : '0;
     assign li_dbf_rxdat_txnid_s0     = li_dbf_rxdat_txnid_s0_raw[`MSHR_ENTRIES_WIDTH-1:0];
-    assign li_dbf_rxdat_opcode_s0    = (li_mshr_rxdat_valid_s0 && ((|rxdatflit.be) || (rxdatflit.opcode == chie_pkg::DAT_COMPDATA)))? rxdatflit.opcode :chie_pkg::DAT_WRITEDATACANCEL;
+    // SS12.5.2 (p.12-379): an Update beat may assert TU with no BE, so it is not a cancel.
+    assign li_dbf_rxdat_opcode_s0    = (li_mshr_rxdat_valid_s0 && ((|rxdatflit.be) || (rxdatflit.opcode == chie_pkg::DAT_COMPDATA) ||
+                                         ((rxdatflit.tagop == chie_pkg::TAGOP_UPDATE) && (|rxdatflit.tu))))? rxdatflit.opcode :chie_pkg::DAT_WRITEDATACANCEL;
     assign li_dbf_rxdat_dataid_s0    = li_mshr_rxdat_valid_s0? rxdatflit.dataid   : '0;
     assign li_dbf_rxdat_be_s0        = li_mshr_rxdat_valid_s0? rxdatflit.be       : '0;
     assign li_dbf_rxdat_data_s0      = li_mshr_rxdat_valid_s0? rxdatflit.data     : '0;
