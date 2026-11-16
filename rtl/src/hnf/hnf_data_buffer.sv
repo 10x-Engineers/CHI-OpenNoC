@@ -123,6 +123,11 @@ module hnf_data_buffer `HNF_PARAM
     opennoc_hnf_pkg::hnf_tagv_s        dbf_tagv_q[0:`MSHR_ENTRIES_NUM-1];
     opennoc_hnf_pkg::hnf_tagv_s        temp_li_tagv;
     opennoc_hnf_pkg::hnf_tagv_s        temp_pipe_tagv;
+    // The tags a write's Update installed (SS12.5.2 p.12-379), which a Snoopee's
+    // older Update (SS12.9.4 p.12-384) must not supersede -- dbf_fill_q's rule for bytes.
+    logic [opennoc_hnf_pkg::HNF_LINE_TU-1:0] dbf_tag_wr_q[0:`MSHR_ENTRIES_NUM-1];
+    logic [opennoc_hnf_pkg::HNF_LINE_TU-1:0] temp_li_tag_wr;
+    logic [opennoc_hnf_pkg::HNF_LINE_TU-1:0] temp_pipe_tag_wr;
     // SS12.5.2 (p.12-379): a Match write's Physical Tags, apart from the Allocation Tags.
     logic [`CACHE_TAG_WIDTH-1:0]       dbf_match_tag_q[0:`MSHR_ENTRIES_NUM-1];
     logic [`CACHE_TAG_WIDTH-1:0]       temp_li_match_tag;
@@ -316,13 +321,14 @@ module hnf_data_buffer `HNF_PARAM
         logic [1:0]                     dataid,
         logic [1:0]                     tagop,
         logic [chie_pkg::TAG_WIDTH-1:0] tag,
-        logic [chie_pkg::TU_WIDTH-1:0]  tu);
+        logic [chie_pkg::TU_WIDTH-1:0]  tu,
+        logic [opennoc_hnf_pkg::HNF_LINE_TU-1:0] keep);
         opennoc_hnf_pkg::hnf_tagv_s     r;
         logic                           upd, cln, in_pkt_t;
         r = base;
         for (int t = 0; t < opennoc_hnf_pkg::HNF_LINE_TU; t++) begin
             in_pkt_t = covered && in_pkt(dataid, t, chie_pkg::TU_WIDTH);
-            upd    = in_pkt_t && (tagop == chie_pkg::TAGOP_UPDATE) && tu[t % chie_pkg::TU_WIDTH];
+            upd    = in_pkt_t && (tagop == chie_pkg::TAGOP_UPDATE) && tu[t % chie_pkg::TU_WIDTH] && !keep[t];
             cln    = in_pkt_t && (tagop == chie_pkg::TAGOP_TRANSFER) && !base.valid[t];
             if (upd || cln) begin
                 r.tag[t*4 +: 4] = tag[(t % chie_pkg::TU_WIDTH)*4 +: 4];
@@ -359,7 +365,18 @@ module hnf_data_buffer `HNF_PARAM
     assign temp_li_tagv   = tagv_merge_li(li_pipe_same ? tagv_fill(dbf_tagv_q[li_dbf_rxdat_txnid_s0], pipe_dbf_wr_tagv_sx9_q)
                                                        : dbf_tagv_q[li_dbf_rxdat_txnid_s0],
                                           li_tag_covered, li_dbf_rxdat_dataid_s0, li_dbf_rxdat_tagop_s0,
-                                          li_dbf_rxdat_tag_s0, li_dbf_rxdat_tu_s0);
+                                          li_dbf_rxdat_tag_s0, li_dbf_rxdat_tu_s0,
+                                          li_write ? '0 : dbf_tag_wr_q[li_dbf_rxdat_txnid_s0]);
+    // An eviction swap replaces the line outright, so none of its tags is the write's.
+    assign temp_pipe_tag_wr = (pipe_dbf_wr_valid_sx9_q && pipe_dbf_rd_idx_sx2_valid_q)
+                            ? '0 : dbf_tag_wr_q[pipe_dbf_wr_idx_sx9_q];
+    generate
+        for(i = 0;i<opennoc_hnf_pkg::HNF_LINE_TU;i = i+1) begin:get_tag_wr_temp
+            assign temp_li_tag_wr[i] = dbf_tag_wr_q[li_dbf_rxdat_txnid_s0][i] |
+                   (li_tag_covered && li_write && (li_dbf_rxdat_tagop_s0 == chie_pkg::TAGOP_UPDATE) &&
+                    in_pkt(li_dbf_rxdat_dataid_s0, i, chie_pkg::TU_WIDTH) && li_dbf_rxdat_tu_s0[i % chie_pkg::TU_WIDTH]);
+        end
+    endgenerate
 
     // SS12.5 (p.12-378, MUST): the WriteData's TagOp decides the match, scoped by SS12.5.2
     // (p.12-379, MUST) to the write's own byte enables, not a fill's.
@@ -390,6 +407,7 @@ module hnf_data_buffer `HNF_PARAM
                     dbf_pe_q[i]     <= 'd0;
                     dbf_poison_q[i] <= 'd0;
                     dbf_tagv_q[i]   <= 'd0;
+                    dbf_tag_wr_q[i] <= 'd0;
                     dbf_match_tag_q[i] <= 'd0;
                     dbf_match_be_q[i] <= 'd0;
                 end
@@ -401,6 +419,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= 'd0;
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
+                        dbf_tag_wr_q[i] <= 'd0;
                         dbf_match_tag_q[i] <= 'd0;
                         dbf_match_be_q[i] <= 'd0;
                     end
@@ -416,6 +435,7 @@ module hnf_data_buffer `HNF_PARAM
                             dbf_pe_q[i]     <= '1;
                             dbf_poison_q[i] <= temp_pipe_poison;
                             dbf_tagv_q[i]   <= temp_pipe_tagv;
+                            dbf_tag_wr_q[i] <= temp_pipe_tag_wr;
                         end
                     end
                     else if (li_dbf_rxdat_valid_s0 && pipe_dbf_wr_valid_sx9_q && i == li_dbf_rxdat_txnid_s0 && i== pipe_dbf_wr_idx_sx9_q)begin
@@ -425,6 +445,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= '1;
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
+                        dbf_tag_wr_q[i] <= temp_li_tag_wr;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
                         dbf_match_be_q[i] <= temp_li_match_be;
                     end
@@ -435,6 +456,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= dbf_pe_q[i] | (`HNF_PKTS'(1) << chie_pkg::pkt_of_dataid(li_dbf_rxdat_dataid_s0));
                         dbf_poison_q[i] <= temp_li_poison;
                         dbf_tagv_q[i]   <= temp_li_tagv;
+                        dbf_tag_wr_q[i] <= temp_li_tag_wr;
                         dbf_match_tag_q[i] <= temp_li_match_tag;
                         dbf_match_be_q[i] <= temp_li_match_be;
                     end
@@ -445,6 +467,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= '1;
                         dbf_poison_q[i] <= temp_pipe_poison;
                         dbf_tagv_q[i]   <= temp_pipe_tagv;
+                        dbf_tag_wr_q[i] <= temp_pipe_tag_wr;
                     end
                     else if (mshr_dbf_home_fill_valid_sx1_q && i == mshr_dbf_home_fill_idx_sx1_q)begin
                         // SS9.4.4 (p.9-342) / a Write Zero: the Home's own bytes, not a fill
@@ -455,6 +478,7 @@ module hnf_data_buffer `HNF_PARAM
                         dbf_pe_q[i]     <= mshr_dbf_home_fill_pe_sx1_q;
                         dbf_poison_q[i] <= 'd0;
                         dbf_tagv_q[i]   <= 'd0;
+                        dbf_tag_wr_q[i] <= 'd0;
                         dbf_match_tag_q[i] <= 'd0;
                         dbf_match_be_q[i] <= 'd0;
                     end
