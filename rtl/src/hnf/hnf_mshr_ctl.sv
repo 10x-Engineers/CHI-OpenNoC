@@ -4153,9 +4153,13 @@ module hnf_mshr_ctl `HNF_PARAM
             // the same address" is stated over the CompAck alone, so
             // mshr_compack_busy_sx_q is the window and how the completion was
             // sourced does not narrow it. What does is the entry still owing snoops
-            // of its own, which is mshr_snp_busy_sx_q.
+            // of its own, which is mshr_snp_busy_sx_q -- and the entry being asleep:
+            // Sec 4.11.2 (p.4-243) opens the wait "once a completion is sent", a
+            // sleeper has sent none, and the entry it sleeps behind may be the one
+            // held, which Sec 2.9.7 (p.2-133) forbids: "does not deadlock".
             assign mshr_compack_owed_rn_sx[entry] =
                    {`RNF_NUM{mshr_entry_valid_sx_q[entry] & mshr_compack_busy_sx_q[entry] &
+                             ~sleep_sx_q[entry] &
                              ~mshr_txsnp_rdy_sx_q[entry] & ~mshr_snp_busy_sx_q[entry]}}
                    & mshr_srcid_onehot_s1_q[entry];
 
