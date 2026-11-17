@@ -2010,7 +2010,8 @@ module rnf_ctl `RNF_PARAM
                             // write is a WriteNoSnp of the bytes the burst addresses,
                             // Full only for a whole line, and Table 4-13 (SS4.2.3
                             // p.4-178) gives Device nRnE Order 11. SS4.2.3 (p.4-176)
-                            // makes a line of zeros WriteNoSnpZero's.
+                            // makes a line of zeros WriteNoSnpZero's, unless Exclusive:
+                            // WriteNoSnpZero carries no Excl (SS13.10.27 p.13-432).
                             // Table 2-16 (SS2.10.5 p.2-137) bounds an atomic's size and
                             // alignment, and SS16.2.4 (p.16-476, MUST) forbids an Atomic
                             // with BROADCASTATOMIC deasserted -- which leaves a location
@@ -2062,6 +2063,17 @@ module rnf_ctl `RNF_PARAM
                                 end
                                 else st_q <= S_REQ;
                             end
+                            // SS13.10.27 (p.13-432): of the writes only WriteNoSnp carries Excl,
+                            // never its Combined forms, so an Exclusive Store asked to combine
+                            // a CMO is refused and issues nothing.
+                            else if (nc_q && excl_q && ((aw_coh_q == `RNF_AW_IMMEDIATE_CLSH) ||
+                                                        (aw_coh_q == `RNF_AW_IMMEDIATE_CLINV) ||
+                                                        (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP))) begin
+                                hit_q   <= 1'b1;
+                                apply_q <= 1'b0;
+                                err_q   <= 1'b1;
+                                st_q    <= S_BRESP;
+                            end
                             else if (nc_q) begin
                                 hit_q    <= 1'b0;
                                 alloc_q  <= 1'b0;
@@ -2081,7 +2093,7 @@ module rnf_ctl `RNF_PARAM
                                             (aw_coh_q == `RNF_AW_IMMEDIATE_PERSEP)
                                                 ? (wr_full ? chie_pkg::REQ_WRITENOSNPFULLCLEANSHPERSEP
                                                            : chie_pkg::REQ_WRITENOSNPPTLCLEANSHPERSEP) :
-                                            (wr_zero && !nc_owo) ? chie_pkg::REQ_WRITENOSNPZERO :
+                                            (wr_zero && !nc_owo && !excl_q) ? chie_pkg::REQ_WRITENOSNPZERO :
                                             wr_full ? chie_pkg::REQ_WRITENOSNPFULL
                                                     : chie_pkg::REQ_WRITENOSNPPTL;
                                 ord_q    <= nc_owo ? chie_pkg::ORDER_REQ_WR_OBS :
