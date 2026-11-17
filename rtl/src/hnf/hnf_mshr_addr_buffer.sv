@@ -185,9 +185,14 @@ module hnf_mshr_addr_buffer `HNF_PARAM
         end
     endgenerate
 
+    // Sec 4.11 (p.4-242, MUST): an eviction may take a line another entry is still
+    // live on, which leaves it a request tail and an evict tail. Sleeping behind
+    // the evict would wake a second entry on the line while the first runs, so the
+    // request tail wins; hnf_mshr_ctl's downstream line hold orders the victim write.
     always_comb begin:req_compare_s0
         rxreq_cam_hazard_s1_q = 1'b0;
         rxreq_cam_hazard_entry_s1_q = 'd0;
+        for (int pass = 0; pass < 2; pass = pass+1)
         for (int i = 0;i<`MSHR_ENTRIES_NUM;i=i+1)begin
             // Sec 2.8.1 (p.2-114, MUST): "All writes to the same location are
             // serialized", and Sec 4.11 (p.4-242, MUST) places that on the
@@ -195,7 +200,7 @@ module hnf_mshr_addr_buffer `HNF_PARAM
             // a downstream write of that line, so a request arriving for it must
             // sleep behind that write -- Table 4-14 (p.4-179) pins every HN-F to
             // SN-F write to Order=0b00, so nothing else can express the order.
-            if(mshr_alloc_en_s1_q && (abf_can_compare_sx_q[i] | abf_internal_evict_addr_valid_sx_q[i]) == 1'b1 && abf_sx_q[i][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
+            if(mshr_alloc_en_s1_q && ((pass == 0) ? abf_internal_evict_addr_valid_sx_q[i] : abf_can_compare_sx_q[i]) == 1'b1 && abf_sx_q[i][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] == li_mshr_rxreq_addr_s1_q[chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET]
                     && ~(mshr_dbf_retired_valid_sx1_q == 1'b1 && mshr_dbf_retired_idx_sx1_q == i[`MSHR_ENTRIES_WIDTH-1:0]) && ~(l3_evict_sx7_q == 1'b1 && l3_mshr_entry_sx7_q == i[`MSHR_ENTRIES_WIDTH-1:0]))begin
                 rxreq_cam_hazard_s1_q = 1'b1;
                 rxreq_cam_hazard_entry_s1_q = trans_id2num(i[`MSHR_ENTRIES_WIDTH-1:0]);
