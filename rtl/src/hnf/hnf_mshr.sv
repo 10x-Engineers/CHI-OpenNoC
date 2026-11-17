@@ -636,6 +636,7 @@ module hnf_mshr `HNF_PARAM
                      .l3_replay_sx7_q                                 (l3_replay_sx7_q                   ),
                      .l3_hit_d_sx7_q                                  (l3_hit_d_sx7_q                    ),
                      .l3_evict_sx7_q                                  (l3_evict_sx7_q                    ),
+                     .l3_evict_addr_sx7_q                             (l3_evict_addr_sx7_q               ),
                      .l3_tags_full_sx7_q                              (l3_tags_full_sx7_q                ),
                      .l3_tags_dirty_sx7_q                             (l3_tags_dirty_sx7_q               ),
                      .mshr_dbf_rd_idx_sx1_q                           (mshr_dbf_rd_idx_sx1_q             ),

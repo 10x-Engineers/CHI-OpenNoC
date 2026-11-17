@@ -180,6 +180,7 @@ module hnf_mshr_ctl `HNF_PARAM
     input  wire                                l3_replay_sx7_q,
     input  wire                                l3_hit_d_sx7_q,
     input  wire                                l3_evict_sx7_q,
+    input  wire [chie_pkg::REQ_ADDR_WIDTH-1:0] l3_evict_addr_sx7_q,
     input  wire                                l3_tags_full_sx7_q,
     input  wire                                l3_tags_dirty_sx7_q,
 
@@ -442,6 +443,7 @@ module hnf_mshr_ctl `HNF_PARAM
     // retire, unlike abf_internal_evict_addr_valid_sx_q, which the hazard CAM
     // hands over to a later same-line request.
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_evict_pending_sx_q;
+    logic [chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET] mshr_victim_line_sx_q[0:`MSHR_ENTRIES_NUM-1];
     chie_pkg::resp_err_e                 mshr_dn_resperr_s1_q[0:`MSHR_ENTRIES_NUM-1];
     // Sec 9.4.1 (p.9-337, MUST): NDERR "in none or in all data response packets", so
     // the RespErr of an entry's first RN-bound data packet is held for the rest.
@@ -461,6 +463,7 @@ module hnf_mshr_ctl `HNF_PARAM
     logic [`RNF_NUM-1:0]                 mshr_compack_owed_rn_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`RNF_NUM-1:0]                 mshr_snp_compack_block_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_same_line_sx[0:`MSHR_ENTRIES_NUM-1];
+    logic [`MSHR_ENTRIES_NUM-1:0]        mshr_dn_same_line_sx[0:`MSHR_ENTRIES_NUM-1];
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_txsnp_compack_hold_sx;
     logic [`MSHR_ENTRIES_NUM-1:0]        mshr_snpdirect_sx8_q;
     logic [`MSHR_SNPCNT_WIDTH-1:0]       mshr_snpcnt_sx_q[0:`MSHR_ENTRIES_NUM-1];
@@ -1773,6 +1776,11 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_evict_pending_sx_q[entry] <= 1'b1;
                 else
                     ;
+            end
+
+            always_ff @(posedge clk)begin : mshr_victim_line_sx_q_timing_logic
+                if(mshr_l3_evict_sx7[entry])
+                    mshr_victim_line_sx_q[entry] <= l3_evict_addr_sx7_q[chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET];
             end
 
             always_ff @(posedge clk or posedge rst)begin : mshr_rd_resperr_held_sx_q_timing_logic
@@ -3640,7 +3648,7 @@ module hnf_mshr_ctl `HNF_PARAM
             // one cache line. Table 2-9 (p.2-119) Reserves Order 0b10/0b11 HN-F to SN-F and
             // Table 4-14 (p.4-179) pins every write there to 0b00, so an overlapping access
             // cannot express the order on the link and waits for the first to complete instead.
-            assign mshr_dn_line_hold_sx[entry]  = |(mshr_same_line_sx[entry] & mshr_dn_sent_sx & mshr_entry_valid_sx_q);
+            assign mshr_dn_line_hold_sx[entry]  = |(mshr_dn_same_line_sx[entry] & mshr_dn_sent_sx & mshr_entry_valid_sx_q);
             assign mshr_datbuf_busy_sx[entry]   = mshr_rn_data_busy_sx_q[entry] | mshr_sn_data_busy_sx_q[entry];
             assign mshr_rsp_busy_wr_sx[entry]   = mshr_comp_busy_s2_q[entry] | mshr_dbid_rdy_s2_q[entry] | mshr_rd_receipt_rdy_s2_q[entry];
             assign mshr_rsp_busy_sx[entry]      = mshr_rsp_busy_wr_sx[entry] | mshr_cw_owed_sx_q[entry] | mshr_cw_rdy_sx_q[entry] |
@@ -4145,6 +4153,20 @@ module hnf_mshr_ctl `HNF_PARAM
                     mshr_same_line_sx[e][o] = 1'b1;
                     mshr_same_line_sx[o][e] = 1'b1;
                 end
+    end
+
+    // An entry that took an SLC eviction also owes the Subordinate a write of the
+    // victim line, which its requested line does not name.
+    always_comb begin : mshr_dn_same_line_comb_logic
+        for(int e = 0; e < `MSHR_ENTRIES_NUM; e = e+1)
+            for(int o = 0; o < `MSHR_ENTRIES_NUM; o = o+1)
+                mshr_dn_same_line_sx[e][o] = mshr_same_line_sx[e][o] | ((e != o) & (
+                    (mshr_evict_pending_sx_q[o] &
+                     (mshr_victim_line_sx_q[o] == mshr_addr_s1_q[e][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET])) |
+                    (mshr_evict_pending_sx_q[e] &
+                     (mshr_victim_line_sx_q[e] == mshr_addr_s1_q[o][chie_pkg::REQ_ADDR_WIDTH-1:`CACHE_BLOCK_OFFSET])) |
+                    (mshr_evict_pending_sx_q[e] & mshr_evict_pending_sx_q[o] &
+                     (mshr_victim_line_sx_q[e] == mshr_victim_line_sx_q[o]))));
     end
 
     generate
