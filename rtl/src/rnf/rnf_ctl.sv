@@ -803,8 +803,11 @@ module rnf_ctl `RNF_PARAM
     // A surplus P-Credit goes back before new work is taken: offering READY in
     // the same cycle the FSM leaves to return it would complete an AXI handshake
     // for a request nothing then serves.
+    // Table 4-39 (SS4.7.3 p.4-219): a request is decided from its line's state, so
+    // none is taken while this node's own drop or CopyBack retirement of a line is
+    // landing (cache_upd_v_o): the lookup would still see the line it removes.
     wire accept_ok = (st_q == S_IDLE) && !surplus_v && link_run_i && coh_enabled_i && coh_req_i &&
-                     !pull_v_i;
+                     !pull_v_i && !drop_q && !cb_done_q;
     assign ARREADY = accept_ok;
     assign AWREADY = accept_ok && !ARVALID;
     assign CMREADY = accept_ok && !ARVALID && !AWVALID;
