@@ -107,6 +107,8 @@ module rnf_snp `RNF_PARAM
     // response has gone.
     output wire                                 snp_line_v_o,
     output wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_o,
+    // ... and no flit of that response has gone before this cycle.
+    output wire                                 snp_line_unanswered_o,
 
     // The Data Pull handed to the core side: its line, the way it fills, and the
     // read Table 7-2 (SS7.1.1 p.7-295) makes of it.
@@ -536,6 +538,7 @@ module rnf_snp `RNF_PARAM
     assign snp_busy_o        = (st_q != S_IDLE) || !q_empty || (|dvm_v_q);
     assign snp_line_v_o      = ((st_q != S_IDLE) && !dvm_q) || (take && !head_dvm);
     assign snp_line_addr_o   = cache_lu_addr_o;
+    assign snp_line_unanswered_o = (take && !head_dvm) || ((st_q != S_IDLE) && !dvm_q && !started_q);
 
     always_ff @(posedge clk_i or posedge rst_i) begin
         if (rst_i == 1'b1) begin

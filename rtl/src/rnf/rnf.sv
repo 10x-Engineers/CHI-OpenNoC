@@ -208,6 +208,7 @@ module rnf `RNF_PARAM
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] ctl_cb_hold_addr;
     wire                                 snp_line_v;
     wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr;
+    wire                                 snp_line_unanswered;
     wire [`RNF_WAY_W-1:0]                snp_vic_way;
     wire [`RNF_CS_WIDTH-1:0]             snp_vic_state;
     wire                                 pull_ready;
@@ -337,6 +338,7 @@ module rnf `RNF_PARAM
                      ,.snp_busy_o            ( snp_busy         )
                      ,.snp_line_v_o          ( snp_line_v       )
                      ,.snp_line_addr_o       ( snp_line_addr    )
+                     ,.snp_line_unanswered_o ( snp_line_unanswered )
                      ,.cache_vic_way_i       ( snp_vic_way      )
                      ,.cache_vic_state_i     ( snp_vic_state    )
                      ,.pull_ready_i          ( pull_ready & ~dvm_active )
@@ -465,6 +467,7 @@ module rnf `RNF_PARAM
                      ,.cb_hold_addr_o        ( ctl_cb_hold_addr     )
                      ,.snp_line_v_i          ( snp_line_v           )
                      ,.snp_line_addr_i       ( snp_line_addr        )
+                     ,.snp_line_unanswered_i ( snp_line_unanswered  )
                      ,.pull_ready_o          ( pull_ready           )
                      ,.pull_txnid_o          ( pull_txnid           )
                      ,.pull_v_i              ( pull_v               )

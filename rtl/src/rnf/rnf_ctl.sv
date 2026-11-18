@@ -234,6 +234,7 @@ module rnf_ctl `RNF_PARAM
     // The line the snoop port is answering.
     input  wire                                 snp_line_v_i,
     input  wire [CHIE_REQ_ADDR_WIDTH_PARAM-1:0] snp_line_addr_i,
+    input  wire                                 snp_line_unanswered_i,
 
     // A Data Pull the snoop port has put in its response, taken only while idle.
     output wire                                 pull_ready_o,
@@ -504,6 +505,17 @@ module rnf_ctl `RNF_PARAM
     // Table 4-16 (SS4.2.3 p.4-181): a Dirty line goes back Full, a UDP one Ptl.
     function automatic chie_pkg::req_opcode_e back_op(logic [`RNF_CS_WIDTH-1:0] cs);
         return (cs == `RNF_CS_UDP) ? chie_pkg::REQ_WRITEBACKPTL : chie_pkg::REQ_WRITEBACKFULL;
+    endfunction
+
+    // Table 4-39 (SS4.7.3 p.4-219): the Initial states each CopyBack is issued from;
+    // a Combined Write takes its write's row (SS4.2.4 p.4-182).
+    function automatic bit cb_from(chie_pkg::req_opcode_e op, logic [`RNF_CS_WIDTH-1:0] cs);
+        case (op)
+            chie_pkg::REQ_WRITEEVICTFULL:    return cs == `RNF_CS_UC;
+            chie_pkg::REQ_WRITEEVICTOREVICT: return (cs == `RNF_CS_UC) || (cs == `RNF_CS_SC);
+            chie_pkg::REQ_WRITEBACKPTL:      return cs == `RNF_CS_UDP;
+            default:                         return (cs == `RNF_CS_UD) || (cs == `RNF_CS_SD);
+        endcase
     endfunction
 
     // SS6.3 (p.6-286): the Snoopable Exclusive Loads this node issues.
@@ -1020,8 +1032,6 @@ module rnf_ctl `RNF_PARAM
     wire evict_snp_hazard = (acq_op_q == chie_pkg::REQ_EVICT) && snp_line_v_i &&
                             same_line(snp_line_addr_i, addr_q);
 
-    assign prot_txreqflitv_o = ((st_q == S_REQ) && !evict_snp_hazard) ||
-                               (st_q == S_CB_REQ) || (st_q == S_PCRD_RET);
 
     // SS2.6.1 (p.2-100, MUST): a CompAck takes its TgtID from the completion's
     // HomeNID and its TxnID from its DBID, not from this node's own request.
@@ -1259,6 +1269,18 @@ module rnf_ctl `RNF_PARAM
     wire vic_snp_now = snp_upd_v_i && (snp_upd_way_i == vic_way_q) &&
                        same_line(snp_upd_addr_i, vic_addr_q);
     wire [`RNF_CS_WIDTH-1:0] vic_state_now = vic_snp_now ? snp_upd_state_i : vic_state_q;
+
+    // Table 4-39 (SS4.7.3 p.4-219): a CopyBack is issued only from its Initial states.
+    // A snoop not yet answered leaves the line in the state the request is sent from;
+    // once answered, a CopyBack its new state rules out is not owed. A resend after
+    // RetryAck goes out regardless (p.4-220).
+    wire cb_snp_unanswered = snp_line_v_i && snp_line_unanswered_i &&
+                             same_line(snp_line_addr_i, vic_addr_q);
+    wire cb_moot = (st_q == S_CB_REQ) && !retry_q && !cb_snp_unanswered &&
+                   !cb_from(cb_op_q, vic_state_now);
+
+    assign prot_txreqflitv_o = ((st_q == S_REQ) && !evict_snp_hazard) ||
+                               ((st_q == S_CB_REQ) && !cb_moot) || (st_q == S_PCRD_RET);
 
     // Table 4-34 (SS4.7.1 p.4-213): MakeReadUnique's data is the Requester's to
     // use only once it has lost its own copy; p.4-215 has one still held "use its
@@ -2327,7 +2349,13 @@ module rnf_ctl `RNF_PARAM
                 end
 
                 S_CB_REQ: begin
-                    if (prot_txreqflit_sent_i) st_q <= S_CB_DBID;
+                    // A Combined Write's CMO is still owed, and goes alone. Table 4-32
+                    // (p.4-209) lets the line the CopyBack would have taken go silently.
+                    if (cb_moot) begin
+                        drop_q <= !cb_keep_q;
+                        st_q   <= (cb_then_req_q || chie_pkg::combined_write(cb_op_q)) ? S_REQ : fin_st;
+                    end
+                    else if (prot_txreqflit_sent_i) st_q <= S_CB_DBID;
                 end
 
                 S_CB_DBID: begin
